@@ -36,7 +36,7 @@ Si npm avisa que hay *install scripts* pendientes, habilitalos:
 npm rebuild workerd esbuild
 ```
 
-Corré los tests. **Tienen que pasar los 37.**
+Corré los tests. **Tienen que pasar los 167.**
 
 ```bash
 npm test
@@ -217,8 +217,9 @@ Antes de avisarle a nadie:
 - [ ] El portal muestra las tres tarjetas, las tres entrables.
 - [ ] Prensas abre y muestra **278 lotes** y **1.512 análisis**.
 - [ ] Barriles abre, dice **sincronizado** y el mapa muestra los boxes cargados.
-- [ ] Lotes abre y su grilla muestra **291 lotes**; el tablero avisa que espera
-      a la Fase 4 (es lo esperado, no un error).
+- [ ] Lotes abre, su grilla muestra **291 lotes** y el tablero muestra los KPIs.
+- [ ] En Lotes, **Cruce con barriles** cruza contra el mapa y dice "misma base".
+- [ ] En Lotes, **Orden de corrección** lista lotes con su dosis de MBK.
 - [ ] Desde cualquier módulo, **← Menú** vuelve al portal.
 - [ ] Editás un comentario, guardás, recargás y el cambio sigue ahí.
 - [ ] El botón **🕘 Historial** muestra tu guardado con tu nombre.

@@ -7,7 +7,7 @@
  */
 
 import { identidad, puedeEscribir, puedeLeer, marcarSesion, type Identidad } from '../auth';
-import { json, texto } from '../respuestas';
+import { json } from '../respuestas';
 import { validarDatos, registrosHuerfanos, avanzarMesSiCorresponde, ahoraBodega, type Datos } from './validacion';
 import { resumenCambios } from './cambios';
 
@@ -195,11 +195,15 @@ export async function rutasPrensas(
   // En la app local lo armaba openpyxl. Pasa a hacerse en el navegador con
   // SheetJS (Fase 3). Hasta entonces, un aviso claro en vez de un error.
   if (ruta === '/exportar' && req.method === 'GET') {
-    return texto(
-      501,
-      'La exportación a Excel se está rehaciendo para que funcione sin Python (Fase 3).\n' +
-        'Mientras tanto, usá la app local para exportar.',
-    );
+    return json(501, {
+      error: 'motor_pendiente',
+      motores: ['openpyxl'],
+      detalles: [
+        'La exportación a Excel todavía no está migrada.',
+        'La hacía openpyxl, una librería de Python que la nube no ejecuta; se rehace con SheetJS en el navegador.',
+        'Mientras tanto, exportá desde la app local.',
+      ],
+    });
   }
 
   // ---------- POST /asistente ----------

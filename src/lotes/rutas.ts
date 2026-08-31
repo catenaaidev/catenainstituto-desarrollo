@@ -1,54 +1,23 @@
 /**
- * Endpoints del módulo Lotes — MIGRACIÓN PARCIAL.
+ * Endpoints del módulo Lotes.
  *
- * Lotes es el único módulo cuya lógica NO vive en la pantalla sino en el
- * servidor: ocho motores de Python (~87 KB) calculan FML, etapas, linaje,
- * cruce con barriles y órdenes de corrección.
- *
- * Lo que YA funciona acá (los datos):
- *   GET/POST /datos · GET /estado · GET /historial · GET /info
- *   → las vistas de lotes, análisis y movimientos andan, con las mismas
- *     validaciones y el mismo control de versión que las otras dos apps.
- *
- * Lo que FALTA (los cálculos):
- *   /dashboard · /analisis · /ficha · /cruce · /orden-correccion
- *   → cada uno responde 501 con el motor que le falta, así la pantalla puede
- *     avisar en vez de romperse. Portarlos es la Fase 4 (5 a 8 días), y hay
- *     que verificar cada motor contra los datos reales antes de confiar en él:
- *     son reglas que afectan producción.
+ * Responden igual que su servidor.py, con los ocho motores portados a
+ * TypeScript en motores/. El cruce con el Mapa de Barriles ya no lee el .db de
+ * otra máquina: los dos módulos viven en la misma base, así que es una consulta.
  */
 
 import { identidad, puedeEscribir, puedeLeer, marcarSesion } from '../auth';
 import { json } from '../respuestas';
 import { validarDatos, SECCIONES_LOTES, ahoraBodega, type Datos } from '../prensas/validacion';
 import { resumenCambios } from '../prensas/cambios';
+import { datosDashboard, datosFicha, analisisConFlags } from './vistas';
+import { normalizarMapa, MapaNoDisponible } from './motores/mapa';
+import { cruzar } from './motores/cruce';
+import { armarOrden } from './motores/correccion';
+import { ETAPAS } from './motores/etapas';
 
 const MODULO = 'lotes';
 const HISTORIAL_MAX = 200;
-
-/** Endpoints que dependen de un motor todavía en Python. */
-const PENDIENTES: Record<string, { motores: string[]; que: string }> = {
-  '/dashboard': {
-    motores: ['motor_fml', 'motor_etapas'],
-    que: 'el tablero con etapas y avance de FML',
-  },
-  '/analisis': {
-    motores: ['motor_fml'],
-    que: 'la evaluación de análisis contra los criterios de FML',
-  },
-  '/ficha': {
-    motores: ['motor_etapas', 'motor_linaje'],
-    que: 'la ficha del lote con su línea de tiempo y recorrido de vasijas',
-  },
-  '/cruce': {
-    motores: ['motor_cruce', 'motor_mapa'],
-    que: 'el cruce con el Mapa de Barriles',
-  },
-  '/orden-correccion': {
-    motores: ['motor_correccion'],
-    que: 'la orden de corrección',
-  },
-};
 
 async function leerDocumento(env: Env): Promise<Datos> {
   const fila = await env.DB.prepare('SELECT json FROM documento WHERE modulo = ?')
@@ -91,21 +60,6 @@ export async function rutasLotes(
       error: 'sin_permiso',
       detalles: [
         `${id?.email ?? 'este usuario'} no tiene acceso a Lotes. Pedíselo a un administrador.`,
-      ],
-    });
-  }
-
-  // ---------- Endpoints que esperan a la Fase 4 ----------
-  const pendiente = PENDIENTES[ruta];
-  if (pendiente) {
-    return json(501, {
-      error: 'motor_pendiente',
-      motores: pendiente.motores,
-      detalles: [
-        `Todavía no está migrado ${pendiente.que}.`,
-        `Depende de ${pendiente.motores.join(' y ')}, que siguen en Python (Fase 4).`,
-        'Los datos sí están: las vistas de lotes, análisis y movimientos funcionan.',
-        'Para esta parte, por ahora usá la app local.',
       ],
     });
   }
@@ -218,7 +172,93 @@ export async function rutasLotes(
     return json(200, { ips: [], port: 443, host: 'cloudflare' });
   }
 
+  // ================= los que usan los motores =================
+
+  const hoy = hoyBodega(env.TZ_BODEGA);
+
+  // ---------- GET /dashboard ----------
+  if (ruta === '/dashboard' && req.method === 'GET') {
+    return json(200, datosDashboard(await leerDocumento(env), hoy));
+  }
+
+  // ---------- GET /analisis ----------
+  if (ruta === '/analisis' && req.method === 'GET') {
+    return json(200, analisisConFlags(await leerDocumento(env)));
+  }
+
+  // ---------- GET /ficha?lote=NNN[&etapa=X] ----------
+  if (ruta === '/ficha' && req.method === 'GET') {
+    const url = new URL(req.url);
+    const lote = url.searchParams.get('lote');
+    if (!lote) return json(400, { error: 'falta el parametro lote' });
+
+    const etapa = url.searchParams.get('etapa');
+    if (etapa && !(ETAPAS as readonly string[]).includes(etapa)) {
+      return json(400, { error: `etapa invalida: ${etapa}` });
+    }
+
+    const ficha = datosFicha(await leerDocumento(env), lote, hoy, etapa);
+    if (!ficha) return json(404, { error: `no existe el lote ${lote}` });
+    return json(200, ficha);
+  }
+
+  // ---------- GET /cruce ----------
+  // Antes leía el .db del Mapa de Barriles desde una carpeta de OneDrive.
+  // Ahora los dos módulos comparten base: es una consulta.
+  if (ruta === '/cruce' && req.method === 'GET') {
+    try {
+      const mapa = normalizarMapa(await leerMapaBarriles(env));
+      const d = await leerDocumento(env);
+      return json(200, cruzar((d.lotes as Record<string, unknown>[]) ?? [], mapa));
+    } catch (e) {
+      if (e instanceof MapaNoDisponible) return json(503, { error: e.message });
+      throw e;
+    }
+  }
+
+  // ---------- GET /orden-correccion ----------
+  if (ruta === '/orden-correccion' && req.method === 'GET') {
+    try {
+      const mapa = normalizarMapa(await leerMapaBarriles(env));
+      return json(200, armarOrden(await leerDocumento(env), mapa, hoy));
+    } catch (e) {
+      if (e instanceof MapaNoDisponible) return json(503, { error: e.message });
+      throw e;
+    }
+  }
+
   return null;
+}
+
+/** Día de hoy en la bodega, en milisegundos UTC del día. */
+function hoyBodega(tz: string): number {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const v = (t: string) => partes.find((p) => p.type === t)!.value;
+  return Date.parse(`${v('year')}-${v('month')}-${v('day')}T00:00:00Z`);
+}
+
+/**
+ * Documento del Mapa de Barriles, para el cruce.
+ *
+ * Acá está el premio de haber unificado: el cruce dejó de depender de que la
+ * PC del mapa estuviera encendida y de que OneDrive hubiera sincronizado su
+ * backup. Es una fila de la misma base.
+ */
+async function leerMapaBarriles(env: Env): Promise<{ version: unknown; estado: Record<string, unknown> }> {
+  const fila = await env.DB.prepare('SELECT json FROM documento WHERE modulo = ?')
+    .bind('barriles')
+    .first<{ json: string }>();
+  if (!fila) {
+    throw new MapaNoDisponible(
+      'todavía no hay datos del Mapa de Barriles en la plataforma. Importalo antes de cruzar.',
+    );
+  }
+  return JSON.parse(fila.json);
 }
 
 export async function snapshotLotes(env: Env, d: Datos, version: number) {

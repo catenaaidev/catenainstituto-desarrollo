@@ -6,7 +6,7 @@ Las aplicaciones de Bodegas Esmeralda en un solo sitio, con login de Office 365.
 |---|---|
 | **Control de Prensas** | ✅ Migrado y funcionando |
 | **Mapa de Barriles** | ✅ Migrado y funcionando |
-| **Lotes** | 🟡 Datos sí; faltan los cálculos de los 8 motores |
+| **Lotes** | ✅ Migrado y funcionando (8 motores portados) |
 
 **➡️ Para subirlo, seguí [DESPLIEGUE.md](DESPLIEGUE.md).**
 
@@ -41,10 +41,13 @@ src/               El Worker (TypeScript)
   auth.ts            identidad de Access + roles por módulo
   prensas/           rutas + validaciones + resumen de cambios
   barriles/          rutas + frenos de borrado
-  lotes/             rutas de datos; los cálculos esperan a la Fase 4
+  lotes/
+    rutas.ts         los 10 endpoints
+    vistas.ts        armado de tablero, ficha y análisis
+    motores/         los 8 motores portados de Python
 migrations/        Esquema de la base
 scripts/           Importación de los tres módulos
-test/              37 tests, portados de los de Python
+test/              167 tests, portados de los de Python
 ```
 public/            Lo que ve el usuario (lo sirve el CDN)
   index.html         portal con las tres tarjetas
@@ -94,7 +97,7 @@ En el Mapa de Barriles se conservan además sus propios frenos: no se pueden
 vaciar 15 casilleros, 15 registros de inventario, 3 órdenes del escáner, 5
 tanques ni 9 casilleros de palet sin confirmarlo.
 
-Los 37 tests de `test/` son el port de los de Python y verifican justamente eso.
+Los 167 tests de `test/` son el port de los de Python y verifican justamente eso.
 
 ### Qué desapareció, y por qué
 
@@ -120,7 +123,7 @@ El navegador nunca habla con la base: no tiene credenciales para hacerlo.
 
 ```bash
 npm install           # una vez
-npm test              # los 37 tests
+npm test              # los 167 tests
 npm run dev           # servidor local en :8787
 npm run deploy        # publicar
 npx tsc --noEmit      # verificar tipos
@@ -132,32 +135,58 @@ usuario mientras no hay Access. En producción se ignora.
 
 ---
 
-## Lo que falta
+## Los motores de Lotes
 
-### Los cálculos de Lotes (Fase 4 · 5–8 días)
+Lotes era el único módulo cuya lógica vivía en el servidor: ocho motores de
+Python (~82 KB) que calculan FML, etapas, linaje, cruce con barriles y órdenes
+de corrección. Están portados a `src/lotes/motores/`:
 
-Lotes es el único módulo cuya lógica vive en el servidor y no en la pantalla.
-Sus datos ya están migrados y las vistas de **lotes, análisis y movimientos
-funcionan**, pero cinco vistas dependen de motores que siguen en Python:
-
-| Vista | Motor que le falta |
+| Motor | Qué decide |
 |---|---|
-| Tablero | `motor_fml`, `motor_etapas` |
-| Análisis | `motor_fml` |
-| Ficha del lote | `motor_etapas`, `motor_linaje` |
-| Cruce con barriles | `motor_cruce`, `motor_mapa` |
-| Orden de corrección | `motor_correccion` |
+| `fml.ts` | Si un lote está en condición, si venció, cuánto SO2 le falta |
+| `etapas.ts` | En qué etapa está y cuánto avanzó (9 hitos) |
+| `linaje.ts` | De qué lote viene cada uno y por qué vasijas pasó |
+| `cruce.ts` | Diferencias entre los envases declarados y los del mapa |
+| `correccion.ts` | La dosis de SO2 por barrica |
+| `mapa.ts` | Normaliza el inventario del Mapa de Barriles |
+| `envases.ts` · `movimientos.ts` | Litros por envase; qué movimiento ya se hizo |
 
-Cada una avisa con un cartel explicando qué falta, en vez de quedarse colgada.
-Son reglas que afectan producción: hay que portarlas y **verificar cada motor
-contra los datos reales** antes de confiar en ellas.
+### Cómo se verificó que el port es fiel
+
+Sin Python instalado no se puede comparar corriendo los dos lados, así que se
+hicieron tres cosas:
+
+1. **Se portaron los tests de Python**, caso por caso y con los mismos números:
+   130 tests solo para estos motores.
+2. **Se comparó contra el `Reporte Lotes.html`**, que había generado el Python
+   con los datos reales el 21/07. Sobre los 240 lotes del reporte:
+   - **litros: 240/240 exacto**
+   - **estado de FML: 164/164 exacto** en los lotes comparables
+   - la única diferencia de "vencido" se explica por un cambio de configuración
+     posterior (14 variedades blancas pasaron a `hace_fml: no`), no por el port
+3. **Se corrieron los cinco endpoints contra los datos completos** de la bodega.
+
+### Lo que el port MEJORA
+
+`motor_mapa.py` era el único punto del sistema que tocaba SQLite, y la mayor
+parte de su código existía para sortear OneDrive: buscar el backup rotado de
+mayor versión, abrirlo con `immutable=1` para no crear los `-wal`/`-shm` que
+corrompen la base, rechazar los que tuvieran un WAL con contenido.
+
+**Todo eso desapareció.** El Mapa de Barriles vive en la misma base que Lotes,
+así que el cruce es una consulta. Ya no depende de que la PC del mapa esté
+encendida ni de que OneDrive haya sincronizado.
+
+---
+
+## Lo que falta
 
 ### De Prensas (Fase 3 · 2–3 días)
 
 - Partir el documento en tablas y guardar por fila → se termina el aviso de
   conflicto y dos personas pueden editar a la vez.
-- Exportar a Excel con SheetJS en el navegador (hoy `/exportar` avisa que está
-  en preparación).
+- Exportar a Excel con SheetJS en el navegador. Hoy `/exportar` avisa en
+  pantalla que está pendiente, en vez de fallar.
 
 ### Del Mapa de Barriles
 

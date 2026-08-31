@@ -1,0 +1,283 @@
+/**
+ * Etapa del proceso y avance por hitos — port de motor_etapas.py.
+ *
+ * Reusa los helpers de fml.ts (orden por fecha, marcador -999) en lugar de
+ * duplicarlos: garantiza que los dos motores traten los datos exactamente
+ * igual. Duplicar esa lógica sería peor que acoplarse a ella.
+ */
+
+import {
+  criteriosEfectivos,
+  evaluarLote,
+  ordenarPorFecha,
+  valorValido,
+  type Criterios,
+  type Fila,
+  type ResultadoLote,
+} from './fml';
+import { movimientosEjecutados } from './movimientos';
+
+export const ETAPAS = ['ingreso', 'fa', 'fml', 'crianza', 'cerrado'] as const;
+export type Etapa = (typeof ETAPAS)[number];
+
+/** Movimientos que explican que un lote se haya quedado sin litros. */
+const TIPOS_EGRESO = ['traspaso', 'salida', 'renombre'];
+
+const ORDEN: Record<string, number> = Object.fromEntries(ETAPAS.map((e, i) => [e, i]));
+
+const CAMPOS_INGRESO = ['variedad', 'proyecto', 'fecha_ingreso', 'kilos', 'vasija_fa'];
+
+/**
+ * (clave, título, etapa desde la que aplica). "Desde" es inclusivo y hacia
+ * adelante: un hito que aplica desde 'fa' también aplica en fml/crianza/cerrado.
+ */
+const DEFINICION_HITOS: [string, string, Etapa][] = [
+  ['datos_ingreso', 'Datos de ingreso completos', 'ingreso'],
+  ['fa_finalizada', 'FA finalizada', 'fa'],
+  ['descube_cargado', 'Descube cargado', 'fa'],
+  ['analisis_al_dia', 'Analisis al dia', 'fa'],
+  ['fml_finalizada', 'FML finalizada', 'fml'],
+  ['ph_ok', 'pH OK', 'fml'],
+  ['so2_ok', 'SO2 OK', 'fml'],
+  ['lleno', 'Lleno', 'fml'],
+  ['trasiego_post_fml', 'Trasiego post-FML', 'crianza'],
+];
+
+function tieneDescube(lote: Fila, movimientos: Fila[]): boolean {
+  for (const m of movimientos ?? []) if ((m ?? {}).tipo === 'descube') return true;
+  return Boolean((lote ?? {}).descube_fa);
+}
+
+/**
+ * Etapa que el motor propone.
+ *
+ * Cascada: cerrado → ingreso → fa → (crianza | fml). Ojo: crianza EXIGE
+ * descube. Una blanca tiene fml_estado='excluida' desde el alta, así que sin
+ * esa condición un lote recién ingresado caería en crianza.
+ */
+export function etapaSugerida(lote: Fila, ev: Partial<ResultadoLote>, movimientos: Fila[]): Etapa {
+  // Los pendientes son planes, no hechos: se filtra en el borde.
+  const movs = movimientosEjecutados(movimientos ?? []);
+  const l = lote ?? {};
+  const litros = (ev ?? {}).litros ?? 0;
+
+  // litros<=0 es señal confiable de vaciado de verdad; fecha_ingreso descarta
+  // los placeholders que nunca arrancaron, donde litros=0 es el estado inicial
+  // y no un cierre.
+  if (litros <= 0 && l.fecha_ingreso) return 'cerrado';
+  if (!l.fecha_ingreso) return 'ingreso';
+  if (!tieneDescube(l, movs)) return 'fa';
+  if ((ev ?? {}).fml_estado === 'finalizada' || (ev ?? {}).fml_estado === 'excluida') return 'crianza';
+  return 'fml';
+}
+
+/**
+ * Fecha ISO del análisis que dio la FML por finalizada, o null.
+ * Aplica las dos reglas de fml en orden cronológico y devuelve la primera
+ * fecha en que alguna se cumplió.
+ */
+export function finFml(analisis: Fila[], eff: Criterios): string | null {
+  const ordenados = ordenarPorFecha(analisis ?? []);
+  const malicos: [number, string][] = [];
+  for (const a of ordenados) {
+    const v = valorValido((a ?? {}).malico);
+    const f = (a ?? {}).fecha_analisis;
+    if (v !== null && f) malicos.push([v, String(f).slice(0, 10)]);
+  }
+  for (let i = 0; i < malicos.length; i++) {
+    const [v, f] = malicos[i];
+    if (v < eff.fml_malico_finalizada) return f;
+    if (i >= 1 && v < eff.fml_malico_2ultimas && malicos[i - 1][0] < eff.fml_malico_2ultimas) return f;
+  }
+  return null;
+}
+
+function faltantesIngreso(lote: Fila): string[] {
+  return CAMPOS_INGRESO.filter((c) => !String((lote ?? {})[c] ?? '').trim());
+}
+
+/** Movimiento de descube CON vasija destino cargada, o null. */
+function movimientoDescube(movimientos: Fila[]): Fila | null {
+  for (const raw of movimientos ?? []) {
+    const m = raw ?? {};
+    if (m.tipo === 'descube' && String(m.vasija_destino ?? '').trim()) return m;
+  }
+  return null;
+}
+
+/** Primer trasiego con fecha >= ref. null si no hay o si falta la referencia. */
+function trasiegoDesde(movimientos: Fila[], ref: string | null): Fila | null {
+  if (!ref) return null;
+  for (const raw of movimientos ?? []) {
+    const m = raw ?? {};
+    if (m.tipo !== 'trasiego') continue;
+    const f = String(m.fecha ?? '').slice(0, 10);
+    if (f && f >= String(ref).slice(0, 10)) return m;
+  }
+  return null;
+}
+
+export interface Hito {
+  clave: string;
+  titulo: string;
+  desde: Etapa;
+  aplica: boolean;
+  cumplido: boolean;
+  detalle: string;
+}
+
+/** Los 9 hitos del lote, cada uno con cumplido / aplica / detalle. */
+export function hitos(
+  lote: Fila,
+  analisis: Fila[],
+  movimientos: Fila[],
+  ev: Partial<ResultadoLote>,
+  eff: Criterios,
+  etapa: string,
+): Hito[] {
+  const movs = movimientosEjecutados(movimientos ?? []);
+  const l = lote ?? {};
+  const e = ev ?? {};
+  const idx = ORDEN[etapa] ?? 0;
+
+  const faltan = faltantesIngreso(l);
+  const descube = movimientoDescube(movs);
+  const excluida = e.fml_estado === 'excluida';
+
+  // Referencia para el trasiego posterior a la FML. Una blanca nunca cruza el
+  // umbral de málico, así que para las excluidas se usa la fecha del descube.
+  let ref = finFml(analisis, eff);
+  if (ref === null && excluida) {
+    ref = String((descube ?? {}).fecha ?? l.descube_fa ?? '').slice(0, 10) || null;
+  }
+  const trasiego = trasiegoDesde(movs, ref);
+
+  const calc: Record<string, [boolean, string, boolean]> = {
+    datos_ingreso: [
+      faltan.length === 0,
+      faltan.length ? 'faltan: ' + faltan.join(', ') : 'completos',
+      true,
+    ],
+    fa_finalizada: [
+      e.fa_estado === 'finalizada',
+      `FA ${e.fa_estado} (limite azucar reductor ${eff.fa_azucar_reductor_max})`,
+      true,
+    ],
+    descube_cargado: [
+      descube !== null,
+      descube ? `descube a ${descube.vasija_destino}` : 'falta el movimiento de descube con vasija destino',
+      true,
+    ],
+    analisis_al_dia: [
+      !e.vencido,
+      `${e.dias_desde_analisis} dias desde el ultimo analisis (maximo ${e.frecuencia_max})`,
+      true,
+    ],
+    fml_finalizada: [e.fml_estado === 'finalizada', `FML ${e.fml_estado}`, !excluida],
+    ph_ok: [e.ph_ok === true, `limite pH ${eff.ph_max}`, true],
+    so2_ok: [
+      e.so2_ok === true,
+      `SO2 molecular minimo ${eff.so2_molecular_objetivo} (piso ${eff.so2_libre_piso} ppm de libre)`,
+      true,
+    ],
+    lleno: [e.estado_llenado === 'lleno', `estado de llenado: ${e.estado_llenado}`, true],
+    trasiego_post_fml: [
+      trasiego !== null,
+      trasiego
+        ? `trasiego del ${trasiego.fecha}`
+        : ref
+          ? `sin trasiego posterior al ${ref}`
+          : 'FML sin terminar',
+      ref !== null,
+    ],
+  };
+
+  return DEFINICION_HITOS.map(([clave, titulo, desde]) => {
+    const [cumplido, detalle, aplicaExtra] = calc[clave];
+    const aplica = idx >= ORDEN[desde] && Boolean(aplicaExtra);
+    return { clave, titulo, desde, aplica, cumplido: aplica ? Boolean(cumplido) : false, detalle };
+  });
+}
+
+export interface Avance {
+  pct: number;
+  cumplidos: number;
+  aplicables: number;
+}
+
+/** Barra de %: cumplidos sobre APLICABLES. Los que no aplican no cuentan. */
+export function avance(hitosLista: Hito[]): Avance {
+  const aplicables = (hitosLista ?? []).filter((h) => h.aplica);
+  const cumplidos = aplicables.filter((h) => h.cumplido);
+  const n = aplicables.length;
+  return {
+    pct: n ? Math.round((cumplidos.length * 100) / n) : 0,
+    cumplidos: cumplidos.length,
+    aplicables: n,
+  };
+}
+
+/** El avance congelado solo vale si tiene la forma completa y con enteros. */
+function avanceCongeladoValido(raw: unknown): Avance | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const { pct, cumplidos, aplicables } = o;
+  if (![pct, cumplidos, aplicables].every((v) => typeof v === 'number' && Number.isInteger(v))) {
+    return null;
+  }
+  return { pct: pct as number, cumplidos: cumplidos as number, aplicables: aplicables as number };
+}
+
+export interface ResultadoEtapa {
+  etapa: string;
+  etapa_sugerida: Etapa;
+  hitos: Hito[];
+  avance: Avance;
+}
+
+/**
+ * Entrada única para el servidor: etapa confirmada, sugerida, hitos y avance.
+ *
+ * `config` es el dict de config del datos.json (con la clave criterios_fml).
+ * La etapa que vale es la CONFIRMADA en el lote; la sugerida se informa aparte
+ * para que el tablero arme la bandeja de confirmación.
+ *
+ * Si la etapa es 'cerrado' y el lote trae `avance_congelado` bien formado, se
+ * devuelve ese valor: la barra queda congelada al momento del cierre. Los hitos
+ * se siguen calculando para que la ficha los muestre como referencia histórica.
+ *
+ * `etapaForzada` calcula hitos y avance con el contexto de otra etapa, sin
+ * mutar nada. Se usa para obtener el avance a congelar ANTES de confirmar el
+ * cierre.
+ */
+export function evaluarEtapa(
+  lote: Fila,
+  analisis: Fila[],
+  movimientos: Fila[],
+  config: Record<string, unknown>,
+  hoy: number,
+  etapaForzada: string | null = null,
+): ResultadoEtapa {
+  const movs = movimientosEjecutados(movimientos ?? []);
+  const cfg = ((config ?? {}).criterios_fml as Record<string, unknown>) ?? {};
+  const l = lote ?? {};
+  const eff = criteriosEfectivos(cfg, l.variedad, l.proyecto);
+  const ev = evaluarLote(l, analisis ?? [], cfg, hoy);
+  const sug = etapaSugerida(l, ev, movs);
+
+  let etapa = String(l.etapa ?? '') || sug;
+  if (!(ETAPAS as readonly string[]).includes(etapa)) etapa = sug;
+
+  const etapaParaHitos =
+    etapaForzada && (ETAPAS as readonly string[]).includes(etapaForzada) ? etapaForzada : etapa;
+  const hs = hitos(l, analisis, movs, ev, eff, etapaParaHitos);
+
+  let av: Avance;
+  if (etapa === 'cerrado' && etapaForzada === null) {
+    av = avanceCongeladoValido(l.avance_congelado) ?? avance(hs);
+  } else {
+    av = avance(hs);
+  }
+
+  return { etapa, etapa_sugerida: sug, hitos: hs, avance: av };
+}
