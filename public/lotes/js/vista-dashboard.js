@@ -1,0 +1,255 @@
+/* ===== Lotes CIW — pestana Dashboard ===== */
+'use strict';
+
+import { $, esc, escA, DATOS, dashData, registrarVista,
+         markDirty, guardar, cargarDashboard, usuarioActual, irALote } from './nucleo.js';
+import { activarGrilla } from './grilla.js';
+
+const COND_LABELS = {
+  fml_no_finalizada:          'FML no terminada',
+  fml_terminada_excluida:     'FML terminada/excluida',
+  so2_no_ok:                  'SO2 no OK',
+  ph_no_ok:                   'pH no OK',
+  av_alerta:                  'AV en alerta',
+  frecuencia_vencida:         'Frecuencia vencida',
+  sin_analisis_valido:        'Sin análisis válido',
+  no_lleno:                   'No lleno',
+  fa_no_finalizada:           'FA no terminada',
+  datos_operativos_incompletos: 'Datos operativos incompletos',
+};
+
+/* ---------- confirmacion de etapas ---------- */
+
+function _confirmar(lote, etapaNueva, avanceActual){
+  const l = DATOS().lotes.find(x => String(x.lote) === String(lote));
+  if (!l) return;
+
+  // Si sale de cerrado, borrar el avance congelado (ya no esta cerrado)
+  if (etapaNueva !== 'cerrado' && l.avance_congelado !== undefined){
+    delete l.avance_congelado;
+  }
+
+  // Si pasa a cerrado, congelar el avance vigente
+  if (etapaNueva === 'cerrado' && avanceActual && typeof avanceActual === 'object'){
+    l.avance_congelado = {
+      pct:        avanceActual.pct,
+      cumplidos:  avanceActual.cumplidos,
+      aplicables: avanceActual.aplicables,
+    };
+  }
+
+  l.etapa = etapaNueva;
+  l.etapa_confirmada_por = usuarioActual();
+  l.etapa_confirmada_el  = new Date().toISOString().slice(0, 19);
+  if (!Array.isArray(l.historial_etapas)) l.historial_etapas = [];
+  l.historial_etapas.push({
+    etapa: etapaNueva,
+    desde: new Date().toISOString().slice(0, 10),
+    por:   usuarioActual(),
+    el:    l.etapa_confirmada_el,
+  });
+  markDirty();
+}
+
+/* Obtiene el avance real desde la ficha calculado con la etapa destino, para
+   congelar correctamente al confirmar el cierre. Se pide con &etapa=cerrado
+   para que el divisor incluya todos los hitos aplicables en esa etapa (no los
+   de la etapa anterior al cierre). Si falla, usa el avance de la bandeja. */
+async function _avanceDesdeFicha(lote){
+  try {
+    const r = await fetch(API+'/ficha?lote=' + encodeURIComponent(lote) + '&etapa=cerrado');
+    if (!r.ok) return null;
+    const j = await r.json();
+    const av = j.avance;
+    if (av && typeof av.pct === 'number' && typeof av.cumplidos === 'number' && typeof av.aplicables === 'number'){
+      return { pct: av.pct, cumplidos: av.cumplidos, aplicables: av.aplicables };
+    }
+  } catch(e){ /* falla silenciosa: se usa el fallback */ }
+  return null;
+}
+
+/* Confirma la etapa de UN lote y guarda. 'fila' viene de bandeja_etapas. */
+async function confirmarEtapa(fila){
+  let avance = fila._avance;
+  // Si va a cerrado, obtener avance real desde la ficha para congelar correctamente
+  if (fila.etapa_sugerida === 'cerrado'){
+    const av = await _avanceDesdeFicha(fila.lote);
+    if (av) avance = av;
+  }
+  _confirmar(fila.lote, fila.etapa_sugerida, avance);
+  const ok = await guardar(false);
+  if (ok) cargarDashboard();
+}
+
+/* Confirma TODOS los lotes de la bandeja y hace UN SOLO guardado. */
+async function confirmarTodasLasEtapas(filas){
+  if (!filas || filas.length === 0) return;
+  // Para los que van a cerrado, obtener avance real en paralelo
+  const avances = await Promise.all(filas.map(async f => {
+    if (f.etapa_sugerida === 'cerrado'){
+      const av = await _avanceDesdeFicha(f.lote);
+      return av || f._avance;
+    }
+    return f._avance;
+  }));
+  filas.forEach((f, i) => _confirmar(f.lote, f.etapa_sugerida, avances[i]));
+  const ok = await guardar(false);
+  if (ok) cargarDashboard();
+}
+
+/* ---------- render ---------- */
+
+export function renderDashboard(){
+  const d = dashData();
+  if (!d){
+    // mostrar placeholder hasta que lleguen los datos
+    $('kpiActivos').textContent = '—';
+    $('kpiVencidos').textContent = '—';
+    $('kpiIdeal').textContent = '—';
+    $('tAlarmasBody').innerHTML = '<tr><td colspan="4" style="color:var(--muted)">Cargando datos…</td></tr>';
+    $('dashFaq').innerHTML = '';
+    $('bandejaEtapas').innerHTML = '';
+    return;
+  }
+
+  /* ---- KPIs ---- */
+  const kpis = d.kpis || {};
+  $('kpiActivos').textContent  = kpis.total_activos  ?? '—';
+  $('kpiVencidos').textContent = kpis.vencidos        ?? '—';
+  $('kpiIdeal').textContent    = kpis.condicion_ideal ?? '—';
+
+  /* ---- Alarmas ---- */
+  const alarmas = d.alarmas || {};
+  const entradas = Object.entries(alarmas)
+    .map(([cond, info]) => ({ cond, cantidad: info.cantidad || 0, lotes: info.lotes || [], accion: info.accion || '' }))
+    .sort((a, b) => b.cantidad - a.cantidad);
+
+  let tbody = '';
+  if (entradas.length === 0){
+    tbody = '<tr><td colspan="4" style="color:var(--muted)">Sin alarmas activas.</td></tr>';
+  } else {
+    for (const e of entradas){
+      const nombre = esc(COND_LABELS[e.cond] || e.cond);
+      const lotesHtml = e.lotes
+        .map(l => `<button class="alarm-lote-link" data-iralote="${escA(l)}">${esc(l)}</button>`)
+        .join(' ');
+      tbody += `<tr><td>${nombre}</td><td class="num">${e.cantidad}</td><td>${esc(e.accion)}</td><td>${lotesHtml}</td></tr>`;
+    }
+  }
+  $('tAlarmasBody').innerHTML = tbody;
+
+  /* Grilla tipo planilla, solo copiar: la tabla es un resumen calculado por
+   * el motor FML, no hay campo que tenga sentido editar aca. */
+  activarGrilla($('tAlarmas'));
+
+  /* ---- Preguntas frecuentes ---- */
+  const lotes = d.lotes || [];
+
+  const fmlNoTerm  = lotes.filter(l => l.fml_estado === 'no_finalizada').length;
+  const fmlTermExc = lotes.filter(l => l.fml_estado === 'finalizada' || l.fml_estado === 'excluida').length;
+  const mermos     = lotes.filter(l => l.estado_llenado === 'no_lleno').length;
+  const sinAnalisis = lotes.filter(l => l.alarmas && (l.alarmas.includes('sin_analisis_valido') || l.alarmas.includes('frecuencia_vencida'))).length;
+  const faEnProc   = lotes.filter(l => l.fa_estado === 'no_finalizada').length;
+
+  const faqs = [
+    { n: fmlNoTerm,   label: 'FML no terminada',       hi: fmlNoTerm  > 0 },
+    { n: fmlTermExc,  label: 'FML terminada / excluida', hi: false      },
+    { n: mermos,      label: 'Mermos (no lleno)',        hi: mermos     > 0 },
+    { n: sinAnalisis, label: 'Faltan analizar',          hi: sinAnalisis > 0 },
+    { n: faEnProc,    label: 'FA en proceso',            hi: faEnProc   > 0 },
+  ];
+
+  $('dashFaq').innerHTML = faqs.map(f =>
+    `<div class="faq-item${f.hi ? ' hi' : ''}">
+      <div class="faq-n">${f.n}</div>
+      <div class="faq-label">${esc(f.label)}</div>
+    </div>`
+  ).join('');
+
+  /* ---- Bandeja de etapas ---- */
+  const bandeja = d.bandeja_etapas || [];
+  const elBandeja = $('bandejaEtapas');
+  if (!elBandeja) return;
+
+  if (bandeja.length === 0){
+    elBandeja.innerHTML =
+      '<div class="card" style="margin-bottom:22px">' +
+      '<h2>Bandeja de etapas</h2>' +
+      '<p style="color:var(--muted);font-size:13px;margin:0">Todas las etapas estan confirmadas.</p>' +
+      '</div>';
+    return;
+  }
+
+  // Enriquecer filas con el avance completo (pct + cumplidos + aplicables) para congelar al confirmar cerrado.
+  // Los hitos vienen en d.lotes — los calculamos desde ahi sin recalcular nada en JS.
+  const avanceMap = new Map();
+  for (const lf of (d.lotes || [])){
+    const hitos = lf.hitos || [];
+    const aplicables = hitos.filter(h => h.aplica).length;
+    const cumplidos  = hitos.filter(h => h.aplica && h.cumplido).length;
+    avanceMap.set(String(lf.lote), {
+      pct:        lf.pct != null ? lf.pct : (aplicables ? Math.round(cumplidos * 100 / aplicables) : 0),
+      cumplidos:  cumplidos,
+      aplicables: aplicables,
+    });
+  }
+
+  // Construir filas con _avance para que _confirmar pueda congelar
+  const filasConAvance = bandeja.map(f => ({
+    ...f,
+    _avance: avanceMap.get(String(f.lote)) || { pct: f.pct, cumplidos: 0, aplicables: 0 },
+  }));
+
+  let html =
+    '<div class="card" style="margin-bottom:22px" id="bandejaEtapasCard">' +
+    `<h2>Bandeja de etapas</h2>` +
+    `<p style="color:var(--muted);font-size:13px;margin:-8px 0 12px">${esc(String(bandeja.length))} lote${bandeja.length !== 1 ? 's' : ''} listo${bandeja.length !== 1 ? 's' : ''} para cambiar de etapa</p>` +
+    '<div style="margin-bottom:12px"><button class="btn primary" id="btnConfirmarTodas">✓ Confirmar todas</button></div>' +
+    '<div class="scroll"><table id="tBandeja">' +
+    '<thead><tr><th class="num">Lote</th><th>Variedad</th><th>Etapa actual</th><th>Etapa sugerida</th><th class="num">%</th><th></th></tr></thead>' +
+    '<tbody>';
+
+  filasConAvance.forEach((f, idx) => {
+    const pct = f.pct != null ? f.pct : '—';
+    html +=
+      `<tr>` +
+      `<td class="num"><button class="alarm-lote-link" data-iralote="${escA(f.lote)}">${esc(f.lote)}</button></td>` +
+      `<td>${esc(f.variedad || '—')}</td>` +
+      `<td><span class="chip-etapa">${esc(f.etapa)}</span></td>` +
+      `<td><span class="chip-etapa">${esc(f.etapa_sugerida)}</span></td>` +
+      `<td class="num">${esc(String(pct))}%</td>` +
+      `<td><button class="btn" data-confirmar-idx="${escA(String(idx))}">Confirmar</button></td>` +
+      `</tr>`;
+  });
+
+  html += '</tbody></table></div></div>';
+  elBandeja.innerHTML = html;
+
+  // Guardar filas en el elemento para el listener
+  $('bandejaEtapasCard')._filas = filasConAvance;
+
+  /* listeners — delegación en la card */
+  $('bandejaEtapasCard').addEventListener('click', async e => {
+    // Confirmar todas
+    const btnTodas = e.target.closest('#btnConfirmarTodas');
+    if (btnTodas){
+      const card = e.target.closest('#bandejaEtapasCard');
+      await confirmarTodasLasEtapas(card._filas || []);
+      return;
+    }
+    // Confirmar individual
+    const btnFila = e.target.closest('[data-confirmar-idx]');
+    if (btnFila && !e.target.closest('#btnConfirmarTodas')){
+      const card = e.target.closest('#bandejaEtapasCard');
+      const idx  = parseInt(btnFila.dataset.confirmarIdx, 10);
+      const fila = (card._filas || [])[idx];
+      if (fila) await confirmarEtapa(fila);
+      return;
+    }
+    // Ir a lote
+    const btnLote = e.target.closest('[data-iralote]');
+    if (btnLote && btnLote.dataset.iralote) irALote(btnLote.dataset.iralote);
+  });
+}
+
+registrarVista('dashboard', () => renderDashboard());

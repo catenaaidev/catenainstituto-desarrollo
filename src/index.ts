@@ -103,12 +103,32 @@ async function servirConIdentidad(
   const tipo = res.headers.get('Content-Type') ?? '';
   if (!res.ok || !id || !tipo.includes('text/html')) return res;
 
+  // Sin rol en este módulo no se entrega la pantalla: se manda al portal, que
+  // explica qué pasa. Sin esto, la app cargaría vacía y parecería rota.
+  if (!id.rol) return Response.redirect(new URL('/', req.url).toString(), 302);
+
   const nombre = id.nombre ?? id.email.split('@')[0];
+
+  // Roles en TODOS los módulos: la barra solo ofrece los que puede abrir.
+  const { results } = await env.DB.prepare('SELECT modulo, rol FROM perfiles WHERE email = ?')
+    .bind(id.email)
+    .all<{ modulo: string; rol: string }>();
+  const modulos = Object.fromEntries((results ?? []).map((r) => [r.modulo, r.rol]));
+
+  const contexto = { email: id.email, nombre, rol: id.rol, modulo, modulos };
+
   const inyeccion =
-    `<script>/* Identidad de Office 365, inyectada por el servidor. */\n` +
+    `<script>/* Identidad de Office 365 y contexto de la plataforma, puestos por el servidor. */\n` +
+    // Prensas y Lotes preguntan el nombre por prompt y lo guardan acá; se lo
+    // dejamos puesto para que no lo pregunten.
     `try{localStorage.setItem('prensas_usuario',${JSON.stringify(nombre)});}catch(e){}\n` +
-    `window.CIW_USUARIO=${JSON.stringify({ email: id.email, nombre, rol: id.rol })};` +
-    `</script>\n</head>`;
+    `try{localStorage.setItem('lotes_usuario',${JSON.stringify(nombre)});}catch(e){}\n` +
+    `window.CIW=${JSON.stringify(contexto)};window.CIW_USUARIO=window.CIW;` +
+    `</script>\n` +
+    // Sin defer: tiene que envolver fetch ANTES de que la app haga su primer
+    // pedido, o el aviso no aparece.
+    `<script src="/shared/pendientes.js"></script>\n` +
+    `<script defer src="/shared/barra.js"></script>\n</head>`;
 
   const html = (await res.text()).replace('</head>', inyeccion);
 

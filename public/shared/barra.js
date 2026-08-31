@@ -1,0 +1,78 @@
+/**
+ * Barra de la plataforma: volver al portal, saltar a otro módulo y ver quién
+ * sos. La inyecta el servidor en los tres módulos, así que ninguna de las
+ * apps tuvo que modificarse para tenerla.
+ *
+ * El servidor deja los datos en window.CIW antes de que corra esto.
+ */
+(function () {
+  'use strict';
+
+  var ctx = window.CIW || {};
+  var actual = ctx.modulo || '';
+  var modulos = ctx.modulos || {};
+
+  var NOMBRES = {
+    prensas: 'Prensas',
+    barriles: 'Barriles',
+    lotes: 'Lotes',
+  };
+
+  var css =
+    '#ciw-barra{position:sticky;top:0;z-index:99999;display:flex;align-items:center;' +
+    'gap:14px;padding:7px 16px;background:#2a2622;color:#f7f5f1;font-size:12.5px;' +
+    "font-family:'Hanken Grotesk',system-ui,Segoe UI,sans-serif;line-height:1.4}" +
+    '#ciw-barra a{color:#f7f5f1;text-decoration:none;padding:4px 9px;border-radius:6px;' +
+    'transition:background .15s}' +
+    '#ciw-barra a:hover{background:rgba(255,255,255,.14)}' +
+    '#ciw-barra a:focus-visible{outline:2px solid #d99aa8;outline-offset:1px}' +
+    '#ciw-barra .inicio{border:1px solid rgba(255,255,255,.28)}' +
+    '#ciw-barra .sep{width:1px;height:16px;background:rgba(255,255,255,.2)}' +
+    '#ciw-barra .aqui{opacity:.55;padding:4px 9px}' +
+    '#ciw-barra .yo{margin-left:auto;opacity:.72;white-space:nowrap}' +
+    '#ciw-barra .rol{opacity:.55;text-transform:uppercase;letter-spacing:1.2px;font-size:9.5px}' +
+    '@media print{#ciw-barra{display:none}}';
+
+  var est = document.createElement('style');
+  est.textContent = css;
+  document.head.appendChild(est);
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  var partes = ['<a class="inicio" href="/" title="Volver al menú">← Menú</a>', '<span class="sep"></span>'];
+
+  ['prensas', 'barriles', 'lotes'].forEach(function (m) {
+    if (m === actual) {
+      partes.push('<span class="aqui">' + NOMBRES[m] + '</span>');
+    } else if (modulos[m]) {
+      partes.push('<a href="/' + m + '/">' + NOMBRES[m] + '</a>');
+    }
+  });
+
+  if (ctx.nombre) {
+    partes.push(
+      '<span class="yo">' + esc(ctx.nombre) +
+        (ctx.rol ? ' <span class="rol">' + esc(ctx.rol) + '</span>' : '') +
+        '</span>',
+    );
+  }
+
+  var barra = document.createElement('div');
+  barra.id = 'ciw-barra';
+  barra.innerHTML = partes.join('');
+
+  function montar() {
+    if (document.getElementById('ciw-barra')) return;
+    document.body.insertBefore(barra, document.body.firstChild);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', montar);
+  } else {
+    montar();
+  }
+})();

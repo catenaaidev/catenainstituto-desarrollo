@@ -14,6 +14,29 @@ export const PERDIDA_MIN = 10;
 export const SECCIONES = ['lotes', 'analisis', 'degustaciones', 'agregados'] as const;
 export type Seccion = (typeof SECCIONES)[number];
 
+/**
+ * Qué secciones tiene un módulo y cuáles son obligatorias.
+ * Prensas y Lotes comparten la lógica de validación pero no las secciones.
+ */
+export interface ConfigSecciones {
+  secciones: readonly string[];
+  requeridas: readonly string[];
+}
+
+export const SECCIONES_PRENSAS: ConfigSecciones = {
+  secciones: ['lotes', 'analisis', 'degustaciones', 'agregados'],
+  requeridas: ['lotes', 'analisis'],
+};
+
+/**
+ * En Lotes, `movimientos` NO es obligatoria: el datos.json migrado desde el
+ * Excel no la trae y tiene que poder guardarse igual.
+ */
+export const SECCIONES_LOTES: ConfigSecciones = {
+  secciones: ['lotes', 'analisis', 'movimientos'],
+  requeridas: ['lotes', 'analisis'],
+};
+
 export interface Datos {
   meta?: Record<string, unknown>;
   lotes?: unknown[];
@@ -34,20 +57,26 @@ function esObjetoPlano(x: unknown): x is Record<string, unknown> {
  * Los errores de ESTRUCTURA no se pueden forzar. El freno de pérdida masiva sí
  * (forzar = true, después de que el usuario confirme).
  */
-export function validarDatos(nuevo: unknown, actual: Datos, forzar = false): string[] {
+export function validarDatos(
+  nuevo: unknown,
+  actual: Datos,
+  forzar = false,
+  cfg: ConfigSecciones = SECCIONES_PRENSAS,
+): string[] {
   if (!esObjetoPlano(nuevo)) return ['el guardado no es un objeto JSON válido'];
 
   const errores: string[] = [];
   const n = nuevo as Datos;
 
   // Secciones obligatorias.
-  for (const sec of ['lotes', 'analisis'] as const) {
+  for (const sec of cfg.requeridas) {
     if (!Array.isArray(n[sec])) {
       errores.push(`falta la sección '${sec}' (o no es una lista)`);
     }
   }
   // Secciones opcionales: si vienen, tienen que ser listas.
-  for (const sec of ['degustaciones', 'agregados'] as const) {
+  for (const sec of cfg.secciones) {
+    if (cfg.requeridas.includes(sec)) continue;
     if (n[sec] !== undefined && n[sec] !== null && !Array.isArray(n[sec])) {
       errores.push(`la sección '${sec}' no es una lista`);
     }
@@ -58,7 +87,7 @@ export function validarDatos(nuevo: unknown, actual: Datos, forzar = false): str
   if (errores.length) return errores;
 
   // Filas que no son objetos.
-  for (const sec of SECCIONES) {
+  for (const sec of cfg.secciones) {
     const arr = (n[sec] as unknown[]) || [];
     const malas = arr.filter((x) => !esObjetoPlano(x)).length;
     if (malas) {
@@ -69,7 +98,7 @@ export function validarDatos(nuevo: unknown, actual: Datos, forzar = false): str
 
   // Freno anti-borrado masivo.
   if (!forzar) {
-    for (const sec of SECCIONES) {
+    for (const sec of cfg.secciones) {
       const va = ((actual[sec] as unknown[]) || []).length;
       const vn = ((n[sec] as unknown[]) || []).length;
       const perdidos = va - vn;

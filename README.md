@@ -5,8 +5,8 @@ Las aplicaciones de Bodegas Esmeralda en un solo sitio, con login de Office 365.
 | Módulo | Estado |
 |---|---|
 | **Control de Prensas** | ✅ Migrado y funcionando |
-| **Mapa de Barriles** | ⏳ Fase 2 — falta el `.db` actual |
-| **Lotes** | ⏳ Fase 4 — hay que portar 8 motores de Python |
+| **Mapa de Barriles** | ✅ Migrado y funcionando |
+| **Lotes** | 🟡 Datos sí; faltan los cálculos de los 8 motores |
 
 **➡️ Para subirlo, seguí [DESPLIEGUE.md](DESPLIEGUE.md).**
 
@@ -33,6 +33,22 @@ Las aplicaciones de Bodegas Esmeralda en un solo sitio, con login de Office 365.
 public/            Lo que ve el usuario (lo sirve el CDN)
   index.html         portal con las tres tarjetas
   prensas/           la app de Prensas, tal cual estaba
+  barriles/          el Mapa de Barriles, tal cual estaba
+  lotes/             la app de Lotes, tal cual estaba
+  shared/            barra de navegación y avisos, comunes a los tres
+src/               El Worker (TypeScript)
+  index.ts           ruteo, entrega de páginas e inyección de identidad
+  auth.ts            identidad de Access + roles por módulo
+  prensas/           rutas + validaciones + resumen de cambios
+  barriles/          rutas + frenos de borrado
+  lotes/             rutas de datos; los cálculos esperan a la Fase 4
+migrations/        Esquema de la base
+scripts/           Importación de los tres módulos
+test/              37 tests, portados de los de Python
+```
+public/            Lo que ve el usuario (lo sirve el CDN)
+  index.html         portal con las tres tarjetas
+  prensas/           la app de Prensas, tal cual estaba
   shared/            código común a los módulos
 src/               El Worker (TypeScript)
   index.ts           ruteo y entrega de páginas
@@ -49,16 +65,19 @@ test/              25 tests, portados de los de Python
 
 ### La decisión de diseño principal
 
-**La pantalla de Prensas no se reescribió.** `app.js` es el mismo archivo de
-siempre, con un solo cambio: una línea al principio que dice dónde está la API,
-porque ahora convive con otros dos módulos.
+**Las pantallas no se reescribieron.** Los tres frontends son los mismos
+archivos de siempre, con un solo cambio en cada uno: una línea que dice dónde
+está su API, porque ahora conviven en un mismo sitio.
 
 ```js
-const API = '/prensas/api';
+const API = '/prensas/api';    // y sus equivalentes en barriles y lotes
 ```
 
-El Worker responde exactamente lo que respondía `servidor.py`. Por eso el equipo
-ve la app idéntica y no tiene que aprender nada.
+El Worker responde exactamente lo que respondían los `servidor.py`. Por eso el
+equipo ve las apps idénticas y no tiene que aprender nada.
+
+La barra superior para volver al menú y saltar entre módulos **tampoco está en
+el código de las apps**: el Worker se la inyecta al entregar la página.
 
 ### Qué se conservó de la app local
 
@@ -71,7 +90,11 @@ y mensajes:
 - Aviso de registros huérfanos.
 - Cambio automático de mes, calculado en hora de Mendoza.
 
-Los 25 tests de `test/` son el port de los de Python y verifican justamente eso.
+En el Mapa de Barriles se conservan además sus propios frenos: no se pueden
+vaciar 15 casilleros, 15 registros de inventario, 3 órdenes del escáner, 5
+tanques ni 9 casilleros de palet sin confirmarlo.
+
+Los 37 tests de `test/` son el port de los de Python y verifican justamente eso.
 
 ### Qué desapareció, y por qué
 
@@ -97,7 +120,7 @@ El navegador nunca habla con la base: no tiene credenciales para hacerlo.
 
 ```bash
 npm install           # una vez
-npm test              # los 25 tests
+npm test              # los 37 tests
 npm run dev           # servidor local en :8787
 npm run deploy        # publicar
 npx tsc --noEmit      # verificar tipos
@@ -111,21 +134,23 @@ usuario mientras no hay Access. En producción se ignora.
 
 ## Lo que falta
 
-### Mapa de Barriles (Fase 2 · 2–3 días)
+### Los cálculos de Lotes (Fase 4 · 5–8 días)
 
-Necesita el archivo `.db` actual — en el zip vinieron solo los respaldos. Como
-**ya usa SQLite**, la base se importa casi directo a D1.
+Lotes es el único módulo cuya lógica vive en el servidor y no en la pantalla.
+Sus datos ya están migrados y las vistas de **lotes, análisis y movimientos
+funcionan**, pero cinco vistas dependen de motores que siguen en Python:
 
-Se gana algo concreto: escanear códigos con la cámara exige HTTPS, y hoy se
-resuelve con certificados caseros que obligan a aceptar una advertencia en cada
-teléfono. Con HTTPS real eso desaparece, y se pueden borrar `cert.pem`, `key.pem`
-y los `.bat` de firewall.
+| Vista | Motor que le falta |
+|---|---|
+| Tablero | `motor_fml`, `motor_etapas` |
+| Análisis | `motor_fml` |
+| Ficha del lote | `motor_etapas`, `motor_linaje` |
+| Cruce con barriles | `motor_cruce`, `motor_mapa` |
+| Orden de corrección | `motor_correccion` |
 
-### Lotes (Fase 4 · 5–8 días)
-
-El único que no se puede mudar: 87 KB de reglas viven en ocho `motor_*.py`
-(FML, linaje, corrección, etapas, envases, movimientos) y hay que reescribirlos.
-Los 25 módulos de `js/` sí se reaprovechan. Conviene estimarlo aparte.
+Cada una avisa con un cartel explicando qué falta, en vez de quedarse colgada.
+Son reglas que afectan producción: hay que portarlas y **verificar cada motor
+contra los datos reales** antes de confiar en ellas.
 
 ### De Prensas (Fase 3 · 2–3 días)
 
@@ -133,3 +158,9 @@ Los 25 módulos de `js/` sí se reaprovechan. Conviene estimarlo aparte.
   conflicto y dos personas pueden editar a la vez.
 - Exportar a Excel con SheetJS en el navegador (hoy `/exportar` avisa que está
   en preparación).
+
+### Del Mapa de Barriles
+
+El estado importado viene del respaldo del **28/08/2026 (versión 1939)**, que era
+el más reciente disponible. Antes de salir a producción conviene reimportar con
+el archivo del día del corte.

@@ -14,3 +14,7 @@ datos.json
 *.db-shm
 *.db-wal
 backups/
+
+# Datos de origen para la importacion inicial (no van al repo)
+datos-origen/
+*.generado.sql

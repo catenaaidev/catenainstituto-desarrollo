@@ -36,7 +36,7 @@ Si npm avisa que hay *install scripts* pendientes, habilitalos:
 npm rebuild workerd esbuild
 ```
 
-Corré los tests. **Tienen que pasar los 25.**
+Corré los tests. **Tienen que pasar los 37.**
 
 ```bash
 npm test
@@ -46,10 +46,17 @@ Creá la base local y cargale los datos reales:
 
 ```bash
 npx wrangler d1 migrations apply ciw-plataforma --local
-node scripts/importar-prensas.mjs --local --datos ../prensas-app/datos.json
+npm run importar:todo
 ```
 
-Al final tiene que decir `✓ Importación verificada` con los conteos coincidiendo.
+Importa los tres módulos. Cada uno tiene que terminar con `✓ Importación
+verificada` y los conteos coincidiendo:
+
+| Módulo | Qué tiene que decir |
+|---|---|
+| prensas | 278 lotes · 1.512 análisis · 313 degustaciones · 147 agregados |
+| barriles | 2.354 inventario · 15 boxes · 692 escaneos · 500 tanques |
+| lotes | 291 lotes · 1.972 análisis · 341 movimientos |
 
 Date acceso a vos mismo en la base local. Creá un archivo `sembrar.sql`:
 
@@ -130,11 +137,16 @@ Te devuelve la dirección, algo como `https://ciw-plataforma.TU-CUENTA.workers.d
 ## 5 · Cargar los datos reales (5 min)
 
 ```bash
-node scripts/importar-prensas.mjs --remote --datos ../prensas-app/datos.json
+node scripts/importar.mjs --modulo prensas  --remote --datos ../prensas-app/datos.json
+node scripts/importar.mjs --modulo barriles --remote --datos datos-origen/estado-barriles.json
+node scripts/importar.mjs --modulo lotes    --remote --datos datos-origen/lotes-datos.json
 ```
 
-Tiene que terminar con `✓ Importación verificada`. Si algún conteo no coincide,
-**parás acá** y lo revisás: no sigas.
+Los tres tienen que terminar con `✓ Importación verificada`. Si algún conteo no
+coincide, **parás acá** y lo revisás: no sigas.
+
+> ⚠️ El estado del Mapa de Barriles sale del respaldo del **28/08/2026 (v1939)**.
+> Si conseguís el archivo del día del corte, reimportá ese en su lugar.
 
 Ahora cargá las personas. Creá `usuarios.sql` con los emails reales:
 
@@ -202,8 +214,12 @@ y necesitan rol *Cloud Application Administrator*:
 Antes de avisarle a nadie:
 
 - [ ] En incógnito, la dirección pide login y no muestra nada sin autenticar.
-- [ ] El portal muestra las tres tarjetas; Barriles y Lotes aparecen en gris.
+- [ ] El portal muestra las tres tarjetas, las tres entrables.
 - [ ] Prensas abre y muestra **278 lotes** y **1.512 análisis**.
+- [ ] Barriles abre, dice **sincronizado** y el mapa muestra los boxes cargados.
+- [ ] Lotes abre y su grilla muestra **291 lotes**; el tablero avisa que espera
+      a la Fase 4 (es lo esperado, no un error).
+- [ ] Desde cualquier módulo, **← Menú** vuelve al portal.
 - [ ] Editás un comentario, guardás, recargás y el cambio sigue ahí.
 - [ ] El botón **🕘 Historial** muestra tu guardado con tu nombre.
 - [ ] Con un usuario **lector**, el guardado se rechaza con un mensaje claro.

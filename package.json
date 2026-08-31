@@ -12,8 +12,10 @@
     "test:watch": "vitest",
     "migrar:local": "wrangler d1 migrations apply ciw-plataforma --local",
     "migrar:nube": "wrangler d1 migrations apply ciw-plataforma --remote",
-    "importar:local": "node scripts/importar-prensas.mjs --local",
-    "importar:nube": "node scripts/importar-prensas.mjs --remote"
+    "importar:prensas": "node scripts/importar.mjs --modulo prensas  --local --datos ../prensas-app/datos.json",
+    "importar:barriles": "node scripts/importar.mjs --modulo barriles --local --datos datos-origen/estado-barriles.json",
+    "importar:lotes": "node scripts/importar.mjs --modulo lotes    --local --datos datos-origen/lotes-datos.json",
+    "importar:todo": "npm run importar:prensas && npm run importar:barriles && npm run importar:lotes"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.0",
