@@ -192,16 +192,15 @@ export async function rutasPrensas(
   }
 
   // ---------- GET /exportar ----------
-  // En la app local lo armaba openpyxl. Pasa a hacerse en el navegador con
-  // SheetJS (Fase 3). Hasta entonces, un aviso claro en vez de un error.
+  // El Excel ya no se arma acá: lo hace el navegador con SheetJS, porque la
+  // nube no ejecuta openpyxl. El endpoint queda por si alguien tiene la
+  // dirección vieja guardada, y explica dónde está ahora el botón.
   if (ruta === '/exportar' && req.method === 'GET') {
-    return json(501, {
-      error: 'motor_pendiente',
-      motores: ['openpyxl'],
+    return json(410, {
+      error: 'se_mudo',
       detalles: [
-        'La exportación a Excel todavía no está migrada.',
-        'La hacía openpyxl, una librería de Python que la nube no ejecuta; se rehace con SheetJS en el navegador.',
-        'Mientras tanto, exportá desde la app local.',
+        'La exportación a Excel ahora se arma en el navegador.',
+        'Usá el botón "⬇️ Exportar a Excel" de la app: baja el mismo archivo, con las mismas columnas.',
       ],
     });
   }

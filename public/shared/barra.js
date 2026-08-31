@@ -53,6 +53,13 @@
     }
   });
 
+  // Reporte de gerencia: solo en los módulos que lo tienen.
+  if (actual === 'prensas' || actual === 'lotes') {
+    partes.push('<span class="sep"></span>');
+    partes.push('<a href="/' + actual + '/reporte" target="_blank" rel="noopener" ' +
+      'title="Reporte para gerencia, en vivo">📊 Reporte</a>');
+  }
+
   if (ctx.nombre) {
     partes.push(
       '<span class="yo">' + esc(ctx.nombre) +

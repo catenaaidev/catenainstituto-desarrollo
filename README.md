@@ -179,6 +179,39 @@ encendida ni de que OneDrive haya sincronizado.
 
 ---
 
+## Equivalencia con las apps locales
+
+Los 20 endpoints de los tres `servidor.py` están, y además dos páginas nuevas:
+
+| Lo que hacía la app local | En la plataforma |
+|---|---|
+| Los 20 endpoints de los tres servidores | ✅ todos |
+| `exportar_xlsx()` con openpyxl | ✅ SheetJS en el navegador, mismas columnas |
+| `reporte.py` → archivo HTML por guardado | ✅ `/prensas/reporte` y `/lotes/reporte`, en vivo |
+| Los 8 motores de Lotes | ✅ portados, 130 tests |
+| Frenos de borrado de los tres módulos | ✅ portados con sus umbrales |
+| Asistente IA (Ollama local) | ⚠️ portado a Workers AI, **sin verificar** (ver abajo) |
+| `generar_respaldo()` → `.md` legible | 🔄 reemplazado por snapshots JSON en R2 |
+| `restaurar.py` + "Restaurar Datos.bat" | 🔄 reemplazado por Time Travel, **sin interfaz** |
+| Barriles: `/api/backup` bajaba el `.db` | 🔄 baja el estado en JSON |
+| `supervisor.pyw`, `backup.py`, `migrar_*.py` | ❌ ya no hacen falta |
+
+### Lo que queda por hacer
+
+**El asistente IA no se pudo probar.** El binding de Workers AI no funciona en
+`wrangler dev` local ("not supported"), así que el código está escrito y
+compila, pero recién se sabrá si responde bien al desplegarlo. Mientras tanto
+devuelve un aviso claro en vez de romperse. **Probalo apenas despliegues.**
+
+**Restaurar no tiene interfaz.** D1 guarda todos los cambios y se restaura con
+`wrangler d1 time-travel restore`, pero desde la consola. Falta una página
+`/admin` que lo haga con un botón, como hacía "Restaurar Datos.bat".
+
+**El respaldo `.md` legible ya no se genera.** Los snapshots de R2 son JSON.
+Si el `.md` se usaba para revisar a ojo, hay que rehacerlo.
+
+---
+
 ## Lo que falta
 
 ### De Prensas (Fase 3 · 2–3 días)

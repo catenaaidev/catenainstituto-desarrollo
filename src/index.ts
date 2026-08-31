@@ -13,6 +13,8 @@ import { rutasBarriles } from './barriles/rutas';
 import { rutasLotes } from './lotes/rutas';
 import { emailDelUsuario, identidad, type Modulo } from './auth';
 import { json } from './respuestas';
+import { PLANTILLA as PLANTILLA_PRENSAS } from './prensas/reporte-plantilla';
+import { construirReporte as construirReporteLotes } from './lotes/reporte';
 
 const MODULOS: Modulo[] = ['prensas', 'barriles', 'lotes'];
 
@@ -37,6 +39,15 @@ export default {
         nombre: results?.[0]?.nombre ?? email.split('@')[0],
         modulos: Object.fromEntries((results ?? []).map((r) => [r.modulo, r.rol])),
       });
+    }
+
+    // ---- Reporte de gerencia, en vivo ----
+    // Antes era un archivo que Python reescribía en cada guardado y alguien
+    // tenía que mandar por mail. Ahora es una página: nunca queda vieja.
+    for (const modulo of ['prensas', 'lotes'] as const) {
+      if (ruta === `/${modulo}/reporte` || ruta === `/${modulo}/reporte/`) {
+        return servirReporte(req, env, ctx, modulo);
+      }
     }
 
     // ---- APIs de cada módulo ----
@@ -128,6 +139,12 @@ async function servirConIdentidad(
     // Sin defer: tiene que envolver fetch ANTES de que la app haga su primer
     // pedido, o el aviso no aparece.
     `<script src="/shared/pendientes.js"></script>\n` +
+    // La exportación a Excel se arma en el navegador, porque la nube no
+    // ejecuta openpyxl. Solo se carga donde hay botón de exportar: es 950 KB.
+    (modulo === 'prensas'
+      ? `<script defer src="/shared/xlsx.full.min.js"></script>\n` +
+        `<script defer src="/shared/exportar.js"></script>\n`
+      : '') +
     `<script defer src="/shared/barra.js"></script>\n</head>`;
 
   const html = (await res.text()).replace('</head>', inyeccion);
@@ -139,4 +156,70 @@ async function servirConIdentidad(
       'Cache-Control': 'no-store',
     },
   });
+}
+
+/**
+ * Sirve el reporte de gerencia en vivo.
+ *
+ * Es la misma página que generaba `reporte.py`, con los mismos números. Lo que
+ * cambia es cuándo se arma: antes se escribía a disco en cada guardado (y podía
+ * quedar vieja si nadie guardaba), ahora se arma al pedirla.
+ *
+ * Solo lectura: no hay forma de editar desde acá, así que alcanza con tener
+ * cualquier rol en el módulo.
+ */
+async function servirReporte(
+  req: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  modulo: 'prensas' | 'lotes',
+): Promise<Response> {
+  const id = await identidad(req, env, ctx, modulo);
+  if (!id?.rol) {
+    return new Response('No tenés acceso a este reporte. Pedíselo a un administrador.', {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+
+  const fila = await env.DB.prepare('SELECT version, json FROM documento WHERE modulo = ?')
+    .bind(modulo)
+    .first<{ version: number; json: string }>();
+  if (!fila) return new Response('Todavía no hay datos de este módulo.', { status: 404 });
+
+  const datos = JSON.parse(fila.json);
+  const ahora = ahoraBodega(env.TZ_BODEGA);
+  const hoy = Date.parse(ahora.slice(0, 10) + 'T00:00:00Z');
+
+  let html: string;
+  if (modulo === 'lotes') {
+    html = construirReporteLotes(datos, fila.version, ahora, hoy);
+  } else {
+    // La plantilla de Prensas trae su propio JS y renderiza en el navegador:
+    // solo hay que inyectarle los datos, igual que hacía generar() en Python.
+    const datosJson = JSON.stringify(datos).replace(/<\//g, '<\/');
+    const meta = (datos.meta ?? {}) as Record<string, unknown>;
+    const mes = Number(meta.mes_actual) || 1;
+    html = PLANTILLA_PRENSAS.replace('__DATOS__', datosJson)
+      .replace('__MES_ACTUAL__', String(mes))
+      .replace('__REF_FECHA__', ahora.slice(0, 10))
+      .replace('__VERSION__', String(fila.version))
+      .replace('__GENERADO__', ahora);
+  }
+
+  return new Response(html, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+  });
+}
+
+/** Fecha y hora en la bodega: YYYY-MM-DD HH:MM */
+function ahoraBodega(tz: string): string {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+    .format(new Date())
+    .replace('T', ' ');
 }

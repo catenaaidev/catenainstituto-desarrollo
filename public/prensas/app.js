@@ -1664,7 +1664,7 @@ function setup(){
   $('btnConectar').onclick=mostrarQR;
   $('selMes').onchange=()=>renderActive();
   $('btnGuardar').onclick=()=>guardar();   // ojo: sin argumento (el click pasaría el evento como "forzar")
-  $('btnExport').onclick=async()=>{ if(dirty){ if(!await guardar())return; } window.location=API+'/exportar'; };
+  $('btnExport').onclick=async()=>{ if(dirty){ if(!await guardar())return; } CIW_EXPORTAR('prensas', DATOS); };
   $('buscaLotes').oninput=renderLotes; $('btnAddLote').onclick=()=>{ DATOS.lotes.unshift({lote:null,variedad:null,origen:null,ig:null,id_origen:null,ot_prensado:null,litros:null,dia_prensado:null,prensa:null,so2_agregado:null,comentario:null,accion:null,comentario2:null,accion2:null}); markDirty(); renderLotes(); };
   $('buscaAna').oninput=renderAnalisis;
   $('btnLimpiarFltAna').onclick=limpiarFiltrosAna;

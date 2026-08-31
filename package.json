@@ -15,7 +15,8 @@
     "importar:prensas": "node scripts/importar.mjs --modulo prensas  --local --datos ../prensas-app/datos.json",
     "importar:barriles": "node scripts/importar.mjs --modulo barriles --local --datos datos-origen/estado-barriles.json",
     "importar:lotes": "node scripts/importar.mjs --modulo lotes    --local --datos datos-origen/lotes-datos.json",
-    "importar:todo": "npm run importar:prensas && npm run importar:barriles && npm run importar:lotes"
+    "importar:todo": "npm run importar:prensas && npm run importar:barriles && npm run importar:lotes",
+    "reporte:plantillas": "node scripts/extraer-reporte.mjs ../prensas-app/reporte.py src/prensas/reporte-plantilla.ts && node scripts/extraer-reporte.mjs ../_extraido2/lotes/reporte.py src/lotes/reporte-plantilla.ts"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.0",
