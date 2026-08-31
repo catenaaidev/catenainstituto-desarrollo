@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plataforma CIW</title>
+<style>
+  /* Mismas fuentes y colores que las apps, para que el portal no se sienta
+     como otro programa. */
+  @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
+  @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
+  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
+  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-500-normal.woff2') format('woff2');font-weight:500;font-display:swap}
+  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
+
+  :root{
+    --bg:#f7f5f1; --panel:#ffffff; --panel2:#f1efe9; --line:#e7e3da;
+    --txt:#2a2622; --muted:#8c857b; --accent:#8a3340; --accent2:#6f2731;
+    --ok:#3f7d4f; --warn:#b07d2c;
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'Hanken Grotesk',system-ui,Segoe UI,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);
+    font-size:14px;-webkit-font-smoothing:antialiased;
+    min-height:100vh;display:flex;flex-direction:column;
+  }
+  header{
+    padding:22px 30px 16px;display:flex;align-items:baseline;gap:18px;
+    flex-wrap:wrap;border-bottom:1px solid var(--line);
+  }
+  header h1{margin:0;font-family:var(--serif);font-size:26px;font-weight:500;letter-spacing:.2px}
+  header .sub{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:2.8px}
+  header .right{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted)}
+
+  main{flex:1;max-width:940px;width:100%;margin:0 auto;padding:44px 26px 70px}
+  .intro{margin:0 0 34px}
+  .intro h2{
+    font-family:var(--serif);font-size:23px;font-weight:500;margin:0 0 8px;
+  }
+  .intro p{margin:0;color:var(--muted);font-size:14px;line-height:1.6;max-width:62ch}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:16px}
+
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:22px;display:flex;flex-direction:column;gap:12px;
+    text-decoration:none;color:inherit;
+    transition:border-color .15s, box-shadow .15s, transform .15s;
+  }
+  a.card:hover{
+    border-color:var(--accent);box-shadow:0 6px 20px -12px rgba(42,38,34,.28);
+    transform:translateY(-1px);
+  }
+  a.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .card.off{opacity:.62;cursor:not-allowed}
+
+  .card .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .card h3{margin:0;font-family:var(--serif);font-size:19px;font-weight:600}
+  .card .desc{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+
+  .chip{
+    font-size:9.5px;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;
+    padding:4px 8px;border-radius:20px;white-space:nowrap;
+  }
+  .chip.admin {background:#f3e7e9;color:var(--accent)}
+  .chip.editor{background:#e6efe8;color:var(--ok)}
+  .chip.lector{background:#f1efe9;color:var(--muted)}
+  .chip.prep  {background:#f7efe0;color:var(--warn)}
+  .chip.no    {background:#f1efe9;color:var(--muted)}
+
+  .card .pie{
+    margin-top:auto;padding-top:12px;border-top:1px solid var(--line);
+    font-size:11.5px;color:var(--muted);
+  }
+
+  footer{
+    border-top:1px solid var(--line);padding:16px 30px;
+    font-size:11.5px;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap;
+  }
+
+  .cargando{color:var(--muted);font-size:13px}
+  .error{
+    background:#fdf3f2;border:1px solid #e9c9c5;color:#8c3b32;
+    border-radius:8px;padding:16px 18px;font-size:13px;line-height:1.55;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Plataforma CIW</h1>
+  <span class="sub">Bodegas Esmeralda</span>
+  <div class="right"><span id="quien"></span></div>
+</header>
+
+<main>
+  <div class="intro">
+    <h2>Elegí con qué querés trabajar</h2>
+    <p>Entraste con tu usuario de la bodega. Cada módulo se abre con los permisos que
+       tenés asignados en él, y todo lo que edites queda registrado a tu nombre.</p>
+  </div>
+
+  <div id="grid" class="grid">
+    <p class="cargando">Cargando tus módulos…</p>
+  </div>
+</main>
+
+<footer>
+  <span>Control de Prensas · Mapa de Barriles · Lotes</span>
+  <span>Los datos se guardan en la nube y se respaldan solos.</span>
+</footer>
+
+<script>
+/* Los tres módulos de la plataforma. El estado real (si están migrados) lo
+   define el backend; acá está la descripción de cada uno. */
+const MODULOS = [
+  {
+    id: 'prensas',
+    nombre: 'Control de Prensas',
+    desc: 'Lotes, análisis, degustaciones y órdenes de trabajo. Riesgo de SO₂ y evolución.',
+    listo: true,
+  },
+  {
+    id: 'barriles',
+    nombre: 'Mapa de Barriles',
+    desc: 'Ubicación de barriles en la nave, con escaneo de códigos desde el celular.',
+    listo: false,
+  },
+  {
+    id: 'lotes',
+    nombre: 'Lotes',
+    desc: 'Trazabilidad, etapas, linaje, FML y movimientos. Cruce con el mapa de barriles.',
+    listo: false,
+  },
+];
+
+const ROLES = {
+  admin:  'Administrás',
+  editor: 'Podés cargar y editar',
+  lector: 'Solo consulta',
+};
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => (
+    { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
+  ));
+}
+
+function tarjeta(m, rol) {
+  const chip = !m.listo
+    ? '<span class="chip prep">En preparación</span>'
+    : rol
+      ? `<span class="chip ${rol}">${esc(rol)}</span>`
+      : '<span class="chip no">Sin acceso</span>';
+
+  const pie = !m.listo
+    ? 'Todavía se usa desde la app local.'
+    : rol
+      ? esc(ROLES[rol])
+      : 'Pedile acceso a un administrador.';
+
+  const cuerpo =
+    `<div class="top"><h3>${esc(m.nombre)}</h3>${chip}</div>` +
+    `<p class="desc">${esc(m.desc)}</p>` +
+    `<div class="pie">${pie}</div>`;
+
+  // Solo es un enlace si está migrado y la persona tiene algún rol.
+  return (m.listo && rol)
+    ? `<a class="card" href="/${m.id}/">${cuerpo}</a>`
+    : `<div class="card off">${cuerpo}</div>`;
+}
+
+(async function () {
+  const grid = document.getElementById('grid');
+  try {
+    const r = await fetch('/api/yo');
+    if (!r.ok) throw new Error('http ' + r.status);
+    const yo = await r.json();
+
+    document.getElementById('quien').textContent = '👤 ' + (yo.nombre || yo.email);
+
+    const conAcceso = MODULOS.filter(m => yo.modulos[m.id]).length;
+    grid.innerHTML = MODULOS.map(m => tarjeta(m, yo.modulos[m.id])).join('');
+
+    if (conAcceso === 0) {
+      grid.insertAdjacentHTML('beforebegin',
+        '<div class="error" style="margin-bottom:18px">' +
+        'Tu usuario entró bien, pero todavía no tiene permisos en ningún módulo. ' +
+        'Un administrador tiene que asignártelos.</div>');
+    }
+  } catch (e) {
+    grid.innerHTML =
+      '<div class="error">No se pudo cargar tu información de usuario. ' +
+      'Probá recargar la página; si sigue igual, avisá a quien administra la plataforma.</div>';
+  }
+})();
+</script>
+
+</body>
+</html>

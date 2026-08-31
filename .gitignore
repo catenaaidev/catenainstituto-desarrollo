@@ -1,0 +1,16 @@
+node_modules/
+.wrangler/
+.dev.vars
+dist/
+*.log
+
+# Tipos generados por `wrangler types` (se regeneran, no van al repo)
+worker-configuration.d.ts
+
+# Datos y respaldos: NUNCA al repositorio.
+# Los datos viven en D1 y los respaldos en R2.
+datos.json
+*.db
+*.db-shm
+*.db-wal
+backups/

@@ -1,0 +1,4 @@
+# Copiar a .dev.vars para desarrollo local (no va al repositorio).
+# Identifica al usuario mientras se trabaja con `wrangler dev`, donde
+# Cloudflare Access no existe. En producción se ignora.
+DEV_EMAIL=tu.usuario@catenawines.com

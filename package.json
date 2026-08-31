@@ -1,0 +1,24 @@
+{
+  "name": "ciw-plataforma",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Plataforma web de Bodegas Esmeralda: Prensas, Mapa de Barriles y Lotes",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tipos": "wrangler types",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "migrar:local": "wrangler d1 migrations apply ciw-plataforma --local",
+    "migrar:nube": "wrangler d1 migrations apply ciw-plataforma --remote",
+    "importar:local": "node scripts/importar-prensas.mjs --local",
+    "importar:nube": "node scripts/importar-prensas.mjs --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.0",
+    "typescript": "^5.6.0",
+    "vitest": "~3.0.0",
+    "wrangler": "^4.0.0"
+  }
+}
