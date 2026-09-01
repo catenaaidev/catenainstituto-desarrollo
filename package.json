@@ -1,5 +1,5 @@
 {
-  "name": "ciw-plataforma",
+  "name": "catenainstitute",
   "version": "1.0.0",
   "private": true,
   "description": "Plataforma web de Bodegas Esmeralda: Prensas, Mapa de Barriles y Lotes",
@@ -10,8 +10,8 @@
     "tipos": "wrangler types",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrar:local": "wrangler d1 migrations apply ciw-plataforma --local",
-    "migrar:nube": "wrangler d1 migrations apply ciw-plataforma --remote",
+    "migrar:local": "wrangler d1 migrations apply catenainstitute --local",
+    "migrar:nube": "wrangler d1 migrations apply catenainstitute --remote",
     "importar:prensas": "node scripts/importar.mjs --modulo prensas  --local --datos datos-origen/prensas-datos.json",
     "importar:barriles": "node scripts/importar.mjs --modulo barriles --local --datos datos-origen/estado-barriles.json",
     "importar:lotes": "node scripts/importar.mjs --modulo lotes    --local --datos datos-origen/lotes-datos.json",

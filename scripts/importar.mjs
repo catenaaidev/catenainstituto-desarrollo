@@ -66,6 +66,24 @@ if (!rutaDatos || !existsSync(rutaDatos)) {
 const cfg = MODULOS[modulo];
 const flag = remoto ? '--remote' : '--local';
 
+/**
+ * Nombre de la base, leído de wrangler.jsonc.
+ *
+ * Se lee en vez de escribirlo fijo acá: si el nombre está en dos lugares, uno
+ * de los dos se desactualiza (ya pasó al renombrar la base a `catenainstitute`).
+ */
+function nombreBase() {
+  const crudo = readFileSync('wrangler.jsonc', 'utf8');
+  // wrangler.jsonc admite comentarios; JSON.parse no. Se sacan antes.
+  const limpio = crudo.replace(/\/\*[^]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
+  const cfgW = JSON.parse(limpio);
+  const nombre = cfgW?.d1_databases?.[0]?.database_name;
+  if (!nombre) throw new Error('no encontré database_name en wrangler.jsonc');
+  return nombre;
+}
+
+const BASE = nombreBase();
+
 console.log(`\nImportando ${modulo} a ${remoto ? 'la nube' : 'la base local'}`);
 console.log(`Origen: ${rutaDatos}\n`);
 
@@ -146,7 +164,7 @@ try {
   console.log(`\nAplicando con wrangler ${flag}…\n`);
   execFileSync(
     'npx',
-    ['wrangler', 'd1', 'execute', 'ciw-plataforma', flag, `--file=${archivoSql}`, '--yes'],
+    ['wrangler', 'd1', 'execute', BASE, flag, `--file=${archivoSql}`, '--yes'],
     { stdio: 'inherit', shell: true },
   );
 } catch {
@@ -169,7 +187,7 @@ writeFileSync(archivoVerif, `SELECT ${columnas} FROM documento WHERE modulo='${m
 try {
   const salida = execFileSync(
     'npx',
-    ['wrangler', 'd1', 'execute', 'ciw-plataforma', flag, `--file=${archivoVerif}`, '--json'],
+    ['wrangler', 'd1', 'execute', BASE, flag, `--file=${archivoVerif}`, '--json'],
     { encoding: 'utf8', shell: true },
   );
 
@@ -200,6 +218,6 @@ try {
   console.log('\n✓ Importación verificada. Todo coincide con el archivo original.\n');
 } catch (e) {
   console.error(`\nNo se pudo verificar automáticamente: ${e.message}`);
-  console.error(`Verificá a mano con:\n  npx wrangler d1 execute ciw-plataforma ${flag} --file=${archivoVerif}\n`);
+  console.error(`Verificá a mano con:\n  npx wrangler d1 execute ${BASE} ${flag} --file=${archivoVerif}\n`);
   exit(1);
 }

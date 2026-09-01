@@ -3,7 +3,7 @@
   // Un solo Worker sirve los archivos estáticos (public/) y responde las APIs
   // de los tres módulos. Reemplaza a los tres servidor.py.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ciw-plataforma",
+  "name": "catenainstitute",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -32,21 +32,20 @@
     ]
   },
 
-  // Base de datos. El id se completa al crearla:
-  //   npx wrangler d1 create ciw-plataforma
+  // Base de datos D1 de la cuenta (creada el 2026-09-01).
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ciw-plataforma",
-      "database_id": "COMPLETAR_TRAS_CREAR_LA_BASE",
+      "database_name": "catenainstitute",
+      "database_id": "28dc2eb1-aa60-4087-9313-003b8bf23014",
       "migrations_dir": "migrations"
     }
   ],
 
-  // Respaldos: snapshots JSON fechados.
-  //   npx wrangler r2 bucket create ciw-respaldos
+  // Respaldos: snapshots JSON fechados. Crear el bucket con:
+  //   npx wrangler r2 bucket create catenainstitute-respaldos
   "r2_buckets": [
-    { "binding": "RESPALDOS", "bucket_name": "ciw-respaldos" }
+    { "binding": "RESPALDOS", "bucket_name": "catenainstitute-respaldos" }
   ],
 
   // Asistente IA (reemplaza a Ollama en localhost).

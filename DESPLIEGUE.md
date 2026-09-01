@@ -49,7 +49,7 @@ npm test
 Creá la base local y cargale los datos reales:
 
 ```bash
-npx wrangler d1 migrations apply ciw-plataforma --local
+npx wrangler d1 migrations apply catenainstitute --local
 npm run importar:todo
 ```
 
@@ -72,7 +72,7 @@ INSERT OR REPLACE INTO perfiles (email, modulo, rol, nombre) VALUES
 ```
 
 ```bash
-npx wrangler d1 execute ciw-plataforma --local --file=sembrar.sql
+npx wrangler d1 execute catenainstitute --local --file=sembrar.sql
 ```
 
 Levantalo:
@@ -88,50 +88,99 @@ y poder entrar a Prensas con todos tus datos.
 
 ## 2 · Subirlo a GitHub (5 min)
 
-> ⚠️ El repositorio viejo de `prensas-app` está dañado por OneDrive. Este es un
-> repositorio nuevo y limpio. **No lo pongas dentro de una carpeta de OneDrive.**
+> ⚠️ **El repositorio `lucs56/catenainstitute` está en PUBLIC.**
+> Ponelo en privado ANTES de subir: en GitHub, **Settings → General → abajo de
+> todo → Change repository visibility → Make private**. El código de producción
+> de la bodega no tiene por qué ser público.
+>
+> Los datos no se suben (`datos-origen/` está en `.gitignore`), pero el esquema
+> de la base, las reglas de negocio y la lógica de permisos sí quedarían a la vista.
 
-El repositorio **ya está iniciado y con historial** (5 commits). No hace falta
-`git init`: solo falta decirle a dónde subir.
+> ⚠️ Tampoco lo pongas dentro de una carpeta de OneDrive: así se corrompió el
+> repositorio viejo de `prensas-app`.
 
-Creá un repositorio **privado** en GitHub llamado `ciw-plataforma`, sin README
-ni .gitignore. Después:
+El proyecto **ya viene con su historial** (7 commits), así que no hace falta
+`git init`. Solo falta apuntarlo a tu repositorio y empujar:
 
 ```bash
-git remote add origin https://github.com/TU-USUARIO/ciw-plataforma.git
+git remote add origin https://github.com/lucs56/catenainstitute.git
+```
+
+```bash
 git branch -M main
+```
+
+```bash
 git push -u origin main
 ```
 
+
 ---
 
-## 3 · Crear la base y el respaldo en Cloudflare (5 min)
+## 3 · El bucket de respaldos (2 min)
+
+La base D1 **ya está creada** y su id ya está puesto en `wrangler.jsonc`:
+
+| Recurso | Nombre | Estado |
+|---|---|---|
+| Base D1 | `catenainstitute` | ✅ creada (`28dc2eb1-aa60-…`) |
+| Worker | `catenainstitute` | ✅ creado |
+| Bucket R2 | `catenainstitute-respaldos` | ⬜ falta crearlo |
 
 ```bash
 npx wrangler login
-npx wrangler d1 create ciw-plataforma
 ```
-
-El comando devuelve un `database_id`. **Copialo y pegalo en `wrangler.jsonc`**,
-reemplazando `COMPLETAR_TRAS_CREAR_LA_BASE`.
 
 ```bash
-npx wrangler r2 bucket create ciw-respaldos
-npx wrangler d1 migrations apply ciw-plataforma --remote
+npx wrangler r2 bucket create catenainstitute-respaldos
 ```
+
+Y creá las tablas en la base de la nube:
+
+```bash
+npx wrangler d1 migrations apply catenainstitute --remote
+```
+
 
 ---
 
 ## 4 · Publicar (2 min)
 
+El Worker `catenainstitute` ya está **conectado a GitHub**, así que hay dos
+caminos. Los dos sirven.
+
+### Camino A — que lo despliegue GitHub (el que ya está armado)
+
+Con el `git push` del paso 2 alcanza: Cloudflare compila y publica solo.
+
+> **Por qué falló la compilación anterior:** el repositorio estaba vacío, así
+> que no había nada que compilar. Con el código adentro, esa compilación pasa.
+
+Si vuelve a fallar, mirá el detalle en **Workers y Pages → catenainstitute →
+Implementaciones**, y revisá que en **Configuración → Compilaciones** el comando
+de despliegue sea:
+
+```
+npx wrangler deploy
+```
+
+### Camino B — publicar desde tu PC
+
+Sirve para probar sin pasar por GitHub, y para el primer despliegue si el
+automático da problemas:
+
 ```bash
 npm run deploy
 ```
 
-Te devuelve la dirección, algo como `https://ciw-plataforma.TU-CUENTA.workers.dev`.
+---
+
+Cualquiera de los dos te deja la dirección, algo como
+`https://catenainstitute.TU-CUENTA.workers.dev`.
 
 > ⚠️ **Todavía no está protegida.** No le pases la dirección a nadie hasta
 > terminar el paso 6.
+
 
 ---
 
@@ -161,7 +210,7 @@ INSERT OR REPLACE INTO perfiles (email, modulo, rol, nombre) VALUES
 ```
 
 ```bash
-npx wrangler d1 execute ciw-plataforma --remote --file=usuarios.sql
+npx wrangler d1 execute catenainstitute --remote --file=usuarios.sql
 ```
 
 > Los roles: **admin** hace todo · **editor** carga y edita · **lector** solo mira.
@@ -173,7 +222,7 @@ npx wrangler d1 execute ciw-plataforma --remote --file=usuarios.sql
 
 En el panel de Cloudflare:
 
-1. Entrá a **Workers & Pages → ciw-plataforma → Access**.
+1. Entrá a **Workers & Pages → catenainstitute → Access**.
 2. Tocá **"Protect this Worker behind Access"**.
 3. Elegí proteger **todo el tráfico**.
 4. Creá la política. Para arrancar hoy mismo, sin depender de Sistemas:
@@ -246,13 +295,13 @@ npm run deploy
 D1 guarda todos los cambios de los últimos días. Para volver a un momento exacto:
 
 ```bash
-npx wrangler d1 time-travel restore ciw-plataforma --timestamp=2026-09-01T10:00:00Z
+npx wrangler d1 time-travel restore catenainstitute --timestamp=2026-09-01T10:00:00Z
 ```
 
 Antes de restaurar, mirá qué había:
 
 ```bash
-npx wrangler d1 time-travel info ciw-plataforma
+npx wrangler d1 time-travel info catenainstitute
 ```
 
 ### Bajar un respaldo
@@ -260,7 +309,7 @@ npx wrangler d1 time-travel info ciw-plataforma
 Los snapshots diarios quedan en R2:
 
 ```bash
-npx wrangler r2 object get ciw-respaldos/prensas/datos-v00087-....json --file=respaldo.json
+npx wrangler r2 object get catenainstitute-respaldos/prensas/datos-v00087-....json --file=respaldo.json
 ```
 
 ---
