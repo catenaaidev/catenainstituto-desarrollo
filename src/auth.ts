@@ -23,8 +23,13 @@ export interface Identidad {
  *  2. La cabecera Cf-Access-Authenticated-User-Email, que Access agrega a cada
  *     pedido. Es confiable porque el Worker está protegido a nivel Worker: no
  *     hay forma de llegar hasta acá sin pasar por Access.
- *  3. DEV_EMAIL, solo para `wrangler dev` (en producción nunca se usa, porque
- *     alguna de las dos anteriores siempre responde).
+ *  3. DEV_EMAIL, que solo existe en desarrollo.
+ *
+ * DEV_EMAIL vive en `.dev.vars` y NO en el "vars" de wrangler.jsonc: todo lo
+ * que está en "vars" se despliega, y un email de desarrollo en producción
+ * dejaría entrar a cualquiera con esa identidad mientras Access esté apagado.
+ * En producción queda sin definir, así que sin Access no hay identidad y el
+ * Worker responde 401.
  */
 export async function emailDelUsuario(
   req: Request,
@@ -41,10 +46,28 @@ export async function emailDelUsuario(
   const cab = req.headers.get('Cf-Access-Authenticated-User-Email');
   if (cab) return cab.toLowerCase();
 
-  // Solo desarrollo local.
+  // Solo desarrollo: en producción esta variable no existe (ver arriba).
   if (env.DEV_EMAIL) return env.DEV_EMAIL.toLowerCase();
 
   return null;
+}
+
+/**
+ * ¿La base ya tiene sus tablas?
+ *
+ * Sin esto, un despliegue con la base todavía vacía revienta con un "error
+ * 1101" que no le dice nada a nadie. Es exactamente lo que pasa entre publicar
+ * el Worker y correr las migraciones.
+ */
+export async function baseInicializada(env: Env): Promise<boolean> {
+  try {
+    const fila = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='perfiles'",
+    ).first();
+    return Boolean(fila);
+  } catch {
+    return false;
+  }
 }
 
 /** Identidad + rol en un módulo concreto. */

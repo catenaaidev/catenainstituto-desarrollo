@@ -58,10 +58,15 @@
 
   "vars": {
     // Zona horaria para todos los cálculos de fecha.
-    "TZ_BODEGA": "America/Argentina/Mendoza",
-    // En desarrollo local no existe Cloudflare Access. Este valor identifica
-    // al usuario mientras se trabaja con `wrangler dev`. En producción se
-    // ignora: manda siempre la identidad real de Access.
-    "DEV_EMAIL": "dev@local"
+    "TZ_BODEGA": "America/Argentina/Mendoza"
+
+    // OJO: acá NO va DEV_EMAIL.
+    //
+    // Todo lo que está en "vars" se despliega. Si el email de desarrollo
+    // viajara a producción, cualquiera que entrara al sitio sin pasar por
+    // Access quedaría identificado como ese usuario. Por eso vive en
+    // .dev.vars, que solo existe en la máquina donde se programa y está en
+    // .gitignore. En producción env.DEV_EMAIL queda sin definir y el Worker
+    // exige una identidad real de Access.
   }
 }

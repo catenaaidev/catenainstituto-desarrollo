@@ -203,6 +203,21 @@ function tarjeta(m, rol) {
 
   try {
     const r = await fetch('/api/yo');
+
+    // El servidor explica qué falta cuando la plataforma todavía no está
+    // terminada de configurar. Mostrarlo tal cual ahorra adivinar.
+    if (r.status === 503 || r.status === 401) {
+      const j = await r.json().catch(() => ({}));
+      const titulo = r.status === 503
+        ? 'La plataforma todavía no está lista'
+        : 'Falta encender el login';
+      grid.innerHTML =
+        '<div class="error"><strong>' + esc(titulo) + '</strong><br><br>' +
+        (j.detalles || []).map(d => esc(d)).join('<br>') +
+        '</div>';
+      return;
+    }
+
     if (!r.ok) throw new Error('http ' + r.status);
     const yo = await r.json();
 

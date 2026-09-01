@@ -11,7 +11,7 @@
 import { rutasPrensas, snapshot } from './prensas/rutas';
 import { rutasBarriles } from './barriles/rutas';
 import { rutasLotes } from './lotes/rutas';
-import { emailDelUsuario, identidad, type Modulo } from './auth';
+import { emailDelUsuario, identidad, baseInicializada, type Modulo } from './auth';
 import { json } from './respuestas';
 import { PLANTILLA as PLANTILLA_PRENSAS } from './prensas/reporte-plantilla';
 import { construirReporte as construirReporteLotes } from './lotes/reporte';
@@ -23,10 +23,41 @@ export default {
     const url = new URL(req.url);
     const ruta = url.pathname;
 
+    // ---- La base todavía sin tablas ----
+    // Pasa entre publicar el Worker y correr las migraciones. Sin este aviso,
+    // la primera consulta revienta con un "error 1101" ilegible.
+    //
+    // Solo se comprueba en las rutas que tocan la base: el portal y los
+    // archivos estáticos tienen que seguir sirviéndose igual (así el aviso se
+    // ve DENTRO del portal), y sería una consulta de más en cada pedido.
+    const tocaLaBase =
+      ruta.startsWith('/api/') ||
+      MODULOS.some((m) => ruta.startsWith(`/${m}/api`) || ruta.startsWith(`/${m}/reporte`)) ||
+      MODULOS.some((m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`);
+
+    if (tocaLaBase && !(await baseInicializada(env))) {
+      return json(503, {
+        error: 'base_sin_inicializar',
+        detalles: [
+          'La base de datos todavía no tiene sus tablas.',
+          'Falta correr las migraciones: npx wrangler d1 migrations apply catenainstitute --remote',
+          'Y después importar los datos (paso 5 de DESPLIEGUE.md).',
+        ],
+      });
+    }
+
     // ---- API del portal: qué módulos puede ver esta persona ----
     if (ruta === '/api/yo') {
       const email = await emailDelUsuario(req, env, ctx);
-      if (!email) return json(401, { error: 'sin sesión' });
+      if (!email) {
+        return json(401, {
+          error: 'sin_sesion',
+          detalles: [
+            'No hay una identidad verificada.',
+            'Falta encender Cloudflare Access sobre este Worker (paso 6 de DESPLIEGUE.md).',
+          ],
+        });
+      }
 
       const { results } = await env.DB.prepare(
         'SELECT modulo, rol, nombre FROM perfiles WHERE email = ?',
