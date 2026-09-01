@@ -7,6 +7,10 @@ dice qué tenés que ver si salió bien.
 
 ---
 
+> **Sobre `datos-origen/`**: trae los datos actuales de los tres módulos, para
+> la importación inicial. Está en `.gitignore` a propósito —los datos de la
+> bodega no van a GitHub— así que existe en tu carpeta pero no se sube.
+
 ## Antes de empezar
 
 Necesitás:
@@ -87,14 +91,11 @@ y poder entrar a Prensas con todos tus datos.
 > ⚠️ El repositorio viejo de `prensas-app` está dañado por OneDrive. Este es un
 > repositorio nuevo y limpio. **No lo pongas dentro de una carpeta de OneDrive.**
 
-```bash
-git init
-git add .
-git commit -m "Plataforma CIW: portal, login y modulo Prensas"
-```
+El repositorio **ya está iniciado y con historial** (5 commits). No hace falta
+`git init`: solo falta decirle a dónde subir.
 
-Creá un repositorio **privado** en GitHub llamado `ciw-plataforma`, sin README.
-Después:
+Creá un repositorio **privado** en GitHub llamado `ciw-plataforma`, sin README
+ni .gitignore. Después:
 
 ```bash
 git remote add origin https://github.com/TU-USUARIO/ciw-plataforma.git
@@ -137,7 +138,7 @@ Te devuelve la dirección, algo como `https://ciw-plataforma.TU-CUENTA.workers.d
 ## 5 · Cargar los datos reales (5 min)
 
 ```bash
-node scripts/importar.mjs --modulo prensas  --remote --datos ../prensas-app/datos.json
+node scripts/importar.mjs --modulo prensas  --remote --datos datos-origen/prensas-datos.json
 node scripts/importar.mjs --modulo barriles --remote --datos datos-origen/estado-barriles.json
 node scripts/importar.mjs --modulo lotes    --remote --datos datos-origen/lotes-datos.json
 ```
@@ -224,6 +225,9 @@ Antes de avisarle a nadie:
 - [ ] Editás un comentario, guardás, recargás y el cambio sigue ahí.
 - [ ] El botón **🕘 Historial** muestra tu guardado con tu nombre.
 - [ ] Con un usuario **lector**, el guardado se rechaza con un mensaje claro.
+- [ ] El **asistente IA** de Prensas responde. Es lo único que no se pudo probar
+      en local (Workers AI no corre en `wrangler dev`). Si falla, avisa con un
+      cartel en vez de romperse.
 - [ ] La app local sigue funcionando (es la red de seguridad; no la apagues).
 
 ---

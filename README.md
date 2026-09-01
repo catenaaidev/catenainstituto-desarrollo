@@ -49,22 +49,6 @@ migrations/        Esquema de la base
 scripts/           Importación de los tres módulos
 test/              167 tests, portados de los de Python
 ```
-public/            Lo que ve el usuario (lo sirve el CDN)
-  index.html         portal con las tres tarjetas
-  prensas/           la app de Prensas, tal cual estaba
-  shared/            código común a los módulos
-src/               El Worker (TypeScript)
-  index.ts           ruteo y entrega de páginas
-  auth.ts            identidad de Access + roles
-  prensas/
-    rutas.ts         los endpoints que ya usaba app.js
-    validacion.ts    port de validar_datos() de servidor.py
-    cambios.ts       port de resumen_cambios() de servidor.py
-  barriles/, lotes/  pendientes, con lo que falta documentado adentro
-migrations/        Esquema de la base
-scripts/           Importación de datos.json
-test/              25 tests, portados de los de Python
-```
 
 ### La decisión de diseño principal
 

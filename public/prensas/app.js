@@ -1625,7 +1625,7 @@ async function enviarPregunta(){
       bubble.appendChild(cont);
     }
   }catch(e){
-    pensando.querySelector('.bubble').innerHTML='<span style="color:#ff8a7a">No se pudo contactar al asistente. ¿Está corriendo Ollama? ('+esc(String(e))+')</span>';
+    pensando.querySelector('.bubble').innerHTML='<span style="color:#ff8a7a">No se pudo contactar al asistente. Probá de nuevo en un momento. ('+esc(String(e))+')</span>';
   }finally{ $('chatEnviar').disabled=false; $('chatBox').scrollTop=$('chatBox').scrollHeight; }
 }
 let _chatSaludado=false;
