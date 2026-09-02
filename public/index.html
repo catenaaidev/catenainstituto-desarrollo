@@ -33,6 +33,12 @@
   header h1{margin:0;font-family:var(--serif);font-size:26px;font-weight:500;letter-spacing:.2px}
   header .sub{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:2.8px}
   header .right{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted)}
+  .salir{
+    color:var(--muted);text-decoration:none;border:1px solid var(--line);
+    border-radius:6px;padding:4px 10px;font-size:11.5px;transition:border-color .15s,color .15s;
+  }
+  .salir:hover{border-color:var(--accent);color:var(--accent)}
+  .salir:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
   main{flex:1;max-width:940px;width:100%;margin:0 auto;padding:44px 26px 70px}
   .intro{margin:0 0 34px}
@@ -97,7 +103,13 @@
 <header>
   <h1>Plataforma CIW</h1>
   <span class="sub">Catena Institute</span>
-  <div class="right"><span id="quien"></span></div>
+  <div class="right">
+    <span id="quien"></span>
+    <!-- La sesión la maneja Cloudflare Access, no la app: se cierra en su
+         propia dirección. Importa en las PC compartidas de la bodega. -->
+    <a id="salir" class="salir" href="/cdn-cgi/access/logout"
+       title="Cerrar sesión y volver al login" hidden>Salir</a>
+  </div>
 </header>
 
 <main>
@@ -222,6 +234,7 @@ function tarjeta(m, rol) {
     const yo = await r.json();
 
     document.getElementById('quien').textContent = '👤 ' + (yo.nombre || yo.email);
+    document.getElementById('salir').hidden = false;
 
     const conAcceso = MODULOS.filter(m => yo.modulos[m.id]).length;
     grid.innerHTML = MODULOS.map(m => tarjeta(m, yo.modulos[m.id])).join('');

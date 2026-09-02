@@ -31,6 +31,8 @@
     '#ciw-barra .aqui{opacity:.55;padding:4px 9px}' +
     '#ciw-barra .yo{margin-left:auto;opacity:.72;white-space:nowrap}' +
     '#ciw-barra .rol{opacity:.55;text-transform:uppercase;letter-spacing:1.2px;font-size:9.5px}' +
+    '#ciw-barra .salir{opacity:.72;white-space:nowrap}' +
+    '#ciw-barra .salir:hover{opacity:1;background:rgba(255,255,255,.14)}' +
     '@media print{#ciw-barra{display:none}}';
 
   var est = document.createElement('style');
@@ -67,6 +69,14 @@
         '</span>',
     );
   }
+
+  /* Cerrar sesión. La sesión no la maneja la app sino Cloudflare Access, así
+     que se cierra en su dirección: /cdn-cgi/access/logout. Hace falta sobre
+     todo en las PC compartidas de la bodega, donde si no queda abierta y el
+     siguiente que se sienta guarda con el nombre del anterior. */
+  partes.push('<span class="sep"></span>');
+  partes.push('<a class="salir" href="/cdn-cgi/access/logout" ' +
+    'title="Cerrar sesión y volver al login">Salir</a>');
 
   var barra = document.createElement('div');
   barra.id = 'ciw-barra';
