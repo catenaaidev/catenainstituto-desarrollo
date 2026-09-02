@@ -227,10 +227,16 @@ function tarjeta(m, rol) {
     grid.innerHTML = MODULOS.map(m => tarjeta(m, yo.modulos[m.id])).join('');
 
     if (conAcceso === 0) {
+      // Se muestra el email con el que entró: es el dato exacto que el
+      // administrador necesita para darle permisos, y sin verlo la persona
+      // tiene que adivinar con cuál de sus cuentas entró.
       grid.insertAdjacentHTML('beforebegin',
         '<div class="error" style="margin-bottom:18px">' +
-        'Tu usuario entró bien, pero todavía no tiene permisos en ningún módulo. ' +
-        'Un administrador tiene que asignártelos.</div>');
+        '<strong>Entraste bien, pero todavía no tenés permisos en ningún módulo.</strong><br><br>' +
+        'Pedile a un administrador que te dé acceso con este usuario:<br>' +
+        '<code style="display:inline-block;margin-top:6px;padding:5px 9px;background:#fff;' +
+        'border:1px solid #e9c9c5;border-radius:5px;font-size:13px">' + esc(yo.email) + '</code>' +
+        '</div>');
     }
   } catch (e) {
     grid.innerHTML =
