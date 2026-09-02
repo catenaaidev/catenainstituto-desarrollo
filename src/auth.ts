@@ -46,8 +46,13 @@ export async function emailDelUsuario(
   const cab = req.headers.get('Cf-Access-Authenticated-User-Email');
   if (cab) return cab.toLowerCase();
 
-  // Solo desarrollo: en producción esta variable no existe (ver arriba).
-  if (env.DEV_EMAIL) return env.DEV_EMAIL.toLowerCase();
+  // Solo desarrollo. Se lee con un tipo propio y no desde `Env` a propósito:
+  // `wrangler types` genera `Env` a partir de wrangler.jsonc y del .dev.vars
+  // local, así que en una máquina con .dev.vars la propiedad existe y en una
+  // sin él no compila. Tipándola acá como opcional, el código compila igual en
+  // las dos y sigue siendo indefinida en producción.
+  const dev = (env as { DEV_EMAIL?: string }).DEV_EMAIL;
+  if (dev) return dev.toLowerCase();
 
   return null;
 }
