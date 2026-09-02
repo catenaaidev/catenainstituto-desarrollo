@@ -18,3 +18,7 @@ backups/
 # Datos de origen para la importacion inicial (no van al repo)
 datos-origen/
 *.generado.sql
+
+# Emails del personal: la plantilla es usuarios.ejemplo.sql
+usuarios.sql
+sembrar.sql
