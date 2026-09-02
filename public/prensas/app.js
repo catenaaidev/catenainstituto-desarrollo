@@ -127,7 +127,7 @@ function mostrarQR(){
    las hojas. La empresa va en la franja del encabezado, junto al texto RCI. */
 const ordenTitulos={muestras:'Orden de Trabajo', rellenos:'Orden de Trabajo', accion:'Orden de Trabajo — Acción Rápida', agregados:'Orden de Trabajo — Agregados'};
 function ohTop(){
-  return `<div class="oh-top"><span class="oh-empresa">BODEGAS ESMERALDA S.A.</span>`+
+  return `<div class="oh-top"><span class="oh-empresa">CATENA INSTITUTE</span>`+
     `<span>ORDEN DE TRABAJO - RCI 08 - Rev. 02 &nbsp;·&nbsp; Aprobado por: Roy Urvieta &nbsp;·&nbsp; Emisión: 28/01/2013</span></div>`;
 }
 function ohTitulo(clave){

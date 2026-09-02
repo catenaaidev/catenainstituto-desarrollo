@@ -494,7 +494,7 @@ function _pintarHojaOT(mov){
 
   cont.innerHTML = `
 <div class="orden-hoja">
-  <div class="oh-top"><span class="oh-empresa">BODEGAS ESMERALDA S.A.</span>` +
+  <div class="oh-top"><span class="oh-empresa">CATENA INSTITUTE</span>` +
     `<span>ORDEN DE TRABAJO - RCI 08 - Rev. 02 &nbsp;·&nbsp; Aprobado por: Roy Urvieta &nbsp;·&nbsp; Emisión: 28/01/2013</span></div>
   <div class="oh-titulo">Orden de Trabajo</div>
   <div class="oh-meta"><span><b>N° de OT:</b> ${esc(mov.ot || '')}</span><span><b>Fecha prevista:</b> ${esc(fechaTxt)}</span></div>
