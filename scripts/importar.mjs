@@ -175,21 +175,26 @@ try {
 // ---- 4. Verificar contra el origen ----
 console.log('\nVerificando lo que quedó guardado…\n');
 
-// La consulta va en un archivo: pasarla por --command se rompe con el quoting
-// de la consola de Windows.
-const archivoVerif = `verificar-${modulo}.generado.sql`;
 const columnas = [
   `json_extract(json,'${cfg.version}') AS version`,
   ...cfg.secciones.map(([n, r]) => `json_array_length(json_extract(json,'${r}')) AS ${n}`),
 ].join(', ');
-writeFileSync(archivoVerif, `SELECT ${columnas} FROM documento WHERE modulo='${modulo}';\n`, 'utf8');
+const consulta = `SELECT ${columnas} FROM documento WHERE modulo='${modulo}'`;
+
+// El archivo solo se usa en local. En --remote, wrangler con --file devuelve un
+// RESUMEN ("Total queries executed", "Rows read"…) en vez de las filas del
+// SELECT, así que la verificación daba undefined en todo y avisaba que no
+// coincidía nada aunque la importación estuviera perfecta. Con --command sí
+// devuelve las filas.
+const archivoVerif = `verificar-${modulo}.generado.sql`;
+if (!remoto) writeFileSync(archivoVerif, consulta + ';\n', 'utf8');
+
+const argsVerif = remoto
+  ? ['wrangler', 'd1', 'execute', BASE, flag, '--json', '--command', `"${consulta}"`]
+  : ['wrangler', 'd1', 'execute', BASE, flag, `--file=${archivoVerif}`, '--json'];
 
 try {
-  const salida = execFileSync(
-    'npx',
-    ['wrangler', 'd1', 'execute', BASE, flag, `--file=${archivoVerif}`, '--json'],
-    { encoding: 'utf8', shell: true },
-  );
+  const salida = execFileSync('npx', argsVerif, { encoding: 'utf8', shell: true });
 
   const g = JSON.parse(salida.slice(salida.indexOf('[')))?.[0]?.results?.[0];
   if (!g) throw new Error('la consulta no devolvió filas');
