@@ -4,8 +4,9 @@
 import { $, esc, escA, num, DATOS, dashData, dashLoading, cargarDashboard,
          registrarVista } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
-import { clasificarLote, pasaFuente } from './orden-filas.js';
-import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti } from './tabla.js';
+import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija } from './orden-filas.js';
+import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
+         limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
 import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
 
 /*
@@ -17,7 +18,8 @@ let _otFuente     = 'vencidos_proximos';  // valor inicial del select
 let _otAtencionTipo = 'todos';            // criterio granular, solo aplica si _otFuente==='atencion'
 /* Un Set por columna filtrable, creados UNA vez: los widgets guardan estas
  * mismas referencias, asi que el estado sobrevive a los re-render. */
-const filtOt = { variedad: new Set(), proyecto: new Set() };
+const filtOt = { variedad: new Set(), proyecto: new Set(), etapa: new Set(), vasija: new Set() };
+let _otBusqueda = '';                     // buscador de texto libre de la barra
 let _descOt = [], _instOt = [];
 let _otRecipiente = 'Tubo falcon';
 let _otCantidad   = 1;
@@ -107,6 +109,8 @@ function _otBuildRows(){
     return String(a.lote ?? '').localeCompare(String(b.lote ?? ''), 'es');
   });
 
+  /* El buscador se aplica DESPUES del map, no antes: mira vasija y motivo, que
+   * no existen en la fila del dashboard -- recien aparecen al armar la fila. */
   return lotes.map(l => {
     const cls  = clasificarLote(l);
     const info = loteMap.get(String(l.lote ?? ''));
@@ -119,7 +123,7 @@ function _otBuildRows(){
       recipiente: _otRecipiente,
       cantidad:   _otCantidad,
     };
-  });
+  }).filter(r => pasaBusqueda(r, _otBusqueda));
 }
 
 /* Renderiza la tabla editable de la OT (sin re-construir el shell) */
@@ -263,23 +267,32 @@ function _otPintarPaginas(){
     titulo: _otTitulo,
     meta, banda, emitio, recibio,
     nota: 'Tomar muestra en un tubo falcon y luego sanitizar jeringa para cada lote.',
-    colgroup: `<colgroup><col style="width:32px"><col style="width:62px"><col><col style="width:80px"><col style="width:60px"><col style="width:140px"><col style="width:46px"><col style="width:150px"><col style="width:46px"></colgroup>`,
-    thead: `<tr><th class="c oh-num">#</th><th class="c">LOTE</th><th>VARIEDAD</th><th>VASIJA</th><th class="c">LITROS</th><th>MOTIVO</th><th class="c">Cant.</th><th>Recipiente</th><th class="oh-check">Check</th></tr>`,
-    columnas: 9,
+    /* El PAPEL lleva 7 columnas, no las 9 de la grilla: LITROS y MOTIVO quedan
+     * solo en pantalla. Son datos para DECIDIR a quien se le pide muestra, no
+     * para quien camina la bodega con la hoja.
+     *
+     * No es cosmetico. Medido sobre el papel real (688px utiles = A4 menos el
+     * margen de 14mm del @page), las 9 columnas necesitaban 763px para no
+     * envolver: no entraban. VARIEDAD ("Cabernet Sauvignon") y VASIJA
+     * ("Barrica + t50 + t200") caian a dos lineas, la fila pasaba de 30px a 41px
+     * y 9 de cada 10 hojas se derramaban a una pagina fisica extra, dejando las
+     * firmas sueltas al final. Con 7 columnas el requerimiento baja a ~559px y
+     * sobran ~130px, asi que nada envuelve y la hoja entra entera. */
+    colgroup: `<colgroup><col style="width:34px"><col style="width:60px"><col><col style="width:140px"><col style="width:50px"><col style="width:110px"><col style="width:56px"></colgroup>`,
+    thead: `<tr><th class="c oh-num">#</th><th class="c">LOTE</th><th>VARIEDAD</th><th>VASIJA</th><th class="c">Cant.</th><th>Recipiente</th><th class="oh-check">Check</th></tr>`,
+    columnas: 7,
     textoVacio: 'No hay lotes para los criterios elegidos.',
+    /* Recipiente va como TEXTO, no como <select disabled>. El papel es un espejo
+     * de solo lectura: el select no se podia usar, sumaba alto a cada fila y
+     * obligaba a neutralizar su flechita con appearance:none en el CSS de print. */
     renderFila: ({ numero, fila: r }) => {
-      const recOpts = RECIPIENTES_OT.map(v =>
-        `<option ${v === r.recipiente ? 'selected' : ''}>${esc(v)}</option>`
-      ).join('');
       return `<tr>` +
         `<td class="c oh-num">${numero}</td>` +
         `<td class="c">${esc(r.lote)}</td>` +
         `<td>${esc(r.variedad)}</td>` +
         `<td>${esc(r.vasija)}</td>` +
-        `<td class="c">${esc(r.litros)}</td>` +
-        `<td>${esc(r.motivo)}</td>` +
         `<td class="c">${esc(String(r.cantidad))}</td>` +
-        `<td><select disabled>${recOpts}</select></td>` +
+        `<td>${esc(r.recipiente || '')}</td>` +
         `<td class="oh-check"></td>` +
       `</tr>`;
     },
@@ -310,6 +323,10 @@ function initFiltrosOt(){
     const info = m.get(String(fila.lote ?? ''));
     return info ? (info.proyecto || '').trim() : '';
   };
+  const vasijaDe = (m) => (fila) => {
+    const info = m.get(String(fila.lote ?? ''));
+    return info ? (info.vasija_actual || '').trim() : '';
+  };
 
   _descOt = [
     {
@@ -325,6 +342,33 @@ function initFiltrosOt(){
       set: filtOt.proyecto,
       opciones: () => opcionesValores((dashData() && dashData().lotes) || [], proyectoDe(infoMapDe())),
       match: (fila, set) => set.has(proyectoDe(infoMapDe())(fila)),
+    },
+    {
+      /* etapa SI viene en la fila del dashboard: servidor.py la inyecta en
+       * datos_dashboard() junto con pct e hitos. Descriptor generico. */
+      label: 'Etapa',
+      set: filtOt.etapa,
+      opciones: () => opcionesValores((dashData() && dashData().lotes) || [], l => l.etapa),
+      match: matchValor(l => l.etapa),
+    },
+    {
+      /* Vasija es el unico filtro donde una fila cae en VARIAS opciones: un lote
+       * en 't50 + Barrica' aparece bajo Barrica y bajo t50. Por eso no usa
+       * opcionesValores/matchValor (que asumen un valor por fila) sino que
+       * aplana tiposDeVasija(). El porque del agrupamiento esta en orden-filas.js. */
+      label: 'Vasija',
+      set: filtOt.vasija,
+      opciones: () => {
+        const de = vasijaDe(infoMapDe());
+        const vals = new Set();
+        for (const fila of ((dashData() && dashData().lotes) || [])){
+          for (const t of tiposDeVasija(de(fila))) vals.add(normVal(t));
+        }
+        return [...vals].sort(cmpValores)
+          .map(v => ({ val: v, text: v === '' ? '(sin vasija)' : v }));
+      },
+      match: (fila, set) => tiposDeVasija(vasijaDe(infoMapDe())(fila))
+        .some(t => set.has(normVal(t))),
     },
   ];
   _instOt = initFiltrosMulti('otFltBar', _descOt, _otAplicarFiltros);
@@ -382,6 +426,9 @@ export function renderOrden(){
       <select id="otAtencionTipo">${atencionOpts}</select>
     </span>
     <div class="mfilt-bar" id="otFltBar"></div>
+    <input class="txt" id="otBuscar" type="search" placeholder="Buscar lote, variedad, vasija…"
+           value="${escA(_otBusqueda)}" style="width:210px">
+    <button class="btn" id="btnOtLimpiarFlt" title="Limpiar el buscador y todos los filtros">🧹 Limpiar filtros</button>
     <button class="btn" id="btnOtRecargar">🔄 Recargar filas</button>
     <span class="tag" id="otCount"></span>
     <div class="spacer"></div>
@@ -483,6 +530,24 @@ export function renderOrden(){
       _instOt.forEach(f => { bar.appendChild(f.el); f.rebuild(); });
     }
   }
+
+  /* buscador de texto libre. Sin debounce a proposito: la grilla ya ignora las
+   * teclas cuando el foco esta en un control que no le pertenece
+   * (grilla.js, cablearTeclado), asi que tipear aca no roba el foco ni arranca
+   * a editar una celda. El input vive en #ordenControls, fuera del tbody que
+   * _otRenderTabla() repinta, por eso conserva el cursor entre teclas. */
+  $('otBuscar').addEventListener('input', e => {
+    _otBusqueda = e.target.value;
+    _otAplicarFiltros();
+  });
+
+  /* limpiar: el buscador Y los cuatro multi-select de una. limpiarFiltrosMulti
+   * vacia los Sets, blanquea el input y llama a onChange una sola vez, asi que
+   * _otBusqueda se resetea ANTES para que ese unico repintado ya lo vea. */
+  $('btnOtLimpiarFlt').addEventListener('click', () => {
+    _otBusqueda = '';
+    limpiarFiltrosMulti(_descOt, 'otBuscar', _instOt, _otAplicarFiltros);
+  });
 
   /* recargar filas manualmente */
   $('btnOtRecargar').addEventListener('click', () => {

@@ -728,7 +728,7 @@ function cablearTeclado(){
  * objetos vivos. Esas vistas no escriben ninguno de los metodos.
  *
  * `cols` es el COLS_* de la vista. OJO: no tiene por que cubrir todas las
- * columnas de la grilla. En Lotes la grilla ve hasta 30 (las 28 de COLS_LOTES
+ * columnas de la grilla. En Lotes la grilla ve hasta 26 (las 24 de COLS_LOTES
  * mas Etapa y Avance, menos las columnas de los grupos colapsados) y
  * escribirCelda devuelve 'ro' para las dos que no estan en cols, que es
  * exactamente lo que corresponde.

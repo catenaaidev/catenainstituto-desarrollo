@@ -2,7 +2,7 @@
 'use strict';
 
 import { $, esc, escA, num, DATOS, markDirty, registrarVista } from './nucleo.js';
-import { armarCorreccion, aplicarCorreccion } from './so2-bitacora.js';
+import { armarCorreccion, aplicarCorreccion, esAnulada } from './so2-bitacora.js';
 import { activarGrilla } from './grilla.js';
 import { pasaMulti, opcionesValores,
          initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
@@ -353,7 +353,16 @@ function _renderBitacoraSO2(loteMap){
     const lObj    = loteMap.get(loteStr);
     const variedad= lObj ? (lObj.variedad || '') : '';
     const fecha   = c.fecha || a.fecha_analisis || '';
-    tb += `<tr>
+    /* Las anuladas NO se ocultan: quedan tachadas y con quien las anulo. Ese es
+     * el punto de anular en vez de borrar — si alguien audita la bitacora, ve
+     * que hubo un error y que se corrigio, en vez de encontrarse un hueco. */
+    const anulada = esAnulada(c);
+    const sello = anulada
+      ? ` <span class="so2-anulada-sello" title="Esta corrección se canceló: no cuenta para la orden">ANULADA${
+          c.anulada.por ? ' por ' + esc(c.anulada.por) : ''}${
+          c.anulada.fecha ? ' el ' + esc(c.anulada.fecha) : ''}</span>`
+      : '';
+    tb += `<tr${anulada ? ' class="so2-anulada"' : ''}>
       <td>${esc(loteStr)}</td>
       <td>${esc(variedad)}</td>
       <td>${esc(fecha)}</td>
@@ -362,7 +371,7 @@ function _renderBitacoraSO2(loteMap){
       <td class="num">${fmt1(c.diferencia)}</td>
       <td class="num">${fmt2(c.mbk_a_agregar)}</td>
       <td class="num">${fmt1(c.ml_exactos)}</td>
-      <td>${esc(c.ot_n || '—')}</td>
+      <td>${esc(c.ot_n || '—')}${sello}</td>
     </tr>`;
   }
 

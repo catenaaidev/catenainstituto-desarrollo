@@ -19,8 +19,9 @@
 'use strict';
 
 import { $, esc, escA, registrarVista, DATOS, markDirty, guardar,
-         mostrarOverlay, cerrarOverlay } from './nucleo.js';
-import { armarCorreccion, aplicarCorreccion } from './so2-bitacora.js';
+         mostrarOverlay, cerrarOverlay, usuarioActual } from './nucleo.js';
+import { armarCorreccion, aplicarCorreccion,
+         anularCorreccion, revertirAnulacion } from './so2-bitacora.js';
 import { pintarHojas, hojaTop, HOJA_POR_PAGINA } from './orden-hoja.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti } from './tabla.js';
@@ -51,6 +52,57 @@ let _descOc = [], _instOc = [];
  * (tanque_grande, sin_ubicar) no son para mostrarle a nadie. */
 const OC_GRUPO_LBL = { normal: 'Normal', marcado: 'Marcado',
                        tanque_grande: 'Tanque grande', sin_ubicar: 'Sin ubicar' };
+
+/* Unidad en la que se expresa la dosis. Las dos aportan el MISMO SO2: son la
+ * misma correccion dicha de dos maneras, no dos correcciones distintas.
+ *
+ * El polvo se pesa; la solucion d1030 se mide con probeta. Ojo con el x2 de la
+ * formula del MBK: no es un margen de seguridad, es que el metabisulfito es
+ * ~50% SO2 en masa, asi que hacen falta 2 g de polvo por cada gramo de SO2. La
+ * solucion esta a 55 g/L DE SO2 (no de sal), y por eso su formula no lo lleva.
+ * Hay un test que fija esa equivalencia.
+ *
+ * Segun el dia la bodega tiene una u otra preparada, y la hoja tiene que hablar
+ * el idioma de lo que el operario va a usar: si dice gramos y el tipo tiene la
+ * probeta en la mano, la conversion la termina haciendo a ojo.
+ *
+ * Arranca en 'sol' porque es lo que la hoja venia imprimiendo. Vive en memoria:
+ * sobrevive a cambiar de pestana, se resetea al recargar la pagina. */
+let _ocUnidad = 'sol';   // 'mbk' | 'sol'
+
+/** Como se expresa la dosis en la unidad elegida. Un solo lugar decide el
+ *  numero, los decimales y la etiqueta, para que papel, pantalla y chip no
+ *  puedan discrepar. */
+const OC_UNIDAD = {
+  mbk: { col: 'MBK (g)',  dec: 2, de: d => d.mbk_g,       total: f => f.mbk_total_g,
+         suf: 'g',  nota: 'Agregar el MBK indicado en cada barrica.',
+         chip: g => (g / 1000).toFixed(3) + ' kg de MBK' },
+  sol: { col: 'mL sol.',  dec: 1, de: d => d.ml_solucion, total: f => f.ml_total,
+         suf: 'mL', nota: 'Agregar los mL de solución indicados en cada barrica.',
+         chip: ml => (ml / 1000).toFixed(2) + ' L de solución d1030' },
+};
+
+/** La config de la unidad vigente. Exportada para testearla sin DOM. */
+export function _ocUni(u){ return OC_UNIDAD[u || _ocUnidad] || OC_UNIDAD.sol; }
+
+/** La OTRA unidad. El boton alterna entre dos, asi que hay un solo destino. */
+export function _ocOtraUnidad(u){ return (u || _ocUnidad) === 'mbk' ? 'sol' : 'mbk'; }
+
+/* El boton dice EN QUE ESTA, no a que cambia: el operario tiene que poder mirar
+ * la barra y saber en que unidad esta leyendo la hoja sin tener que deducirlo.
+ * A que cambia lo dice el tooltip. */
+const OC_UNIDAD_BTN = { mbk: '⚖️ Dosis: MBK (polvo)', sol: '🧪 Dosis: Solución d1030' };
+
+/** Pinta la etiqueta y el tooltip del boton segun la unidad vigente. */
+function _ocPintarBotonUnidad(){
+  const b = $('btnOcUnidad');
+  if (!b) return;
+  b.textContent = OC_UNIDAD_BTN[_ocUnidad] || OC_UNIDAD_BTN.sol;
+  b.title = 'Estás dosificando en ' + _ocUni().col.replace(' (g)', ' (polvo, se pesa)')
+                                              .replace('mL sol.', 'solución d1030 (se mide con probeta)') +
+            '. Clic para pasar a ' + (OC_UNIDAD_BTN[_ocOtraUnidad()] || '').replace(/^\S+\s/, '') +
+            '. Es la misma dosis de SO₂ dicha de dos maneras.';
+}
 
 /* Espejo de la formula de motor_fml.calcular_correccion_so2. Se recalcula en el
  * cliente solo para responder al toque del objetivo sin ir al servidor. La
@@ -119,6 +171,201 @@ function _ocBuildRowsLocal(){
   return _ocBuildRows(_ocOrden, _ocExcluidos, _ocObjetivos, _descOc);
 }
 
+/** Agrupa los suprimidos por OT, conservando el orden de aparicion.
+ *  Puro y exportado: es la unica logica de la tabla que vale la pena testear. */
+export function _ocAgruparPorOt(suprimidos){
+  const orden = [];
+  const porOt = new Map();
+  for (const s of (suprimidos || [])){
+    /* Se agrupa por el valor CRUDO, no por una etiqueta bonita: el boton de
+     * "cancelar toda la OT" despues filtra suprimidos[] por este mismo valor, y
+     * si aca se sustituyera un vacio por "(sin OT)" el filtro no encontraria
+     * nada y el boton no haria nada en silencio. Lo bonito es cosa del render. */
+    const ot = String(s.ot ?? '');
+    if (!porOt.has(ot)){ porOt.set(ot, []); orden.push(ot); }
+    porOt.get(ot).push(s);
+  }
+  return orden.map(ot => ({ ot, lotes: porOt.get(ot) }));
+}
+
+/* Tabla de los lotes que la regla dejo fuera, con el boton para cancelar la
+ * correccion que los saco.
+ *
+ * Se agrupa por OT porque el error tipico no es "me equivoque en este lote"
+ * sino "ejecute la orden equivocada", y deshacer 106 lotes de a uno no es una
+ * opcion. Cada grupo trae su boton de cancelar todo, y cada fila el suyo. */
+function _ocTablaSuprimidos(supr){
+  if (!supr.length) return '';
+  const grupos = _ocAgruparPorOt(supr);
+  const filas = grupos.map(g =>
+    '<tr class="oc-sep">' +
+      '<td colspan="5"><b>OT ' + esc(g.ot || '(sin OT)') + '</b> · ' + g.lotes.length + ' lote' +
+        (g.lotes.length === 1 ? '' : 's') + '</td>' +
+      '<td class="c"><button class="btn" data-oc-anular-ot="' + escA(g.ot) + '" ' +
+        'title="Cancelar la corrección de los ' + g.lotes.length + ' lotes de esta OT">' +
+        '↩ Cancelar toda la OT</button></td>' +
+    '</tr>' +
+    g.lotes.map(s =>
+      '<tr>' +
+        '<td><b>' + esc(s.lote) + '</b></td>' +
+        '<td>' + esc(s.variedad || '') + '</td>' +
+        '<td class="c">' + esc(_fechaCorta(s.fecha)) + '</td>' +
+        '<td class="num">' + (s.so2_prev == null ? '—' : fmt(s.so2_prev, 1)) + '</td>' +
+        '<td style="font-size:12px;color:var(--muted)">' + esc(s.motivo || '') + '</td>' +
+        /* El N de OT viaja en el boton porque (lote, fecha) NO identifica una
+         * correccion: hay claves duplicadas en los datos reales. */
+        '<td class="c"><button class="btn" data-oc-anular="' + escA(s.lote) + '" ' +
+          'data-oc-anular-fecha="' + escA(s.fecha || '') + '" ' +
+          'data-oc-anular-otn="' + escA(s.ot || '') + '" ' +
+          'title="Cancelar esta corrección: el lote vuelve a proponerse">↩ Cancelar</button></td>' +
+      '</tr>').join('')
+  ).join('');
+
+  return '<div class="card" style="margin-top:4px">' +
+    '<h2 style="font-size:15px">Ya corregidos, no se proponen (' + supr.length + ')</h2>' +
+    '<div style="color:var(--muted);font-size:12px;margin-bottom:8px">' +
+      'Estos lotes salieron de la orden porque ya se corrigieron. Si alguna corrección ' +
+      'se registró por error, cancelala y el lote vuelve a proponerse. La entrada no se ' +
+      'borra: queda en la bitácora marcada como anulada, con quién y cuándo.</div>' +
+    '<div class="scroll"><table id="ocTablaSupr"><thead><tr>' +
+      '<th>Lote</th><th>Variedad</th><th class="c">Fecha</th>' +
+      '<th class="num">SO₂ previo</th><th>Motivo</th><th class="c">Acción</th>' +
+    '</tr></thead><tbody>' + filas + '</tbody></table></div></div>';
+}
+
+let _ocAnulEnVuelo = false;
+
+/* Anula las correcciones de los lotes indicados, guarda y recarga la orden.
+ *
+ * Mismo contrato que ejecutar, por los mismos motivos: se escribe en DATOS(),
+ * se guarda, y si el guardado falla se REVIERTE lo escrito y se avisa. Sin el
+ * rollback, un guardado fallido dejaria correcciones anuladas en memoria que el
+ * proximo guardado de cualquier otra pantalla persistiria.
+ *
+ * @param {Array} objetivos - [{lote, fecha, ot}] tal como vienen de
+ *   suprimidos[]. El `ot` NO es opcional en la practica: (lote, fecha) no
+ *   identifica una correccion, hay claves duplicadas en los datos reales. */
+async function _ocAnularCorrecciones(objetivos, descripcion){
+  /* Guarda de reentrada, por el mismo motivo que en ejecutar: dos llamadas
+   * superpuestas sobre el mismo lote hacen que el snapshot de la segunda
+   * capture lo que escribio la primera, y si los dos guardados fallan el
+   * rollback restaura una anulacion que nunca se guardo. */
+  const msg0 = $('ocMsg');
+  if (_ocAnulEnVuelo){
+    if (msg0) msg0.innerHTML = '<div class="msg info">Ya se está cancelando algo. ' +
+      'Esperá a que termine.</div>';
+    return;
+  }
+  if (!objetivos.length){
+    /* Nunca salir mudo: si el usuario apreto un boton, algo tiene que pasar.
+     * Este caso se da si se aprieta durante la recarga, con _ocOrden en null. */
+    if (msg0) msg0.innerHTML = '<div class="msg err">No hay nada para cancelar en este momento. ' +
+      'Puede que la orden se esté recargando; probá de nuevo en un segundo.</div>';
+    return;
+  }
+  if (!confirm('Vas a cancelar la corrección de ' + descripcion + '.\n\n' +
+               'La entrada NO se borra: queda en la bitácora marcada como anulada, ' +
+               'con tu nombre y la fecha. ' +
+               (objetivos.length === 1 ? 'El lote vuelve' : 'Los lotes vuelven') +
+               ' a proponerse en la orden.\n\n¿Confirmás?')) return;
+
+  _ocAnulEnVuelo = true;
+  try {
+    const quien = { por: usuarioActual() || 'desconocido',
+                    cuando: new Date().toISOString().slice(0, 10) };
+    const snaps = [];
+    for (const o of objetivos){
+      const s = anularCorreccion(DATOS().analisis, o.lote, o.fecha, o.ot, quien);
+      if (s) snaps.push(s);
+    }
+
+    if (!snaps.length){
+      const m = $('ocMsg');
+      if (m) m.innerHTML = '<div class="msg err">No se encontró la corrección a cancelar. ' +
+        'Puede que ya se haya cancelado desde otra PC; probá con 🔄 Recargar.</div>';
+      return;
+    }
+
+    markDirty();
+    let ok = false;
+    try { ok = await guardar(); } catch (_) { ok = false; }
+    if (!ok){
+      snaps.forEach(revertirAnulacion);
+      const m2 = $('ocMsg');
+      if (m2) m2.innerHTML = '<div class="msg err">No se pudo guardar. No se canceló nada.</div>';
+      else alert('No se pudo guardar. No se canceló nada.');
+      return;
+    }
+
+    _ocOrden = null;
+    await _ocCargar();
+    _ocRenderTabla();
+    _ocPintarPaginas();
+
+    const m3 = $('ocMsg');
+    if (!m3) return;
+
+    /* Si la recarga fallo, _ocCargar dejo _ocOrden en null y su propio error en
+     * ocMsg. NO se puede afirmar que el lote volvio: no hay con que compararlo.
+     * Pisar ese error con un verde que promete "ya vuelve a proponerse" seria
+     * el mismo modo de falla que este bloque viene a cerrar, por otra puerta. */
+    if (!_ocOrden){
+      m3.innerHTML = '<div class="msg info">Se guardaron ' + snaps.length +
+        ' anulaciones, pero no se pudo recargar la orden para confirmarlas. ' +
+        'Apretá 🔄 Recargar para verificar que los lotes volvieron.</div>';
+      return;
+    }
+
+    /* NO alcanza con contar lo que se marco: hay que confirmar que el lote
+     * VOLVIO. Marcar una entrada y que el servidor siga suprimiendo el lote es
+     * exactamente el modo de falla peligroso (el vino no recibe SO2 y la
+     * pantalla dice que si), y solo se detecta comparando contra el
+     * suprimidos[] recien recargado. Cualquier asimetria futura entre este
+     * lookup y el de Python se vuelve ruidosa en vez de silenciosa.
+     *
+     * Se compara por (lote, fecha, ot), no por lote solo, para separar dos
+     * casos que se ven iguales desde afuera:
+     *   - sobrevive con OTRA clave: el lote tenia una correccion previa ademas
+     *     de la que se cancelo. Es legitimo y ademas frecuente (16 claves de
+     *     los datos reales tienen dos o mas correcciones). Informativo.
+     *   - sobrevive con LA MISMA clave: no se movio nada. Ese es el rojo. */
+    const clave = x => String(x.lote) + '|' + String(x.fecha ?? '') + '|' + String(x.ot ?? '');
+    const supr = _ocOrden.suprimidos || [];
+    const clavesVivas = new Set(supr.map(clave));
+    const lotesVivos = new Set(supr.map(s => String(s.lote)));
+
+    const noSeMovieron = objetivos.filter(o => clavesVivas.has(clave(o)));
+    const conOtraCorreccion = objetivos.filter(
+      o => !clavesVivas.has(clave(o)) && lotesVivos.has(String(o.lote)));
+
+    if (noSeMovieron.length){
+      const ls = noSeMovieron.map(o => String(o.lote));
+      m3.innerHTML = '<div class="msg err"><b>Ojo:</b> se guardaron ' + snaps.length +
+        ' anulaciones, pero ' + ls.length + ' lote' + (ls.length === 1 ? '' : 's') +
+        ' sigue' + (ls.length === 1 ? '' : 'n') + ' sin proponerse con la MISMA ' +
+        'corrección que cancelaste: ' + esc(ls.join(', ')) + '. Algo no se aplicó ' +
+        'como esperabas. Revisá la bitácora antes de dosificar a mano.</div>';
+      return;
+    }
+    if (conOtraCorreccion.length){
+      const ls = conOtraCorreccion.map(o => String(o.lote));
+      m3.innerHTML = '<div class="msg info">✓ Se canceló la corrección de ' +
+        snaps.length + ' lote' + (snaps.length === 1 ? '' : 's') + '. ' +
+        esc(ls.join(', ')) + ' sigue' + (ls.length === 1 ? '' : 'n') +
+        ' sin proponerse porque tenía' + (ls.length === 1 ? '' : 'n') +
+        ' otra corrección previa: si esa también fue un error, cancelala desde ' +
+        'la lista de abajo.</div>';
+      return;
+    }
+    m3.innerHTML = '<div class="msg ok">✓ Se canceló la corrección de ' +
+      snaps.length + ' lote' + (snaps.length === 1 ? '' : 's') +
+      ', que ya vuelve' + (snaps.length === 1 ? '' : 'n') + ' a proponerse. ' +
+      'Quedan en la bitácora marcadas como anuladas.</div>';
+  } finally {
+    _ocAnulEnVuelo = false;
+  }
+}
+
 /* dd/mm de un ISO. Devuelve el original si no tiene la forma esperada: un
  * cartel con la fecha rara es mejor que un cartel sin fecha. */
 function _fechaCorta(iso){
@@ -171,6 +418,7 @@ export function _ocAviso(l){
  * pantalla y siguen guardandose en la bitacora; lo que cambia es que no se
  * imprimen. */
 function _ocRenderFila({ numero, fila }){
+  const u = _ocUni();
   if (fila.tipo === 'lote'){
     const l = fila.lote;
     const aviso = _ocAviso(l);
@@ -185,7 +433,7 @@ function _ocRenderFila({ numero, fila }){
       '<td class="c oh-num"></td>' +
       '<td colspan="6"><b>' + esc(l.lote) + '</b> · ' + esc(l.variedad) + ' · ' +
       'pH ' + fmt(l.ph, 2) + ' · SO₂ ' + fmt(l.so2_libre, 1) + ' → <b>' + fmt(fila.objetivo, 1) + '</b> mg/L · ' +
-      'molecular ' + fmt(l.molecular_actual, 3) + ' · total <b>' + fmt(fila.ml_total, 0) + '</b> mL' +
+      'molecular ' + fmt(l.molecular_actual, 3) + ' · total <b>' + fmt(u.total(fila), u.dec) + '</b> ' + u.suf +
       extra +
       '</td></tr>';
   }
@@ -196,7 +444,7 @@ function _ocRenderFila({ numero, fila }){
     '<td class="c">' + esc(b.cap == null ? (b.vasija || '—') : String(b.cap)) + '</td>' +
     '<td class="c">' + esc(b.estado) + '</td>' +
     '<td class="c">' + fmt(b.litros_usados, 0) + (b.litros_de_capacidad ? '*' : '') + '</td>' +
-    '<td class="c"><b>' + fmt(fila.dosis.ml_solucion, 1) + '</b></td>' +
+    '<td class="c"><b>' + fmt(u.de(fila.dosis), u.dec) + '</b></td>' +
     '<td class="oh-check"></td>' +
   '</tr>';
 }
@@ -250,13 +498,13 @@ function _ocPintarPaginas(){
     meta, banda,
     emitio: $('ocEmitio') ? $('ocEmitio').value : '',
     recibio: $('ocRecibio') ? $('ocRecibio').value : '',
-    nota: 'Agregar los mL de solución indicados en cada barrica. Los litros marcados con * son estimados por capacidad. ' + _ocSello(),
+    nota: _ocUni().nota + ' Los litros marcados con * son estimados por capacidad. ' + _ocSello(),
     /* BARRICA queda como la columna elastica: POSICION era la unica que lo era
      * y sin reemplazo la tabla queda angosta y pegada a la izquierda. */
     colgroup: '<colgroup><col style="width:32px"><col><col style="width:50px"><col style="width:62px"><col style="width:56px"><col style="width:70px"><col style="width:46px"></colgroup>',
     thead: '<tr><th class="c oh-num">#</th><th class="c">BARRICA</th><th class="c">CAP.</th>' +
            '<th class="c">ESTADO</th><th class="c">LITROS</th>' +
-           '<th class="c">mL sol.</th><th class="oh-check">Check</th></tr>',
+           '<th class="c">' + esc(_ocUni().col) + '</th><th class="oh-check">Check</th></tr>',
     columnas: 7,
     textoVacio: 'No hay lotes a corregir para los criterios elegidos.',
     renderFila: _ocRenderFila,
@@ -306,6 +554,18 @@ function _ocRenderTabla(){
   const tbody = $('ocTbody');
   if (!tbody) return;
 
+  /* La columna que no se usa se oculta por CSS en vez de sacarla del HTML: la
+   * 6 es MBK y la 7 es mL tanto en el encabezado como en la fila del lote y en
+   * la de barrica, asi que dos reglas nth-child las esconden de forma
+   * consistente sin tocar el codigo que arma las filas.
+   * Va ANTES del guard de "sin datos" para que la tabla vacia ya muestre las
+   * columnas correctas y no cambie de ancho al llegar los datos. */
+  const tabla = $('ocTable');
+  if (tabla){
+    tabla.classList.toggle('u-mbk', _ocUnidad === 'mbk');
+    tabla.classList.toggle('u-sol', _ocUnidad === 'sol');
+  }
+
   /* Actualizar sello de pantalla (el del papel se mete en la nota de pintarHojas) */
   const selloEl = $('ocSelloPantalla');
   if (selloEl){
@@ -328,14 +588,7 @@ function _ocRenderTabla(){
    * no_calculables. Los que esperan analisis son, ademas, el insumo natural de
    * la Orden de muestras. */
   const suprEl = $('ocSuprimidos');
-  if (suprEl){
-    const supr = (_ocOrden && _ocOrden.suprimidos) || [];
-    suprEl.innerHTML = supr.length
-      ? '<div class="note"><b>Ya corregidos, no se proponen (' + supr.length + '):</b> ' +
-        supr.map(s => esc(s.lote) + ' <span style="color:var(--muted)">(' +
-                      esc(s.motivo) + ')</span>').join(' · ') + '</div>'
-      : '';
-  }
+  if (suprEl) suprEl.innerHTML = _ocTablaSuprimidos((_ocOrden && _ocOrden.suprimidos) || []);
 
   if (!_ocOrden){
     tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted);padding:18px">Sin datos.</td></tr>';
@@ -348,12 +601,16 @@ function _ocRenderTabla(){
   const filasBuildRows = _ocBuildRows(_ocOrden, _ocExcluidos, _ocObjetivos, _descOc);
   const lotesVisibles = new Set(filasBuildRows.filter(f => f.tipo === 'lote').map(f => f.lote.lote));
   const barricasVisibles = filasBuildRows.filter(f => f.tipo === 'barrica').length;
-  const mbkVisibleG = filasBuildRows.filter(f => f.tipo === 'lote').reduce((s, f) => s + f.mbk_total_g, 0);
+  /* El chip dice cuanto insumo hay que preparar, asi que se expresa en la
+   * unidad elegida: kg de polvo o L de solucion. */
+  const u = _ocUni();
+  const totalVisible = filasBuildRows.filter(f => f.tipo === 'lote')
+    .reduce((s, f) => s + u.total(f), 0);
 
   const resEl = $('ocResumen');
   if (resEl){
     resEl.textContent = lotesVisibles.size + ' lotes · ' + barricasVisibles + ' barricas · ' +
-      (mbkVisibleG / 1000).toFixed(3) + ' kg de MBK';
+      u.chip(totalVisible);
   }
 
   let tb = '';
@@ -541,6 +798,8 @@ export async function renderOrdenCorreccion(){
   <div class="toolbar" id="ocToolbar" style="margin-bottom:14px">
     <div class="mfilt-bar" id="ocFltBar"></div>
     <button class="btn" id="btnOcLimpiarFlt">🧹 Limpiar filtros</button>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)">
+    <button class="btn" id="btnOcUnidad"></button>
     <button class="btn" id="btnOcRecargar">🔄 Recargar</button>
     <span class="tag" id="ocResumen"></span>
     <div class="spacer"></div>
@@ -625,6 +884,41 @@ export async function renderOrdenCorreccion(){
    * buscador porque ya no hay caja de texto aparte: cada panel trae la suya. */
   $('btnOcLimpiarFlt').addEventListener('click', () => {
     limpiarFiltrosMulti(_descOc, null, _instOc, _ocAplicarFiltros);
+  });
+
+  /* Cancelar correcciones. Delegado sobre el contenedor, que persiste mientras
+   * la tabla de adentro se reconstruye en cada render. El contenedor se recrea
+   * con sec.innerHTML en cada visita a la pestana, asi que los listeners no se
+   * apilan y no hace falta guarda. */
+  $('ocSuprimidos').addEventListener('click', e => {
+    const uno = e.target.closest('[data-oc-anular]');
+    if (uno){
+      _ocAnularCorrecciones(
+        [{ lote: uno.dataset.ocAnular, fecha: uno.dataset.ocAnularFecha,
+           ot: uno.dataset.ocAnularOtn }],
+        'el lote ' + uno.dataset.ocAnular);
+      return;
+    }
+    const todaLaOt = e.target.closest('[data-oc-anular-ot]');
+    if (todaLaOt){
+      const ot = todaLaOt.dataset.ocAnularOt;
+      const delOt = ((_ocOrden && _ocOrden.suprimidos) || [])
+        .filter(s => String(s.ot ?? '') === ot)
+        .map(s => ({ lote: s.lote, fecha: s.fecha, ot: s.ot }));
+      _ocAnularCorrecciones(delOt,
+        'los ' + delOt.length + ' lotes de la OT ' + ot);
+    }
+  });
+
+  /* Unidad de la dosis: el boton alterna y repinta tabla y papel. No toca los
+   * datos ni la bitacora, que guarda las dos formas: es solo como se expresa
+   * el numero. */
+  _ocPintarBotonUnidad();
+  $('btnOcUnidad').addEventListener('click', () => {
+    _ocUnidad = _ocOtraUnidad();
+    _ocPintarBotonUnidad();
+    _ocRenderTabla();
+    _ocPintarPaginas();
   });
 
   /* Recargar */
@@ -717,12 +1011,16 @@ function _ocAbrirEjecucion(){
   const fechaSug = ($('ocFecha') && $('ocFecha').value) || hoyISO;
   const otSug = ($('ocNumOrden') && $('ocNumOrden').value) || '';
 
+  /* Los montos por lote van en la unidad elegida, igual que el total del pie y
+   * que la hoja: el operario esta mirando la misma dosis en tres lugares y
+   * verla en gramos aca y en mL en la hoja lo obliga a convertir de cabeza. */
+  const u = _ocUni();
   const items = filas.map(f =>
     '<label style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line)">' +
       '<input type="checkbox" checked data-oc-hecho="' + escA(f.lote.lote) + '">' +
       '<b style="min-width:70px">' + esc(f.lote.lote) + '</b>' +
       '<span style="flex:1;color:var(--muted)">' + esc(f.lote.variedad) + '</span>' +
-      '<span class="num">' + fmt(f.mbk_total_g, 2) + ' g</span>' +
+      '<span class="num">' + fmt(u.total(f), u.dec) + ' ' + u.suf + '</span>' +
     '</label>').join('');
 
   mostrarOverlay(
@@ -751,9 +1049,13 @@ function _ocAbrirEjecucion(){
  * numero el cartel de "corregido en la OT tal" no tiene a que apuntar. */
 function _ocEjecActualizarTotal(){
   const filas = _ocBuildRowsLocal().filter(f => f.tipo === 'lote' && _ocHechos.has(f.lote.lote));
-  const g = filas.reduce((s, f) => s + f.mbk_total_g, 0);
+  /* El total sigue la unidad elegida: es cuanto insumo hay que preparar, asi
+   * que decirlo en kg de polvo cuando el operario va a medir solucion lo
+   * obliga a convertir de cabeza. */
+  const u = _ocUni();
   const tot = $('ocEjecTotal');
-  if (tot) tot.textContent = filas.length + ' lotes · ' + (g / 1000).toFixed(3) + ' kg de MBK';
+  if (tot) tot.textContent = filas.length + ' lotes · ' +
+    u.chip(filas.reduce((s, f) => s + u.total(f), 0));
   const ot = $('ocEjecOT') ? $('ocEjecOT').value.trim() : '';
   const btn = $('btnOcEjecConfirmar');
   if (btn){

@@ -214,6 +214,15 @@ interface Correccion {
  *
  * La fecha de la corrección manda sobre la del análisis: la orden se ejecuta
  * después de imprimirse y el operario fecha lo que realmente hizo.
+ *
+ * Las ANULADAS se saltean. Anular es el "me equivoqué al ejecutar la orden": la
+ * entrada se conserva en la bitácora con quién y cuándo la anuló (un registro
+ * de calidad no borra en silencio), pero para la regla es como si no existiera
+ * y el lote vuelve a proponerse.
+ *
+ * Ojo con el detalle de tomar la última NO anulada en vez de mirar solo la
+ * última: si un lote tuvo dos correcciones y se anula la segunda, la primera
+ * sigue valiendo. Anular un error no borra la historia previa.
  */
 function ultimaCorreccion(analisisDelLote: Fila[]): Correccion | null {
   let mejor: Correccion | null = null;
@@ -221,6 +230,7 @@ function ultimaCorreccion(analisisDelLote: Fila[]): Correccion | null {
     const c = a.correccion;
     if (!c || typeof c !== 'object' || Array.isArray(c)) continue;
     const cc = c as Fila;
+    if (verazPython(cc.anulada)) continue;
     const ot = String(cc.ot_n ?? '').trim();
     if (!ot) continue;
     const f = fechaMs(cc.fecha ?? a.fecha_analisis);
@@ -230,6 +240,24 @@ function ultimaCorreccion(analisisDelLote: Fila[]): Correccion | null {
     }
   }
   return mejor;
+}
+
+/**
+ * Veracidad al estilo Python, porque el original de esta decisión es
+ * `motor_correccion.py` (`if c.get('anulada')`) y las capas tienen que coincidir
+ * en TODOS los bordes. JS y Python no opinan igual: `{}` y `[]` son truthy en JS
+ * y falsy en Python. Sin esto un `anulada: {}` quedaría anulado para la bitácora
+ * (tachado, con sello) y vigente para la regla, o sea que el lote seguiría
+ * suprimido mientras la pantalla dice que se canceló.
+ *
+ * Es el espejo de `esAnulada`/`_veraz` en `public/lotes/js/so2-bitacora.js`: si
+ * cambia uno, tiene que cambiar el otro.
+ */
+function verazPython(v: unknown): boolean {
+  if (!v) return false; // null, false, '', 0, undefined, NaN
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'object') return Object.keys(v as object).length > 0;
+  return true;
 }
 
 /**

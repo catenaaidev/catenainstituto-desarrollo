@@ -344,6 +344,12 @@
     body.printing-orden main{padding:0;max-width:none}
     body.printing-orden #tab-orden{display:block!important}
     body.printing-orden #tab-orden > *:not(#otPaginas){display:none!important}
+    /* Sin esta regla la orden de muestras imprime una hoja EN BLANCO: #otPaginas
+     * nace con style="display:none" inline y la regla de arriba solo oculta a sus
+     * hermanos, nunca lo revela. Es la misma que ya tenian printing-ordencorr
+     * (#ocPaginas), printing-ot-mov (#otMovHoja) y printing-cruce (#cruceHoja);
+     * esta vista era la unica que la habia omitido. */
+    body.printing-orden #otPaginas{display:block!important}
     body.printing-orden .orden-hoja{box-shadow:none;border-radius:0;max-width:none;padding:0}
     #otPaginas .orden-hoja + .orden-hoja{page-break-before:always;margin-top:0}
     body.printing-orden .orden-hoja input,
@@ -385,15 +391,22 @@
     body.printing-ordencorr #tab-ordencorr > *:not(#ocPaginas){display:none!important}
     /* I6: #ocPaginas tiene style="display:none" inline. Una regla !important de
      * autor vence sobre el inline sin !important (cascade nivel 4 > nivel 7).
-     * El mismo patron aplica en printing-ot-mov (#otMovHoja) y printing-cruce
-     * (#cruceHoja). La Orden de muestras (#otPaginas) omitio esta regla: si
-     * algun dia deja de imprimir bien, agregar la misma regla para #otPaginas. */
+     * El mismo patron aplica en printing-ot-mov (#otMovHoja), printing-cruce
+     * (#cruceHoja) y printing-orden (#otPaginas). Las cuatro vistas de papel lo
+     * tienen: si agregas una quinta, no te olvides de esta regla. */
     body.printing-ordencorr #ocPaginas{display:block!important}
     body.printing-ordencorr .orden-hoja{box-shadow:none;border-radius:0;max-width:none;padding:0}
     #ocPaginas .orden-hoja + .orden-hoja{page-break-before:always;margin-top:0}
     body.printing-ordencorr .orden-hoja input,
     body.printing-ordencorr .orden-hoja select{border:none!important;background:transparent!important}
     body.printing-ordencorr .orden-hoja select{-webkit-appearance:none;appearance:none;padding-left:0}
+
+    /* @page NO se puede limitar por clase de body: es a nivel documento, asi que
+     * este margen vale para las cinco impresiones (so2, orden, ot-mov, cruce,
+     * ordencorr). Todas son el mismo papel RCI 08, y sin esta regla el navegador
+     * mete su propio encabezado y pie (URL, fecha, n de pagina) en un formulario
+     * de calidad. Mismo valor que usa prensas-app. */
+    @page{margin:14mm}
   }
 /* @media print: la grilla — separado porque oculta los estilos de seleccion en todas las vistas */
 @media print{
@@ -420,6 +433,18 @@
   tr.oc-sep:hover td{background:var(--panel2)}
   .oc-aviso{color:var(--warn);font-size:12px;font-weight:400}
   .oc-sello{font-size:11px;color:#555;margin-top:8px;font-style:italic}
+/* Unidad de la dosis (L): se muestra una sola de las dos columnas. La 6 es
+   MBK (g) y la 7 es mL sol., y esas posiciones valen igual en el encabezado,
+   en la fila del lote y en la de barrica, asi que ocultarlas por nth-child es
+   consistente. Se hace por CSS para no tocar el codigo que arma las filas. */
+  #ocTable.u-sol th:nth-child(6), #ocTable.u-sol td:nth-child(6){display:none}
+  #ocTable.u-mbk th:nth-child(7), #ocTable.u-mbk td:nth-child(7){display:none}
+/* Correcciones anuladas (M): se tachan pero NO se ocultan. Anular deja rastro
+   a proposito; una bitacora de calidad no puede tener huecos silenciosos. */
+  tr.so2-anulada td{text-decoration:line-through;opacity:.55}
+  .so2-anulada-sello{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;
+    background:var(--panel2);color:var(--warn);font-size:10.5px;font-weight:600;
+    text-decoration:none;opacity:1;white-space:nowrap}
 </style>
 </head>
 <body>

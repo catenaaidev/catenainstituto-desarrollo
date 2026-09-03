@@ -63,24 +63,23 @@ const COLS_LOTES = [
   { k:'litros_actuales', label:'Litros Actuales',          banda:'crianza', num:true, ro:true },
   { k:'vasija_actual',   label:'Vasija Actual en Crianza', banda:'crianza' },
   { k:'categoria',       label:'Categoría',                banda:'crianza' },
-  /* --- FML y seguimiento (AO:AR) --- */
-  { k:'hace_fml',           label:'Hace FML (S/N)',        banda:'fml', sel:['','si','no'] },
-  { k:'freq_analisis_dias', label:'Freq. análisis (días)', banda:'fml', num:true, int:true },
-  { k:'fml_excluida',       label:'FML Excluida (S/N)',    banda:'fml', sel:['','si','no'] },
-  { k:'mermo',              label:'Mermo (S/N)',           banda:'fml', sel:['','si','no'] },
+  /* Las columnas AO:AR del Excel (Hace FML, Freq. análisis, FML Excluida y
+   * Mermo) NO estan en la grilla: se quitaron porque el seguimiento del FML
+   * tiene su propia pestana. Los cuatro campos siguen vivos en datos.json, los
+   * sigue leyendo motor_fml.py y se siguen exportando (COLS_LOTES_ARCHIVO en
+   * servidor.py), pero ya no se editan desde la aplicacion. */
 ];
 
 /* --- bandas (fila 1 de la hoja LOTES) ---
  * 'estado' no existe en el Excel: son Etapa y Avance, que la vista pinta a mano
  * y no estan en COLS_LOTES, por eso declara colsFijas en lugar de columnas.
- * 'FML y seguimiento' tampoco es del Excel: ahi el titulo 'Dashboard FML' esta
- * solo sobre Mermo y sin combinar, asi que agrupar las cuatro es decision
- * nuestra (esta anotado en el spec). */
+ * La banda 'fml' se fue junto con sus cuatro columnas. Dejarla declarada no
+ * rompia nada (bandasVisibles saltea la banda sin columnas y sin colsFijas),
+ * pero era una declaracion muerta. */
 const BANDAS_LOTES = [
   { id:'id',      titulo:'Información ID',                    grupo:'id_detalle' },
   { id:'ferm',    titulo:'Información Inicial y fermentación', grupo:'fermentacion' },
   { id:'crianza', titulo:'Crianza' },
-  { id:'fml',     titulo:'FML y seguimiento' },
   { id:'estado',  titulo:'Estado', colsFijas:2 },
 ];
 
@@ -116,6 +115,12 @@ let sortLotes = { key:'lote', dir:1 };
  * Los que empiezan con _ no son campos del lote: se resuelven con un descriptor
  * propio en initFiltrosLotes (opciones + match a mano). */
 const CAMPOS_FLT_LOTES = [
+  /* Lote va primero, como en la orden de correccion, y es el mismo descriptor
+   * generico que el resto: la lista de casillas la arma opcionesValores y
+   * cmpValores la ordena por numero (no alfabeticamente) porque los lotes son
+   * numeros en texto. El buscador '🔎 Buscar por lote' sigue existiendo aparte:
+   * sirve para ir a uno solo tipeando, y este filtro para elegir varios. */
+  { campo:'lote',     label:'Lote'     },
   { campo:'variedad', label:'Variedad' },
   { campo:'distrito', label:'Distrito' },
   { campo:'proyecto', label:'Proyecto' },
@@ -126,6 +131,23 @@ const CAMPOS_FLT_LOTES = [
 ];
 const filtLotes = {}; CAMPOS_FLT_LOTES.forEach(c=>filtLotes[c.campo]=new Set());
 let _descLotes=[], _instLotes=[];
+
+/* Rearma las casillas de todos los filtros contra los lotes que hay ahora.
+ *
+ * Las otras vistas no necesitan esto porque rehacen su seccion entera con
+ * `sec.innerHTML = html` y ahi ya llaman rebuild(). Lotes, en cambio, tiene la
+ * barra fija en index.html y solo repinta #tLotes, asi que sus casillas se
+ * arman una sola vez en initFiltrosLotes.
+ *
+ * Sin esto el filtro de Lote quedaria viejo justo cuando mas se nota: al
+ * agregar un lote su numero no aparece en la lista, y como pasaMulti esconde
+ * todo lo que no este seleccionado, la fila nueva se volveria invisible sin
+ * forma de recuperarla salvo limpiando el filtro.
+ *
+ * rebuild() lee el estado desde el Set, asi que lo tildado se conserva. */
+function refrescarOpcionesFiltros(){
+  _instLotes.forEach(f => f.rebuild());
+}
 
 function _enrichLote(l){
   // Etapa: el campo guardado en el propio lote es la fuente de verdad.
@@ -534,6 +556,7 @@ export function renderLotes(){
       if (confirm('¿Eliminar el lote ' + o.lote + '?')){
         DATOS().lotes.splice(DATOS().lotes.indexOf(o), 1);
         markDirty();
+        refrescarOpcionesFiltros();   // el lote borrado sale de las casillas
         invalidarDashMap();
         renderLotes();
         cargarDashboard();
@@ -566,6 +589,7 @@ export function agregarLote(){
 
   DATOS().lotes.unshift(nuevo);
   markDirty();
+  refrescarOpcionesFiltros();   // para que el lote nuevo se pueda tildar
   renderLotes();
   // foco en la primera celda del nuevo lote
   const inp = $('tLotes').querySelector('input.cell[data-row="0"]');
