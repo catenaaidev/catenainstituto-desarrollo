@@ -1,0 +1,72 @@
+# Publica la plataforma en Cloudflare cada vez que entra codigo en main.
+#
+# Antes esto dependia de "Workers Builds", que se configura en el panel de
+# Cloudflare: si fallaba, no habia forma de verlo desde el repositorio y los
+# cambios quedaban en GitHub sin llegar al sitio. Aca el despliegue es codigo
+# versionado y su registro se lee en la pestana Actions.
+name: Desplegar
+
+on:
+  push:
+    branches: [main]
+  # Permite desplegar a mano desde Actions -> Desplegar -> Run workflow,
+  # sin necesidad de hacer un commit ni de entrar a Cloudflare.
+  workflow_dispatch:
+
+# Si entran dos push seguidos, que no se pisen dos despliegues a la vez.
+concurrency:
+  group: desplegar-main
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Comprobar que estan los secretos
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CUENTA: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Falta el secreto CLOUDFLARE_API_TOKEN. Se carga en Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          if [ -z "$CUENTA" ]; then
+            echo "::error::Falta el secreto CLOUDFLARE_ACCOUNT_ID. Se carga en Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # worker-configuration.d.ts no va al repo (esta en .gitignore): lo genera
+      # wrangler leyendo wrangler.jsonc. Sin este paso el typecheck no compila.
+      - name: Generar los tipos del Worker
+        run: npm run tipos
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Los 167 tests frenan el despliegue si algo se rompio. Es la red de
+      # seguridad: mas vale que el sitio siga con la version anterior que
+      # publicar una rota.
+      - name: Tests
+        run: npm test
+
+      # Publica el Worker y los archivos de public/. NO corre las migraciones
+      # de la base: eso se hace a mano con `npm run migrar:nube`, porque tocar
+      # el esquema de produccion no debe pasar solo.
+      - name: Publicar en Cloudflare
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

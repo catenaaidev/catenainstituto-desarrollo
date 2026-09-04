@@ -144,34 +144,55 @@ npx wrangler d1 migrations apply catenainstitute --remote
 
 ---
 
-## 4 · Publicar (2 min)
+## 4 · Publicar (5 min, una sola vez)
 
-El Worker `catenainstitute` ya está **conectado a GitHub**, así que hay dos
-caminos. Los dos sirven.
+El despliegue lo hace **GitHub Actions**, con la receta que está en
+`.github/workflows/desplegar.yml`. Cada `git push` a `main` instala, genera los
+tipos, typechequea, corre los 167 tests y —sólo si todo pasó— publica.
 
-### Camino A — que lo despliegue GitHub (el que ya está armado)
+> **Por qué así y no con "Workers Builds" de Cloudflare:** eso se configuraba en
+> el panel, no en el código. Cuando fallaba, desde el repositorio no había forma
+> de darse cuenta: el código quedaba en GitHub y el sitio seguía con la versión
+> vieja, sin ningún aviso. Ahora el registro de cada despliegue se lee en la
+> pestaña **Actions** del repositorio.
 
-Con el `git push` del paso 2 alcanza: Cloudflare compila y publica solo.
+Para que funcione hay que darle a GitHub permiso de publicar en Cloudflare. Son
+dos datos, se cargan una única vez.
 
-> **Por qué falló la compilación anterior:** el repositorio estaba vacío, así
-> que no había nada que compilar. Con el código adentro, esa compilación pasa.
+**a) Creá el token en Cloudflare** → https://dash.cloudflare.com/profile/api-tokens
 
-Si vuelve a fallar, mirá el detalle en **Workers y Pages → catenainstitute →
-Implementaciones**, y revisá que en **Configuración → Compilaciones** el comando
-de despliegue sea:
+**Create Token** → usá la plantilla **"Edit Cloudflare Workers"** → **Continue
+to summary** → **Create Token**. Copiá el token: se muestra una sola vez.
 
-```
-npx wrangler deploy
-```
+**b) Buscá el Account ID** → entrá a **Workers & Pages**. El *Account ID* está
+en la barra derecha (y también en la dirección del navegador, después de
+`dash.cloudflare.com/`).
 
-### Camino B — publicar desde tu PC
+**c) Cargá los dos en GitHub** → en el repositorio, **Settings → Secrets and
+variables → Actions → New repository secret**. Creá exactamente estos dos:
 
-Sirve para probar sin pasar por GitHub, y para el primer despliegue si el
-automático da problemas:
+| Nombre del secreto | Valor |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | el token del paso (a) |
+| `CLOUDFLARE_ACCOUNT_ID` | el Account ID del paso (b) |
+
+> Si falta alguno, el despliegue se detiene con un mensaje que dice cuál falta,
+> en vez de fallar de forma confusa.
+
+Listo. Desde ahora, **cada push publica solo**. Para publicar sin hacer un
+commit: pestaña **Actions → Desplegar → Run workflow**.
+
+### Si preferís publicar desde tu PC
+
+Sirve para probar algo puntual. Necesita `npx wrangler login` la primera vez:
 
 ```bash
+git pull
 npm run deploy
 ```
+
+> ⚠️ El `git pull` no es opcional. Si desplegás con el repositorio atrasado,
+> publicás código viejo y parece que el despliegue no funcionó.
 
 ---
 
@@ -287,8 +308,15 @@ Antes de avisarle a nadie:
 
 ```bash
 git add . && git commit -m "qué cambié" && git push
-npm run deploy
 ```
+
+Con eso alcanza: el push dispara el despliegue. Seguilo en la pestaña
+**Actions** del repositorio — tarda unos 2 minutos. Mientras el tilde esté en
+amarillo todavía no está publicado; si queda en rojo, el sitio siguió intacto
+con la versión anterior y el log dice qué falló.
+
+> Si el cambio no se ve en el navegador pero Actions dice verde, es la caché:
+> recargá con **Ctrl + F5**.
 
 ### Volver el tiempo atrás si algo sale mal
 
@@ -318,6 +346,7 @@ npx wrangler r2 object get catenainstitute-respaldos/prensas/datos-v00087-....js
 
 | Síntoma | Qué pasa |
 |---|---|
+| **Pusheé y el sitio no cambió** | Mirá la pestaña **Actions**. Sin ejecución = falta el secreto o el push no fue a `main`. En rojo = el log dice qué falló. En verde = es caché del navegador, **Ctrl + F5** |
 | `database_id` inválido al desplegar | Falta pegar el id del paso 3 en `wrangler.jsonc` |
 | La página pide login en un bucle | La política de Access tiene mal el dominio del email |
 | «no tiene acceso al módulo Prensas» | Falta cargar ese email en `perfiles` (paso 5) |
