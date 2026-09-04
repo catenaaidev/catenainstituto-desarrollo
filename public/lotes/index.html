@@ -11,6 +11,36 @@
     --ok:#3f7d4f; --nook:#b03a2e; --warn:#b07d2c; --info:#5b7b86;
     --serif:Georgia,'Times New Roman',serif;
     --sans:system-ui,'Segoe UI',sans-serif;
+
+    /* --- Sistema visual (renovacion 2026-09) -----------------------------
+     * El acento sigue siendo EXACTAMENTE #8a3340. Media docena de reglas de
+     * la grilla y de la seleccion tienen ese color escrito a mano como
+     * rgba(138,51,64,...) porque CSS no sabia componer alpha sobre una var
+     * cuando se escribieron. Si algun dia se cambia el acento hay que buscar
+     * "138,51,64" en este archivo y cambiarlo en los dos lugares, o la
+     * seleccion de la grilla queda de otro color que el resto de la app.
+     *
+     * Todo lo que sigue es aditivo: tokens nuevos que el bloque de
+     * "renovacion visual" del final del <style> consume. Ninguna regla vieja
+     * depende de ellos, asi que borrar ese bloque devuelve el aspecto
+     * anterior sin tocar nada mas. */
+    --accent-rgb:138,51,64;
+    --accent-soft:rgba(138,51,64,.07);
+    --accent-line:rgba(138,51,64,.18);
+    --bg-2:#f2efe9;             /* fondo del lienzo, un punto mas calido */
+    --panel-hi:#fbfaf7;         /* panel elevado (hover de card) */
+    --line-soft:#efece4;        /* divisor interno, mas suave que --line */
+    --r-sm:7px; --r-md:11px; --r-lg:16px; --r-pill:999px;
+    --sh-xs:0 1px 2px rgba(42,38,34,.05);
+    --sh-sm:0 1px 3px rgba(42,38,34,.06), 0 1px 2px rgba(42,38,34,.04);
+    --sh-md:0 2px 4px rgba(42,38,34,.04), 0 8px 24px rgba(42,38,34,.07);
+    --sh-lg:0 4px 8px rgba(42,38,34,.05), 0 18px 44px rgba(42,38,34,.11);
+    --ring:0 0 0 3px rgba(138,51,64,.16);
+    --ease:cubic-bezier(.32,.72,.34,1);
+    /* Escala de riesgo, compartida por graficos, heatmap y chips. Va de
+     * "todo bien" a "atender ya"; los graficos la leen con getComputedStyle
+     * para que el color del dashboard y el del CSS nunca se desincronicen. */
+    --sc-0:#4a8360; --sc-1:#8aa14a; --sc-2:#d0a133; --sc-3:#c9762f; --sc-4:#b03a2e;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;-webkit-font-smoothing:antialiased}
@@ -445,6 +475,263 @@
   .so2-anulada-sello{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;
     background:var(--panel2);color:var(--warn);font-size:10.5px;font-weight:600;
     text-decoration:none;opacity:1;white-space:nowrap}
+
+/* =====================================================================
+   RENOVACION VISUAL (2026-09)
+   =====================================================================
+   Capa de presentacion que se apoya en los tokens nuevos del :root. Va al
+   final a proposito: son overrides de componentes compartidos (header,
+   tabs, cards, botones, tablas, chips) y necesitan ganar por orden de
+   cascada sin subir la especificidad ni tocar el markup, que esta repartido
+   en dieciocho modulos de vista.
+
+   Regla de oro para mantenerla: aca NO se cambia layout ni se agregan
+   selectores que dependan de la estructura del DOM de una vista concreta.
+   Solo color, tipografia, espaciado, borde, sombra y transicion. Asi
+   ninguna vista puede romperse por un cambio de aspecto, y borrar el bloque
+   entero devuelve la app al aspecto anterior.
+
+   Lo que queda FUERA a proposito:
+   - .orden-hoja y todo lo que entra en @media print: son formularios de
+     calidad (RCI 08) que tienen que salir en papel igual que siempre.
+   - los fondos de la grilla (gsel/gact/fuera): dependen de valores rgba
+     escritos a mano y de reglas !important; retocarlos desde aca daria
+     resultados distintos segun el orden de las clases en cada celda.
+   ===================================================================== */
+
+/* ---- lienzo ---- */
+body{background:var(--bg-2);letter-spacing:.005em}
+body::before{
+  /* Halo tenue detras del header. Es un pseudo-elemento fijo y no un
+   * background del body porque el body scrollea y el degrade se iria
+   * con el scroll. pointer-events:none para no comerse ningun clic. */
+  content:'';position:fixed;inset:0 0 auto;height:320px;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(900px 260px at 12% -60px, rgba(var(--accent-rgb),.055), transparent 70%),
+    radial-gradient(700px 220px at 88% -80px, rgba(91,123,134,.05), transparent 70%);
+}
+header,.tabs,main,#avisos{position:relative;z-index:1}
+
+/* ---- header ---- */
+header{padding:20px 28px 16px;gap:14px;border-bottom:none}
+header h1{font-size:25px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+header h1::before{
+  /* Marca de agua de la bodega: una gota de vino. Puramente decorativa. */
+  content:'';width:9px;height:9px;border-radius:var(--r-pill);flex:none;
+  background:var(--accent);box-shadow:0 0 0 4px rgba(var(--accent-rgb),.12);
+}
+header .sub{font-size:9.5px;letter-spacing:3px;color:var(--muted)}
+header .right{gap:8px}
+.status{font-size:11.5px;letter-spacing:.02em;padding:5px 10px;border-radius:var(--r-pill);
+  background:var(--panel);border:1px solid var(--line);white-space:nowrap;box-shadow:var(--sh-xs)}
+.status.dirty{background:#fdf6e6;border-color:#ecdcb4}
+.status.saved{background:#eef5ec;border-color:#cfe2ca}
+#usuario:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ---- barra de pestanas ----
+ * Sticky: con tablas de 290 filas la navegacion tiene que seguir a mano sin
+ * volver arriba. z-index 30 la deja por encima de los th sticky de las
+ * tablas (z-index 7 como maximo) y por debajo del overlay (50). */
+.tabs{position:sticky;top:0;z-index:30;padding:8px 22px 0;gap:2px;
+  background:rgba(247,245,241,.82);backdrop-filter:saturate(1.5) blur(10px);
+  -webkit-backdrop-filter:saturate(1.5) blur(10px);
+  border-bottom:1px solid var(--line);overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
+.tabs::-webkit-scrollbar{height:0}
+.tabs button{padding:10px 13px 11px;border-radius:var(--r-sm) var(--r-sm) 0 0;
+  font-size:13px;white-space:nowrap;border-bottom:2px solid transparent;
+  transition:color .16s var(--ease),background .16s var(--ease)}
+.tabs button:hover{background:var(--accent-soft)}
+.tabs button.active{background:var(--panel);border-bottom-color:var(--accent);
+  box-shadow:0 -1px 0 var(--line) inset, 1px 0 0 var(--line) inset, -1px 0 0 var(--line) inset}
+
+/* ---- contenedor ---- */
+main{padding:24px 24px 64px}
+.view.active{animation:fadeUp .32s var(--ease)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .view.active{animation:none}
+  *{transition-duration:.01ms!important}
+}
+
+/* ---- tarjetas ---- */
+.card{border-radius:var(--r-lg);padding:22px 24px;box-shadow:var(--sh-sm);
+  border-color:var(--line-soft);transition:box-shadow .2s var(--ease)}
+.card:hover{box-shadow:var(--sh-md)}
+.card h2{font-size:16.5px;letter-spacing:-.005em;display:flex;align-items:center;gap:9px;
+  margin:0 0 14px}
+.card h2::before{content:'';width:3px;height:15px;border-radius:2px;flex:none;
+  background:linear-gradient(var(--accent),rgba(var(--accent-rgb),.35))}
+
+/* ---- botones ---- */
+button.btn{border-radius:var(--r-sm);padding:8px 14px;box-shadow:var(--sh-xs);
+  background:var(--panel);transition:border-color .15s var(--ease),background .15s var(--ease),
+  color .15s var(--ease),box-shadow .15s var(--ease),transform .08s var(--ease)}
+button.btn:hover{background:var(--panel-hi);box-shadow:var(--sh-sm)}
+button.btn:active{transform:translateY(1px)}
+button.btn.primary{box-shadow:0 1px 2px rgba(var(--accent-rgb),.28)}
+button.btn.primary:hover{box-shadow:0 2px 8px rgba(var(--accent-rgb),.3)}
+button.btn.primary:disabled{box-shadow:none}
+button.btn:focus-visible,.tabs button:focus-visible,select:focus-visible,
+input.txt:focus-visible,textarea:focus-visible,.mfilt-btn:focus-visible{
+  outline:none;box-shadow:var(--ring);border-radius:var(--r-sm)}
+
+/* ---- campos ---- */
+select,input.txt,textarea{background:var(--panel);border-radius:var(--r-sm);padding:8px 11px;
+  box-shadow:var(--sh-xs);transition:border-color .15s var(--ease),box-shadow .15s var(--ease)}
+select:hover,input.txt:hover{border-color:#d8d2c6}
+select:focus,input.txt:focus,textarea:focus{border-color:var(--accent);outline:none;box-shadow:var(--ring)}
+.tag{border-radius:var(--r-pill);padding:5px 11px;background:var(--panel);box-shadow:var(--sh-xs)}
+.mfilt-btn{background:var(--panel);border-radius:var(--r-sm);box-shadow:var(--sh-xs)}
+.mfilt-btn.active{background:var(--accent-soft)}
+.mfilt-panel{border-radius:var(--r-md);box-shadow:var(--sh-lg)}
+
+/* ---- tablas ----
+ * Solo cabecera y divisores. Los fondos de fila (crit/venc/hover/gsel) se
+ * dejan intactos: los pinta la grilla y la logica de alarmas. */
+th{font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;
+  background:var(--panel);border-bottom:1px solid var(--line)}
+td{border-bottom:1px solid var(--line-soft)}
+/* Las bandas de grupo de la pestana Lotes quedan afuera de la versalita por
+ * dos razones. Una estetica: son nombres propios de grupo ("Datos de ingreso"),
+ * no etiquetas de columna. Y una que rompe si se la ignora: el alto de esa
+ * primera fila esta escrito a mano en la regla
+ * "#tLotes thead tr:nth-child(2) th{top:30px}" de mas arriba, que es la que
+ * apoya la segunda fila del encabezado justo debajo de la primera. 30px =
+ * padding 7px x 2 + texto de 12px. Bajar el font-size aca encogeria la fila y
+ * la segunda quedaria flotando 2px por encima de donde va. */
+th.banda{font-size:12px;text-transform:none;letter-spacing:.02em}
+/* Las hojas de papel (orden de muestras, OT, cruce, orden de correccion) son
+ * formularios de calidad RCI 08. Salen impresas y tienen que salir igual que
+ * siempre, asi que no reciben nada de la renovacion visual. */
+.orden-hoja th,.orden-hoja td{font-size:13px;text-transform:none;letter-spacing:normal;
+  border:1px solid #888}
+.orden-hoja th{background:#e6e6e6;color:#111}
+tbody tr{transition:background .12s var(--ease)}
+.scroll{border-radius:var(--r-md);border:1px solid var(--line-soft)}
+.card .scroll{border:none;border-radius:var(--r-sm)}
+
+/* ---- pastillas y chips ---- */
+.pill{border-radius:var(--r-pill);padding:2.5px 10px;letter-spacing:.01em}
+.chip-etapa{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-pill);
+  padding:2.5px 10px;font-size:11.5px;letter-spacing:.01em;color:var(--txt)}
+.barra{border-radius:var(--r-pill);height:8px;background:var(--line)}
+.barra>span{border-radius:var(--r-pill);background:var(--sc-0)}
+.barra.media>span{background:var(--sc-2)}
+.barra.baja>span{background:var(--sc-4)}
+.msg{border-radius:var(--r-md);padding:11px 15px}
+.note{border-radius:var(--r-md)}
+
+/* =====================================================================
+   DASHBOARD
+   ===================================================================== */
+
+/* ---- KPIs ---- */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:14px}
+.kpi-card{position:relative;overflow:hidden;border-radius:var(--r-lg);padding:18px 20px 17px;
+  border-color:var(--line-soft);box-shadow:var(--sh-sm);min-width:0;
+  transition:box-shadow .2s var(--ease),transform .2s var(--ease)}
+.kpi-card:hover{box-shadow:var(--sh-md);transform:translateY(-1px)}
+/* Riel de color arriba: da el estado de un vistazo sin leer el numero. */
+.kpi-card::before{content:'';position:absolute;inset:0 0 auto;height:3px;background:var(--muted)}
+.kpi-card.kpi-ok::before{background:var(--sc-0)}
+.kpi-card.kpi-warn::before{background:var(--sc-2)}
+.kpi-card.kpi-bad::before{background:var(--sc-4)}
+.kpi-card.kpi-neutral::before{background:var(--accent)}
+.kpi-card .kpi-val{font-size:34px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;
+  margin-bottom:5px}
+.kpi-card .kpi-lbl{font-size:10.5px;letter-spacing:1.6px}
+.kpi-card .kpi-sub{font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.35}
+.kpi-card .kpi-sub b{color:var(--txt);font-variant-numeric:tabular-nums}
+
+/* ---- preguntas frecuentes ---- */
+.faq-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+.faq-item{background:var(--panel);border-color:var(--line-soft);border-radius:var(--r-md);
+  box-shadow:var(--sh-xs);padding:13px 15px;transition:box-shadow .15s var(--ease)}
+.faq-item:hover{box-shadow:var(--sh-sm)}
+.faq-item .faq-n{font-size:24px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.faq-item .faq-label{font-size:11.5px}
+.faq-item.hi{border-color:#e8d9b4;background:linear-gradient(#fffdf7,#fdf9ef)}
+
+/* ---- barra de titulo de seccion del dashboard ---- */
+.dash-band{display:flex;align-items:baseline;gap:12px;margin:26px 0 13px;flex-wrap:wrap}
+.dash-band h2{font-family:var(--serif);font-size:17px;font-weight:600;margin:0;letter-spacing:-.005em}
+.dash-band .hint{font-size:12px;color:var(--muted)}
+.dash-band .spacer{flex:1}
+
+/* ---- grilla de graficos ----
+ * auto-fit + minmax deja 3 columnas en un monitor de bodega (1600px),
+ * 2 en un portatil y 1 en pantalla angosta, sin media queries. */
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+.chart-grid.wide{grid-template-columns:repeat(auto-fit,minmax(480px,1fr))}
+.chart-card{background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--r-lg);
+  padding:17px 19px 15px;box-shadow:var(--sh-sm);display:flex;flex-direction:column;
+  min-width:0;transition:box-shadow .2s var(--ease)}
+.chart-card:hover{box-shadow:var(--sh-md)}
+.chart-card h3{margin:0;font-family:var(--serif);font-size:14.5px;font-weight:600;
+  letter-spacing:-.005em;display:flex;align-items:center;gap:8px}
+.chart-card .ch-sub{margin:5px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
+.chart-card .ch-body{position:relative;margin-top:13px;flex:1;min-height:0}
+/* Chart.js dimensiona el canvas contra su contenedor. Sin una altura fija el
+ * canvas y el contenedor se persiguen en cada resize y el grafico crece sin
+ * fin, asi que la altura se fija aca y responsive:true solo maneja el ancho. */
+.chart-card .ch-canvas{position:relative;height:216px}
+.chart-card.tall .ch-canvas{height:296px}
+.chart-card .ch-foot{margin-top:11px;padding-top:10px;border-top:1px solid var(--line-soft);
+  font-size:11.5px;color:var(--muted);line-height:1.5;min-height:19px}
+.chart-card .ch-foot b{color:var(--txt)}
+.chart-card .ch-empty{display:flex;align-items:center;justify-content:center;height:100%;
+  color:var(--muted);font-size:12.5px;text-align:center;padding:20px}
+
+/* Pastilla de criterio en el encabezado del grafico (ej. "AV max 0,8") */
+.ch-crit{margin-left:auto;font-family:var(--sans);font-size:10.5px;font-weight:600;
+  letter-spacing:.02em;color:var(--muted);background:var(--panel2);border:1px solid var(--line);
+  border-radius:var(--r-pill);padding:2px 9px;white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* Cajon de lotes que se abre al clickear una barra o una celda */
+.ch-drill{margin-top:11px;padding:11px 13px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:var(--r-md);font-size:12px;line-height:1.9}
+.ch-drill .ch-drill-top{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
+.ch-drill .ch-drill-tit{font-weight:600;font-size:12px}
+.ch-drill .ch-drill-cerrar{margin-left:auto;background:none;border:none;color:var(--muted);
+  cursor:pointer;font-size:15px;line-height:1;padding:0 2px;font-family:inherit}
+.ch-drill .ch-drill-cerrar:hover{color:var(--accent)}
+
+/* ---- heatmap variedad x alarma ----
+ * Tabla y no grid CSS: es una matriz con encabezados de fila y de columna, y
+ * un lector de pantalla la tiene que poder recorrer como lo que es. */
+.hm-wrap{overflow-x:auto;margin-top:2px}
+table.hm{border-collapse:separate;border-spacing:3px;width:auto;min-width:100%;font-size:12px}
+table.hm th,table.hm td{border:none;padding:0;white-space:nowrap;background:transparent}
+table.hm thead th{position:static;text-transform:none;letter-spacing:.01em;font-size:10.5px;
+  color:var(--muted);font-weight:600;text-align:center;vertical-align:bottom;
+  padding:0 2px 5px;line-height:1.25;max-width:74px;white-space:normal}
+/* Maximo de la columna: la escala de color se normaliza por columna, asi que
+ * sin este numero un tono oscuro no dice cuantos lotes son. */
+table.hm thead th .hm-max{display:block;font-weight:400;font-size:9.5px;opacity:.75;
+  font-variant-numeric:tabular-nums;letter-spacing:.02em}
+table.hm tbody th{text-align:left;font-weight:600;font-size:11.5px;color:var(--txt);
+  text-transform:none;letter-spacing:0;padding-right:9px;position:sticky;left:0;
+  background:var(--panel);z-index:2;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+table.hm tbody tr:hover{background:transparent}
+table.hm td.hm-c{padding:0}
+.hm-cell{width:100%;min-width:44px;height:31px;border:1px solid transparent;border-radius:var(--r-sm);
+  font:inherit;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums;
+  cursor:pointer;color:#fff;display:block;transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
+.hm-cell:hover{transform:scale(1.06);box-shadow:var(--sh-sm);border-color:rgba(42,38,34,.18)}
+.hm-cell:focus-visible{outline:none;box-shadow:var(--ring)}
+.hm-cell.v0{background:var(--panel2);color:var(--muted);font-weight:400;cursor:default}
+.hm-cell.v0:hover{transform:none;box-shadow:none;border-color:transparent}
+.hm-cell.sel{box-shadow:0 0 0 2px var(--txt)}
+/* Escala de intensidad. Son cinco pasos discretos y no un degrade continuo
+ * porque el ojo compara escalones mucho mejor que tonos vecinos, y el numero
+ * ya esta impreso en la celda para el caso que haga falta precision. */
+.hm-cell.v1{background:#e7ded4;color:var(--txt)}
+.hm-cell.v2{background:#dcb9a4;color:#5a2a1c}
+.hm-cell.v3{background:#c98363}
+.hm-cell.v4{background:#b3543c}
+.hm-cell.v5{background:#8e2f24}
+.hm-leyenda{display:flex;align-items:center;gap:7px;margin-top:11px;font-size:11px;color:var(--muted)}
+.hm-leyenda .sw{width:20px;height:11px;border-radius:3px;display:inline-block}
 </style>
 </head>
 <body>
@@ -482,9 +769,84 @@
   <section class="view active" id="tab-dashboard">
     <!-- KPIs -->
     <div class="kpi-grid" id="dashKpis">
-      <div class="kpi-card"><div class="kpi-val" id="kpiActivos">—</div><div class="kpi-lbl">Lotes activos</div></div>
-      <div class="kpi-card kpi-bad"><div class="kpi-val" id="kpiVencidos">—</div><div class="kpi-lbl">Frecuencia vencida</div></div>
-      <div class="kpi-card kpi-ok"><div class="kpi-val" id="kpiIdeal">—</div><div class="kpi-lbl">Condición ideal</div></div>
+      <div class="kpi-card kpi-neutral">
+        <div class="kpi-val" id="kpiActivos">—</div>
+        <div class="kpi-lbl">Lotes activos</div>
+        <div class="kpi-sub" id="kpiActivosSub"></div>
+      </div>
+      <div class="kpi-card kpi-bad">
+        <div class="kpi-val" id="kpiVencidos">—</div>
+        <div class="kpi-lbl">Frecuencia vencida</div>
+        <div class="kpi-sub" id="kpiVencidosSub"></div>
+      </div>
+      <div class="kpi-card kpi-ok">
+        <div class="kpi-val" id="kpiIdeal">—</div>
+        <div class="kpi-lbl">Condición ideal</div>
+        <div class="kpi-sub" id="kpiIdealSub"></div>
+      </div>
+      <div class="kpi-card kpi-warn">
+        <div class="kpi-val" id="kpiSo2">—</div>
+        <div class="kpi-lbl">SO₂ bajo objetivo</div>
+        <div class="kpi-sub" id="kpiSo2Sub"></div>
+      </div>
+      <div class="kpi-card kpi-warn">
+        <div class="kpi-val" id="kpiAv">—</div>
+        <div class="kpi-lbl">AV cerca del límite</div>
+        <div class="kpi-sub" id="kpiAvSub"></div>
+      </div>
+    </div>
+
+    <!-- ===== Gráficos =====
+         La banda de título explica de una línea qué se está mirando: sin ese
+         texto un histograma de bandas es un dibujo bonito del que nadie sabe
+         qué decisión sacar.
+
+         Orden de la pestaña: números → gráficos → bandeja de etapas → tablas.
+         Primero cuánto y de qué tipo es el problema, después qué hay que
+         confirmar hoy, y al final el detalle fila por fila. La bandeja es lo
+         único de la pantalla que escribe datos, así que queda después de la
+         lectura y antes del detalle, no arriba de todo. -->
+    <div class="dash-band">
+      <h2>Estado analítico del stock</h2>
+      <span class="hint">Última medición válida de cada lote activo · clic en una barra para ver los lotes</span>
+    </div>
+
+    <div class="chart-grid">
+      <!-- Acidez volátil -->
+      <div class="chart-card">
+        <h3>Acidez volátil<span class="ch-crit" id="chAvCrit"></span></h3>
+        <p class="ch-sub">Agrupada por cuánto margen le queda a cada lote contra <em>su</em> límite (varía por variedad y proyecto).</p>
+        <div class="ch-body"><div class="ch-canvas" data-canvas="chAv"><canvas id="chAv"></canvas></div></div>
+        <div class="ch-drill" id="chAvDrill" style="display:none"></div>
+        <div class="ch-foot" id="chAvPie"></div>
+      </div>
+
+      <!-- SO2 -->
+      <div class="chart-card">
+        <h3>SO₂ libre vs. objetivo</h3>
+        <p class="ch-sub">Diferencia entre el SO₂ libre medido y el que exige el pH de esa misma muestra.</p>
+        <div class="ch-body"><div class="ch-canvas" data-canvas="chSo2"><canvas id="chSo2"></canvas></div></div>
+        <div class="ch-drill" id="chSo2Drill" style="display:none"></div>
+        <div class="ch-foot" id="chSo2Pie"></div>
+      </div>
+
+      <!-- Dispersión pH / SO2 -->
+      <div class="chart-card tall">
+        <h3>Dispersión pH · SO₂ libre</h3>
+        <p class="ch-sub">Cada punto es un lote. La curva punteada es el objetivo: lo que cae debajo necesita corrección.</p>
+        <div class="ch-body"><div class="ch-canvas" data-canvas="chNube"><canvas id="chNube"></canvas></div></div>
+        <div class="ch-foot" id="chNubePie"></div>
+      </div>
+    </div>
+
+    <!-- Heatmap variedad × alarma -->
+    <div class="card" style="margin-top:16px">
+      <h2>Dónde se concentra el problema</h2>
+      <p style="color:var(--muted);font-size:12.5px;margin:-8px 0 14px;line-height:1.5">
+        Lotes con alarma por variedad y tipo de condición. Sirve para distinguir el ruido normal de la vendimia
+        de una partida con un problema propio. Clic en una celda para ver los lotes.
+      </p>
+      <div id="dashHeatmap"></div>
     </div>
 
     <!-- Bandeja de etapas -->
@@ -624,6 +986,12 @@
 
 <div class="overlay" id="overlay"><div class="box" id="overlayBox"></div></div>
 
+<!-- Chart.js (MIT) servido desde el propio repo, no desde un CDN: la app corre
+     en el servidor local de la bodega y se usa con la red caida a menudo. Un
+     <script src="https://cdn..."> dejaria el dashboard en blanco justo ese dia.
+     Para actualizarlo: npm pack chart.js@<version> y copiar dist/chart.umd.js.
+     Va sin type="module" a proposito — el build UMD publica window.Chart. -->
+<script src="js/vendor/chart.umd.js"></script>
 <script>/* Base de la API del modulo: al convivir los tres modulos en un mismo
    sitio, cada uno tiene su propio prefijo. Va como global porque app.js es un
    modulo ES y sus imports no comparten alcance. */

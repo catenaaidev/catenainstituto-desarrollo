@@ -4,6 +4,10 @@
 import { $, esc, escA, DATOS, dashData, registrarVista,
          markDirty, guardar, cargarDashboard, usuarioActual, irALote } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
+import { criteriosEfectivosJS } from './criterios.js';
+import { metricasPorLote, heatmapVariedadAlarma, resumen } from './dash-metricas.js';
+import { prepararGraficos, destruirGraficos, cerrarDrill,
+         graficoAV, graficoSO2, graficoDispersion, pintarHeatmap } from './dash-graficos.js';
 
 const COND_LABELS = {
   fml_no_finalizada:          'FML no terminada',
@@ -97,6 +101,49 @@ async function confirmarTodasLasEtapas(filas){
   if (ok) cargarDashboard();
 }
 
+/* ---------- graficos ----------
+ * Todo el bloque va dentro de un try: un grafico es una ayuda para decidir,
+ * no la fuente de verdad. Si Chart.js no cargo, si un canvas falta o si un
+ * dato viene raro, el dashboard tiene que seguir mostrando las alarmas y la
+ * bandeja de etapas igual, que es de donde sale el trabajo del dia. */
+function renderGraficos(d){
+  const cont = $('dashHeatmap');
+  try {
+    if (!prepararGraficos()){
+      /* Sin Chart.js no hay barras. Se avisa en vez de dejar tres marcos en
+       * blanco: un panel vacio sin explicacion se lee como "no hay lotes con
+       * problemas", que es exactamente la conclusion opuesta a la correcta. */
+      document.querySelectorAll('#tab-dashboard [data-canvas]').forEach(el => {
+        el.innerHTML = '<div class="ch-empty">No se pudo cargar la librería de gráficos ' +
+                       '(js/vendor/chart.umd.js). Las tablas de abajo siguen al día.</div>';
+        el.style.height = 'auto';
+      });
+      return;
+    }
+
+    destruirGraficos();
+    ['chAvDrill', 'chSo2Drill'].forEach(cerrarDrill);
+
+    const datos = DATOS() || {};
+    const filas = metricasPorLote(d, datos);
+
+    graficoAV(filas);
+    graficoSO2(filas);
+    /* La curva de objetivo se dibuja con los criterios por defecto (sin
+     * variedad ni proyecto): es una referencia visual, y cada punto ya viene
+     * coloreado segun SU propio objetivo. */
+    graficoDispersion(filas, criteriosEfectivosJS(datos.config || {}, null, null));
+    pintarHeatmap(heatmapVariedadAlarma(filas), 'dashHeatmap');
+
+    return resumen(filas);
+  } catch (err){
+    console.error('Dashboard: fallaron los gráficos', err);
+    if (cont) cont.innerHTML = '<div class="ch-empty">No se pudieron calcular los gráficos. ' +
+                               'Las tablas de abajo siguen siendo válidas.</div>';
+    return null;
+  }
+}
+
 /* ---------- render ---------- */
 
 export function renderDashboard(){
@@ -112,11 +159,35 @@ export function renderDashboard(){
     return;
   }
 
+  /* ---- Graficos ----
+   * Antes que los KPIs porque devuelve el resumen que estos usan de subtitulo. */
+  const res = renderGraficos(d);
+
   /* ---- KPIs ---- */
   const kpis = d.kpis || {};
+  const total = kpis.total_activos ?? 0;
+  const ent = n => Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+  const pct = n => (total ? Math.round(n * 100 / total) : 0) + ' % del stock';
+
   $('kpiActivos').textContent  = kpis.total_activos  ?? '—';
   $('kpiVencidos').textContent = kpis.vencidos        ?? '—';
   $('kpiIdeal').textContent    = kpis.condicion_ideal ?? '—';
+  $('kpiSo2').textContent      = res ? res.deficitSo2 : '—';
+  $('kpiAv').textContent       = res ? res.avAlta     : '—';
+
+  if (res){
+    $('kpiActivosSub').innerHTML  = `<b>${ent(res.litros)}</b> L en guarda · ${res.variedades} variedad${res.variedades !== 1 ? 'es' : ''}`;
+    $('kpiVencidosSub').textContent = kpis.vencidos ? pct(kpis.vencidos) : 'Todos dentro de frecuencia';
+    $('kpiIdealSub').textContent    = pct(kpis.condicion_ideal ?? 0);
+    /* Los gramos de MBK son la magnitud real del trabajo pendiente: con ese
+     * numero se decide si la corrección se arma hoy o el lunes. */
+    $('kpiSo2Sub').innerHTML = res.deficitSo2
+      ? `Faltan <b>${ent(res.deficitGramos)}</b> g de SO₂ en total`
+      : (res.sinDatoSo2 ? `${res.sinDatoSo2} lote(s) sin datos para evaluar` : 'Todo en objetivo');
+    $('kpiAvSub').textContent = res.avAlta
+      ? 'Al 80 % de su límite o por encima'
+      : (res.sinDatoAv ? `${res.sinDatoAv} lote(s) sin AV medida` : 'Todos con margen');
+  }
 
   /* ---- Alarmas ---- */
   const alarmas = d.alarmas || {};
@@ -252,4 +323,37 @@ export function renderDashboard(){
   });
 }
 
-registrarVista('dashboard', () => renderDashboard());
+/* ---------- navegacion desde los graficos ----------
+ * Un solo listener en la seccion, montado una vez. Los cajones de lotes que
+ * abren las barras y el heatmap se re-crean en cada render, asi que colgarles
+ * un handler a ellos significaria acordarse de sacarlo; delegando en la
+ * seccion, que no se destruye nunca, el problema no existe.
+ *
+ * La bandeja de etapas mantiene su propio listener aparte porque ademas de
+ * navegar confirma etapas y guarda, y no conviene que una operacion de
+ * escritura cuelgue del mismo handler que un simple "ir a". */
+function montarNavegacionGraficos(){
+  const sec = document.getElementById('tab-dashboard');
+  if (!sec || sec.dataset.navGraficos) return;
+  sec.dataset.navGraficos = '1';
+
+  sec.addEventListener('click', e => {
+    const cerrar = e.target.closest('[data-cerrar-drill]');
+    if (cerrar){
+      cerrarDrill(cerrar.dataset.cerrarDrill);
+      sec.querySelectorAll('.hm-cell.sel').forEach(b => b.classList.remove('sel'));
+      return;
+    }
+    /* La bandeja se ocupa de lo suyo: si el clic nacio ahi adentro, no lo
+     * tocamos o el lote se abriria dos veces. */
+    if (e.target.closest('#bandejaEtapasCard')) return;
+    const btn = e.target.closest('[data-iralote]');
+    if (btn && btn.dataset.iralote) irALote(btn.dataset.iralote);
+  });
+
+  /* Los puntos de la nube viven dentro de un <canvas>: no hay elemento DOM
+   * al que delegarle el clic, asi que dash-graficos avisa por evento. */
+  window.addEventListener('lotes:ir', e => { if (e.detail) irALote(e.detail); });
+}
+
+registrarVista('dashboard', () => { montarNavegacionGraficos(); renderDashboard(); });
