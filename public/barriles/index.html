@@ -436,7 +436,10 @@ const API='/barriles/api';</script>
     <div class="tarjeta" id="tarjetaResumenInv" style="display:none;">
       <div class="fila-flex" style="justify-content:space-between;">
         <h2 style="margin:0;">📋 Inventario</h2>
-        <button class="btn" id="barBtnExportar">⬇ Exportar a Excel</button>
+        <span class="fila-flex" style="margin:0; gap:8px;">
+          <button class="btn" id="barBtnExportar" title="Baja lo que estás viendo en la lista: respeta el filtro y la búsqueda.">⬇ Exportar a Excel</button>
+          <button class="btn sec" id="btnExportarTodo" title="Baja un solo archivo con todos los datos de la app: inventario, mapa, palets, órdenes del escáner, historial de lotes y pendientes. Sin filtros.">⬇ Exportar todo</button>
+        </span>
       </div>
       <div class="mini-stats" id="statsInv"></div>
       <div class="filtros-inv">
@@ -1101,10 +1104,26 @@ function fusionarEdiciones(edicionesServidor, edicionesLocales) {
 const FUENTES_DE_LA_APP = ['escaneo-app', 'escaner'];
 
 function fusionarRevisiones(revisionesServidor, revisionesLocales) {
-  const clave = r => String(r.num) + '|' + (r.campo || '');
+  // número+campo no es único: un barril puede tener dos pendientes del mismo campo
+  // (ver pendienteEn). Indexados los dos en la misma entrada del Map ganaba el
+  // último, así que cerrar el primer cartel en el celular marcaba el segundo en el
+  // servidor, y las fechas de cierre se cruzaban. El desempate es el orden de
+  // aparición, que es el mismo en las dos listas: la local ES la del servidor con
+  // los cambios de este dispositivo encima.
+  const contar = new Map();
+  const clave = r => {
+    const k = String(r.num) + '|' + (r.campo || '');
+    const n = contar.get(k) || 0;
+    contar.set(k, n + 1);
+    return k + '|' + n;
+  };
   const ix = new Map((revisionesServidor || []).map(r => [clave(r), r]));
+  contar.clear();   // el ordinal se cuenta de nuevo al recorrer la lista local
   for (const r of (revisionesLocales || [])) {
-    const s = ix.get(clave(r));
+    // una sola vez por vuelta: clave() consume el ordinal, llamarla dos veces
+    // para el mismo pendiente correría la cuenta y desalinearía a los que siguen
+    const k = clave(r);
+    const s = ix.get(k);
     if (s) {
       // con la marca viaja qué campos se aplicaron: sin eso, deshacer desde otro
       // dispositivo no sabría cuáles devolver al valor del Excel
@@ -1123,7 +1142,7 @@ function fusionarRevisiones(revisionesServidor, revisionesLocales) {
       // Los que vienen de las herramientas ('escaneo', 'tanque') sí los
       // regenera la herramienta, así que no se tocan.
       (revisionesServidor || []).push(r);
-      ix.set(clave(r), r);
+      ix.set(k, r);
     }
   }
   return revisionesServidor;
@@ -1679,6 +1698,25 @@ function pendientesDe(num) { return indiceRevisar.get(String(num)) || []; }
 // Los ya revisados siguen en la lista como registro, pero no cuentan ni filtran.
 function hayPendiente(num) { return pendientesDe(num).some(r => !r.revisado); }
 
+// Cuál de los pendientes de un barril es el que se tocó. número+campo NO alcanza:
+// un barril puede tener dos carteles con el mismo campo (la misma orden que pasó
+// dos veces deja dos entradas idénticas, ver invAnotarRevisiones), y un .find()
+// por campo devuelve siempre el primero. Eso hacía que el ✓ Revisado del segundo
+// cartel volviera a marcar el primero: el pendiente no se cerraba nunca y el
+// contador "Para revisar" quedaba clavado (el 1150259 de la bodega).
+//
+// El desempate es la posición del pendiente en la lista del barril, que es el
+// mismo orden en que se pintan los carteles, así que el botón puede viajar con
+// ella. Se valida el campo antes de aceptarla: si la lista cambió entre el pintado
+// y el click, cae al .find() de antes en vez de tocar el pendiente equivocado.
+function pendienteEn(num, campo, i) {
+  const lista = pendientesDe(num);
+  const n = Number(i);
+  const r = (Number.isInteger(n) && n >= 0) ? lista[n] : null;
+  if (r && String(r.campo || '') === String(campo || '')) return r;
+  return lista.find(x => String(x.campo || '') === String(campo || '')) || null;
+}
+
 // ---------- la lista del inventario es una sola ----------
 // Los tanques que se asocian con la pistola no son vasijas aparte: casi todos los
 // números escaneados son filas del inventario vistas de otra manera (y no siempre
@@ -1694,11 +1732,10 @@ function indexarEscaneos() {
   return ix;
 }
 
-function filasInvFiltradas() {
-  // en modo por lote no se importa inventario: el selector está escondido y no filtra
-  const tipo = estado.modoLote ? 'todos' : (($('invTipo') && $('invTipo').value) || 'todos');
-  const txt = ($('filtroInv').value || '').trim().toUpperCase();
-  const solo = $('soloRevisar').checked;
+// La lista entera, una fila por número y sin filtros. La pantalla la filtra
+// después; la exportación completa la usa tal cual, que es justamente por qué
+// esto vive aparte de los filtros del DOM.
+function filasInvTodas() {
   const ixEsc = indexarEscaneos();
 
   // Los escaneados van primero (el último arriba, como en la pantalla de escaneo):
@@ -1721,7 +1758,16 @@ function filasInvFiltradas() {
     .sort((a, b) => ((b[1] && b[1].ts) || 0) - ((a[1] && a[1].ts) || 0))
     .map(([num, esc]) => ({ r: { num, estado: '', marca: '', lote: '', cosecha: '', cap: '' }, esc, fuera: true }));
 
-  return escaneadas.concat(resto, fuera).filter(f => {
+  return escaneadas.concat(resto, fuera);
+}
+
+function filasInvFiltradas() {
+  // en modo por lote no se importa inventario: el selector está escondido y no filtra
+  const tipo = estado.modoLote ? 'todos' : (($('invTipo') && $('invTipo').value) || 'todos');
+  const txt = ($('filtroInv').value || '').trim().toUpperCase();
+  const solo = $('soloRevisar').checked;
+
+  return filasInvTodas().filter(f => {
     if (tipo === 'escaneados' && !f.esc) return false;
     // las filas que no figuran no tienen capacidad: no son ni tanque ni barrica
     if (f.fuera && (tipo === 'tanque50' || tipo === 'barrica')) return false;
@@ -1809,17 +1855,101 @@ function planDePendiente(r) {
   return { etiqueta: 'Aplicar ' + prop, campos: [[base, prop]] };
 }
 
+// ---------- elegir el lote desde un cartel del escáner ----------
+// Los carteles que anota el escáner al aplicar una orden no traen propuesta: el
+// escáner ve que hay un choque de lotes pero no sabe cuál de los dos vale. Hasta
+// ahora la única salida era el "✓ Revisado", que deja la marca y no corrige nada,
+// así que el 1150259 junto cuatro carteles abiertos y ninguno arreglaba la fila.
+// La decisión la tiene que tomar una persona, pero la app puede poner las opciones
+// sobre la mesa: un botón por lote en juego.
+
+// El lote que la orden quería escribir. Los carteles nuevos lo traen guardado; los
+// que ya estaban en la bodega hay que sacarlo del texto del motivo, que es donde
+// vivía toda la información hasta ahora. Solo cuenta en las órdenes de llenado: en
+// un vaciado el lote de la orden es el vino que se saca, no uno para poner.
+function loteOrdenDe(r) {
+  if (r && r.loteOrden) return String(r.loteOrden).trim();
+  const motivo = String((r && r.motivo) || '');
+  if (!/^llenado\b/.test(motivo)) return '';
+  const m = /\blote (.+?): /.exec(motivo);
+  return m ? m[1].trim() : '';
+}
+
+// Los lotes en juego para el barril de un cartel: el que quería poner la orden, el
+// que muestra la fila hoy, y lo que proponen los otros carteles del mismo barril
+// (en el 1150259 el lote bueno era justamente ese tercero, el que no estaba en el
+// choque de dos). El de la fila se lee del inventario y no de lo que el cartel
+// guardó: entre que se anotó el cartel y hoy la fila pudo moverse, y el botón tiene
+// que ofrecer lo que hay, no lo que había.
+function lotesCandidatos(r) {
+  const base = String((r && r.campo) || '').split('-')[0];
+  if (base !== 'estado' && base !== 'lote') return [];
+  const fila = indiceInv.get(String(r && r.num));
+  if (!fila) return [];   // sin fila no hay dónde escribir
+  const loteFila = String(fila.lote == null ? '' : fila.lote).trim();
+  const vistos = new Set(), lotes = [];
+  const sumar = valor => {
+    const v = String(valor == null ? '' : valor).trim();
+    // vaciar no se ofrece acá: es un acto deliberado y tiene su propio botón ⊘
+    if (!v || PROPUESTA_VACIAR.includes(v.toUpperCase())) return;
+    const k = v.toUpperCase();
+    if (vistos.has(k)) return;
+    vistos.add(k);
+    lotes.push(v);
+  };
+  sumar(loteOrdenDe(r));
+  for (const o of pendientesDe(r.num)) if (o !== r) sumar(loteDePropuesta(o.propuesta));
+  sumar(loteFila);
+  // Si el único candidato es el lote que la fila ya tiene, no hay nada que elegir:
+  // ese botón no cambiaría el dato y diría lo mismo que el ✓ Revisado de siempre,
+  // disfrazado de opción. Elegir supone al menos una alternativa real.
+  if (!lotes.some(lote => lote.toUpperCase() !== loteFila.toUpperCase())) return [];
+  // la etiqueta sale de comparar con la fila, no del orden en que se juntaron:
+  // "Dejar" es el lote que ya está puesto, y tocarlo no cambia el dato, lo confirma
+  return lotes.map(lote => ({ lote: lote,
+    etiqueta: (lote.toUpperCase() === loteFila.toUpperCase() ? 'Dejar lote ' : 'Aplicar lote ') + lote }));
+}
+
 // Aplica la propuesta y da el pendiente por revisado de una vez: es la misma
 // decisión, pedir dos clicks sería pedir dos veces lo mismo. Los valores van por
 // la capa de correcciones a mano, así que sobreviven a reimportar el Excel; queda
 // anotado qué campos se tocaron para poder deshacerlos después.
-function aplicarPendiente(num, campo) {
-  const r = pendientesDe(num).find(x => String(x.campo || '') === String(campo || ''));
+function aplicarPendiente(num, campo, i) {
+  const r = pendienteEn(num, campo, i);
   if (!r || r.aplicado) return;   // ya aplicado; para volver atrás está deshacer
   const plan = planDePendiente(r);
   if (!plan) return;
   const tocados = [];
   for (const [c, v] of plan.campos) if (ponerEdicion(num, c, v)) tocados.push(c);
+  r.revisado = true; r.revisadoEl = hoyISO();
+  r.aplicado = { el: hoyISO(), campos: tocados };
+  guardar();
+  dibujarResumenInv();
+}
+
+// Elegir uno de los lotes candidatos. Escribe la fila con la misma semántica que
+// todo lo demás (camposDeLote: pone el lote, deduce la cosecha, y si la vasija
+// figuraba VACIA la llena con litros=capacidad; una MERMO no cambia de estado ni
+// de litros porque alguien la midió) y cierra los otros carteles de lote/estado
+// del barril: si ya se decidió qué vino tiene, los que discutían eso quedaron
+// resueltos, y dejarlos abiertos obligaría a cerrar cuatro carteles a mano para
+// una sola decisión. Se cierran como resueltoPorEscaneo, igual que cuando alguien
+// escanea la vasija, así que deshacer los devuelve a la lista con su botón.
+function aplicarLotePendiente(num, campo, i, lote) {
+  const r = pendienteEn(num, campo, i);
+  if (!r || r.revisado) return;
+  const fila = indiceInv.get(String(num));
+  const val = String(lote == null ? '' : lote).trim();
+  if (!fila || !val) return;
+  const tocados = [];
+  for (const [c, v] of camposDeLote(fila, val)) if (ponerEdicion(num, c, v)) tocados.push(c);
+  // los demás primero: el cartel donde se eligió lleva la marca de aplicado, que
+  // es la que sabe qué campos devolver al Excel si después se deshace
+  for (const o of pendientesDe(num)) {
+    if (o === r || o.revisado) continue;
+    if (!CAMPOS_QUE_VE_EL_ESCANEO.includes(String(o.campo || '').split('-')[0])) continue;
+    o.revisado = true; o.revisadoEl = hoyISO(); o.resueltoPorEscaneo = val;
+  }
   r.revisado = true; r.revisadoEl = hoyISO();
   r.aplicado = { el: hoyISO(), campos: tocados };
   guardar();
@@ -2036,9 +2166,11 @@ function invTandaSaltarTodas() {
 
 // Historial de revisión de un barril: una línea por pendiente, con su botón.
 function celdaHistorial(num) {
-  return pendientesDe(num).map(r => {
+  return pendientesDe(num).map((r, i) => {
     const campo = escapeHtml(r.campo || '');
-    const datos = `data-rev="${escapeHtml(String(r.num))}" data-campo="${campo}"`;
+    // data-i: la posición en la lista del barril, para que dos carteles del mismo
+    // campo no se confundan entre sí al tocarlos (ver pendienteEn).
+    const datos = `data-rev="${escapeHtml(String(r.num))}" data-campo="${campo}" data-i="${i}"`;
     // Un pendiente cerrado no ofrece aplicar su propuesta, se haya cerrado como
     // se haya cerrado. Antes el botón sobrevivía al "sin cambios" para que los
     // marcados con el botón viejo (que solo dejaba la marca) no quedaran sin
@@ -2051,11 +2183,20 @@ function celdaHistorial(num) {
     const aplicar = plan
       ? `<button class="btn sec btn-rev solo-prog" ${datos} data-accion="aplicar">✓ ${escapeHtml(plan.etiqueta)}</button>`
       : '';
+    // Sin propuesta que aplicar, el cartel igual puede ofrecer los lotes en juego
+    // para que la persona elija cuál vale (ver lotesCandidatos).
+    const cands = (!r.revisado && !plan) ? lotesCandidatos(r) : [];
+    const porLote = cands.map(c =>
+      `<button class="btn sec btn-rev solo-prog" ${datos} data-accion="lote" ` +
+      `data-lote="${escapeHtml(c.lote)}">✓ ${escapeHtml(c.etiqueta)}</button>`).join('');
+    const sinCambios = `<button class="link-rev solo-prog" ${datos} data-accion="marcar">sin cambios</button>`;
     const boton = r.revisado
       ? aplicar + `<button class="link-rev solo-prog" ${datos} data-accion="deshacer">deshacer</button>`
       : plan
-        ? aplicar + `<button class="link-rev solo-prog" ${datos} data-accion="marcar">sin cambios</button>`
-        : `<button class="btn sec btn-rev solo-prog" ${datos} data-accion="marcar">✓ Revisado</button>`;
+        ? aplicar + sinCambios
+        : cands.length
+          ? porLote + sinCambios
+          : `<button class="btn sec btn-rev solo-prog" ${datos} data-accion="marcar">✓ Revisado</button>`;
     const comoSeCerro = r.aplicado ? 'aplicado' : r.resueltoPorEscaneo ? 'resuelto por escaneo' : 'revisado';
     const pildora = r.revisado
       ? `<span class="pildora p-revisado">✓ ${comoSeCerro} ${escapeHtml(fechaCorta(r.revisadoEl))}</span>`
@@ -2075,8 +2216,8 @@ function celdaHistorial(num) {
 // dejar el cambio puesto y volver a mostrar el cartel de REVISAR sería mentir dos
 // veces. Si después de aplicar alguien corrigió el campo a mano, esa corrección
 // también vuelve al valor del Excel — es lo mismo que hace el deshacer de la celda.
-function marcarRevisado(num, campo, revisado) {
-  const r = pendientesDe(num).find(x => String(x.campo || '') === String(campo || ''));
+function marcarRevisado(num, campo, revisado, i) {
+  const r = pendienteEn(num, campo, i);
   if (!r) return;
   if (revisado) { r.revisado = true; r.revisadoEl = hoyISO(); }
   else {
@@ -2320,9 +2461,11 @@ function dibujarResumenInv() {
 
   const t = $('tablaPreview');
   t.querySelectorAll('button[data-rev]').forEach(b =>
-    b.addEventListener('click', () => b.dataset.accion === 'aplicar'
-      ? aplicarPendiente(b.dataset.rev, b.dataset.campo)
-      : marcarRevisado(b.dataset.rev, b.dataset.campo, b.dataset.accion === 'marcar')));
+    b.addEventListener('click', () => b.dataset.accion === 'lote'
+      ? aplicarLotePendiente(b.dataset.rev, b.dataset.campo, b.dataset.i, b.dataset.lote)
+      : b.dataset.accion === 'aplicar'
+        ? aplicarPendiente(b.dataset.rev, b.dataset.campo, b.dataset.i)
+        : marcarRevisado(b.dataset.rev, b.dataset.campo, b.dataset.accion === 'marcar', b.dataset.i)));
   t.querySelectorAll('button[data-hist]').forEach(b =>
     b.addEventListener('click', () => barVerHist(b.dataset.hist)));
   t.querySelectorAll('button[data-borrar]').forEach(b =>
@@ -3996,6 +4139,80 @@ function escDeshacer() {
   escFeedbackMostrar('aviso', `↩ Quité <b>${escapeHtml(r)}</b>.`, false);
 }
 
+// ---------- editar una orden ya guardada ----------
+// Hasta ahora una orden guardada era de solo lectura: un número de OT mal tipeado
+// o un barril de más obligaban a borrarla y cargarla de nuevo entera.
+//
+// ¿Se puede editar, y si no, por qué? La decisión vive aparte del cartel que la
+// anuncia: es lo que importa y es lo que se puede testear sin DOM.
+//
+// Una orden ya aplicada al inventario NO se edita. Al aplicarla quedó guardado en
+// aplicado.cambios cómo estaba cada barril antes y después, y esa foto es lo que
+// usa Deshacer para volver atrás con exactitud. Si se le cambia el lote, el tipo o
+// los códigos, la foto pasa a describir una orden que ya no existe: deshacer
+// revertiría a valores que no corresponden o dejaría barriles sin tocar. Primero
+// se deshace, después se edita.
+function escPuedeEditar(o) {
+  if (!o) return { puede: false, motivo: 'no-existe' };
+  if (o.aplicado) return { puede: false, motivo: 'aplicada' };
+  // Marcada a mano como pasada al inventario, pero sin cambios registrados: no hay
+  // foto que romper, así que se edita — pero la marca puede quedar diciendo algo
+  // que ya no es, y eso conviene preguntarlo antes.
+  if (o.marcas && o.marcas.inventario) return { puede: true, aviso: 'marcada' };
+  return { puede: true };
+}
+
+// Los dos botones de abajo cambian de nombre según se esté creando o editando: es
+// lo único que distingue las dos cosas en una pantalla que es la misma.
+function escPintarModoEdicion() {
+  const editando = !!escSesion.editando;
+  $('escBtnGuardar').textContent = editando ? '✓ Guardar cambios' : '✓ Guardar orden';
+  $('escBtnCancelar').textContent = editando ? '✕ Cancelar edición' : '✕ Cancelar';
+}
+
+// Editar es volver a cargar la orden en la planilla de carga: así se corrigen los
+// barriles con las mismas herramientas de siempre (la pistola, la cámara, tipear a
+// mano, la ✕ de cada fila) en vez de tener una segunda lista en otra ventana.
+function escEditarOrden(id) {
+  const o = (estado.escaneos || []).find(x => x.id === id);
+  const v = escPuedeEditar(o);
+  if (!v.puede) {
+    if (v.motivo === 'no-existe') { alert('Esa orden ya no está.'); escDibujarHistorial(); return; }
+    $('modalContenido').innerHTML = `<h3>Orden ${escapeHtml(o.ot || '(sin OT)')}</h3>` +
+      '<p style="color:#ffd180;">Esta orden ya se aplicó al inventario, así que todavía no se puede editar.</p>' +
+      '<p class="nota">Al aplicarla quedó guardado cómo estaba cada barril antes, y eso es lo que usa ' +
+      'Deshacer para volver atrás con exactitud. Si le cambiáramos el lote o los barriles ahora, esa foto ' +
+      'pasaría a describir una orden que ya no existe.</p>' +
+      '<p>Deshacé la aplicación primero y después editala.</p>' +
+      `<div class="acciones-modal"><button class="btn" onclick="escPreviewInventario('${o.id}')">Ir a deshacer</button>` +
+      '<button class="btn sec" onclick="document.getElementById(\'modal\').classList.remove(\'abierto\')">Cerrar</button></div>';
+    $('modal').classList.add('abierto');
+    return;
+  }
+  if (escSesion.codigos.length && escSesion.editando !== id &&
+      !confirm('Tenés una carga sin guardar con ' + escSesion.codigos.length +
+        ' barriles. Si editás esta orden, esa carga se pierde.\n\n¿Seguir igual?')) return;
+  if (v.aviso === 'marcada' &&
+      !confirm('Esta orden figura como pasada al inventario (marca puesta a mano).\n\n' +
+        'Si le cambiás los datos, esa marca puede quedar diciendo algo que ya no es.\n\n¿Editarla igual?')) return;
+  $('modal').classList.remove('abierto');
+  escSesion = { tipo: o.tipo, codigos: o.codigos.slice(), editando: o.id };
+  escLoteManual = true;   // el lote sale de la orden; que no lo pise el automático
+  $('escFecha').value = o.fecha || '';
+  $('escOT').value = o.ot || '';
+  $('escLote').value = o.lote || '';
+  document.querySelectorAll('.esc-tipo').forEach(b => b.classList.toggle('activo', b.dataset.tipo === o.tipo));
+  $('escTituloOp').textContent = ESC_TIPO_LABEL[o.tipo] || '';
+  $('escTipoCam').textContent = ESC_TIPO_LABEL[o.tipo] || '';
+  $('escZona').style.display = 'block';
+  $('escResumen').style.display = 'none';
+  escPintarModoEdicion();
+  escRender();
+  escSetContador();
+  escGuardarBorrador();
+  if ($('escZona').scrollIntoView) $('escZona').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function escGuardar() {
   if (!escSesion.tipo) { alert('Elegí el tipo de operación.'); return; }
   if (!escSesion.codigos.length) { alert('No escaneaste ningún barril todavía.'); return; }
@@ -4014,6 +4231,31 @@ function escGuardar() {
     }
   }
   if (!estado.escaneos) estado.escaneos = [];
+  // Editando: se actualiza la orden en su lugar. Conserva el id (otras pantallas la
+  // referencian por ahí) y la posición en la lista, así el historial no se reordena
+  // solo, y conserva las marcas de trazabilidad, que son de la orden y no de estos
+  // datos: haberla pasado a Lotes sigue siendo cierto después de corregir una fecha.
+  if (escSesion.editando) {
+    const o = estado.escaneos.find(x => x.id === escSesion.editando);
+    if (!o) {
+      alert('Esa orden ya no está: la borraron desde otro dispositivo mientras la editabas.\n\n' +
+        'Lo que cargaste sigue acá. Si lo querés conservar, tocá "Cancelar edición" y guardalo como orden nueva.');
+      return;
+    }
+    o.fecha = fecha || hoyISO();
+    o.ot = ot;
+    o.lote = lote;
+    o.tipo = escSesion.tipo;
+    o.codigos = escSesion.codigos.slice();
+    // el mes se deduce de la fecha (escMesDe); dejar el viejo pegado mandaría la
+    // orden al mes equivocado en el listado de trasegados
+    delete o.mes;
+    guardar();
+    escMostrarResumen(o, true);
+    escLimpiarSesion();
+    escDibujarHistorial();
+    return;
+  }
   const orden = {
     id: 'e' + Date.now(),
     fecha: fecha || hoyISO(),
@@ -4029,11 +4271,13 @@ function escGuardar() {
   escDibujarHistorial();
 }
 
-function escMostrarResumen(o) {
+function escMostrarResumen(o, editado) {
   const n = o.codigos.length;
   const r = $('escResumen');
   r.style.display = 'block';
-  r.innerHTML = `<div class="esc-res-num">✅ ${n} ${n === 1 ? 'barril cargado' : 'barriles cargados'}</div>
+  r.innerHTML = `<div class="esc-res-num">✅ ${editado
+      ? 'Cambios guardados · ' + n + (n === 1 ? ' barril' : ' barriles')
+      : n + (n === 1 ? ' barril cargado' : ' barriles cargados')}</div>
     <div class="esc-res-detalle">Orden <b>${escapeHtml(o.ot || '(sin OT)')}</b> · ${escapeHtml(ESC_TIPO_LABEL[o.tipo])} · Lote ${escapeHtml(o.lote || '—')} · ${escapeHtml(o.fecha)}</div>`;
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -4046,12 +4290,18 @@ function escLimpiarSesion() {
   $('escOT').value = ''; $('escLote').value = '';
   $('escFeedback').style.display = 'none'; $('escFeedback').innerHTML = '';
   $('escTabla').innerHTML = '';
+  escPintarModoEdicion();   // salir de la edición devuelve los botones a su nombre
   escSetContador();
   escBorrarBorrador();
 }
 
 function escCancelar() {
-  if (escSesion.codigos.length && !confirm('¿Cancelar esta orden? Se perderán los ' + escSesion.codigos.length + ' barriles escaneados.')) return;
+  // Cancelar una edición no pierde nada: la orden queda como estaba. Cancelar una
+  // carga nueva sí, así que el aviso no puede ser el mismo.
+  const editando = !!escSesion.editando;
+  if (escSesion.codigos.length && !confirm(editando
+      ? '¿Cancelar la edición? La orden queda como estaba.'
+      : '¿Cancelar esta orden? Se perderán los ' + escSesion.codigos.length + ' barriles escaneados.')) return;
   $('escResumen').style.display = 'none';
   escLimpiarSesion();
 }
@@ -4127,6 +4377,9 @@ function escDibujarHistorial() {
       ${celdaMarcas}
       <td style="white-space:nowrap;">
         <button class="btn sec" style="padding:4px 9px;" onclick="escVerOrden('${o.id}')">👁</button>
+        <button class="btn sec" style="padding:4px 9px;" title="${o.aplicado
+          ? 'ya aplicada al inventario: hay que deshacerla antes de editarla'
+          : 'editar esta orden'}" onclick="escEditarOrden('${o.id}')">✏️</button>
         <button class="btn peligro" style="padding:4px 9px;" onclick="escBorrarOrden('${o.id}')">🗑</button></td>
     </tr>`;
     }).join('');
@@ -4255,7 +4508,16 @@ const INV_EFECTO = { vaciado: 'vaciado', llenado: 'llenado', llenado_vaciado: 'l
 //
 // hoy: fecha ISO de hoy para el freno de ordenes futuras. Se inyecta para que
 // los tests puedan sustituirla sin tocar globals. Por defecto llama a hoyISO().
-function invPlanDeOrden(orden, inventario, hoy) {
+//
+// ediciones: la capa de correcciones a mano (estado.ediciones). Se inyecta por la
+// misma razon que hoy. Una orden NO pisa un campo corregido a mano: aplicarEdiciones()
+// vuelve a escribir esa capa encima en cada reindexar(), asi que el valor que
+// escribiera la orden se perderia en el siguiente repintado — pero quedaria
+// guardado en aplicado.cambios como si hubiera entrado. Eso producia las dos
+// cosas que se vieron en la bodega con el 1150259: la fila "no cambiaba" y despues
+// la orden avisaba "1 barril modificado por otra fuente", siendo que la otra
+// fuente era la correccion a mano de la propia app.
+function invPlanDeOrden(orden, inventario, hoy, ediciones) {
   // hasOwnProperty y no un acceso directo: hay tipos de texto libre en los
   // datos y uno que se llamara "constructor" heredaria algo del prototipo.
   const tipo = String((orden && orden.tipo) || '');
@@ -4273,6 +4535,13 @@ function invPlanDeOrden(orden, inventario, hoy) {
   }
   const ix = new Map();
   for (const r of (inventario || [])) ix.set(String(r.num), r);
+  // numero -> campos que tiene clavados a mano
+  const clavados = new Map();
+  for (const e of (ediciones || [])) {
+    const k = String(e.num);
+    if (!clavados.has(k)) clavados.set(k, new Set());
+    clavados.get(k).add(e.campo);
+  }
   const lote = String(orden.lote == null ? '' : orden.lote).trim();
   const cosechaNueva = efecto === 'llenado' ? invCosechaDeLote(lote, inventario) : null;
   const cambios = [], omitidos = [], yaHechos = [], avisos = [];
@@ -4286,15 +4555,34 @@ function invPlanDeOrden(orden, inventario, hoy) {
     const est = String(r.estado == null ? '' : r.estado).toUpperCase();
     const loteActual = String(r.lote == null ? '' : r.lote).trim();
     const antes = { estado: r.estado, lote: r.lote, litros: r.litros, cosecha: r.cosecha };
+    const pin = clavados.get(num) || null;
+    // Que campos escribiria la orden que esten corregidos a mano con otro valor.
+    // Si la correccion ya dice lo mismo que la orden, no hay nada que respetar.
+    const choque = despues => {
+      if (!pin || !pin.size) return [];
+      return Object.keys(despues).filter(c => pin.has(c) &&
+        String(despues[c] == null ? '' : despues[c]) !== String(antes[c] == null ? '' : antes[c]));
+    };
+    // El barril entero se saltea, no solo el campo: dejar la mitad puesta daria
+    // filas incoherentes (VACIO con 200 litros). Va a omitidos, que es lo que
+    // despues abre el pendiente de revision, asi que el choque no se pierde.
+    const frenaPorEdicion = (choca) => {
+      const qué = choca.join(' y ') + (choca.length > 1 ? ' corregidos' : ' corregido') + ' a mano';
+      avisos.push(num + ': ' + qué + ' — la orden no lo pisa');
+      omitidos.push({ num: num, motivo: qué + ', la orden no lo pisa' });
+    };
     if (efecto === 'vaciado') {
       if (est === 'VACIO') { omitidos.push({ num: num, motivo: 'ya figura VACIO' }); continue; }
+      const despuesVaciado = { estado: 'VACIO', lote: '', litros: 0, cosecha: '' };
+      const chocaV = choque(despuesVaciado);
+      if (chocaV.length) { frenaPorEdicion(chocaV); continue; }
       // I5: aviso cuando el lote del barril no coincide con el de la orden.
       // El barril igual se vacia (semantica aprobada); el aviso es para el operador.
       if (loteActual && lote && loteActual !== lote) {
         avisos.push(num + ': el barril figura con lote ' + loteActual +
           ', la orden es de lote ' + lote + ' — se vacia igual');
       }
-      cambios.push({ num: num, antes: antes, despues: { estado: 'VACIO', lote: '', litros: 0, cosecha: '' } });
+      cambios.push({ num: num, antes: antes, despues: despuesVaciado });
       continue;
     }
     if (est === 'LLENO' || est === 'MERMO') {
@@ -4303,13 +4591,16 @@ function invPlanDeOrden(orden, inventario, hoy) {
       continue;
     }
     const cap = Number(r.cap);
-    if (!cap) avisos.push(num + ': sin capacidad, dejo los litros como estan');
-    if (cosechaNueva === null) avisos.push(num + ': no pude deducir la cosecha del lote ' + (lote || '(vacio)'));
-    cambios.push({ num: num, antes: antes, despues: {
+    const despuesLlenado = {
       estado: 'LLENO',
       lote: lote,
       litros: cap ? cap : r.litros,
-      cosecha: cosechaNueva === null ? r.cosecha : cosechaNueva } });
+      cosecha: cosechaNueva === null ? r.cosecha : cosechaNueva };
+    const chocaL = choque(despuesLlenado);
+    if (chocaL.length) { frenaPorEdicion(chocaL); continue; }
+    if (!cap) avisos.push(num + ': sin capacidad, dejo los litros como estan');
+    if (cosechaNueva === null) avisos.push(num + ': no pude deducir la cosecha del lote ' + (lote || '(vacio)'));
+    cambios.push({ num: num, antes: antes, despues: despuesLlenado });
   }
   return { aplicable: true, cambios: cambios, omitidos: omitidos, yaHechos: yaHechos, avisos: avisos };
 }
@@ -4327,23 +4618,85 @@ function invAnotarRevisiones(orden, omitidos) {
   if (!estado.revisiones) estado.revisiones = [];
   const etiqueta = String(orden.tipo) + ' ' + (orden.ot || '(sin OT)') +
     (orden.lote ? ' lote ' + orden.lote : '');
+  const tipo = String(orden.tipo || '');
+  const esLlenado = Object.prototype.hasOwnProperty.call(INV_EFECTO, tipo) &&
+    INV_EFECTO[tipo] === 'llenado';
   for (const om of (omitidos || [])) {
     const motivo = etiqueta + ': ' + om.motivo;
+    // Un cartel identico ya anotado no se repite, ni siquiera si esta cerrado. La
+    // misma orden puede pasar dos veces por el mismo barril (se aplica, se
+    // deshace, se vuelve a aplicar) y el segundo cartel no agrega informacion:
+    // dice lo mismo, del mismo barril, por la misma orden. Antes el dedup solo
+    // miraba entradas SIN revisar, asi que una vez cerrado el primero cada pasada
+    // sumaba un gemelo — el 1150259 de la bodega quedo con dos.
+    const igual = estado.revisiones.find(r =>
+      String(r.num) === String(om.num) && r.campo === 'estado-escaner' &&
+      r.fuente === 'escaner' && String(r.motivo || '') === motivo);
+    if (igual) continue;
     // Dedup restringido a entradas que este modulo creo (fuente:'escaner').
     // Las entradas de otras fuentes nunca se pisan.
     const prev = estado.revisiones.find(r =>
       String(r.num) === String(om.num) && r.campo === 'estado-escaner' &&
       r.fuente === 'escaner' && !r.revisado);
     if (prev) { prev.motivo = motivo; prev.fecha = hoyISO(); continue; }
-    estado.revisiones.push({ num: String(om.num), campo: 'estado-escaner', motivo: motivo,
-      fuente: 'escaner', fecha: hoyISO(), revisado: false });
+    const nuevo = { num: String(om.num), campo: 'estado-escaner', motivo: motivo,
+      fuente: 'escaner', fecha: hoyISO(), revisado: false };
+    // El lote que la orden queria escribir, para poder ofrecerlo como boton sin
+    // tener que parsear el motivo (ver lotesCandidatos). Solo en los llenados: en
+    // un vaciado el lote de la orden es el vino que se saca, no uno para poner.
+    if (esLlenado && orden.lote) nuevo.loteOrden = String(orden.lote).trim();
+    estado.revisiones.push(nuevo);
   }
+}
+
+// Que barriles de una orden ya aplicada dejaron de mostrar lo que la orden les
+// puso, y por que. Deshacer no los toca (revertirlos pisaria lo que vino despues),
+// asi que lo unico que se hace con esto es avisar — y el aviso tiene que nombrar
+// bien la causa.
+//
+// Dos causas distintas, que antes se anunciaban las dos como "reimportacion de
+// Excel u otra orden":
+//   aMano       — la fila la pisa una correccion a mano, que aplicarEdiciones()
+//                 reescribe en cada reindexar(). Es el caso del 1150259: la orden
+//                 nunca llego a verse en la pantalla. Ahora invPlanDeOrden frena
+//                 antes de guardar el cambio, pero las ordenes aplicadas de antes
+//                 ya tienen el registro fantasma adentro y siguen mostrandolo.
+//   otraFuente  — cambio algo que nadie clavo a mano: reimportar el Excel, otra
+//                 orden posterior, un escaneo.
+// Un barril cuenta como aMano solo si TODOS sus campos divergentes estan
+// corregidos a mano; si ademas se movio otro campo, la causa honesta es la otra.
+function invDivergencias(orden, inventario, ediciones) {
+  const aMano = [], otraFuente = [];
+  const cambios = (orden && orden.aplicado && orden.aplicado.cambios) || [];
+  if (!cambios.length) return { aMano: aMano, otraFuente: otraFuente };
+  const ix = new Map();
+  for (const r of (inventario || [])) ix.set(String(r.num), r);
+  const clavados = new Map();
+  for (const e of (ediciones || [])) {
+    const k = String(e.num);
+    if (!clavados.has(k)) clavados.set(k, new Set());
+    clavados.get(k).add(e.campo);
+  }
+  for (const c of cambios) {
+    const r = ix.get(String(c.num));
+    if (!r) continue;
+    const d = c.despues || {};
+    const dif = [];
+    if (r.estado !== d.estado) dif.push('estado');
+    if (String(r.lote || '') !== String(d.lote || '')) dif.push('lote');
+    if (Number(r.litros) !== Number(d.litros)) dif.push('litros');
+    if (String(r.cosecha || '') !== String(d.cosecha || '')) dif.push('cosecha');
+    if (!dif.length) continue;
+    const pin = clavados.get(String(c.num));
+    (pin && dif.every(campo => pin.has(campo)) ? aMano : otraFuente).push(String(c.num));
+  }
+  return { aMano: aMano, otraFuente: otraFuente };
 }
 
 // Ejecuta el plan sobre el inventario y deja la foto del antes en la orden,
 // que es lo que despues hace posible deshacer con exactitud.
 function invAplicarOrden(orden) {
-  const plan = invPlanDeOrden(orden, estado.inventario);
+  const plan = invPlanDeOrden(orden, estado.inventario, null, estado.ediciones);
   if (!plan.aplicable) return null;
   const ix = new Map();
   for (const r of estado.inventario) ix.set(String(r.num), r);
@@ -4482,21 +4835,21 @@ function escPreviewInventario(id) {
         '<div class="acciones-modal"><button class="btn peligro" onclick="invConfirmarRevertir(\'' + o.id +
         '\')">Sacar la marca</button>' + cerrar + '</div>';
     } else {
-      // Previsualizar cuantos divergieron antes de confirmar.
-      const ix = new Map();
-      for (const r of (estado.inventario || [])) ix.set(String(r.num), r);
-      const divPrev = (o.aplicado.cambios || []).filter(c => {
-        const r = ix.get(String(c.num));
-        if (!r) return false;
-        const d = c.despues;
-        return r.estado !== d.estado || String(r.lote || '') !== String(d.lote || '') ||
-          Number(r.litros) !== Number(d.litros) || String(r.cosecha || '') !== String(d.cosecha || '');
-      });
-      const avisoDiv = divPrev.length
-        ? '<p style="color:#ffd180;">⚠ ' + divPrev.length + ' barril(es) fueron modificados por otra fuente ' +
-          'desde que se aplicó esta orden (reimportación de Excel u otra orden). Esos no se revertirán.</p>'
-        : '';
-      cuerpo = '<p>Se van a revertir <b>' + (o.aplicado.cambios.length - divPrev.length) +
+      // Previsualizar cuantos divergieron antes de confirmar, y por que.
+      const div = invDivergencias(o, estado.inventario, estado.ediciones);
+      const nDiv = div.aMano.length + div.otraFuente.length;
+      const lista = nums => nums.slice(0, 6).join(', ') + (nums.length > 6 ? '…' : '');
+      const avisoDiv =
+        (div.aMano.length
+          ? '<p style="color:#ffd180;">⚠ ' + div.aMano.length + ' barril(es) tienen una corrección a mano ' +
+            'que pisa lo que había puesto esta orden (' + escapeHtml(lista(div.aMano)) + '). ' +
+            'La corrección a mano manda, así que esos no se revertirán.</p>'
+          : '') +
+        (div.otraFuente.length
+          ? '<p style="color:#ffd180;">⚠ ' + div.otraFuente.length + ' barril(es) fueron modificados por otra fuente ' +
+            'desde que se aplicó esta orden (reimportación de Excel u otra orden). Esos no se revertirán.</p>'
+          : '');
+      cuerpo = '<p>Se van a revertir <b>' + (o.aplicado.cambios.length - nDiv) +
         '</b> barriles al estado que tenían antes de aplicar esta orden.</p>' +
         avisoDiv +
         '<div class="acciones-modal"><button class="btn peligro" onclick="invConfirmarRevertir(\'' + o.id +
@@ -4506,7 +4859,7 @@ function escPreviewInventario(id) {
     $('modal').classList.add('abierto');
     return;
   }
-  const plan = invPlanDeOrden(o, estado.inventario);
+  const plan = invPlanDeOrden(o, estado.inventario, null, estado.ediciones);
   if (!plan.aplicable && plan.esFutura) {
     cuerpo = '<p style="color:#ffd180;"><b>La fecha de esta orden (' + escapeHtml(plan.fechaOrden) +
       ') está en el futuro.</b> Esto suele ser una trasposición de día/mes en la importación ' +
@@ -4584,6 +4937,9 @@ function escGuardarBorrador() {
   try {
     localStorage.setItem(CLAVE_ESC_DRAFT, JSON.stringify({
       tipo: escSesion.tipo, codigos: escSesion.codigos,
+      // qué orden se está editando: sin esto, una recarga del navegador en medio de
+      // una edición convertiría los cambios en una orden NUEVA y quedarían dos
+      editando: escSesion.editando || null,
       ot: $('escOT').value, lote: $('escLote').value, fecha: $('escFecha').value, loteManual: escLoteManual,
     }));
   } catch (e) {}
@@ -4594,6 +4950,7 @@ function escRestaurarBorrador() {
   try { d = JSON.parse(localStorage.getItem(CLAVE_ESC_DRAFT)); } catch (e) {}
   if (!d || !d.tipo || !(d.codigos && d.codigos.length)) return;
   escSesion = { tipo: d.tipo, codigos: d.codigos.slice() };
+  if (d.editando) escSesion.editando = d.editando;
   escLoteManual = !!d.loteManual;
   if (d.ot) $('escOT').value = d.ot;
   if (d.lote) $('escLote').value = d.lote;
@@ -4602,6 +4959,7 @@ function escRestaurarBorrador() {
   $('escTituloOp').textContent = ESC_TIPO_LABEL[d.tipo] || '';
   $('escTipoCam').textContent = ESC_TIPO_LABEL[d.tipo] || '';
   $('escZona').style.display = 'block';
+  escPintarModoEdicion();
   escRender();
 }
 
@@ -5021,6 +5379,226 @@ function barExportar() {
   XLSX.writeFile(wb, 'Inventario.xlsx');
 }
 
+// ================== EXPORTAR TODO ==================
+// Un solo Excel con todos los datos de la app, para mirar o compartir. La
+// diferencia con barExportar() es el alcance: ese baja lo que estás viendo en la
+// lista (respeta el filtro y la búsqueda) y este ignora los filtros a propósito.
+//
+// hojasExportTodo() va de datos a datos (estado → hojas), sin tocar el DOM ni
+// SheetJS, para poder verificarla en un test; exportTodo() es el envoltorio que
+// la pasa a XLSX y baja el archivo.
+
+// Una celda del mapa guarda UN valor, que según cómo se cargó el box es el
+// número de la vasija o el lote que ocupa esa posición (en la bodega los 15
+// boxes están cargados por lote). Acá se resuelve celda por celda en vez de
+// confiar en estado.modoLote: si el valor figura en el inventario es una vasija,
+// si no es un lote. Así el Excel sale bien con las dos formas de cargar.
+function celdaEsVasija(est, ixInv, val) {
+  return !est.modoLote && ixInv.has(String(val));
+}
+const celdaOcupada = val => val != null && val !== '' && val !== 'HUECO';
+
+// num -> "Box B · col 1 · Izquierda · fila 2" (o "Palet 1 · col 5"): la posición
+// exacta, y solo cuando el mapa guarda de verdad esa vasija. Los palets siempre
+// guardan el número del tanque (así los busca la app), los boxes depende.
+function posicionPorNumero(est, ixInv) {
+  const ix = new Map();
+  for (const b of (est.boxes || [])) {
+    for (const [clave, val] of Object.entries(b.celdas || {})) {
+      if (!celdaOcupada(val) || !celdaEsVasija(est, ixInv, val) || ix.has(String(val))) continue;
+      const [c, f, l] = String(clave).split('-');
+      const lado = LADO_NOMBRE[l] ? ' · ' + LADO_NOMBRE[l] : '';
+      ix.set(String(val), `${b.nombre} · col ${c}${lado} · fila ${f}`);
+    }
+  }
+  for (const p of (est.palets || [])) {
+    for (const [col, val] of Object.entries(p.celdas || {})) {
+      if (!celdaOcupada(val) || ix.has(String(val))) continue;
+      ix.set(String(val), `${p.nombre} · col ${col}`);
+    }
+  }
+  return ix;
+}
+
+// lote -> { boxes: [nombres], celdas: n }. Con el mapa cargado por lote, esto es
+// lo más preciso que se puede decir de una vasija: en qué boxes está su lote. Un
+// lote ocupa muchas posiciones, así que la posición exacta no existe como dato.
+function boxesPorLote(est, ixInv) {
+  const ix = new Map();
+  for (const b of (est.boxes || [])) {
+    for (const val of Object.values(b.celdas || {})) {
+      if (!celdaOcupada(val)) continue;
+      const reg = celdaEsVasija(est, ixInv, val) ? ixInv.get(String(val)) : null;
+      const lote = barNormLote(reg ? reg.lote : val);
+      if (!lote) continue;
+      if (!ix.has(lote)) ix.set(lote, { boxes: [], celdas: 0 });
+      const e = ix.get(lote);
+      e.celdas++;
+      if (!e.boxes.includes(b.nombre)) e.boxes.push(b.nombre);
+    }
+  }
+  return ix;
+}
+
+// filasInv es lo que devuelve filasInvTodas(): una fila por número, sin filtrar.
+function hojasExportTodo(est, ixInv, filasInv) {
+  const inventario = est.inventario || [];
+  const tanques = est.tanques || [];
+  const boxes = est.boxes || [];
+  const palets = est.palets || [];
+  const ordenes = est.escaneos || [];
+  const revisiones = est.revisiones || [];
+  const posic = posicionPorNumero(est, ixInv);
+  const lotesMapa = boxesPorLote(est, ixInv);
+  const pendientes = new Set(revisiones.filter(v => !v.revisado).map(v => String(v.num)));
+
+  const hojas = [];
+  // Una hoja que quedaría con solo el encabezado no se agrega: un Excel lleno de
+  // hojas vacías se lee como datos perdidos.
+  const agregar = (nombre, filas, cols) => { if (filas.length > 1) hojas.push({ nombre, filas, cols }); };
+
+  // --- Resumen: lo mismo que los contadores de la pantalla, más el mapa ---
+  const cnt = {}; const lotes = new Set();
+  for (const r of inventario) {
+    cnt[r.estado] = (cnt[r.estado] || 0) + 1;
+    if (r.lote) lotes.add(r.lote);
+  }
+  const ocupadas = boxes.reduce((n, b) =>
+    n + Object.values(b.celdas || {}).filter(celdaOcupada).length, 0);
+  const conLoteEnMapa = inventario.filter(r => lotesMapa.has(barNormLote(r.lote))).length;
+  hojas.push({ nombre: 'Resumen', cols: [{ wch: 34 }, { wch: 26 }], filas: [
+    ['Mapa de barriles — todos los datos'],
+    [],
+    ['Exportado el', hoyISO()],
+    ['Inventario importado el', est.fechaInventario || '—'],
+    ['Fecha de corte del inventario', est.inventarioCorte || INV_CORTE_DEFECTO],
+    [],
+    ['Vasijas en el inventario', inventario.length],
+    ['Llenas', cnt['LLENO'] || 0],
+    ['Vacías', cnt['VACIO'] || 0],
+    ['Mermadas', cnt['MERMO'] || 0],
+    ['Lotes distintos', lotes.size],
+    ['Tanques de 50 L', inventario.filter(r => String(r.cap) === '50').length],
+    ['Vasijas asociadas con la pistola', tanques.length],
+    ['Pendientes de revisión', pendientes.size],
+    [],
+    ['Boxes', boxes.length],
+    ['Posiciones ocupadas en boxes', ocupadas],
+    ['Lotes ubicados en el mapa', lotesMapa.size],
+    ['Vasijas cuyo lote está en el mapa', conLoteEnMapa],
+    ['Palets', palets.length],
+    ['Órdenes del escáner', ordenes.length],
+    ['Barriles escaneados en las órdenes', ordenes.reduce((n, o) => n + (o.codigos || []).length, 0)],
+  ] });
+
+  // --- Inventario: la lista entera, cruzada con el mapa ---
+  // Dos columnas y no una, porque son dos cosas distintas: "Posición" es exacta
+  // y solo aparece si el mapa guarda esa vasija; "Boxes del lote" es dónde está
+  // el vino de esa vasija, que es lo único que se puede saber cuando el box está
+  // cargado por lote. Meterlas en una sola columna haría pasar una por la otra.
+  const filasInvHoja = [['Tipo', 'Número', 'Estado', 'Marca', 'Lote', 'Cosecha', 'Litros',
+    'Lote escaneado', 'Fecha escaneo', 'Posición', 'Boxes del lote', 'Pendiente de revisión']];
+  for (const f of filasInv) {
+    const lote = barNormLote(f.r.lote);
+    const enMapa = lote ? lotesMapa.get(lote) : null;
+    filasInvHoja.push([
+      f.fuera ? 'no figura' : (f.r.cap === '' || f.r.cap == null ? '' : f.r.cap + ' L'),
+      f.r.num, f.r.estado || '', f.r.marca || '', f.r.lote || '', f.r.cosecha ?? '', f.r.litros ?? '',
+      f.esc ? (f.esc.lote || '') : '', f.esc ? (f.esc.fecha || '') : '',
+      posic.get(String(f.r.num)) || '',
+      !lote ? '' : (enMapa ? enMapa.boxes.join(', ') : 'sin ubicar'),
+      pendientes.has(String(f.r.num)) ? 'sí' : '']);
+  }
+  agregar('Inventario', filasInvHoja, [{ wch: 10 }, { wch: 12 }, { wch: 9 }, { wch: 20 },
+    { wch: 14 }, { wch: 9 }, { wch: 8 }, { wch: 14 }, { wch: 12 }, { wch: 30 }, { wch: 30 }, { wch: 20 }]);
+
+  // --- Mapa: una fila por celda, con el mismo orden que el export del mapa ---
+  const filasMapa = [['Box', 'Columna', 'Lado', 'Fila', 'Número', 'Estado', 'Lote', 'Marca',
+    'Capacidad', 'Litros', 'Cosecha']];
+  for (const b of boxes) {
+    // ordenar por columna, luego lado (Izq antes que Der) y fila
+    const claves = Object.keys(b.celdas || {}).map(k => k.split('-').map(Number))
+      .sort((a, c) => a[0] - c[0] || a[2] - c[2] || a[1] - c[1]);
+    for (const [c, f, l] of claves) {
+      const v = b.celdas[c + '-' + f + '-' + l];
+      const lado = LADO_NOMBRE[l] || '';
+      if (v === 'HUECO') { filasMapa.push([b.nombre, c, lado, f, '(vacío)', '', '', '', '', '', '']); continue; }
+      // la celda cargada por lote va a la columna Lote, no a la de Número
+      if (!celdaEsVasija(est, ixInv, v)) { filasMapa.push([b.nombre, c, lado, f, '', '', v, '', '', '', '']); continue; }
+      const r = ixInv.get(String(v)) || {};
+      filasMapa.push([b.nombre, c, lado, f, v, r.estado || '', r.lote || '', r.marca || '',
+        r.cap ?? '', r.litros ?? '', r.cosecha ?? '']);
+    }
+  }
+  agregar('Mapa (boxes)', filasMapa, [{ wch: 14 }, { wch: 9 }, { wch: 10 }, { wch: 6 }, { wch: 10 },
+    { wch: 9 }, { wch: 12 }, { wch: 20 }, { wch: 10 }, { wch: 8 }, { wch: 12 }]);
+
+  // --- Lotes en el mapa: el mismo cruce visto al revés, una fila por lote ---
+  const vasijasPorLote = new Map();
+  for (const r of inventario) {
+    const l = barNormLote(r.lote);
+    if (l) vasijasPorLote.set(l, (vasijasPorLote.get(l) || 0) + 1);
+  }
+  const filasLotes = [['Lote', 'Boxes', 'Posiciones', 'Vasijas del inventario con ese lote']];
+  for (const lote of [...lotesMapa.keys()].sort()) {
+    const e = lotesMapa.get(lote);
+    filasLotes.push([lote, e.boxes.join(', '), e.celdas, vasijasPorLote.get(lote) || 0]);
+  }
+  agregar('Lotes en el mapa', filasLotes,
+    [{ wch: 16 }, { wch: 40 }, { wch: 12 }, { wch: 30 }]);
+
+  // --- Palets: los tanques de 50 L viven acá y no en los boxes ---
+  const filasPalets = [['Palet', 'Columna', 'Número', 'Estado', 'Lote', 'Marca']];
+  for (const p of palets) {
+    for (const col of Object.keys(p.celdas || {}).sort((a, b) => Number(a) - Number(b))) {
+      const v = p.celdas[col];
+      if (v === 'HUECO') { filasPalets.push([p.nombre, col, '(vacío)', '', '', '']); continue; }
+      const r = ixInv.get(String(v)) || {};
+      filasPalets.push([p.nombre, col, v, r.estado || '', r.lote || '', r.marca || '']);
+    }
+  }
+  agregar('Palets', filasPalets, [{ wch: 14 }, { wch: 9 }, { wch: 10 }, { wch: 9 }, { wch: 14 }, { wch: 20 }]);
+
+  // --- Órdenes del escáner: una fila por barril, para poder filtrar y hacer
+  // tablas dinámicas. El export de la pestaña Escáner va transpuesto (una
+  // columna por orden) porque imita el formato de la Planilla scaner.
+  const filasEsc = [['Fecha', 'OT', 'Lote', 'Llenado / Vaciado', 'Número']];
+  for (const o of ordenes) {
+    const tipo = ESC_TIPO_EXCEL[o.tipo] || o.tipo || '';
+    for (const cod of (o.codigos || [])) filasEsc.push([o.fecha || '', o.ot || '', o.lote || '', tipo, cod]);
+  }
+  agregar('Órdenes del escáner', filasEsc,
+    [{ wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 18 }, { wch: 12 }]);
+
+  // --- Historial de lotes: por qué vino pasó cada vasija ---
+  const filasHist = [['Número', 'Lote anterior', 'Fecha']];
+  for (const t of tanques) for (const h of (t.hist || [])) filasHist.push([t.num, h.lote || '', h.fecha || '']);
+  agregar('Historial de lotes', filasHist, [{ wch: 12 }, { wch: 14 }, { wch: 12 }]);
+
+  // --- Pendientes de revisión: incluye los ya revisados, como registro ---
+  const filasRev = [['Número', 'Qué revisar', 'Motivo', 'Valor actual', 'Propuesta', 'Fecha', 'Revisado']];
+  for (const v of revisiones) filasRev.push([v.num, v.campo || '', v.motivo || '', v.actual ?? '',
+    v.propuesta ?? '', v.fecha || '',
+    v.revisado ? ('sí' + (v.revisadoEl ? ' · ' + v.revisadoEl : '')) : '']);
+  agregar('Pendientes de revisión', filasRev,
+    [{ wch: 12 }, { wch: 14 }, { wch: 40 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 16 }]);
+
+  return hojas;
+}
+
+function exportTodo() {
+  const hojas = hojasExportTodo(estado, indiceInv, filasInvTodas());
+  // solo el Resumen quiere decir que no hay ni una fila de nada
+  if (hojas.length < 2) { alert('Todavía no hay datos para exportar.'); return; }
+  const wb = XLSX.utils.book_new();
+  for (const h of hojas) {
+    const ws = XLSX.utils.aoa_to_sheet(h.filas);
+    if (h.cols) ws['!cols'] = h.cols;
+    XLSX.utils.book_append_sheet(wb, ws, h.nombre);
+  }
+  XLSX.writeFile(wb, `Mapa de barriles - todo ${hoyISO()}.xlsx`);
+}
+
 // --- OCR del rótulo (tesseract.js, servido localmente desde /ocr) ---
 function ocrObtener() {
   if (ocrWorker) return Promise.resolve(ocrWorker);
@@ -5288,6 +5866,7 @@ $('barBtnVacia').addEventListener('click', () => barMarcarVacia($('barInputTanqu
 $('barInputTanque').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('barInputLote').focus(); } });
 $('barInputLote').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); barAsociarManual(); } });
 $('barBtnExportar').addEventListener('click', barExportar);
+$('btnExportarTodo').addEventListener('click', exportTodo);
 $('barBtnCerrarCam').addEventListener('click', barCerrarCamara);
 $('barBtnCapturar').addEventListener('click', barCapturarRotulo);
 function barTipearTanqueAbrir() {
