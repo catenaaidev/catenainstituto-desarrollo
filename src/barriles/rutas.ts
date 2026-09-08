@@ -68,11 +68,17 @@ export async function rutasBarriles(
   }
 
   // ---------- GET /info ----------
-  // Devolvía las direcciones de red local para conectar el celular. Ahora la
-  // dirección es una sola, pública y fija: la lista vacía hace que la pantalla
-  // oculte esa sección sola.
+  // Devolvía las direcciones de red local para conectar el celular. Acá no hay
+  // red que descubrir: la dirección es una sola, pública y fija, así que `urls`
+  // va vacía.
+  //
+  // `modo` es lo que le permite a la pantalla saber dónde está corriendo. Es el
+  // mismo archivo que el de la bodega (se sincroniza copiándolo), y una lista
+  // vacía sola es ambigua: puede ser "acá no hace falta ninguna IP" o "la PC se
+  // quedó sin WiFi". Sin la marca, la pantalla mandaba al operario a prender un
+  // servidor.py que en la web no existe.
   if (ruta === '/info' && req.method === 'GET') {
-    return json(200, { urls: [] });
+    return json(200, { modo: 'web', urls: [] });
   }
 
   // ---------- GET /backup ----------

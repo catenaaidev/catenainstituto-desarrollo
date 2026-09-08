@@ -246,6 +246,14 @@ const API='/barriles/api';</script>
   .insignia-sync { font-size: .72rem; padding: 2px 9px; border-radius: 10px; background: rgba(255,255,255,.18); }
   .qr-caja { background: #fff; padding: 14px; border-radius: 10px; display: inline-block; }
   .url-grande { font-size: 1.05rem; font-weight: 700; color: var(--vino); word-break: break-all; }
+  /* Conectar el celular se explica distinto segun donde corra la app: en la
+     bodega hay que emparejar por WiFi, en la web alcanza con la direccion y el
+     login. Los dos textos viven en el HTML y se muestra el que corresponde
+     cuando /info dice el modo. Hasta entonces no se muestra ninguno, asi que no
+     llega a verse el equivocado. */
+  #panel-celular [data-modo] { display: none; }
+  #panel-celular[data-modo="local"] [data-modo="local"],
+  #panel-celular[data-modo="web"] [data-modo="web"] { display: revert; }
   ol.pasos { margin: 10px 0 0 20px; font-size: .9rem; line-height: 1.7; }
   @media (max-width: 700px) {
     .celda { width: 46px; height: 46px; font-size: .58rem; }
@@ -727,10 +735,15 @@ const API='/barriles/api';</script>
       <summary>¿Para qué sirve esta pantalla?</summary>
       <div class="cuerpo">
         Sirve para <b>conectar el teléfono</b> y que vea el mismo mapa que la computadora.
-        <ul>
+        <ul data-modo="local">
           <li>Poné el celular en el <b>mismo WiFi</b> que la computadora.</li>
           <li>Abrí la cámara del teléfono y escaneá el <b>código QR</b> de abajo.</li>
           <li>Se abre la app en el celular. Listo.</li>
+        </ul>
+        <ul data-modo="web">
+          <li>Abrí la cámara del teléfono y escaneá el <b>código QR</b> de abajo.</li>
+          <li>La primera vez pide el <b>mail de la bodega</b> y un código de 6 dígitos que llega a ese mail.</li>
+          <li>Se abre la app en el celular. Listo — y anda desde cualquier conexión, no hace falta estar en el WiFi de la bodega.</li>
         </ul>
       </div>
     </details>
@@ -740,15 +753,22 @@ const API='/barriles/api';</script>
     </div>
     <div class="tarjeta">
       <h2>Cómo se usa desde el celular</h2>
-      <ol class="pasos">
+      <ol class="pasos" data-modo="local">
         <li>Conectá el celular al <b>mismo WiFi</b> que esta laptop.</li>
         <li>Escaneá el QR de arriba con la cámara del celular y abrí el enlace en <b>Chrome</b>.</li>
         <li>La primera vez Chrome avisa <i>"La conexión no es privada"</i>: tocá <b>Configuración avanzada → Acceder de todos modos</b>. Es normal — es tu propio servidor local, los datos nunca salen de la bodega.</li>
         <li>Elegí <b>👷 Operario</b> en la pantalla de inicio.</li>
         <li>Tocá <b>📦 Cargar box</b>, elegí el barril o la celda en el mapa (2D o 3D) y cargalo con la pistola, la cámara o escribiendo el lote. Todo aparece al instante en esta laptop.</li>
       </ol>
+      <ol class="pasos" data-modo="web">
+        <li>Escaneá el QR de arriba con la cámara del celular y abrí el enlace en <b>Chrome</b>.</li>
+        <li>Escribí el <b>mail de la bodega</b>. Llega un código de 6 dígitos a ese mail: ponelo y entrás. El teléfono queda recordado, no lo vuelve a pedir cada vez.</li>
+        <li>Elegí <b>👷 Operario</b> en la pantalla de inicio.</li>
+        <li>Tocá <b>📦 Cargar box</b>, elegí el barril o la celda en el mapa (2D o 3D) y cargalo con la pistola, la cámara o escribiendo el lote. Todo aparece al instante en la computadora y en los demás teléfonos.</li>
+      </ol>
       <p class="nota" style="margin-top:10px;">💡 El lector Bluetooth también puede emparejarse directo con el celular: en ese caso escaneás con la pistola y el celular solo muestra el avance.</p>
-      <p class="nota">⚠️ Si el celular no logra conectarse, la primera vez Windows debe haber preguntado si permitís a Python usar la red: hay que aceptar en "redes privadas".</p>
+      <p class="nota" data-modo="local">⚠️ Si el celular no logra conectarse, la primera vez Windows debe haber preguntado si permitís a Python usar la red: hay que aceptar en "redes privadas".</p>
+      <p class="nota" data-modo="web">⚠️ Si pide el código cada vez que entra, es que el navegador borra los datos del sitio al cerrarse: fijate que no esté abierto en una <b>ventana de incógnito</b>.</p>
     </div>
     <div class="tarjeta">
       <h2>Solucionar problemas</h2>
@@ -915,6 +935,30 @@ let hojasLibro = null;          // workbook al elegir archivo
 
 // --- sincronización con el servidor local (si existe) ---
 let modoServidor = false, versionServidor = 0, pushTimer = null, pushEnCurso = false;
+// Dónde corre la app: 'local' es el servidor.py de la bodega, 'web' la plataforma.
+// Lo dice el servidor en /info y cambia dos cosas: cómo se conecta el celular y
+// qué aconsejar cuando el navegador niega la cámara. Arranca en 'local' a
+// propósito: si /info no contesta, se dice lo de siempre y no algo nuevo y
+// equivocado.
+let modoConexion = 'local';
+
+// Pregunta el modo (y, en la bodega, las direcciones de red para el QR).
+async function pedirInfo() {
+  const info = await (await fetch(API+'/info')).json();
+  modoConexion = info.modo === 'web' ? 'web' : 'local';
+  return info;
+}
+
+// El navegador niega la cámara por motivos distintos según dónde corra la app.
+// En la bodega casi siempre es que entraron por http:// y la cámara pide
+// conexión segura. En la web ya se entra por https, así que ese consejo manda a
+// buscar algo que no existe: ahí el motivo real es el permiso del sitio.
+function msgSinCamara() {
+  if (modoConexion === 'web') {
+    return 'Este navegador no permite usar la cámara aquí.\n\nDale permiso al sitio: tocá el candado 🔒 al lado de la dirección → Permisos → Cámara → Permitir, y volvé a intentar.';
+  }
+  return 'Este navegador no permite usar la cámara aquí.\n\nEn el celular, abrí la app con la dirección https:// que aparece en la pestaña 📱 Celular (la cámara requiere conexión segura).';
+}
 // Pieza 2: cuando la pestaña despierta/reconecta hay que bajar el estado fresco
 // ANTES de escribir, para no pisar con una foto vieja.
 let necesitaResync = false;
@@ -1300,6 +1344,8 @@ async function iniciar() {
     if (r.ok) {
       const d = await r.json();
       modoServidor = true; versionServidor = d.version;
+      // No se espera: solo decide textos. Si tarda o falla, queda el modo 'local'.
+      pedirInfo().catch(() => {});
       // Reabrir con datos locales: si quedaron celdas cargadas sin WiFi (local difiere
       // de la última base sincronizada), fusionarlas y subirlas en vez de descartarlas.
       if (localTiene && pbase && typeof pbase.boxes === 'string') {
@@ -3518,7 +3564,7 @@ $('btnSaltarCamara').addEventListener('click', () => {
 async function abrirCamara() {
   if (!sesion) { alert('Primero activá "👆 Cargar tocando" en el mapa y tocá la posición.'); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Este navegador no permite usar la cámara aquí.\n\nEn el celular, abrí la app con la dirección https:// que aparece en la pestaña 📱 Celular (la cámara requiere conexión segura).');
+    alert(msgSinCamara());
     return;
   }
   $('overlayCamara').classList.add('abierto');
@@ -3637,14 +3683,46 @@ function cerrarCamara() {
 }
 
 // ================== QR DE EMPAREJAMIENTO ==================
+
+// Dibuja el QR y el texto de una dirección, y lo deja elegido en el desplegable.
+function pintarQR(u) {
+  $('urlSel').textContent = u;
+  $('qrDibujo').innerHTML = '';
+  new QRCode($('qrDibujo'), { text: u, width: 190, height: 190 });
+}
+
+// En la plataforma la dirección es una sola y no hay red que descubrir. Sale de
+// `location`, no escrita a mano: así el QR no puede quedar viejo si el sitio
+// cambia de dominio. Apunta al módulo y no al portal, para que el operario
+// caiga directo en el mapa como caía antes.
+function dibujarQRWeb(cont) {
+  const u = location.origin + '/barriles/';
+  cont.innerHTML = `
+    <div class="fila-flex" style="align-items:flex-start; gap:24px; flex-wrap:wrap;">
+      <div class="qr-caja"><div id="qrDibujo"></div></div>
+      <div style="min-width:250px; flex:1;">
+        <p style="margin-bottom:6px;">Escaneá este QR con la cámara del celular (o escribí la dirección en Chrome):</p>
+        <p class="url-grande" id="urlSel"></p>
+        <p class="nota" style="margin-top:8px;">🔑 La primera vez pide el <b>mail de la bodega</b> y un código de 6 dígitos que llega a ese mail. Después el teléfono queda recordado.</p>
+        <p class="nota">📶 No hace falta el WiFi de la bodega: entra desde cualquier conexión, también con datos móviles.</p>
+      </div>
+    </div>`;
+  pintarQR(u);
+}
+
 async function dibujarQR() {
   const cont = $('contenidoQR');
+  const panel = $('panel-celular');
   if (!modoServidor) {
+    // Sin servidor solo se puede estar en la bodega: la web no se abre con doble clic.
+    panel.dataset.modo = 'local';
     cont.innerHTML = '<p class="nota">⚠ La app está abierta <b>sin el servidor local</b>, así que el celular no puede conectarse.<br>Cerrá esta ventana y abrí la app con <b>«Iniciar servidor.bat»</b> (carpeta mapa-barriles) y después entrá a <b>http://localhost:8766</b>.</p>';
     return;
   }
   try {
-    const info = await (await fetch(API+'/info')).json();
+    const info = await pedirInfo();
+    panel.dataset.modo = modoConexion;
+    if (modoConexion === 'web') { dibujarQRWeb(cont); return; }
     if (!info.urls || !info.urls.length) { cont.innerHTML = '<p class="nota">No detecté la dirección de red de la PC. ¿Está conectada al WiFi?</p>'; return; }
     const opciones = info.urls.map(u => {
       const ip = u.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
@@ -3665,14 +3743,9 @@ async function dibujarQR() {
           <p class="nota" style="margin-top:8px;">📶 Ambos dispositivos deben estar en el <b>mismo WiFi</b> (no en la red de invitados).</p>
         </div>
       </div>`;
-    const pintar = (u) => {
-      $('urlSel').textContent = u;
-      $('qrDibujo').innerHTML = '';
-      new QRCode($('qrDibujo'), { text: u, width: 190, height: 190 });
-    };
-    pintar(info.urls[0]);
+    pintarQR(info.urls[0]);
     const sel = $('selIP');
-    if (sel) sel.addEventListener('change', () => pintar(sel.value));
+    if (sel) sel.addEventListener('change', () => pintarQR(sel.value));
   } catch (e) {
     cont.innerHTML = '<p class="nota">No pude obtener la dirección del servidor.</p>';
   }
@@ -4967,7 +5040,7 @@ function escRestaurarBorrador() {
 async function escAbrirCamara() {
   if (!escSesion.tipo) { alert('Primero elegí el tipo de operación.'); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Este navegador no permite usar la cámara aquí.\n\nEn el celular, abrí la app con la dirección https:// que aparece en la pestaña 📱 Celular.');
+    alert(msgSinCamara());
     return;
   }
   $('overlayCamaraEsc').classList.add('abierto');
@@ -5040,7 +5113,7 @@ let paletUltimoCod = '', paletUltimoTs = 0, paletCargadosCam = 0;
 async function paletAbrirCamara() {
   if (!sesionTanque || !sesionTanque.destino) { alert('Primero tocá un casillero del palet.'); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Este navegador no permite usar la cámara aquí.\n\nEn el celular, abrí la app con la dirección https:// que aparece en la pestaña 📱 Celular.');
+    alert(msgSinCamara());
     return;
   }
   $('overlayCamaraPalet').classList.add('abierto');
@@ -5813,7 +5886,7 @@ function barDetectado(codigo) {
 
 async function barAbrirCamara() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert('Este navegador no permite usar la cámara aquí.\n\nEn el celular, abrí la app con la dirección https:// que aparece en la pestaña 📱 Celular.');
+    alert(msgSinCamara());
     return;
   }
   $('overlayCamaraBar').classList.add('abierto');

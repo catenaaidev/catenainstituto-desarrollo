@@ -10,6 +10,7 @@
     "tipos": "wrangler types",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verificar:panel-celular": "node scripts/verificar-panel-celular.mjs",
     "migrar:local": "wrangler d1 migrations apply catenainstitute --local",
     "migrar:nube": "wrangler d1 migrations apply catenainstitute --remote",
     "importar:prensas": "node scripts/importar.mjs --modulo prensas  --local --datos datos-origen/prensas-datos.json",
