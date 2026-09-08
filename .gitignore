@@ -14,6 +14,8 @@ datos.json
 *.db-shm
 *.db-wal
 backups/
+# Lo que baja `wrangler d1 execute ... SELECT json` antes de reimportar.
+respaldo-nube-*.json
 
 # Datos de origen para la importacion inicial (no van al repo)
 datos-origen/
