@@ -15,6 +15,7 @@
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { argv, exit } from 'node:process';
+import { decidirFreno } from './freno.mjs';
 
 // ---- Cómo es el documento de cada módulo ----
 // Las rutas usan la sintaxis de json_extract, para poder verificar sin parsear.
@@ -56,6 +57,11 @@ if (!MODULOS[modulo]) {
 }
 if (!remoto && !local) {
   console.error('Falta indicar --local o --remote.');
+  exit(1);
+}
+const freno = decidirFreno(args);
+if (!freno.permitido) {
+  console.error(freno.motivo);
   exit(1);
 }
 if (!rutaDatos || !existsSync(rutaDatos)) {

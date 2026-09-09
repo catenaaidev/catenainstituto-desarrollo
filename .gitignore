@@ -24,3 +24,6 @@ datos-origen/
 # Emails del personal: la plantilla es usuarios.ejemplo.sql
 usuarios.sql
 sembrar.sql
+
+# Snapshots locales del corte (datos de producción — repo público)
+docs/corte/ultimo-estado-local-*.json

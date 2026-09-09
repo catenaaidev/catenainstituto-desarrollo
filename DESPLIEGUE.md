@@ -352,3 +352,31 @@ npx wrangler r2 object get catenainstitute-respaldos/prensas/datos-v00087-....js
 | «no tiene acceso al módulo Prensas» | Falta cargar ese email en `perfiles` (paso 5) |
 | `SQLITE_TOOBIG` al importar | Bajá `TRAMO` en `scripts/importar-prensas.mjs` |
 | Los conteos no coinciden | **No sigas.** Revisá el `datos.json` de origen |
+
+## La reconciliación ocasional del Excel de Lotes
+
+Desde el corte a web-only la fuente de datos es la web. `importar.mjs` sigue
+existiendo para un solo caso: cuando hay que reconciliar el Excel de Lotes,
+que se usa poco y todavía no está integrado a la plataforma.
+
+Es la **única** razón para levantar el freno. Los cuatro pasos, en orden:
+
+1. Exportar de la web con el botón de Excel de Lotes (3 hojas: LOTES, ANALISIS,
+   MOVIMIENTOS).
+2. Reconciliar con los scripts que están en la carpeta local de Lotes
+   (`motor_reconciliacion.py`, `reconciliar_excel.py`).
+3. **Respaldar la nube antes de subir nada.** Es el rollback:
+
+       npx wrangler d1 execute catenainstitute --remote --json --command "SELECT json FROM documento WHERE modulo='lotes'" > respaldo-nube-lotes-<fecha>.json
+
+   El archivo es un array; la versión sale de
+   `JSON.parse(d[0].results[0].json).version`.
+4. Subir, diciendo en voz alta que se pisa la nube:
+
+       node scripts/importar.mjs --modulo lotes --remote --piso-la-web --datos <archivo>
+
+   Tiene que terminar con `✓ Importación verificada`. Si no lo dice, no seguir:
+   el respaldo del paso 3 es el camino de vuelta.
+
+Cuando el Excel se integre a la web, esta sección, los tres scripts de Python y
+el freno de `scripts/freno.mjs` se borran.
