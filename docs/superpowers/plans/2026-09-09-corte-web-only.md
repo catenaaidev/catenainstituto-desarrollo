@@ -764,9 +764,30 @@ movió.
 **Si la prueba de humo no pasó, saltear este paso** y dejar anotado que Barriles
 quedó sin congelar.
 
-Son cuatro, e incluyen los dos instaladores: no están instalados hoy
-(verificado: sin tareas programadas, sin carpeta de Inicio, sin claves en
-`HKCU:\...\Run`), pero correrlos después del corte reviviría el problema.
+Son cuatro, e incluyen los dos instaladores, porque correrlos después del corte
+reviviría el problema.
+
+**Antes de renombrar, dos cosas que descubrimos ejecutando la ola de Prensas y
+Lotes y que el plan original no contemplaba:**
+
+1. **Hay un acceso directo de Inicio y hay que borrarlo o moverlo.** Renombrar
+   los `.bat` no lo desactiva:
+
+   ```powershell
+   $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Mapa de Barriles.lnk"
+   if (Test-Path $lnk) { Move-Item $lnk "$lnk.congelado"; "movido: $lnk" } else { "NO ESTABA" }
+   ```
+
+2. **Verificá si el supervisor está vivo antes de matar el servidor.** En Lotes,
+   `supervisor.pyw` relanzó el servidor después del primer kill: renombrar el
+   archivo en disco no termina el proceso que ya está en memoria.
+
+   ```powershell
+   Get-Process pythonw -ErrorAction SilentlyContinue | Select-Object Id, StartTime, Path
+   ```
+
+   Si hay un `pythonw` de Barriles, hay que terminarlo por su PID además del
+   servidor.
 
 ```powershell
 $barriles = "C:\Users\Bmax\OneDrive - BODEGAS ESMERALDA SA\Escritorio\claude\mapa de barriles\mapa-barriles"
@@ -801,8 +822,16 @@ Get-ChildItem "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup" -Erro
   Where-Object { $_.Name -notmatch '^PS' } | Select-Object Name
 ```
 
-Esperado: las tres consultas vacías. Si aparece algo, quitarlo — un lanzador
-renombrado no frena una tarea programada que apunte directo a `python servidor.py`.
+Esperado, según la verificación real del 2026-09-09:
+
+- **Tareas programadas: ninguna.**
+- **Carpeta de Inicio: `Mapa de Barriles.lnk`** (más `desktop.ini`, que es de
+  Windows). Se maneja en el paso 6 — **no está vacía**, como afirmaba una
+  versión anterior de este plan.
+- **`HKCU:\...\Run`: solo Adobe, OneDrive y Edge.** Nada nuestro.
+
+Si aparece algo más, quitarlo: un lanzador renombrado no frena una tarea
+programada que apunte directo a `python servidor.py`.
 
 - [ ] **Step 8: Confirmar que la nube no cambió mientras se apagaba**
 

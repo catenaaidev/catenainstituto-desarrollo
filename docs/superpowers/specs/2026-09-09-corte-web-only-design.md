@@ -171,10 +171,34 @@ Renombrar a `.bat.congelado`. No se borra nada: el código y el último
 `Restaurar Datos.bat` (en Lotes y en Prensas) **no se renombra**: es la
 herramienta de emergencia y no levanta servidor.
 
-Los dos instaladores de Barriles se congelan aunque no estén instalados, porque
-correrlos después del corte reviviría el problema. Se verificó el 2026-09-09 que
-**no hay arranque automático activo**: cero tareas programadas, carpeta de
-Inicio vacía, `HKCU:\...\Run` sin entradas.
+Los dos instaladores de Barriles se congelan también, porque correrlos después
+del corte reviviría el problema.
+
+**CORRECCIÓN del 2026-09-09 (tarde): sí hay arranque automático, y renombrar los
+`.bat` no alcanza.** Una versión anterior de este spec afirmaba que la carpeta de
+Inicio estaba vacía. Era un error de medición: se leyó una salida en blanco como
+"vacía" sin contar los elementos. La verificación correcta encontró:
+
+```
+%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Mapa de Barriles.lnk
+  → C:\...\mapa de barriles\mapa-barriles\Abrir Mapa de Barriles.bat
+```
+
+Creado el 2026-09-01 19:50. **Ese acceso directo sobrevive al renombrado del
+`.bat`**: apunta a un archivo que ya no existiría, así que no levantaría el
+servidor — pero si alguien deshace el congelado, vuelve a arrancar solo en cada
+login. Hay que **borrarlo o moverlo** al congelar Barriles, no solo renombrar
+los `.bat`.
+
+Lo que sí quedó confirmado: **cero tareas programadas** y `HKCU:\...\Run` sin
+entradas de estas apps (solo Adobe, OneDrive y Edge).
+
+**Y un segundo mecanismo de resurrección, descubierto al ejecutar:**
+`supervisor.pyw` **relanza el servidor**. Renombrar el archivo en disco no mata
+el proceso que ya está en memoria: al matar el servidor de Lotes en el puerto
+8772, el supervisor lo volvió a levantar, y hubo que terminar también el
+`pythonw`. Antes de congelar un módulo hay que verificar si su supervisor está
+vivo.
 
 ### Paso 5 · Cerrar la vía del martillo
 
