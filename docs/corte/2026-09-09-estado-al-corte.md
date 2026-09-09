@@ -13,9 +13,8 @@ fuente. Es el criterio de éxito 5 del spec
 | prensas | 89 | Marcelo | 2026-09-04 12:18:55 |
 
 Fuente: medición directa sobre la base de producción el 2026-09-09.
-Los respaldos JSON de D1 quedaron PENDIENTES (ver sección más abajo).
 
-## En local, al momento de apagar
+## En local, antes de apagar
 
 | modulo | version | de dónde salió |
 |---|---|---|
@@ -28,22 +27,28 @@ ya iba adelante en este módulo, exactamente lo esperado.
 
 ## Archivos guardados
 
-- Último estado local (solo en esta máquina, gitignorados):
+Todos viven **solo en esta máquina**: están gitignorados a propósito porque son
+datos de producción y el repositorio es público. Si el rollback tiene que estar
+disponible en otro lado, hay que copiarlos a mano.
+
+- Respaldo de la nube (la red de rollback), verificado versión por versión:
+  - `respaldo-nube-barriles-2026-09-09-corte.json` (831 809 bytes, versión 2218)
+  - `respaldo-nube-lotes-2026-09-09-corte.json` (1 785 225 bytes, versión 16)
+  - `respaldo-nube-prensas-2026-09-09-corte.json` (750 401 bytes, versión 89)
+- Último estado local:
   - `docs/corte/ultimo-estado-local-barriles-2026-09-09.json` (768 375 bytes, versión 2218)
   - `docs/corte/ultimo-estado-local-lotes-2026-09-09.json` (2 150 450 bytes, versión 16)
   - `docs/corte/ultimo-estado-local-prensas-2026-09-09.json` (929 883 bytes, versión 87)
 
-## Pendiente
+Los tres respaldos de la nube los generó el usuario a mano en `cmd.exe`: el
+clasificador de permisos de Claude Code rechaza `wrangler d1 execute --remote`,
+aunque las credenciales funcionan bien desde la terminal. No es un problema de
+Cloudflare.
 
-Los tres respaldos JSON de D1 (`respaldo-nube-barriles-2026-09-09-corte.json`,
-`respaldo-nube-lotes-2026-09-09-corte.json`, `respaldo-nube-prensas-2026-09-09-corte.json`)
-**no se pudieron generar**: los pasos 1–3 del brief (Tarea 3) usan
-`npx wrangler d1 execute --remote` y el entorno rechazó el permiso.
-
-**La Tarea 5 (apagar los servidores locales) NO debe correr hasta que esos tres
-archivos existan.** El paso 1 de la Tarea 5 los exige como red de rollback. Hay
-que ejecutar los pasos 1–3 del brief de Tarea 3 manualmente (o desde una sesión
-con permisos desbloqueados para wrangler) antes de continuar.
+**Comprobación que no hay que saltear:** un respaldo puede traer `"results": []`
+y pesar poco sin que nadie lo note, dejando la red de rollback vacía. Los tres se
+verificaron abriendo el JSON y comparando la versión de adentro contra la tabla
+de arriba. Coinciden.
 
 ## Lo que había que saber
 
