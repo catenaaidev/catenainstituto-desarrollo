@@ -58,3 +58,77 @@ de arriba. Coinciden.
   Barriles decía `importacion` y Lotes `reconciliacion-excel`: los dos estaban
   al día porque los empujamos nosotros, no porque el equipo los usara. De ahí
   la prueba de humo de la Tarea 4.
+
+## Apagado (Tarea 5) — ola parcial
+
+- **Fecha y hora:** 2026-09-09, tarde
+- **Ola:** Prensas y Lotes únicamente. Barriles quedó sin congelar a propósito
+  (ver más abajo).
+
+### Procesos terminados
+
+| Puerto | PID (medido ahora) | Proceso | Acción |
+|---|---|---|---|
+| 8772 | 15448 | python (servidor Lotes) | `Stop-Process -Id 15448 -Force` |
+| 8787 | 9160 (node/wrangler dev) + workers | workerd relanzado por wrangler | `Stop-Process -Id 9160 -Force` |
+| 8788 | 4596 (node/wrangler dev) + workers | workerd relanzado por wrangler | `Stop-Process -Id 4596 -Force` |
+
+Los workerd en 8787/8788 se relanzaban solos: fue necesario matar el proceso
+padre (`node wrangler-dist/cli.js dev`) para que no volvieran.
+
+**Puertos vivos después del apagado:** 8765 y 8766 (servidor de Barriles,
+PID 1244). Verificado con `Get-NetTCPConnection` tras cada kill.
+
+### Lanzadores congelados (renombrados con sufijo `.congelado`)
+
+- `Abrir Lotes.bat` → `Abrir Lotes.bat.congelado`
+- `Cerrar Lotes.bat` → `Cerrar Lotes.bat.congelado`
+- `Abrir Prensas.bat` → `Abrir Prensas.bat.congelado`
+- `Cerrar Prensas.bat` → `Cerrar Prensas.bat.congelado`
+- `supervisor.pyw` → `supervisor.pyw.congelado`
+
+`Restaurar Datos.bat` en ambas carpetas: no tocado (herramienta de emergencia).
+
+### Barriles: sin congelar — a propósito
+
+La Tarea 4 (prueba de humo de Barriles desde el celular) todavía no se hizo.
+Congelar Barriles antes de esa prueba le sacaría la red de seguridad local al
+único módulo que nunca se usó desde la web en producción. La segunda ola
+(congelar los cuatro lanzadores de Barriles y su `.lnk` de Inicio) espera el
+resultado de la Tarea 4.
+
+**Nota para la segunda ola:** hay un acceso directo en la carpeta de Inicio de
+Windows que apunta a `Abrir Mapa de Barriles.bat`:
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Mapa de Barriles.lnk`
+Este `.lnk` tiene que eliminarse o moverse cuando se ejecute la segunda ola,
+de lo contrario el servidor de Barriles se relanzará en cada inicio de sesión
+aunque sus `.bat` estén congelados.
+
+### Arranque automático — resultado de la verificación
+
+- **Tareas programadas** (`Get-ScheduledTask` con filtro barril/mapa/prensa/lote/
+  servidor/supervisor): **ninguna encontrada**.
+- **Carpeta de Inicio** (`%APPDATA%\...\Startup`): existe `Mapa de Barriles.lnk`
+  que apunta a `Abrir Mapa de Barriles.bat`. No se toca en esta ola (es de
+  Barriles, segunda ola). Los módulos congelados en esta ola (Lotes, Prensas)
+  no tienen acceso directo de Inicio.
+- **Claves HKCU\...\Run**: solo entradas del sistema (Adobe Acrobat, OneDrive,
+  Edge). Ninguna de nuestras apps.
+
+### Paso 8 — verificación de la nube post-apagado
+
+No ejecutado. El clasificador de permisos de Claude Code rechaza
+`wrangler d1 execute --remote` y se instruyó explícitamente no intentarlo por
+vías alternativas. El usuario debe ejecutar esta verificación a mano desde
+`cmd.exe` si lo necesita:
+
+```
+npx wrangler d1 execute catenainstitute --remote --command "SELECT modulo, version, autor, guardado FROM documento ORDER BY modulo"
+```
+
+### Cómo volver atrás
+
+Renombrar los `.bat.congelado` y `.pyw.congelado` quitándoles el sufijo
+`.congelado`. Los datos de la nube están en
+`respaldo-nube-*-2026-09-09-corte.json` (en la raíz del repo, gitignorados) y
+el último estado local en `docs/corte/ultimo-estado-local-*.json`.
