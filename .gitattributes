@@ -1,0 +1,6 @@
+# Librerías de terceros copiadas tal cual: que git no les cambie los finales de
+# línea. Con core.autocrlf=true (lo normal en Windows) los .wasm.js de tesseract
+# se checkoutean con CRLF, o sea distintos byte a byte del archivo que publica
+# npm. Marcarlos -text los deja intactos y hace que los diffs no sean ruido.
+public/barriles/ocr/*.js   -text
+public/barriles/ocr/*.gz   -text binary

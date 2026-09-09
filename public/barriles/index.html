@@ -5599,20 +5599,31 @@ function exportTodo() {
   XLSX.writeFile(wb, `Mapa de barriles - todo ${hoyISO()}.xlsx`);
 }
 
-// --- OCR del rótulo (tesseract.js, servido localmente desde /ocr) ---
+// --- OCR del rótulo (tesseract.js, servido localmente desde ./ocr) ---
 function ocrObtener() {
   if (ocrWorker) return Promise.resolve(ocrWorker);
   if (ocrCargando) return ocrCargando;
   ocrCargando = (async () => {
-    // rutas absolutas: dentro del worker las relativas se resuelven contra /ocr/ y quedarían mal
+    // Tienen que ser URLs absolutas: dentro del worker las relativas se resuelven
+    // contra /ocr/ y quedarían mal. Pero NO pueden ser fijas en "/ocr": en la bodega
+    // la pantalla se sirve desde la raíz y en la web desde /barriles/. Derivarlas de
+    // la página hace que el mismo archivo funcione en los dos lados.
+    const ocrBase = new URL('ocr', document.baseURI).href;
+    // Si el <script> de arriba no cargó, el error nativo es "Tesseract is not defined":
+    // ilegible para el operario, que lo único que necesita saber es que tipee el lote.
+    if (typeof Tesseract === 'undefined') throw new Error('no se pudo cargar el lector de rótulos');
     const w = await Tesseract.createWorker('eng', 1, {
-      workerPath: '/ocr/worker.min.js', corePath: '/ocr', langPath: '/ocr', gzip: true,
+      workerPath: ocrBase + '/worker.min.js', corePath: ocrBase, langPath: ocrBase, gzip: true,
     });
     // los lotes son numéricos (a veces combinados con "+"): limitar el alfabeto mejora mucho la lectura
     await w.setParameters({ tessedit_char_whitelist: '0123456789+' });
     ocrWorker = w; ocrCargando = null;
     return w;
   })();
+  // Si la carga falla (la red se cortó a mitad del diccionario), no dejar cacheada la
+  // promesa rechazada: el operario tiene que poder volver a tocar "Leer rótulo" sin
+  // recargar la pantalla.
+  ocrCargando.catch(() => { ocrCargando = null; });
   return ocrCargando;
 }
 

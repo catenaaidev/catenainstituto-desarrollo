@@ -1,0 +1,83 @@
+{
+  // ⚠️ COPIA DE wrangler.jsonc PARA DESARROLLO LOCAL, SIN EL BLOQUE "ai".
+  //
+  // Con el binding de Workers AI declarado, `wrangler dev` intenta resolverlo
+  // contra la cuenta (es un binding remoto), se topa con Cloudflare Access
+  // delante del Worker publicado y aborta antes de levantar el servidor. Sin el
+  // bloque "ai" el resto de la plataforma se prueba local sin problemas; lo
+  // único que no se puede probar acá es el asistente.
+  //
+  // Se usa con:  npm run dev:sin-ia
+  //
+  // SI AGREGÁS O CAMBIÁS UN BINDING EN wrangler.jsonc, REPLICALO ACÁ.
+  // Este archivo NO se despliega: `npm run deploy` usa wrangler.jsonc.
+  //
+  // Configuración del Worker que sirve la plataforma completa.
+  // Un solo Worker sirve los archivos estáticos (public/) y responde las APIs
+  // de los tres módulos. Reemplaza a los tres servidor.py.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "catenainstitute",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Archivos estáticos: el portal y las pantallas de cada módulo.
+  // run_worker_first lista lo que TIENE que pasar por el Worker: las APIs, y
+  // el index.html de cada módulo (para inyectarle la identidad de Office 365).
+  // Todo lo demás —app.js, fuentes, librerías— lo sirve el CDN directo.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*",
+      "/prensas/api/*",
+      "/barriles/api/*",
+      "/lotes/api/*",
+      "/prensas",
+      "/prensas/",
+      "/prensas/index.html",
+      "/barriles",
+      "/barriles/",
+      "/barriles/index.html",
+      "/lotes",
+      "/lotes/",
+      "/lotes/index.html"
+    ]
+  },
+
+  // Base de datos D1 de la cuenta (creada el 2026-09-01).
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "catenainstitute",
+      "database_id": "28dc2eb1-aa60-4087-9313-003b8bf23014",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Respaldos: snapshots JSON fechados. Crear el bucket con:
+  //   npx wrangler r2 bucket create catenainstitute-respaldos
+  "r2_buckets": [
+    { "binding": "RESPALDOS", "bucket_name": "catenainstitute-respaldos" }
+  ],
+
+
+  // Snapshot diario a las 03:00 UTC (medianoche en Mendoza).
+  "triggers": { "crons": ["0 3 * * *"] },
+
+  "observability": { "enabled": true },
+
+  "vars": {
+    // Zona horaria para todos los cálculos de fecha.
+    "TZ_BODEGA": "America/Argentina/Mendoza"
+
+    // OJO: acá NO va DEV_EMAIL.
+    //
+    // Todo lo que está en "vars" se despliega. Si el email de desarrollo
+    // viajara a producción, cualquiera que entrara al sitio sin pasar por
+    // Access quedaría identificado como ese usuario. Por eso vive en
+    // .dev.vars, que solo existe en la máquina donde se programa y está en
+    // .gitignore. En producción env.DEV_EMAIL queda sin definir y el Worker
+    // exige una identidad real de Access.
+  }
+}

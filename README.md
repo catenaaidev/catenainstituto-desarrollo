@@ -109,6 +109,8 @@ El navegador nunca habla con la base: no tiene credenciales para hacerlo.
 npm install           # una vez
 npm test              # los 167 tests
 npm run dev           # servidor local en :8787
+npm run dev:sin-ia    # idem, pero sin el binding de Workers AI (ver abajo)
+npm run verificar:ocr # lee un rótulo de prueba con el OCR, en Chrome headless
 npm run deploy        # publicar
 npx tsc --noEmit      # verificar tipos
 npx wrangler types    # regenerar tipos tras tocar wrangler.jsonc
@@ -116,6 +118,24 @@ npx wrangler types    # regenerar tipos tras tocar wrangler.jsonc
 
 Para desarrollo local, copiá `.dev.vars.ejemplo` a `.dev.vars`: identifica al
 usuario mientras no hay Access. En producción se ignora.
+
+### `npm run dev` se cae: usá `dev:sin-ia`
+
+El binding `env.AI` es remoto y el Worker publicado está detrás de Cloudflare
+Access, así que `wrangler dev` no puede resolverlo y aborta. `wrangler.dev.jsonc`
+es la misma configuración sin el bloque `"ai"`: sirve para todo menos para probar
+el asistente. **Si agregás un binding a `wrangler.jsonc`, agregalo también ahí.**
+
+Para que las pantallas se entreguen hace falta, una sola vez:
+
+```bash
+npx wrangler d1 migrations apply catenainstitute --local -c wrangler.dev.jsonc
+npx wrangler d1 execute catenainstitute --local -c wrangler.dev.jsonc --command \
+  "INSERT INTO perfiles (email, modulo, rol) VALUES
+   ('dev@local','prensas','admin'),('dev@local','barriles','admin'),('dev@local','lotes','admin')"
+```
+
+Sin esa fila el Worker no encuentra rol para el `DEV_EMAIL` y manda al portal.
 
 ---
 

@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:sin-ia": "wrangler dev -c wrangler.dev.jsonc --port 8788 --local",
+    "verificar:ocr": "node scripts/verificar-ocr.mjs",
     "deploy": "wrangler deploy",
     "tipos": "wrangler types",
     "test": "vitest run",
