@@ -160,7 +160,42 @@ quedó probado de punta a punta: pantalla del celular → API del Worker → D1.
 
 Con esto **cae el gate de la segunda ola**: Barriles ya puede congelarse.
 
-### Lo que queda pendiente para congelar Barriles
+## Segunda ola: Barriles, congelamiento PARCIAL
+
+Ejecutada el 2026-09-09 después de que pasara la prueba de humo. **Parcial a
+propósito**, por decisión del usuario: la zona de la bodega sin cobertura Wi-Fi
+sigue sin resolver y la pantalla de Barriles no tiene service worker, así que
+cerrar la puerta del todo podría dejar al equipo del escáner sin nada.
+
+El criterio fue **matar el camino accidental y conservar el deliberado**:
+
+| Qué | Acción |
+|---|---|
+| Servidor local (8765/8766) | **apagado** (`python servidor.py`, PID 1244; su padre `py.exe` ya no existía) |
+| `Mapa de Barriles.lnk` de Inicio | **movido** a la carpeta del proyecto como `Mapa de Barriles.lnk.congelado` |
+| `Arranque automatico (instalar).bat` | congelado |
+| `Backup semanal (instalar).bat` | congelado |
+| `Abrir Mapa de Barriles.bat` | **intacto a propósito** — escotilla de emergencia |
+| `Iniciar servidor.bat` | **intacto a propósito** — escotilla de emergencia |
+| Los `(quitar).bat`, diagnóstico y firewall | intactos (son herramientas, no arranques) |
+
+Verificado después: **ningún puerto local escuchando** (8765, 8766, 8772, 8787,
+8788), **ningún proceso python vivo**, y la carpeta de Inicio con solo
+`desktop.ini`. Barriles no tenía supervisor `pythonw` — se verificó antes de
+matar, por la lección de Lotes.
+
+**Nota sobre el `.lnk`:** el proyecto trae su propio desinstalador,
+`Arranque automatico (quitar).bat`, que hace exactamente esto. No se usó porque
+hace `Remove-Item` (borra) y termina en `pause` (bloquea una sesión no
+interactiva). Se replicó su lógica moviendo en vez de borrando, para respetar la
+regla de que en este corte nada se borra.
+
+### Para cerrar Barriles del todo, cuando se resuelva el Wi-Fi
+
+1. Congelar `Abrir Mapa de Barriles.bat` e `Iniciar servidor.bat`.
+2. Nada más: el arranque automático ya está desactivado y el servidor apagado.
+
+### Lo que quedaba pendiente para congelar Barriles (hecho arriba, salvo el punto 2)
 
 1. Matar el servidor local (puertos 8765 y 8766). **Verificar antes si hay un
    `pythonw` supervisor vivo**, o relanzará el servidor como pasó con Lotes.
