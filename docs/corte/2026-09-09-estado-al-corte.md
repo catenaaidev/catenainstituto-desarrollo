@@ -76,6 +76,12 @@ de arriba. Coinciden.
 Los workerd en 8787/8788 se relanzaban solos: fue necesario matar el proceso
 padre (`node wrangler-dist/cli.js dev`) para que no volvieran.
 
+El supervisor de Lotes (`supervisor.pyw`, PID 10624 `pythonw`) relanzó el
+servidor en 8772 tras el primer kill. Renombrar el archivo en disco no termina
+el proceso ya en memoria. Se mató el proceso pythonw (PID 10624) y su hijo
+relanzado (PID 12028). **Para la segunda ola (Barriles):** verificar si hay un
+supervisor en memoria antes de congelar.
+
 **Puertos vivos después del apagado:** 8765 y 8766 (servidor de Barriles,
 PID 1244). Verificado con `Get-NetTCPConnection` tras cada kill.
 
