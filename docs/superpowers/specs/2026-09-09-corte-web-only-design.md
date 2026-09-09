@@ -34,6 +34,42 @@ Todo lo de esta tabla está medido, no inferido.
 **No hay nada que portar y no hay ningún dato que migrar.** El corte es una
 operación de apagado y limpieza, no de desarrollo.
 
+### Los datos: verificado que la nube no está atrás
+
+Consulta a D1 y al estado local, el 2026-09-09:
+
+| Módulo | Nube (`documento`) | Local | Coincide |
+|---|---|---|---|
+| barriles | v2218, autor `importacion` | v2218 (consultado al server vivo en `:8766/api/version`) | sí |
+| lotes | v16, autor `reconciliacion-excel`, 08/09 16:38:47 | `meta.version` 16, mismo autor y misma fecha | sí |
+| prensas | v89, autor **`Marcelo`**, 04/09 12:18:55 | — | la web va adelante |
+
+**Ningún dato local es más nuevo que la nube.** El `datos.json` de Lotes tiene
+fecha de archivo 08/09 16:49:38, once minutos posterior al `guardado` de la web,
+pero su `meta.version` interno es el mismo: el archivo se reescribió, no se
+editó.
+
+### El riesgo no está en los datos, está en la adopción
+
+La columna `autor` dice algo que conviene no pasar por alto:
+
+- **prensas** → `Marcelo`. Una persona guardando desde la web. El módulo tiene
+  uso real.
+- **lotes** → `reconciliacion-excel`. Es el script.
+- **barriles** → `importacion`, con `guardado` vacío. Es la importación.
+
+O sea: **Barriles y Lotes están al día porque los empujamos nosotros, no porque
+el equipo los esté usando.** Nadie escribió esos dos módulos desde la web
+todavía.
+
+Eso no es un riesgo de pérdida de datos —el corte es seguro— pero mueve el
+riesgo de lugar. Apagar Barriles significa que el equipo del escáner va a usar
+la web **por primera vez, en producción, sin ensayo**. Y es justo el módulo con
+los dos problemas conocidos sin resolver: la zona sin Wi-Fi y la cola de
+pendientes que no distingue una sesión de Access vencida de un corte de red.
+
+De ahí el paso 0.5.
+
 ### Nota metodológica
 
 Una revisión anterior de este spec afirmaba que el dashboard de Lotes estaba
@@ -64,14 +100,30 @@ Es uno solo para los tres módulos, y **no incluye importar nada**.
 npx wrangler d1 execute catenainstitute --remote --command "SELECT modulo, version, autor, guardado FROM documento ORDER BY modulo"
 ```
 
-Comparar cada `guardado` con la fecha de modificación del `datos.json` local
-correspondiente. Se espera que la web sea más nueva en los tres. **Si algún
-módulo tiene local más nuevo, ese módulo se detiene y se resuelve aparte** —
-nunca importando a ciegas.
+Comparar cada `guardado` con el estado local: `meta.version` del `datos.json`
+para Lotes y Prensas, y `:8766/api/version` para Barriles (el `.db` leído con
+herramientas da un espejo viejo del sandbox; la verdad es el HTTP del server).
+
+**Corrido el 2026-09-09: los tres coinciden**, tabla arriba. Si en el momento
+del corte alguno tuviera local más nuevo, ese módulo se detiene y se resuelve
+aparte — nunca importando a ciegas.
 
 Este paso es de confirmación, no de decisión: la decisión ya está tomada (no se
 importa). Sirve para dejar registro de en qué versión quedó cada módulo al
 momento del corte.
+
+### Paso 0.5 · Prueba de humo de Barriles desde un celular
+
+**Solo para Barriles, y antes de congelarlo.** Es el único módulo que nadie usó
+nunca desde la web y el que tiene los dos problemas conocidos sin resolver.
+
+Desde un celular del equipo, sobre la web y con lo local todavía disponible como
+red: entrar, escanear un rótulo (OCR), mover un barril, guardar, y confirmar que
+el cambio aparece en la web y que la `version` subió y el `autor` ya no dice
+`importacion`.
+
+Si eso no funciona, **Barriles no se congela**: se arregla primero. Prensas y
+Lotes se pueden congelar igual, no dependen de esto.
 
 ### Paso 1 · Respaldar la nube
 
@@ -218,4 +270,7 @@ Nada de esto bloquea el corte y no se hace ahora:
    explícita.
 4. Existe `CLAUDE.md` en el repo web y la memoria del proyecto ya no describe
    flujos locales.
-5. Queda registrado en qué `version` quedó cada módulo el día del corte.
+5. Queda registrado en qué `version` quedó cada módulo el día del corte
+   (al 2026-09-09: barriles v2218, lotes v16, prensas v89).
+6. La prueba de humo de Barriles pasó, y `documento.autor` de barriles ya es una
+   persona y no `importacion`.
