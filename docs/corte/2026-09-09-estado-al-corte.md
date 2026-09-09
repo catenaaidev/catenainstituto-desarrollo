@@ -121,16 +121,26 @@ aunque sus `.bat` estén congelados.
 - **Claves HKCU\...\Run**: solo entradas del sistema (Adobe Acrobat, OneDrive,
   Edge). Ninguna de nuestras apps.
 
-### Paso 8 — verificación de la nube post-apagado
+### Paso 8 — verificación de la nube post-apagado: OK
 
-No ejecutado. El clasificador de permisos de Claude Code rechaza
-`wrangler d1 execute --remote` y se instruyó explícitamente no intentarlo por
-vías alternativas. El usuario debe ejecutar esta verificación a mano desde
-`cmd.exe` si lo necesita:
+Ejecutado por el usuario a mano en `cmd.exe`, porque el clasificador de
+permisos de Claude Code rechaza `wrangler d1 execute --remote`:
 
 ```
 npx wrangler d1 execute catenainstitute --remote --command "SELECT modulo, version, autor, guardado FROM documento ORDER BY modulo"
 ```
+
+Resultado, **idéntico al de antes del apagado**:
+
+| modulo | version | autor | guardado |
+|---|---|---|---|
+| barriles | 2218 | importacion | (vacío) |
+| lotes | 16 | reconciliacion-excel | 2026-09-08 16:38:47 |
+| prensas | 89 | Marcelo | 2026-09-04 12:18:55 |
+
+**La nube no cambió mientras se apagaban los servidores locales.** Ni el
+apagado ni el congelado tocaron un dato. Los respaldos siguen siendo un
+rollback válido para este estado exacto.
 
 ### Cómo volver atrás
 
