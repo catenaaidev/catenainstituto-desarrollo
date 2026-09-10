@@ -148,6 +148,18 @@
   tr.crit td:first-child{box-shadow:inset 3px 0 0 var(--nook)}
   tr.venc td{background:#faf2e0}
   tr.venc td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+  /* ---- lote sin litros: la fila entera se atenua ----
+   * La opacidad va en el <tr> y no en cada <td> a proposito. Con opacity por
+   * celda, el fondo opaco de la columna Lote fija (#tLotes tbody
+   * td[data-k="lote"]) se volveria translucido y al scrollear horizontal se
+   * verian las otras columnas pasando por debajo. En el <tr> la fila se pinta
+   * como un grupo, asi que esa celda sigue tapando a las de su propia fila.
+   * Se compone con .crit y .venc: un lote vacio con alarmas sigue saliendo
+   * rojo, solo que mas suave.
+   * Vuelve a opacidad plena al pasar por encima o al editar una celda
+   * (focus-within): la fila esta atenuada, no deshabilitada. */
+  tr.vacio{opacity:.45}
+  tr.vacio:hover,tr.vacio:focus-within{opacity:1}
   /* ---- separador de lote (Analisis agrupado) ---- */
   tr.analisis-separador td{background:var(--panel2);font-weight:600;padding:6px 9px}
   tr.analisis-separador:hover td{background:var(--panel2)}
@@ -161,6 +173,7 @@
   .legend-inline .sw{display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:2px}
   .legend-inline .sw.crit{background:#fbeeeb;border-left:3px solid var(--nook)}
   .legend-inline .sw.venc{background:#faf2e0;border-left:3px solid var(--warn)}
+  .legend-inline .sw.vacio{background:var(--panel2);border:1px solid var(--line);opacity:.45}
   /* ---- pill ---- */
   .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
   .pill.bad{background:#f6e4e1;color:#9e3328;border:1px solid #ecccc6}
@@ -188,6 +201,15 @@
   .mfilt-btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;cursor:pointer;white-space:nowrap}
   .mfilt-btn:hover{border-color:var(--accent)}
   .mfilt-btn.active{border-color:var(--accent);color:var(--accent);font-weight:600}
+  /* ---- filtro segmentado (Todos | Llenos | Vacios) ----
+   * Tres opciones excluyentes, siempre a la vista: no hace falta abrir un panel
+   * para saber cual esta puesta. El estado lo lleva aria-pressed, que ademas es
+   * lo que anuncia un lector de pantalla. */
+  .segm{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .segm button{background:var(--panel2);color:var(--muted);border:none;border-left:1px solid var(--line);padding:7px 12px;font-size:13px;font-family:inherit;cursor:pointer}
+  .segm button:first-child{border-left:none}
+  .segm button:hover{color:var(--txt)}
+  .segm button[aria-pressed="true"]{background:var(--panel);color:var(--accent);font-weight:600}
   .mfilt-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:280px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;display:none}
   .mfilt-panel.open{display:block}
   .mfilt-search{width:100%;box-sizing:border-box;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:13px;font-family:inherit;margin-bottom:6px}
@@ -908,6 +930,16 @@ table.hm td.hm-c{padding:0}
     <div class="toolbar">
       <input class="txt" id="buscaLotes" placeholder="🔎 Buscar por lote…" style="min-width:180px">
       <div class="mfilt-bar" id="fltLotesBar"></div>
+      <!-- Llenado: los lotes en 0 litros no son "cerrados" (23 de los 55 siguen
+           en ingreso/FA/FML/crianza), por eso no alcanza con el filtro Etapa. -->
+      <div class="segm" id="fltLlenado" role="group" aria-label="Filtrar por llenado">
+        <button type="button" data-llenado="todos"  aria-pressed="true"
+          title="Mostrar todos los lotes">Todos</button>
+        <button type="button" data-llenado="llenos" aria-pressed="false"
+          title="Solo los lotes con litros">Llenos</button>
+        <button type="button" data-llenado="vacios" aria-pressed="false"
+          title="Solo los lotes en 0 litros">Vacíos</button>
+      </div>
       <button class="btn" id="btnLimpiarFltLotes">🧹 Limpiar filtros</button>
       <!-- Anchos de columna (subsistema J). El de restablecer lo muestra
            anchos-cols.js solo cuando hay algun ancho tocado. -->
@@ -923,6 +955,8 @@ table.hm td.hm-c{padding:0}
       <span class="sw crit"></span> Lote con alarmas (NO OK / sin análisis / vencido)
       &nbsp;·&nbsp;
       <span class="sw venc"></span> Frecuencia vencida (&gt; días permitidos sin análisis)
+      &nbsp;·&nbsp;
+      <span class="sw vacio"></span> Lote sin litros (fila atenuada)
     </div>
     <div class="scroll tall"><table id="tLotes"></table></div>
   </section>
