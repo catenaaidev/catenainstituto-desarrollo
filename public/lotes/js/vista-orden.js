@@ -5,7 +5,7 @@ import { $, esc, escA, num, DATOS, dashData, dashLoading, cargarDashboard,
          registrarVista } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
 import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija,
-         motivoDeFila } from './orden-filas.js';
+         motivoDeFila, vasijaDeFila, litrosDeFila } from './orden-filas.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
 import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
@@ -111,8 +111,8 @@ function _otBuildRows(){
     return {
       lote:       String(l.lote ?? ''),
       variedad:   l.variedad || '',
-      vasija:     info ? (info.vasija_actual || '') : '',
-      litros:     info ? (info.litros_actuales != null ? String(info.litros_actuales) : '') : '',
+      vasija:     vasijaDeFila(info),
+      litros:     litrosDeFila(info),
       motivo:     motivoDeFila(cls, fuente),
       recipiente: _otRecipiente,
       cantidad:   _otCantidad,

@@ -81,6 +81,56 @@ export function motivoDeFila(cls, fuente){
   return '—';
 }
 
+/* Envases chicos que pueden venir mezclados con el tanque en vasija_actual.
+ * El texto real de la bodega escribe el mismo envase de cuatro formas
+ * ('Barrica', 'Barricas', 'barricas', 'BARRICAS') y el tonel con y sin espacio
+ * ('t50', 'T50', 'T 200'), asi que la comparacion es case-insensitive y tolera
+ * el espacio.
+ *
+ * OJO: la unica forma de distinguir el tonel de 500 L de un tanque es el
+ * nombre. Un tanque que se llamara 'T 500' caeria aca por error y se
+ * descartaria. Hoy no existe -- los tanques son de tres digitos (140, 177,
+ * 203...) -- pero si algun dia aparece, esta es la linea que lo rompe. */
+const ENVASE_CHICO = /^(barricas?|t\s*(?:50|200|500))$/i;
+
+/* Codigo del tanque dentro de vasija_actual: 'H 170 + Barricas' -> 'H 170'.
+ * El que sale a hacer la ronda va al tanque, y que el lote ademas tenga dos
+ * barricas guardadas en otro lado no le sirve para encontrarlo. */
+export function tanqueDeVasija(texto){
+  const t = String(texto ?? '').trim();
+  if (t === '') return '';
+
+  const partes  = t.split('+').map(s => s.trim()).filter(s => s !== '');
+  const tanques = partes.filter(p => !ENVASE_CHICO.test(p));
+
+  /* Si al descartar no quedo nada, el texto no nombra ningun tanque: se
+   * devuelve entero. Preferimos mostrar de mas antes que una celda vacia. */
+  return tanques.length ? tanques.join(' + ') : t;
+}
+
+/* Texto de la columna "Vasija" de la orden. */
+export function vasijaDeFila(info){
+  if (!info) return '';
+  const texto = String(info.vasija_actual || '').trim();
+  /* Manda el numero, no el texto: hay lotes ('P 147', 'P 149') cuyo
+   * vasija_actual quedo con un codigo de tanque viejo pero ya no tienen
+   * litros ahi. A esos no se les toca el texto. */
+  return numPositivo(info.vasija_grande) > 0 ? tanqueDeVasija(texto) : texto;
+}
+
+/* Texto de la columna "Litros" de la orden: '2600 de 3050' cuando el lote
+ * reparte el vino entre el tanque y las barricas, y un solo numero cuando no
+ * hay nada que aclarar. */
+export function litrosDeFila(info){
+  if (!info) return '';
+  const tanque = numPositivo(info.vasija_grande);
+  const total  = info.litros_actuales;
+
+  if (total == null || total === '') return tanque > 0 ? String(tanque) : '';
+  if (tanque > 0 && Number(total) !== tanque) return `${tanque} de ${total}`;
+  return String(total);
+}
+
 /* Campos que mira el buscador de texto libre: los mismos cuatro que el usuario
  * ve en la grilla. Litros queda afuera a proposito: es numerico y buscar '100'
  * traeria 100, 1000 y 2100 juntos, que no es lo que nadie espera al tipear. */

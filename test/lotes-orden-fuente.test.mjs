@@ -9,7 +9,8 @@
  * estos tests fijan que sin ese argumento nada de lo viejo cambie.
  */
 import { describe, it, expect } from 'vitest';
-import { clasificarLote, pasaFuente, motivoDeFila } from '../public/lotes/js/orden-filas.js';
+import { clasificarLote, pasaFuente, motivoDeFila,
+         tanqueDeVasija, vasijaDeFila, litrosDeFila } from '../public/lotes/js/orden-filas.js';
 
 /* Fila del dashboard al dia: ni vencida, ni proxima, ni con alarmas. Sirve para
  * probar que la ronda de tanques la trae igual. */
@@ -92,6 +93,87 @@ describe('motivoDeFila', () => {
     expect(motivoDeFila(clasificarLote(AL_DIA, null), 'todos')).toBe('—');
     // Un lote con tanque visto desde otra fuente tampoco dice "Ronda de tanques".
     expect(motivoDeFila(clasificarLote(AL_DIA, { vasija_grande: 3500 }), 'todos')).toBe('—');
+  });
+});
+
+describe('tanqueDeVasija', () => {
+  it('deja pasar el codigo de tanque que ya viene solo', () => {
+    // Las 18 formas que aparecen asi en la bodega: con y sin espacio, cinco letras.
+    for (const t of ['T 140', 'P145', 'H 172', 'E167', 'E 169', 'T203', 'H175', 'F163'])
+      expect(tanqueDeVasija(t)).toBe(t);
+  });
+
+  it('descarta los envases chicos y deja el tanque', () => {
+    // Los cinco mixtos reales de datos-origen.
+    expect(tanqueDeVasija('H 170 + Barricas')).toBe('H 170');
+    expect(tanqueDeVasija('F163 + Barricas')).toBe('F163');
+    expect(tanqueDeVasija('T 177 + t200')).toBe('T 177');
+    expect(tanqueDeVasija('H 183 + t200')).toBe('H 183');
+    expect(tanqueDeVasija('H184 + t50')).toBe('H184');
+  });
+
+  it('no se deja enganar por las mayusculas ni por el singular', () => {
+    // 'Barrica', 'Barricas', 'barricas' y 'T50' conviven en los datos.
+    expect(tanqueDeVasija('H174 + Barrica')).toBe('H174');
+    expect(tanqueDeVasija('H174 + barricas')).toBe('H174');
+    expect(tanqueDeVasija('H174 + T50')).toBe('H174');
+    expect(tanqueDeVasija('H174 + T 200')).toBe('H174');
+  });
+
+  it('devuelve el texto entero si al descartar no queda nada', () => {
+    // Preferimos mostrar de mas antes que dejar la celda vacia: si el texto
+    // dice puras barricas, el numero de tanque no esta escrito en ningun lado.
+    expect(tanqueDeVasija('Barricas + t50')).toBe('Barricas + t50');
+    expect(tanqueDeVasija('Barricas')).toBe('Barricas');
+    expect(tanqueDeVasija('t200 + t50')).toBe('t200 + t50');
+  });
+
+  it('devuelve cadena vacia para un texto vacio', () => {
+    for (const v of ['', '   ', null, undefined]) expect(tanqueDeVasija(v)).toBe('');
+  });
+
+  it('conserva los dos codigos si el lote nombra mas de un tanque', () => {
+    expect(tanqueDeVasija('H 170 + P145 + Barricas')).toBe('H 170 + P145');
+  });
+});
+
+describe('vasijaDeFila', () => {
+  it('recorta al tanque solo cuando el lote tiene litros de tanque', () => {
+    expect(vasijaDeFila({ vasija_actual: 'H 170 + Barricas', vasija_grande: 2600 })).toBe('H 170');
+  });
+
+  it('deja el texto completo en el lote sin tanque', () => {
+    // 'P 147' y 'P 149' son lotes cuyo texto quedo desactualizado: parecen
+    // tanque pero no tienen litros ahi. No se tocan.
+    expect(vasijaDeFila({ vasija_actual: 'Barricas + t50', vasija_grande: 0 })).toBe('Barricas + t50');
+    expect(vasijaDeFila({ vasija_actual: 'P 147' })).toBe('P 147');
+  });
+
+  it('no explota sin lote ni sin texto', () => {
+    expect(vasijaDeFila(null)).toBe('');
+    expect(vasijaDeFila({ vasija_grande: 2600 })).toBe('');
+  });
+});
+
+describe('litrosDeFila', () => {
+  it('muestra tanque y total cuando el lote tambien tiene barricas', () => {
+    // Lote 26140: H 170 con 2600 L mas dos barricas de 225.
+    expect(litrosDeFila({ vasija_grande: 2600, litros_actuales: 3050 })).toBe('2600 de 3050');
+  });
+
+  it('muestra un solo numero cuando el tanque es todo el lote', () => {
+    // '7500 de 7500' seria ruido en una columna angosta.
+    expect(litrosDeFila({ vasija_grande: 7500, litros_actuales: 7500 })).toBe('7500');
+  });
+
+  it('deja el total tal cual en el lote sin tanque', () => {
+    expect(litrosDeFila({ cap225: 4, litros_actuales: 900 })).toBe('900');
+  });
+
+  it('no inventa un total que no esta cargado', () => {
+    expect(litrosDeFila({ vasija_grande: 1500 })).toBe('1500');
+    expect(litrosDeFila({})).toBe('');
+    expect(litrosDeFila(null)).toBe('');
   });
 });
 
