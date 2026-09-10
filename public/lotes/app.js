@@ -8,7 +8,8 @@ import { cargarDatos, mostrarTab, refrescarAvisos, refrescarInfo,
 import { limpiarFiltrosMulti } from './js/tabla.js';
 
 import './js/vista-dashboard.js';
-import { renderLotes, agregarLote, descLotes, instLotes } from './js/vista-lotes.js';
+import { renderLotes, agregarLote, descLotes, instLotes,
+         ajustarAnchosLotes, resetAnchosLotes } from './js/vista-lotes.js';
 import './js/vista-ficha.js';
 import { cargarPrevisualizar, cargarConfirmar, cargarLimpiar, cargarResetCols } from './js/vista-cargar.js';
 import './js/vista-analisis.js';
@@ -56,6 +57,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('btnLimpiarFltLotes').addEventListener('click', () => {
     limpiarFiltrosMulti(descLotes(), 'buscaLotes', instLotes(), renderLotes);
   });
+
+  /* anchos de columna de la pestaña Lotes */
+  $('btnAjustarAnchos').addEventListener('click', () => ajustarAnchosLotes());
+  $('btnResetAnchos').addEventListener('click', () => resetAnchosLotes());
 
   /* buscador Lotes */
   $('buscaLotes').addEventListener('input', () => renderLotes());

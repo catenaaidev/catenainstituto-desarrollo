@@ -8,6 +8,7 @@ import { toggleSort, sortRows, pasaMulti, opcionesValores, matchValor,
          initFiltrosMulti } from './tabla.js';
 import { activarGrilla, adaptadorCols, limpiarSeleccion } from './grilla.js';
 import { colsVisibles, bandasVisibles, alternar } from './grupos-cols.js';
+import { activarAnchos, autoajustarTodas, restablecerAnchos } from './anchos-cols.js';
 import { CAPACIDADES, resumenEnvases, contarEnvases,
          litrosDeEnvases, tiposDeEnvase } from './envases.js';
 
@@ -568,7 +569,20 @@ export function renderLotes(){
   /* Grilla tipo planilla. El adaptador se arma en cada render porque t._rows
      cambia; activarGrilla es idempotente y restaura la seleccion por identidad. */
   activarGrilla(t, adaptadorCols(t, COLS_LOTES, markDirty));
+  /* Anchos de columna. Tambien idempotente: los anchos se aplican como CSS por
+     [data-k], asi que este innerHTML no los borro y no hay nada que reponer en
+     las celdas nuevas. */
+  activarAnchos(t, hay => {
+    const b = $('btnResetAnchos');
+    if (b) b.style.display = hay ? '' : 'none';
+  });
 }
+
+/* --- anchos de columna: los dos botones de la toolbar ---
+ * Viven aca y no en app.js porque la <table> es de esta vista. No hace falta
+ * repintar: los anchos son CSS. */
+export function ajustarAnchosLotes(){ autoajustarTodas($('tLotes')); }
+export function resetAnchosLotes(){ restablecerAnchos(); }
 
 /* --- agregar lote nuevo --- */
 export function agregarLote(){

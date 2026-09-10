@@ -193,8 +193,19 @@
   th[data-k]::before{content:'';position:absolute;left:0;top:22%;bottom:22%;width:3px;
     border-radius:2px;background:var(--line)}
   th[data-k]:hover::before{background:var(--accent)}
+  /* Franja gemela al borde DERECHO: el agarre para cambiar el ancho de la
+     columna (subsistema J). La izquierda ya estaba tomada por la seleccion de
+     columna, asi que el ancho se arrastra desde la derecha, como en Excel. El
+     handler la detecta por la distancia al borde; esto es solo el blanco
+     visual. El cursor col-resize lo pone anchos-cols.js en el mousemove: no hay
+     selector CSS para "los ultimos 6px". */
+  #tLotes thead tr:nth-child(2) th[data-k]::after{content:'';position:absolute;
+    right:0;top:22%;bottom:22%;width:3px;border-radius:2px;background:transparent}
+  #tLotes thead tr:nth-child(2) th[data-k]:hover::after{background:var(--line)}
   /* Mientras se arrastra, no seleccionar texto del navegador */
   table.garrastrando{user-select:none}
+  /* La columna que se esta arrastrando, marcada mientras dura el gesto */
+  #tLotes th.ganchodrag::after{background:var(--accent) !important}
   /* Textarea que usa el copiado. No puede ser display:none ni visibility:hidden:
      el navegador no copia de un elemento que no esta renderizado. */
   #gclip{position:fixed;top:-1000px;left:-1000px;width:1px;height:1px;opacity:0;
@@ -874,6 +885,12 @@ table.hm td.hm-c{padding:0}
       <input class="txt" id="buscaLotes" placeholder="🔎 Buscar por lote…" style="min-width:180px">
       <div class="mfilt-bar" id="fltLotesBar"></div>
       <button class="btn" id="btnLimpiarFltLotes">🧹 Limpiar filtros</button>
+      <!-- Anchos de columna (subsistema J). El de restablecer lo muestra
+           anchos-cols.js solo cuando hay algun ancho tocado. -->
+      <button class="btn" id="btnAjustarAnchos"
+        title="Ajustar el ancho de todas las columnas a su contenido. También se puede arrastrar el borde derecho de cada encabezado, o hacerle doble clic.">↔ Ajustar anchos</button>
+      <button class="btn" id="btnResetAnchos" style="display:none"
+        title="Volver al ancho automático de las columnas">↩ Anchos originales</button>
       <span class="tag" id="lotesCount"></span>
       <div class="spacer"></div>
       <button class="btn" id="btnAddLote">➕ Agregar lote</button>
