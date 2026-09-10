@@ -8,7 +8,7 @@ import { cargarDatos, mostrarTab, refrescarAvisos, refrescarInfo,
 import { limpiarFiltrosMulti } from './js/tabla.js';
 
 import './js/vista-dashboard.js';
-import { renderLotes, agregarLote, descLotes, instLotes,
+import { renderLotes, agregarLote, descLotes, instLotes, resetLlenado,
          ajustarAnchosLotes, resetAnchosLotes } from './js/vista-lotes.js';
 import './js/vista-ficha.js';
 import { cargarPrevisualizar, cargarConfirmar, cargarLimpiar, cargarResetCols } from './js/vista-cargar.js';
@@ -55,6 +55,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   /* botón limpiar filtros Lotes */
   $('btnLimpiarFltLotes').addEventListener('click', () => {
+    /* resetLlenado antes de limpiar: limpiarFiltrosMulti es la que repinta, y
+       asi la tabla se dibuja una sola vez con todo ya en cero. */
+    resetLlenado();
     limpiarFiltrosMulti(descLotes(), 'buscaLotes', instLotes(), renderLotes);
   });
 

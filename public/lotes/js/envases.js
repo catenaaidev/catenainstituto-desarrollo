@@ -66,6 +66,22 @@ export function contarEnvases(lote){
   return n + (n0(lote.vasija_grande) > 0 ? 1 : 0);
 }
 
+/** ¿El lote no tiene litros? Unica definicion de "vacio" de la pestaña Lotes:
+ *  la usan el atenuado de la fila y el filtro Todos/Llenos/Vacios.
+ *
+ *  Mira litros_actuales y no litrosDeEnvases(lote) a proposito: es el numero
+ *  que la columna muestra en pantalla, asi que la fila tenue siempre coincide
+ *  con el 0 que se lee al lado. Por la invariante del subsistema las dos
+ *  cuentas dan lo mismo (verificado sobre los 304 lotes reales), pero si
+ *  alguna vez se separan gana lo que ve el usuario.
+ *
+ *  El <= 0 es el mismo corte que usa motor_etapas para volver inactivo a un
+ *  lote, y por eso el overlay de Envases guarda 0 y nunca null. */
+export function estaVacio(lote){
+  if (!lote) return true;
+  return n0(lote.litros_actuales) === 0;
+}
+
 /** Claves de los tipos de envase presentes, p. ej. ['cap225','cap50'].
  *  El tanque aparece como 'vasija_grande' y siempre al final. Lo usa el filtro
  *  de la pestaña Lotes. */
