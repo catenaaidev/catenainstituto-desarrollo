@@ -68,8 +68,32 @@
   .tabs button{background:transparent;border:none;color:var(--muted);padding:13px 14px;cursor:pointer;font-size:13.5px;font-weight:500;font-family:var(--sans);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s}
   .tabs button.active{color:var(--txt);border-bottom-color:var(--accent);font-weight:600}
   .tabs button:hover{color:var(--txt)}
-  main{padding:20px 22px;max-width:1600px;margin:0 auto}
-  .view{display:none}.view.active{display:block;animation:fadeUp .3s ease}
+  /* ---- ancho del contenedor ----
+   * El tope de ancho vive en .view y NO en main a proposito, para que la pestana
+   * Lotes pueda pasarse de largo sin arrastrar a las otras doce. Con el tope en
+   * main habria que sacarselo a #tab-lotes con margenes negativos en vw, y 100vw
+   * INCLUYE la barra de scroll vertical (10px, regla ::-webkit-scrollbar de mas
+   * arriba): la tabla quedaria asomando unos 5px y apareceria scroll horizontal
+   * en toda la pagina. Con el tope aca no hay ninguna cuenta que se desfase.
+   *
+   * El tope es calc(1600px - 48px) y no 1600px pelado porque el max-width vivia
+   * en main, que INCLUYE sus 24px de padding lateral: la columna de contenido
+   * que se veia siempre midio 1552px. Sobre .view, que esta adentro del padding,
+   * 1600px ensancharia las doce pestanas 48px. Si cambia el padding lateral de
+   * main (la regla main de la hoja de estilos de abajo, que le gana a la de
+   * aca) hay que cambiar este 48.
+   *
+   * Las reglas body.printing-* de mas abajo le siguen sacando el max-width a
+   * main; quedan por compatibilidad y no molestan (en papel la hoja mide ~800px,
+   * asi que ningun tope de 1552px llega a apretar nada). */
+  main{padding:20px 22px;margin:0 auto}
+  .view{display:none;max-width:calc(1600px - 48px);margin:0 auto}
+  /* Lotes son 28 columnas: se lleva todo el ancho de la ventana. Los -10px se
+   * comen 10 de los 24px de padding lateral de main y dejan 14px de aire a cada
+   * lado. Gana ~340px sobre el resto de las pestanas, que es media docena de
+   * columnas mas a la vista. */
+  #tab-lotes{max-width:none;margin-left:-10px;margin-right:-10px}
+  .view.active{display:block;animation:fadeUp .3s ease}
   @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   /* ---- controles ---- */
   .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
