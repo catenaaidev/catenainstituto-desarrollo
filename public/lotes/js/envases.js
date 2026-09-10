@@ -27,11 +27,13 @@ export const CAPACIDADES = [
  * Es deliberadamente indulgente: estos campos vienen de una migracion de Excel
  * y un valor raro no tiene que hacer explotar el render de la tabla. La
  * validacion de lo que el usuario tipea vive en el overlay, no aca. */
-function n0(x){
+export function numPositivo(x){
   if (x == null || x === '') return 0;
   const v = Number(x);
   return (isFinite(v) && v > 0) ? v : 0;
 }
+/* Alias corto para el uso interno del modulo, que lo repite en cada formula. */
+const n0 = numPositivo;
 
 /** Litros que suman los envases del lote. */
 export function litrosDeEnvases(lote){
