@@ -4,7 +4,8 @@
 import { $, esc, escA, num, DATOS, dashData, dashLoading, cargarDashboard,
          registrarVista } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
-import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija } from './orden-filas.js';
+import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija,
+         motivoDeFila, vasijaDeFila, litrosDeFila } from './orden-filas.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
 import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
@@ -18,7 +19,8 @@ let _otFuente     = 'vencidos_proximos';  // valor inicial del select
 let _otAtencionTipo = 'todos';            // criterio granular, solo aplica si _otFuente==='atencion'
 /* Un Set por columna filtrable, creados UNA vez: los widgets guardan estas
  * mismas referencias, asi que el estado sobrevive a los re-render. */
-const filtOt = { variedad: new Set(), proyecto: new Set(), etapa: new Set(), vasija: new Set() };
+const filtOt = { lote: new Set(), variedad: new Set(), proyecto: new Set(),
+                 etapa: new Set(), vasija: new Set() };
 let _otBusqueda = '';                     // buscador de texto libre de la barra
 let _descOt = [], _instOt = [];
 let _otRecipiente = 'Tubo falcon';
@@ -72,17 +74,6 @@ const _otAdaptador = {
   onCambio(){ _otRenderTabla(); _otPintarPaginas(); },   // no se persiste: sin markDirty
 };
 
-/* Motivo legible para la columna "motivo" -- lee los mismos booleanos que
- * clasificarLote() sigue exponiendo (vencido/proximo/sinAnalisis/atencion). */
-function _otMotivo(cls){
-  const m = [];
-  if (cls.vencido)     m.push('Vencido');
-  if (cls.proximo)     m.push('Próximo');
-  if (cls.sinAnalisis) m.push('Sin análisis');
-  if (cls.atencion)    m.push('NO OK');
-  return m.join(' / ') || '—';
-}
-
 /* Construye _otRows a partir de la fuente elegida */
 function _otBuildRows(){
   if (!dashData()) return [];
@@ -99,7 +90,10 @@ function _otBuildRows(){
 
   if (fuente === 'hoja_en_blanco') return [];
 
-  lotes = lotes.filter(l => pasaFuente(clasificarLote(l), fuente, _otAtencionTipo));
+  /* El segundo argumento es el lote completo: la fila del dashboard no trae
+   * los envases y sin el no se puede resolver la ronda de tanques. */
+  lotes = lotes.filter(l => pasaFuente(
+    clasificarLote(l, loteMap.get(String(l.lote ?? ''))), fuente, _otAtencionTipo));
 
   /* ordenar por número de lote */
   lotes = [...lotes].sort((a, b) => {
@@ -112,14 +106,14 @@ function _otBuildRows(){
   /* El buscador se aplica DESPUES del map, no antes: mira vasija y motivo, que
    * no existen en la fila del dashboard -- recien aparecen al armar la fila. */
   return lotes.map(l => {
-    const cls  = clasificarLote(l);
     const info = loteMap.get(String(l.lote ?? ''));
+    const cls  = clasificarLote(l, info);
     return {
       lote:       String(l.lote ?? ''),
       variedad:   l.variedad || '',
-      vasija:     info ? (info.vasija_actual || '') : '',
-      litros:     info ? (info.litros_actuales != null ? String(info.litros_actuales) : '') : '',
-      motivo:     _otMotivo(cls),
+      vasija:     vasijaDeFila(info),
+      litros:     litrosDeFila(info),
+      motivo:     motivoDeFila(cls, fuente),
       recipiente: _otRecipiente,
       cantidad:   _otCantidad,
     };
@@ -330,6 +324,16 @@ function initFiltrosOt(){
 
   _descOt = [
     {
+      /* Va primero en la barra: es el filtro mas directo, "quiero estos lotes".
+       * El widget ya trae su propio buscador y "Todas", asi que una lista de
+       * doscientos numeros se maneja sola; cmpValores los ordena numericamente
+       * (26001 antes que 26100) en vez de alfabeticamente. */
+      label: 'Lote',
+      set: filtOt.lote,
+      opciones: () => opcionesValores((dashData() && dashData().lotes) || [], l => l.lote),
+      match: matchValor(l => l.lote),
+    },
+    {
       /* variedad viene directa en la fila del dashboard: descriptor generico */
       label: 'Variedad',
       set: filtOt.variedad,
@@ -396,6 +400,7 @@ export function renderOrden(){
     { v:'sin_analisis',      l:'Sin análisis'          },
     { v:'atencion',          l:'Atención (NO OK)'      },
     { v:'todos',             l:'Todos los lotes'       },
+    { v:'ronda_tanques',     l:'Ronda de tanques'      },
     { v:'hoja_en_blanco',    l:'Hoja en blanco'        },
   ].map(o => `<option value="${escA(o.v)}"${o.v === _otFuente ? ' selected' : ''}>${esc(o.l)}</option>`).join('');
 

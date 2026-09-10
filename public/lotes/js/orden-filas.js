@@ -1,9 +1,12 @@
 /* ===== Lotes CIW — clasificacion, filtro y paginado de la Orden de muestras =====
- * Modulo puro: sin DOM, sin fetch, sin import de nucleo.js. Misma entrada que
+ * Modulo puro: sin DOM, sin fetch, sin import de nucleo.js (el unico import es
+ * envases.js, que tambien es puro). Misma entrada que
  * hoy usa _otClasificar() (un elemento de dashData().lotes), extendida para
  * exponer las 6 alarmas de "atencion" por separado -- eso es lo que habilita
  * el filtro granular (antes solo existia el booleano combinado). */
 'use strict';
+
+import { numPositivo } from './envases.js';
 
 /* claves de dashData().lotes[i].alarmas que hoy arma _otClasificar() como
  * "atencion" (cualquiera de estas). Coinciden 1:1 con motor_fml.py (linea 24-31). */
@@ -16,7 +19,11 @@ const CRITERIOS_ATENCION = {
   noLleno: 'no_lleno',
 };
 
-export function clasificarLote(l){
+/* `info` es el lote completo de DATOS().lotes, y es OPCIONAL: la fila del
+ * dashboard no trae los envases, asi que la ronda de tanques es el unico
+ * criterio que no se puede decidir sin el. Omitirlo deja rondaTanques en false
+ * y no altera nada mas -- las llamadas de un solo argumento siguen valiendo. */
+export function clasificarLote(l, info){
   const diasRestantes = (l.frecuencia_max ?? 0) - (l.dias_desde_analisis ?? 0);
   const alarmas = l.alarmas || [];
 
@@ -34,6 +41,9 @@ export function clasificarLote(l){
     sinAnalisis: alarmas.includes('sin_analisis_valido'),
     atencion,
     criterios,
+    /* Solo los litros de tanque cuentan: los cuatro capNNN son CANTIDADES de
+     * envases, no litros, y un lote de puras barricas no es de esta ronda. */
+    rondaTanques: numPositivo(info && info.vasija_grande) > 0,
   };
 }
 
@@ -43,11 +53,82 @@ export function pasaFuente(cls, fuente, criterioAtencion){
   if (fuente === 'proximos')          return cls.proximo;
   if (fuente === 'vencidos_proximos') return cls.vencido || cls.proximo;
   if (fuente === 'sin_analisis')      return cls.sinAnalisis;
+  /* La ronda de tanques es un recorrido fisico: entra TODO lote con litros en
+   * vasija grande, este vencido o al dia. Los filtros box y el buscador siguen
+   * aplicando encima, que es como se acota si hace falta. */
+  if (fuente === 'ronda_tanques')     return cls.rondaTanques;
   if (fuente === 'atencion'){
     if (!criterioAtencion || criterioAtencion === 'todos') return cls.atencion;
     return !!cls.criterios[criterioAtencion];
   }
   return false;
+}
+
+/* Texto de la columna "Motivo": por que este lote esta en la hoja. Vive aca y
+ * no en la vista porque es la contracara de pasaFuente -- si una fuente nueva
+ * no deja motivo, la fila sale impresa con un guion y nadie sabe por que se la
+ * pidieron. */
+export function motivoDeFila(cls, fuente){
+  const m = [];
+  if (cls.vencido)     m.push('Vencido');
+  if (cls.proximo)     m.push('Próximo');
+  if (cls.sinAnalisis) m.push('Sin análisis');
+  if (cls.atencion)    m.push('NO OK');
+  if (m.length) return m.join(' / ');
+  /* Un tanque al dia no dispara ninguno de los cuatro: sin esto quedaria en
+   * blanco justo en la hoja que se lleva el que recorre los tanques. */
+  if (fuente === 'ronda_tanques') return 'Ronda de tanques';
+  return '—';
+}
+
+/* Envases chicos que pueden venir mezclados con el tanque en vasija_actual.
+ * El texto real de la bodega escribe el mismo envase de cuatro formas
+ * ('Barrica', 'Barricas', 'barricas', 'BARRICAS') y el tonel con y sin espacio
+ * ('t50', 'T50', 'T 200'), asi que la comparacion es case-insensitive y tolera
+ * el espacio.
+ *
+ * OJO: la unica forma de distinguir el tonel de 500 L de un tanque es el
+ * nombre. Un tanque que se llamara 'T 500' caeria aca por error y se
+ * descartaria. Hoy no existe -- los tanques son de tres digitos (140, 177,
+ * 203...) -- pero si algun dia aparece, esta es la linea que lo rompe. */
+const ENVASE_CHICO = /^(barricas?|t\s*(?:50|200|500))$/i;
+
+/* Codigo del tanque dentro de vasija_actual: 'H 170 + Barricas' -> 'H 170'.
+ * El que sale a hacer la ronda va al tanque, y que el lote ademas tenga dos
+ * barricas guardadas en otro lado no le sirve para encontrarlo. */
+export function tanqueDeVasija(texto){
+  const t = String(texto ?? '').trim();
+  if (t === '') return '';
+
+  const partes  = t.split('+').map(s => s.trim()).filter(s => s !== '');
+  const tanques = partes.filter(p => !ENVASE_CHICO.test(p));
+
+  /* Si al descartar no quedo nada, el texto no nombra ningun tanque: se
+   * devuelve entero. Preferimos mostrar de mas antes que una celda vacia. */
+  return tanques.length ? tanques.join(' + ') : t;
+}
+
+/* Texto de la columna "Vasija" de la orden. */
+export function vasijaDeFila(info){
+  if (!info) return '';
+  const texto = String(info.vasija_actual || '').trim();
+  /* Manda el numero, no el texto: hay lotes ('P 147', 'P 149') cuyo
+   * vasija_actual quedo con un codigo de tanque viejo pero ya no tienen
+   * litros ahi. A esos no se les toca el texto. */
+  return numPositivo(info.vasija_grande) > 0 ? tanqueDeVasija(texto) : texto;
+}
+
+/* Texto de la columna "Litros" de la orden: '2600 de 3050' cuando el lote
+ * reparte el vino entre el tanque y las barricas, y un solo numero cuando no
+ * hay nada que aclarar. */
+export function litrosDeFila(info){
+  if (!info) return '';
+  const tanque = numPositivo(info.vasija_grande);
+  const total  = info.litros_actuales;
+
+  if (total == null || total === '') return tanque > 0 ? String(tanque) : '';
+  if (tanque > 0 && Number(total) !== tanque) return `${tanque} de ${total}`;
+  return String(total);
 }
 
 /* Campos que mira el buscador de texto libre: los mismos cuatro que el usuario
