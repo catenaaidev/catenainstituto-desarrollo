@@ -170,6 +170,44 @@ export function desdeCuando(
   return desde;
 }
 
+/**
+ * El tablero usa "> 3.65", "> 3.75" y ">= 3.79": el Cabernet es inclusivo y el
+ * resto no. La clave ph_max_inclusive lo hace explicito en vez de esconderlo en
+ * un 3.789 magico.
+ */
+export function phFueraDeCriterio(ph: number, eff: Criterios): boolean {
+  const inclusive = String(eff.ph_max_inclusive ?? 'no').trim().toLowerCase() === 'si';
+  return inclusive ? ph >= eff.ph_max : ph > eff.ph_max;
+}
+
+export interface ResultadoPh {
+  estado: 'ok' | 'no_ok' | 'sin_datos';
+  valor: number | null;
+  fecha: string | null;
+  desde: string | null;
+}
+
+export function estadoPh(analisis: Fila[], eff: Criterios): ResultadoPh {
+  const ordenados = ordenarPorFecha(analisis);
+  for (let i = ordenados.length - 1; i >= 0; i--) {
+    const v = valorValido(ordenados[i].ph);
+    if (v === null) continue;
+    const fuera = phFueraDeCriterio(v, eff);
+    return {
+      estado: (fuera ? 'no_ok' : 'ok') as 'ok' | 'no_ok' | 'sin_datos',
+      valor: v,
+      fecha: String(ordenados[i].fecha_analisis).slice(0, 10),
+      desde: fuera
+        ? desdeCuando(analisis, (a) => {
+            const p = valorValido(a.ph);
+            return p === null ? null : phFueraDeCriterio(p, eff);
+          })
+        : null,
+    };
+  }
+  return { estado: 'sin_datos' as const, valor: null, fecha: null, desde: null };
+}
+
 // Re-exportar Criterios como tipo para que los consumidores de este modulo
 // puedan tipear sus funciones sin importar desde fml.ts directamente.
 export type { Criterios };

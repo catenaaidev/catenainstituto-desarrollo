@@ -19,6 +19,7 @@ import {
   INVALIDO,
   DIA_MS,
   FECHA_MAX,
+  phFueraDeCriterio,
   type Fila,
 } from './fml-condiciones';
 
@@ -305,7 +306,7 @@ export function flagsAnalisis(analisisRow: Fila | null, eff: Criterios): string[
   const fuera: string[] = [];
 
   const ph = valido(a.ph);
-  if (ph !== null && ph >= eff.ph_max) fuera.push('ph');
+  if (ph !== null && phFueraDeCriterio(ph, eff)) fuera.push('ph');
 
   const avRaw = num(a.av);
   const avVal = valido(a.av);

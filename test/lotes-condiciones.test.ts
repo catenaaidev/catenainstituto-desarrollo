@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   so2LibreDe, valorValido, fechaDia,
   esMedicionUtil, tieneAnalisisValido, ultimoControlProceso, estadoFrecuencia,
-  desdeCuando,
+  desdeCuando, phFueraDeCriterio, estadoPh,
 } from '../src/lotes/motores/fml-condiciones';
 import { CRITERIOS_DEFAULT } from '../src/lotes/motores/fml';
 
@@ -112,6 +112,36 @@ describe('desde cuando', () => {
 
   it('si la ultima no cumple, no hay desde', () => {
     expect(desdeCuando(filas, (a) => (a.ph == null ? null : Number(a.ph) > 4.5))).toBe(null);
+  });
+});
+
+describe('pH', () => {
+  it('por defecto el limite es exclusivo', () => {
+    expect(phFueraDeCriterio(3.75, { ...CRITERIOS_DEFAULT })).toBe(false);
+    expect(phFueraDeCriterio(3.76, { ...CRITERIOS_DEFAULT })).toBe(true);
+  });
+
+  it('el Cabernet lo tiene inclusivo', () => {
+    const cab = { ...CRITERIOS_DEFAULT, ph_max: 3.79, ph_max_inclusive: 'si' };
+    expect(phFueraDeCriterio(3.79, cab)).toBe(true);
+    expect(phFueraDeCriterio(3.78, cab)).toBe(false);
+  });
+
+  it('manda el ultimo pH, no el mejor', () => {
+    const r = estadoPh(
+      [
+        { fecha_analisis: '2026-06-01', ph: 3.5 },
+        { fecha_analisis: '2026-08-01', ph: 3.9 },
+      ],
+      { ...CRITERIOS_DEFAULT },
+    );
+    expect(r.estado).toBe('no_ok');
+    expect(r.valor).toBe(3.9);
+    expect(r.desde).toBe('2026-08-01');
+  });
+
+  it('sin ningun pH queda sin datos', () => {
+    expect(estadoPh([{ fecha_analisis: '2026-08-01', av: 0.4 }], { ...CRITERIOS_DEFAULT }).estado).toBe('sin_datos');
   });
 });
 
