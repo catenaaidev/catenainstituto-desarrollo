@@ -2,7 +2,7 @@
 'use strict';
 
 import { $, esc, escA, DATOS, markDirty, registrarVista, irALote } from './nucleo.js';
-import { toggleSort, escribirCelda, pasaMulti, opcionesValores,
+import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla } from './grilla.js';
 import { armarFilas, esQuimicaReal, esCorreccionReal } from './analisis-filas.js';
@@ -114,7 +114,7 @@ let _filtAnalisisBusca    = '';
 
 /* Un Set por columna filtrable, creados UNA vez: los widgets guardan estas
  * mismas referencias, asi que el estado sobrevive a los re-render. */
-const filtAn = { variedad: new Set(), proyecto: new Set() };
+const filtAn = { lote: new Set(), variedad: new Set(), proyecto: new Set() };
 let _descAn = [], _instAn = [];
 
 /* Segmentado Todos | Llenos | Vacíos, el mismo control que la pestaña Lotes.
@@ -152,6 +152,16 @@ function initFiltrosAn(){
   };
 
   _descAn = [
+    {
+      label: 'Lote',
+      set: filtAn.lote,
+      /* Opciones sobre los ANALISIS, no sobre todos los lotes: el panel ofrece
+       * solo lotes que tienen al menos un analisis cargado, mismo criterio que
+       * Variedad. cmpValores ya ordena numerico cuando los valores son
+       * numeros, asi que los lotes salen en orden. */
+      opciones: () => opcionesValores(DATOS().analisis || [], a => String(a.lote ?? '')),
+      match: matchValor(a => String(a.lote ?? '')),
+    },
     {
       label: 'Variedad',
       set: filtAn.variedad,
