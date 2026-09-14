@@ -5,7 +5,8 @@ import { $, esc, escA, DATOS, markDirty, registrarVista, irALote } from './nucle
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla } from './grilla.js';
-import { armarFilas, esQuimicaReal, esCorreccionReal } from './analisis-filas.js';
+import { armarFilas, esQuimicaReal, esCorreccionReal,
+         indicesPorObjeto } from './analisis-filas.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
 import { crearAnchos } from './anchos-cols.js';
@@ -102,6 +103,20 @@ function _buildLoteObjMap(){
   return m;
 }
 
+/* Mapas derivados de DATOS().lotes que valen para TODO el render en curso.
+ * renderAnalisis() lo rearma al principio de cada pasada.
+ *
+ * Existe por una razon de costo: los `match` de los filtros Variedad y Proyecto
+ * los llama pasaMulti UNA VEZ POR ANALISIS, y antes cada una de esas llamadas
+ * reconstruia el mapa entero de lotes desde cero. Con ~240 lotes y miles de
+ * analisis eso era O(analisis x lotes) en cada repintado — el mismo costo
+ * cuadratico que el indexOf del pintado, solo que escondido detras de un filtro
+ * y por eso mas dificil de ver.
+ *
+ * NO se cachea entre renders a proposito: variedad y proyecto son editables, y
+ * un mapa viejo dejaria el filtro decidiendo por el valor anterior. */
+let _ctxRender = null;
+
 /* Sort state para análisis */
 // Ascendente por defecto: dentro de un lote tiene mas sentido leer de mas
 // viejo a mas nuevo. D1 dejaba -1 (mas reciente primero) para la tabla plana;
@@ -112,6 +127,17 @@ let sortAnalisis = { key:'fecha_analisis', dir:1 };
 let _filtAnalisisMes      = '';
 let _filtAnalisisTipo     = 'todas';  // 'todas' | 'fuera'
 let _filtAnalisisBusca    = '';
+
+/* El buscador NO repinta en cada tecla: espera a que pares de tipear. Un render
+ * rehace la <table> entera y vuelve a pasar por los tres filtros, asi que con
+ * miles de analisis tipear "1023" costaba cuatro repintados completos, uno por
+ * tecla, y la pantalla se trababa mientras escribias.
+ *
+ * 150 ms es mas corto que la pausa entre teclas de alguien que duda y mas largo
+ * que la de alguien que tipea de corrido: al que escribe seguido le cuesta un
+ * solo repintado, y al que tipea un caracter y mira no se le nota la espera. */
+const MS_DEBOUNCE_BUSCA = 150;
+let _timerBusca = null;
 
 /* Un Set por columna filtrable, creados UNA vez: los widgets guardan estas
  * mismas referencias, asi que el estado sobrevive a los re-render. */
@@ -151,14 +177,22 @@ function initFiltrosAn(){
   /* OJO: _buildLoteMap() de esta pestana devuelve lote -> STRING de variedad
    * (no el objeto lote, a diferencia de FML y SO2). Ver el uso en el render. */
   const variedadDe = (m) => (a) => m.get(String(a.lote ?? '')) || '';
-  /* Set de lotes que pertenecen a los proyectos tildados. Se recalcula en cada
-   * match porque los proyectos de los lotes son editables. */
+  /* Set de lotes que pertenecen a los proyectos tildados. Se recalcula UNA VEZ
+   * POR RENDER, no en cada match: los proyectos de los lotes son editables, asi
+   * que no se puede cachear para siempre, pero tampoco cambian a mitad de un
+   * filtrado. Antes se rearmaba por cada analisis evaluado.
+   *
+   * Un solo hueco en el contexto alcanza porque hay un solo filtro de Proyecto;
+   * si alguna vez hubiera dos, esto tendria que ir por descriptor. */
   const lotesDeProyectos = (set) => {
-    const s = new Set();
-    for (const l of (DATOS().lotes || [])){
-      if (set.has((l.proyecto || '').trim())) s.add(String(l.lote ?? ''));
+    if (!_ctxRender.lotesDeProyectos){
+      const s = new Set();
+      for (const l of (DATOS().lotes || [])){
+        if (set.has((l.proyecto || '').trim())) s.add(String(l.lote ?? ''));
+      }
+      _ctxRender.lotesDeProyectos = s;
     }
-    return s;
+    return _ctxRender.lotesDeProyectos;
   };
 
   _descAn = [
@@ -178,7 +212,10 @@ function initFiltrosAn(){
       /* Opciones sobre los analisis (no sobre todos los lotes): asi el panel
        * ofrece solo variedades que tienen al menos un analisis cargado. */
       opciones: () => opcionesValores(DATOS().analisis || [], variedadDe(_buildLoteMap())),
-      match: (a, set) => set.has(variedadDe(_buildLoteMap())(a)),
+      /* Lee el mapa del render en curso en vez de rearmarlo: esto corre una vez
+       * por analisis. `opciones` de arriba si puede construirlo, porque corre
+       * una vez por reconstruccion del panel, no por fila. */
+      match: (a, set) => set.has(_ctxRender.loteMap.get(String(a.lote ?? '')) || ''),
     },
     {
       label: 'Proyecto',
@@ -193,8 +230,23 @@ function initFiltrosAn(){
 export function renderAnalisis(){
   const sec = $('tab-analisis'); if (!sec) return;
 
-  const loteMap = _buildLoteMap();
+  /* Contexto de ESTE render: lo leen los `match` de los filtros, que corren una
+   * vez por analisis. lotesDeProyectos arranca sin calcular y se llena la
+   * primera vez que el filtro de Proyecto lo pide. */
+  _ctxRender = { loteMap: _buildLoteMap(), lotesDeProyectos: null };
+
+  const loteMap = _ctxRender.loteMap;
   const loteObjMap = _buildLoteObjMap();
+
+  /* Un solo Map objeto->posicion por render, en lugar de un indexOf por fila.
+   * Lo usan los dos lugares que necesitan la posicion del registro dentro de
+   * DATOS().analisis: el filtro de "solo fuera de criterio" y el pintado (los
+   * flags que devuelve la API vienen indexados por esa posicion).
+   *
+   * OJO: vale SOLO durante este render. El handler de borrado, que se cablea
+   * una sola vez y sobrevive a todos los renders, sigue usando indexOf a
+   * proposito — capturar este mapa lo dejaria mirando un array viejo. */
+  const idxDeAnalisis = indicesPorObjeto(DATOS().analisis);
   /* Se crea ACA y no al montarlo mas abajo porque el filtrado pasa antes de
      armar el HTML: si no existiera todavia, el primer render se dibujaria sin
      aplicar el modo elegido. */
@@ -231,7 +283,10 @@ export function renderAnalisis(){
   if (_filtAnalisisTipo === 'fuera' && _analisisFlags){
     filtroFilaVirtual = (fila) => {
       if (fila.tipo !== 'quimica') return false;
-      const idx = DATOS().analisis.indexOf(fila.analisis);
+      /* get() devuelve undefined donde indexOf devolvia -1; en los dos casos
+       * _analisisFlags.get(...) da undefined y la fila no pasa, asi que el
+       * resultado es el mismo. */
+      const idx = idxDeAnalisis.get(fila.analisis);
       const flags = _analisisFlags.get(idx);
       return flags && flags.size > 0;
     };
@@ -271,6 +326,21 @@ export function renderAnalisis(){
   <span class="sw vacio"></span> Análisis de un lote sin litros (filas atenuadas)
 </div>
 <div class="scroll tall"><table id="tAnalisis"></table></div>`;
+
+  /* La seccion se rehace entera, asi que el <input> del buscador que hay ahora
+   * se destruye y el foco se va al body. Antes eso ya pasaba en cada tecla;
+   * ahora que el repintado llega diferido molesta mas, porque te saca del campo
+   * 150 ms despues de la ultima letra. Se anota el estado del campo para
+   * devolverlo al final del render.
+   *
+   * Se guarda el valor CRUDO, no _filtAnalisisBusca: entre que el debounce
+   * disparo y que este render termina, el usuario pudo haber seguido tipeando,
+   * y el HTML de arriba lleva la consulta vieja. Esas teclas de mas ya tienen
+   * su propio timer en vuelo, asi que la tabla se pone al dia sola. */
+  const buscaPrevio = $('buscaAnalisis');
+  const focoEnBusca = !!buscaPrevio && document.activeElement === buscaPrevio;
+  const buscaCrudo  = focoEnBusca ? buscaPrevio.value : null;
+  const buscaCaret  = focoEnBusca ? buscaPrevio.selectionStart : null;
 
   sec.innerHTML = html;
 
@@ -318,7 +388,7 @@ export function renderAnalisis(){
     const o = fila.analisis;
     // los flags de "fuera de criterio" solo tienen sentido en la fila de
     // quimica: la de correccion no tiene metricas quimicas que marcar.
-    const realIdx = DATOS().analisis.indexOf(o);
+    const realIdx = idxDeAnalisis.get(o);
     const flags = (fila.tipo === 'quimica' && _analisisFlags)
       ? (_analisisFlags.get(realIdx) || new Set())
       : new Set();
@@ -423,7 +493,17 @@ export function renderAnalisis(){
 
   /* -------- controles de filtro -------- */
   const buscaEl = $('buscaAnalisis');
-  if (buscaEl) buscaEl.addEventListener('input', () => { _filtAnalisisBusca = buscaEl.value.trim(); renderAnalisis(); });
+  if (buscaEl) buscaEl.addEventListener('input', () => {
+    const q = buscaEl.value.trim();
+    clearTimeout(_timerBusca);
+    _timerBusca = setTimeout(() => {
+      /* Agregar y borrar un espacio deja la consulta igual: no hay nada que
+       * repintar. */
+      if (q === _filtAnalisisBusca) return;
+      _filtAnalisisBusca = q;
+      renderAnalisis();
+    }, MS_DEBOUNCE_BUSCA);
+  });
 
   const fltMes = $('fltAnMes');
   if (fltMes) fltMes.addEventListener('change', () => { _filtAnalisisMes = fltMes.value; renderAnalisis(); });
@@ -435,7 +515,13 @@ export function renderAnalisis(){
     const bar = $('fltAnBar');
     if (bar){
       bar.innerHTML = '';
-      _instAn.forEach(f => { bar.appendChild(f.el); f.rebuild(); });
+      /* rebuildSiCambio y no rebuild: las opciones de estos tres paneles casi
+       * nunca cambian entre un render y el siguiente (cambian al cargar datos o
+       * al editar un lote, no al tipear en el buscador), y rehacerlas significa
+       * crear un checkbox por lote con analisis — 720 nodos solo el de Lote con
+       * los ~240 de produccion. Si la lista es la misma, solo se resincronizan
+       * los tildes, que no crea ni un nodo. */
+      _instAn.forEach(f => { bar.appendChild(f.el); f.rebuildSiCambio(); });
     }
   }
 
@@ -449,6 +535,9 @@ export function renderAnalisis(){
 
   const btnLimpiar = $('btnLimpiarFltAn');
   if (btnLimpiar) btnLimpiar.addEventListener('click', () => {
+    /* Si habia un repintado del buscador en vuelo, se descarta: acaba de dejar
+     * de valer y volveria a poner la consulta que este boton borro. */
+    clearTimeout(_timerBusca);
     _filtAnalisisBusca = '';
     _filtAnalisisMes = '';
     _filtAnalisisTipo = 'todas';
@@ -512,6 +601,18 @@ export function renderAnalisis(){
 
   const btnResAn = $('btnResetAnchosAn');
   if (btnResAn) btnResAn.addEventListener('click', () => anchosAnalisis.restablecer());
+
+  /* Ultimo de todo, para que ni la grilla ni los anchos le saquen el foco
+   * despues: si el buscador lo tenia antes del repintado, se lo devuelve con el
+   * cursor donde estaba. */
+  if (focoEnBusca){
+    const buscaNuevo = $('buscaAnalisis');
+    if (buscaNuevo){
+      if (buscaCrudo != null && buscaNuevo.value !== buscaCrudo) buscaNuevo.value = buscaCrudo;
+      buscaNuevo.focus();
+      if (buscaCaret != null) buscaNuevo.setSelectionRange(buscaCaret, buscaCaret);
+    }
+  }
 }
 
 registrarVista('analisis', () => {

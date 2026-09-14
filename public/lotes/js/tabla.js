@@ -46,9 +46,15 @@ export function crearFiltroMulti(cfg){
   panel.appendChild(search); panel.appendChild(todas); panel.appendChild(list); panel.appendChild(foot);
   wrap.appendChild(btn); wrap.appendChild(panel);
   let opts=[];
-  function build(){
+  /* Firma de las opciones con las que se construyo la lista, para poder saltear
+   * la reconstruccion cuando no cambiaron. Ver rebuildSiCambio. El separador es
+   * un NUL, que no aparece en un valor tipeado por nadie. */
+  let firma=null;
+  const firmaDe=(lista)=>lista.map(o=>o.val).join('\u0000');
+  function build(lista){
+    const nuevas=lista||cfg.opciones();
     list.innerHTML=''; opts=[];
-    for (const o of cfg.opciones()){
+    for (const o of nuevas){
       const li=document.createElement('label'); li.className='mfilt-opt';
       const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=set.has(o.val);
       const span=document.createElement('span'); span.textContent=o.text;
@@ -56,6 +62,7 @@ export function crearFiltroMulti(cfg){
       cb.addEventListener('change',()=>{ if(cb.checked) set.add(o.val); else set.delete(o.val); actualizar(); cfg.onChange(); });
       opts.push({val:o.val,text:o.text,li,cb});
     }
+    firma=firmaDe(nuevas);
   }
   function actualizar(){
     const n=set.size;
@@ -84,7 +91,26 @@ export function crearFiltroMulti(cfg){
   });
   panel.addEventListener('click',e=>e.stopPropagation());
   build(); actualizar();
-  return { el:wrap, sync, rebuild:()=>{ build(); actualizar(); } };
+  return {
+    el:wrap, sync,
+    rebuild:()=>{ build(); actualizar(); },
+    /* Igual que rebuild, pero solo rehace la lista si las opciones cambiaron;
+     * si son las mismas, se limita a resincronizar los tildes y el contador,
+     * que no crea ni un nodo. La pestana Analisis lo llama en CADA render, y su
+     * filtro de Lote tiene un checkbox por lote con analisis: con los ~240 de
+     * produccion son 720 nodos (label + input + span cada uno) rehechos en cada
+     * tecla del buscador, la mayor parte del costo de tipear.
+     *
+     * Saltear el build es seguro porque los checkbox que ya existen quedan
+     * colgados del `set` de siempre (es el mismo objeto Set, no una copia), asi
+     * que sus listeners siguen escribiendo donde corresponde. Devuelve si
+     * reconstruyo, para poder verificarlo. */
+    rebuildSiCambio(){
+      const nuevas=cfg.opciones();
+      if (firmaDe(nuevas)===firma){ sync(); return false; }
+      build(nuevas); actualizar(); return true;
+    },
+  };
 }
 
 export function initFiltrosMulti(barId, descriptores, onChange){
