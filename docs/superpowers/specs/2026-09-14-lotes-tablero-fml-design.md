@@ -116,11 +116,32 @@ fila **no** está incompleto: la variedad ya lo define por config.
 1. **La frecuencia se cuenta desde el último control de proceso**, no desde el
    último análisis. Un pH suelto ya no reinicia el reloj. Se agrega
    `dias_desde_control`; `vencido` pasa a mirarlo a él.
-2. **AV = −999 dispara alerta** en vez de descartarse como inválido. Es el FOSS
-   avisando que el valor se fue de rango, y el tablero lo trata como señal.
-3. **SO₂ no OK** cambia de `libre < 25` a la regla de dos tramos de la tabla.
-4. **"Medición útil" se ensancha** de `ph`/`av`/`malico` a seis campos, según la
+2. **El pH deja de ser inclusivo por defecto.** Hoy `evaluarLote` hace
+   `phVal < eff.ph_max` y `flagsAnalisis` hace `ph >= eff.ph_max`: un pH de 3.75
+   clavado **alarma**. El tablero es exclusivo salvo en los Cabernet. Al portar,
+   los pH justo en el límite dejan de alarmar en todas las variedades menos las
+   tres que llevan `ph_max_inclusive: si`. Las dos funciones tienen que quedar
+   consistentes entre sí.
+3. **SO₂ no OK** cambia de `libre < max(inversión, 25)` a la regla de dos tramos.
+   Las dos formas son casi equivalentes —`molecular ≥ 0.38` es exactamente
+   `libre ≥ inversión`—: lo que cambia de verdad es **el piso de 25 a 20** y el
+   borde exacto (con `libre = piso` el motor actual da OK y el tablero da no OK).
+4. **El fallback de pH del SO₂ se mantiene** (revisado el 2026-09-14 contra los
+   datos del tablero). El diálogo de criterios del tablero dice que sin pH el
+   estado queda `sin_datos`, pero sus propios resultados muestran lo contrario:
+   en `estado_actual_lotes.csv` el lote **26031** tiene el SO₂ del 19/08 y el pH
+   de referencia del **11/09** —otra muestra, y posterior— con estado `ok`; y de
+   los 249 lotes, los únicos 2 en `sin_datos` no tienen **ninguna** medición de
+   SO₂. O sea que el tablero usa el último pH válido del lote, igual que el motor
+   web. Se conserva el comportamiento actual y se publica
+   `so2_ph_referencia_fecha` para que la ficha pueda avisar cuándo el pH viene de
+   otra muestra.
+5. **"Medición útil" se ensancha** de `ph`/`av`/`malico` a seis campos, según la
    definición de arriba.
+
+**No es un cambio, aunque lo parezca:** el AV en −999 **ya dispara alerta** hoy
+(`evaluarAvAlerta` corta con `raw === INVALIDO` antes de validar). Lo único
+nuevo es reportar `av_motivo: 'fuera_rango_foss'`.
 
 ### Antigüedad ("desde cuándo")
 
@@ -194,6 +215,7 @@ so2_estado               'ok' | 'no_ok' | 'no_aplica' | 'sin_datos'
 so2_libre                number | null
 so2_libre_fecha          string | null
 so2_ph_referencia        number | null
+so2_ph_referencia_fecha  string | null   // avisa si el pH viene de otra muestra
 so2_molecular            number | null
 so2_motivo               string          // por qué quedó en ese estado
 so2_caida                { anterior, anterior_fecha, actual, actual_fecha, caida, alerta }
