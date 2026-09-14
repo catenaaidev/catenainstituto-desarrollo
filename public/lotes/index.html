@@ -963,15 +963,17 @@ table.hm td.hm-c{padding:0}
       <p style="color:var(--muted);font-size:13px;margin:-6px 0 14px">
         Copiá las filas desde Excel (Ctrl+C) y pegá en el área de abajo. El separador puede ser tab (Excel por defecto) o coma (CSV).
         Los números con coma decimal se aceptan (ej: 3,22).
+        El orden de abajo es el de la planilla del laboratorio: las columnas que no son campos de un análisis
+        (<code>vasija</code>, <code>año</code>) y los huecos (<code>-</code>) están para que las posiciones calcen, pero no se guardan.
       </p>
 
       <!-- orden de columnas -->
       <div class="controls" style="margin-bottom:10px">
         <label style="font-size:13px;color:var(--muted);white-space:nowrap">Orden de columnas:</label>
         <input class="txt" id="cargarCols" style="flex:1;min-width:320px;font-size:12px;font-family:monospace"
-          value="lote, fecha, ph, av, gluc_fruc, malico, lactico, acidez_total, etanol, so2_libre"
+          value="lote, vasija, año, fecha, etanol, ph, av, gluc_fruc, malico, lactico, acidez_total, -, -, so2_libre"
           placeholder="lote, fecha, ph, av, ...">
-        <button class="btn" onclick="cargarResetCols()" title="Volver al orden por defecto">Resetear</button>
+        <button class="btn" onclick="cargarResetCols()" title="Volver al orden de la planilla">Resetear</button>
       </div>
 
       <!-- textarea de pegado -->

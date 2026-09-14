@@ -3,79 +3,44 @@
 
 import { $, esc, escA, DATOS, markDirty, registrarVista } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
+import { ORDEN_PLANILLA, planDeColumnas, parsearFila } from './carga-cols.js';
 
-const COLS_CARGAR_DEFAULT = 'lote, fecha, ph, av, gluc_fruc, malico, lactico, acidez_total, etanol, so2_libre';
-
-/* --- keys numéricas (se parsean con num()) --- */
-const CARGAR_NUMS = new Set(['ph','av','gluc_fruc','malico','lactico','acidez_total','etanol','so2_libre']);
-
-/* --- parseo de fecha: acepta dd/mm/yyyy, dd-mm-yyyy, yyyy-mm-dd --- */
-function parsearFecha(raw){
-  const s = String(raw||'').trim();
-  if (!s) return null;
-  // yyyy-mm-dd
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)){
-    const d = new Date(s + 'T00:00:00');
-    return isNaN(d) ? null : s;
-  }
-  // dd/mm/yyyy or dd-mm-yyyy
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (m){
-    const iso = m[3] + '-' + m[2].padStart(2,'0') + '-' + m[1].padStart(2,'0');
-    const d = new Date(iso + 'T00:00:00');
-    return isNaN(d) ? null : iso;
-  }
-  return null;
-}
-
-/* --- parseo principal --- */
+/* --- parseo principal ---
+ * El "que campo es cada posicion" y el "como se lee una celda" viven en
+ * carga-cols.js, con tests. Aca queda lo que necesita DATOS(): validar que el
+ * lote exista de verdad. */
 function parsearPegado(texto){
-  const cols = ($('cargarCols').value || COLS_CARGAR_DEFAULT)
-    .split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+  const plan = planDeColumnas($('cargarCols').value || ORDEN_PLANILLA);
+
+  /* Las columnas que se van a MOSTRAR en la previsualizacion: solo las que se
+   * guardan. Las descartadas (vasija, año, los huecos) no se listan a
+   * proposito — asi se ve de un vistazo que entra y que no. */
+  const colsMostrar = [...new Set(plan.filter(Boolean))];
 
   const lineas = texto.split(/\r?\n/).filter(l => l.trim() !== '');
   const filas = [];
 
   for (const linea of lineas){
-    // detectar separador: si hay tab usamos tab, sino coma
-    const sep = linea.includes('\t') ? '\t' : ',';
-    const celdas = linea.split(sep);
+    const { campos, errores } = parsearFila(linea, plan);
+    const obj = Object.assign({ _raw: linea, _errores: errores }, campos);
 
-    const obj = { _raw: linea, _errores: [] };
-
-    cols.forEach((col, i) => {
-      const crudo = (celdas[i] || '').trim();
-      if (col === 'fecha'){
-        obj.fecha_analisis = parsearFecha(crudo);
-        if (!obj.fecha_analisis) obj._errores.push('fecha inválida');
-      } else if (CARGAR_NUMS.has(col)){
-        // normalizar coma decimal → punto
-        const normalizado = crudo.replace(',', '.');
-        obj[col] = crudo === '' ? null : (isNaN(parseFloat(normalizado)) ? null : parseFloat(normalizado));
-      } else {
-        obj[col] = crudo === '' ? null : crudo;
-      }
-    });
-
-    // validar lote existe en DATOS
-    const loteStr = String(obj.lote || '').trim();
-    if (!loteStr){
-      obj._errores.push('lote vacío');
-    } else {
-      const existe = DATOS().lotes.some(l => String(l.lote).trim() === loteStr);
-      if (!existe) obj._errores.push('lote no existe');
-    }
+    /* Que el lote EXISTA no lo puede saber carga-cols.js: necesita DATOS(). */
+    const loteStr = String(obj.lote ?? '').trim();
+    if (loteStr && !DATOS().lotes.some(l => String(l.lote).trim() === loteStr))
+      obj._errores.push('lote no existe');
 
     filas.push(obj);
   }
-  return { cols, filas };
+  return { colsMostrar, filas };
 }
 
 /* --- encabezados de la tabla de preview --- */
 const CARGAR_LABELS = {
   lote:'Lote', fecha_analisis:'Fecha', ph:'pH', av:'AV',
-  gluc_fruc:'Gluc+Fruc', malico:'Málico', lactico:'Láctico',
+  gluc_fruc:'Gluc+Fruc', azucar_reductor:'Az. Reductor',
+  malico:'Málico', lactico:'Láctico',
   acidez_total:'Acidez total', etanol:'Etanol', so2_libre:'SO₂ libre',
+  comentario:'Comentario',
 };
 
 export function cargarPrevisualizar(){
@@ -95,10 +60,7 @@ export function cargarPrevisualizar(){
   }
   if (!DATOS()){ alert('Los datos aún no cargaron.'); return; }
 
-  const { cols, filas } = parsearPegado(texto);
-
-  // columnas a mostrar: las del orden declarado + fecha_analisis si viene de 'fecha'
-  const colsMostrar = cols.map(c => c === 'fecha' ? 'fecha_analisis' : c);
+  const { colsMostrar, filas } = parsearPegado(texto);
 
   const conErrores  = filas.filter(f => f._errores.length > 0).length;
   const sinErrores  = filas.length - conErrores;
@@ -185,7 +147,7 @@ export function cargarLimpiar(){
 }
 
 export function cargarResetCols(){
-  $('cargarCols').value = COLS_CARGAR_DEFAULT;
+  $('cargarCols').value = ORDEN_PLANILLA;
 }
 
 registrarVista('cargar', () => { /* sin re-render automático: el usuario controla */ });
