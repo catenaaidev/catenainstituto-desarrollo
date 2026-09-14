@@ -32,6 +32,27 @@ export function esCorreccionReal(correccion){
   return ot !== '' || correccion.so2_deseado != null;
 }
 
+/** Map<registro -> su posicion en el array>, armado de una sola pasada.
+ *
+ *  Existe para sacar el `indexOf` por fila que hacia la pestana Analisis en
+ *  cada repintado: los flags de "fuera de criterio" que devuelve la API vienen
+ *  indexados por la POSICION del registro en DATOS().analisis, asi que pintar
+ *  una fila exigia saber esa posicion. Con un indexOf por fila eso era O(N^2)
+ *  por render — invisible con 5 analisis, caro con miles.
+ *
+ *  Conserva la semantica de indexOf: si el mismo objeto estuviera dos veces en
+ *  el array, gana la PRIMERA posicion. No deberia pasar, pero si pasara, que
+ *  las dos formas de buscar difieran movería los colores de lugar en silencio
+ *  en vez de fallar de forma visible. */
+export function indicesPorObjeto(arr){
+  const m = new Map();
+  const lista = arr || [];
+  for (let i = 0; i < lista.length; i++){
+    if (!m.has(lista[i])) m.set(lista[i], i);
+  }
+  return m;
+}
+
 /** Compara dos valores para el orden dentro de un grupo: numeros si los dos
  *  lo son, texto en espanol si no. null/undefined siempre van al final,
  *  independientemente de la direccion (mismo criterio que sortRows de
