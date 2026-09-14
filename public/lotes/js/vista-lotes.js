@@ -8,10 +8,19 @@ import { toggleSort, sortRows, pasaMulti, opcionesValores, matchValor,
          initFiltrosMulti } from './tabla.js';
 import { activarGrilla, adaptadorCols, limpiarSeleccion } from './grilla.js';
 import { colsVisibles, bandasVisibles, alternar } from './grupos-cols.js';
-import { activarAnchos, autoajustarTodas, restablecerAnchos } from './anchos-cols.js';
+import { crearAnchos } from './anchos-cols.js';
 import { CAPACIDADES, resumenEnvases, contarEnvases,
          litrosDeEnvases, tiposDeEnvase, estaVacio } from './envases.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
+
+/* La clave de storage es la de siempre (lotes_cols_ancho): respeta los anchos
+ * que la gente ya tiene guardados. El encabezado de Lotes son DOS filas
+ * (bandas de grupo + columnas), y la de columnas es la segunda. */
+const anchosLotes = crearAnchos({
+  tablaId: 'tLotes',
+  claveStorage: 'lotes_cols_ancho',
+  filaEncabezado: 'thead tr:nth-child(2)',
+});
 
 /* --- orden del proceso para sort de etapa --- */
 const ETAPAS_ORDEN = ['ingreso', 'fa', 'fml', 'crianza', 'cerrado'];
@@ -601,7 +610,7 @@ export function renderLotes(){
   /* Anchos de columna. Tambien idempotente: los anchos se aplican como CSS por
      [data-k], asi que este innerHTML no los borro y no hay nada que reponer en
      las celdas nuevas. */
-  activarAnchos(t, hay => {
+  anchosLotes.activar(t, hay => {
     const b = $('btnResetAnchos');
     if (b) b.style.display = hay ? '' : 'none';
   });
@@ -610,8 +619,8 @@ export function renderLotes(){
 /* --- anchos de columna: los dos botones de la toolbar ---
  * Viven aca y no en app.js porque la <table> es de esta vista. No hace falta
  * repintar: los anchos son CSS. */
-export function ajustarAnchosLotes(){ autoajustarTodas($('tLotes')); }
-export function resetAnchosLotes(){ restablecerAnchos(); }
+export function ajustarAnchosLotes(){ anchosLotes.autoajustarTodas(); }
+export function resetAnchosLotes(){ anchosLotes.restablecer(); }
 
 /* --- agregar lote nuevo --- */
 export function agregarLote(){

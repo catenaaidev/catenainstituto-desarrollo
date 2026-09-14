@@ -44,14 +44,14 @@ describe('normalizarAnchos', () => {
 
 describe('cssDeAnchos', () => {
   it('no genera nada si no hay ningun ancho guardado', () => {
-    expect(cssDeAnchos({})).toBe('');
-    expect(cssDeAnchos(null)).toBe('');
+    expect(cssDeAnchos({}, 'tLotes')).toBe('');
+    expect(cssDeAnchos(null, 'tLotes')).toBe('');
   });
 
   it('fija el ancho de la columna por las tres propiedades', () => {
     // width sola no alcanza en una tabla de layout automatico: el navegador la
     // trata como sugerencia y la estira si el contenido no entra.
-    const css = cssDeAnchos({ vinedo: 210 });
+    const css = cssDeAnchos({ vinedo: 210 }, 'tLotes');
     expect(css).toContain('#tLotes th[data-k="vinedo"]');
     expect(css).toContain('#tLotes td[data-k="vinedo"]');
     expect(css).toContain('width:210px');
@@ -59,24 +59,38 @@ describe('cssDeAnchos', () => {
     expect(css).toContain('max-width:210px');
   });
 
+  it('scopea las reglas a la tabla que se le pide', () => {
+    // Es lo que permite que Lotes y Analisis tengan anchos independientes: si
+    // el selector fuera global, arrastrar 'lote' en una moveria la otra.
+    const css = cssDeAnchos({ etanol: 120 }, 'tAnalisis');
+    expect(css).toContain('#tAnalisis th[data-k="etanol"]');
+    expect(css).not.toContain('#tLotes');
+  });
+
   it('libera el piso de 60px del input para que la columna pueda angostarse', () => {
     // td input.cell tiene min-width:60px en index.html; sin pisarlo una columna
     // no baja de ahi por mas que se arrastre el agarre.
-    const css = cssDeAnchos({ ct: 50 });
+    const css = cssDeAnchos({ ct: 50 }, 'tLotes');
     expect(css).toMatch(/#tLotes td\[data-k="ct"\][^{]*input\.cell/);
     expect(css).toContain('min-width:0');
   });
 
   it('genera una regla por columna', () => {
-    const css = cssDeAnchos({ vinedo: 210, clon: 90 });
+    const css = cssDeAnchos({ vinedo: 210, clon: 90 }, 'tLotes');
     expect(css).toContain('data-k="vinedo"');
     expect(css).toContain('data-k="clon"');
   });
 
   it('normaliza lo que recibe antes de escribir el CSS', () => {
-    const css = cssDeAnchos({ vinedo: 9000, 'x"]{color:red}': 200 });
+    const css = cssDeAnchos({ vinedo: 9000, 'x"]{color:red}': 200 }, 'tLotes');
     expect(css).toContain(`width:${MAX_ANCHO}px`);
     expect(css).not.toContain('color:red');
+  });
+
+  it('no genera nada si no se le dice a que tabla', () => {
+    // Sin id el selector saldria roto (#undefined). Mejor nada que basura.
+    expect(cssDeAnchos({ vinedo: 210 }, '')).toBe('');
+    expect(cssDeAnchos({ vinedo: 210 })).toBe('');
   });
 });
 
