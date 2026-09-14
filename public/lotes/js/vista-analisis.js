@@ -8,8 +8,9 @@ import { activarGrilla } from './grilla.js';
 import { armarFilas, esQuimicaReal, esCorreccionReal } from './analisis-filas.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
+import { crearAnchos } from './anchos-cols.js';
 
-/* Columnas de la tabla de análisis. Las 4 ultimas son de la CORRECCION de SO2
+/* Columnas de la tabla de análisis. Las 2 ultimas son de la CORRECCION de SO2
  * (viven en analisis.correccion.*, no directo en el registro) y solo se ven
  * en la fila de tipo 'correccion'; las anteriores son de quimica y solo se
  * ven en la fila 'quimica'. lote/variedad/fecha_analisis se ven en las dos. */
@@ -122,6 +123,15 @@ let _descAn = [], _instAn = [];
  * _instAn: esta vista rehace su seccion entera con sec.innerHTML, asi que el
  * nodo se desprende del documento pero el modo elegido viaja con el. */
 let _fltAnLlenado = null;
+
+/* Anchos de columna propios: clave de storage distinta de la de Lotes, asi que
+ * arrastrar 'lote' en una pestana no mueve la otra. El encabezado de esta tabla
+ * es de UNA sola fila (Lotes tiene dos por las bandas de grupo). */
+const anchosAnalisis = crearAnchos({
+  tablaId: 'tAnalisis',
+  claveStorage: 'analisis_cols_ancho',
+  filaEncabezado: 'thead tr',
+});
 
 /** Escribe el valor de una celda, sabiendo (a) si la columna aplica a este
  *  tipo de fila, y (b) si vive en analisis.correccion.* o en analisis.*
@@ -249,6 +259,10 @@ export function renderAnalisis(){
   </select>
   <div id="fltAnLlenado"></div>
   <button class="btn" id="btnLimpiarFltAn">🧹 Limpiar filtros</button>
+  <button class="btn" id="btnAjustarAnchosAn"
+    title="Ajustar el ancho de todas las columnas a su contenido. También se puede arrastrar el borde derecho de cada encabezado, o hacerle doble clic.">↔ Ajustar anchos</button>
+  <button class="btn" id="btnResetAnchosAn" style="display:none"
+    title="Volver al ancho automático de las columnas">↩ Anchos originales</button>
   <span class="tag" id="analisisCount"></span>
 </div>
 <div class="legend-inline">
@@ -483,6 +497,21 @@ export function renderAnalisis(){
     },
     onCambio: markDirty,
   });
+
+  /* Anchos de columna. La toolbar se rehace en cada render (sec.innerHTML), asi
+   * que los botones se vuelven a cablear cada vez; la instancia y los anchos
+   * guardados son los mismos siempre. El boton de restablecer solo aparece
+   * cuando hay algo que restablecer, igual que en Lotes. */
+  anchosAnalisis.activar(t, hay => {
+    const b = $('btnResetAnchosAn');
+    if (b) b.style.display = hay ? '' : 'none';
+  });
+
+  const btnAjAn = $('btnAjustarAnchosAn');
+  if (btnAjAn) btnAjAn.addEventListener('click', () => anchosAnalisis.autoajustarTodas());
+
+  const btnResAn = $('btnResetAnchosAn');
+  if (btnResAn) btnResAn.addEventListener('click', () => anchosAnalisis.restablecer());
 }
 
 registrarVista('analisis', () => {

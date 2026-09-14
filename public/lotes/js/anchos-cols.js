@@ -149,11 +149,17 @@ function enAgarre(th, e){
   return (r.right - e.clientX) <= AGARRE && e.clientX <= r.right;
 }
 
-/** La instancia dueña de la tabla a la que pertenece este th, o null. */
+/** La instancia dueña de la tabla a la que pertenece este th, o null.
+ *  Prefiere la identidad del nodo antes que el id: Analisis recrea su <table>
+ *  en cada render, asi que inst.tabla y tabla.id pueden divergir entre renders
+ *  si hay dos instancias con el mismo tablaId registradas. La busqueda por
+ *  nodo resuelve siempre el propietario real, sin ambiguedad. */
 function instanciaDeTh(th){
   const tabla = th.closest('table');
-  if (!tabla || !tabla.id) return null;
-  return instancias.find(i => i.tablaId === tabla.id) || null;
+  if (!tabla) return null;
+  return instancias.find(i => i.tabla === tabla)
+      || (tabla.id ? instancias.find(i => i.tablaId === tabla.id) : null)
+      || null;
 }
 
 /* Los tres listeners de document, puestos UNA vez para todas las instancias.
