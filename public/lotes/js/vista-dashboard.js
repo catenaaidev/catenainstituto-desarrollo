@@ -146,6 +146,21 @@ function renderGraficos(d){
 
 /* ---------- render ---------- */
 
+/** ¿A este lote le falta el analisis que pide su frecuencia?
+ *
+ *  Es la MISMA definicion que alimenta la pregunta frecuente "Faltan analizar"
+ *  y las tarjetas de analisis: vive en un solo lugar a proposito, porque dos
+ *  copias de esta condicion se separan callado y el dashboard pasa a mostrar
+ *  dos numeros distintos para lo mismo.
+ *
+ *  Las dos alarmas cuentan: 'frecuencia_vencida' es el lote que se paso de sus
+ *  dias, y 'sin_analisis_valido' el que nunca tuvo uno. Los dos casos son "hay
+ *  que ir a medirlo".  */
+function faltaAnalizar(l){
+  return !!(l.alarmas && (l.alarmas.includes('frecuencia_vencida')
+                       || l.alarmas.includes('sin_analisis_valido')));
+}
+
 export function renderDashboard(){
   const d = dashData();
   if (!d){
@@ -153,6 +168,9 @@ export function renderDashboard(){
     $('kpiActivos').textContent = '—';
     $('kpiVencidos').textContent = '—';
     $('kpiIdeal').textContent = '—';
+    $('kpiAnTotal').textContent  = '—';
+    $('kpiAnHechos').textContent = '—';
+    $('kpiAnFaltan').textContent = '—';
     $('tAlarmasBody').innerHTML = '<tr><td colspan="4" style="color:var(--muted)">Cargando datos…</td></tr>';
     $('dashFaq').innerHTML = '';
     $('bandejaEtapas').innerHTML = '';
@@ -174,6 +192,27 @@ export function renderDashboard(){
   $('kpiIdeal').textContent    = kpis.condicion_ideal ?? '—';
   $('kpiSo2').textContent      = res ? res.deficitSo2 : '—';
   $('kpiAv').textContent       = res ? res.avAlta     : '—';
+
+  /* Analisis segun la frecuencia. Se cuenta por LOTE y sobre el estado de hoy:
+   * cada lote activo debe un analisis, y o esta al dia o no. Los tres numeros
+   * cierran (hechos + faltan = total), que es justo lo que se pidio. Sale todo
+   * de d.lotes, que ya trae las alarmas del motor FML: sin llamadas nuevas al
+   * servidor y sin reglas inventadas aca. */
+  const lotesAn   = d.lotes || [];
+  const anTotal   = lotesAn.length;
+  const anFaltan  = lotesAn.filter(faltaAnalizar).length;
+  const anHechos  = anTotal - anFaltan;
+
+  $('kpiAnTotal').textContent  = anTotal;
+  $('kpiAnHechos').textContent = anHechos;
+  $('kpiAnFaltan').textContent = anFaltan;
+
+  const pctAn = n => (anTotal ? Math.round(n * 100 / anTotal) : 0) + ' % de los lotes';
+  $('kpiAnTotalSub').textContent  = 'Un análisis por lote activo';
+  $('kpiAnHechosSub').textContent = anTotal ? pctAn(anHechos) : '';
+  $('kpiAnFaltanSub').textContent = anFaltan
+    ? pctAn(anFaltan) + ' — vencidos o sin análisis'
+    : 'Todos dentro de frecuencia';
 
   if (res){
     $('kpiActivosSub').innerHTML  = `<b>${ent(res.litros)}</b> L en guarda · ${res.variedades} variedad${res.variedades !== 1 ? 'es' : ''}`;
@@ -219,7 +258,9 @@ export function renderDashboard(){
   const fmlNoTerm  = lotes.filter(l => l.fml_estado === 'no_finalizada').length;
   const fmlTermExc = lotes.filter(l => l.fml_estado === 'finalizada' || l.fml_estado === 'excluida').length;
   const mermos     = lotes.filter(l => l.estado_llenado === 'no_lleno').length;
-  const sinAnalisis = lotes.filter(l => l.alarmas && (l.alarmas.includes('sin_analisis_valido') || l.alarmas.includes('frecuencia_vencida'))).length;
+  /* La misma definicion que la tarjeta de faltantes: si los dos numeros no dan
+   * igual, es un bug. */
+  const sinAnalisis = lotes.filter(faltaAnalizar).length;
   const faEnProc   = lotes.filter(l => l.fa_estado === 'no_finalizada').length;
 
   const faqs = [
