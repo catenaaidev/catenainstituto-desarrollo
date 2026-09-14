@@ -148,6 +148,28 @@ export function estadoFrecuencia(
   };
 }
 
+/**
+ * Desde cuando rige una condicion: se camina el historial hacia atras mientras
+ * se siga cumpliendo y se devuelve la fecha de la mas vieja de esa corrida.
+ *
+ * Las filas que no traen el dato devuelven null y se saltean sin cortar: un
+ * analisis de AV en el medio no "arregla" un pH alto que nadie volvio a medir.
+ */
+export function desdeCuando(
+  analisis: Fila[],
+  cumple: (a: Fila) => boolean | null,
+): string | null {
+  const ordenados = ordenarPorFecha(analisis).filter((a) => fechaDia(a.fecha_analisis) !== null);
+  let desde: string | null = null;
+  for (let i = ordenados.length - 1; i >= 0; i--) {
+    const v = cumple(ordenados[i]);
+    if (v === null) continue;
+    if (!v) break;
+    desde = String(ordenados[i].fecha_analisis).slice(0, 10);
+  }
+  return desde;
+}
+
 // Re-exportar Criterios como tipo para que los consumidores de este modulo
 // puedan tipear sus funciones sin importar desde fml.ts directamente.
 export type { Criterios };

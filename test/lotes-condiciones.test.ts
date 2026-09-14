@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   so2LibreDe, valorValido, fechaDia,
   esMedicionUtil, tieneAnalisisValido, ultimoControlProceso, estadoFrecuencia,
+  desdeCuando,
 } from '../src/lotes/motores/fml-condiciones';
 import { CRITERIOS_DEFAULT } from '../src/lotes/motores/fml';
 
@@ -86,6 +87,31 @@ describe('control de proceso', () => {
       { fecha_analisis: '2026-08-20', ph: 3.6 },
     ];
     expect(ultimoControlProceso(filas)?.fecha_analisis).toBe('2026-08-01');
+  });
+});
+
+describe('desde cuando', () => {
+  const filas = [
+    { fecha_analisis: '2026-06-01', ph: 3.5 },
+    { fecha_analisis: '2026-07-01', ph: 3.9 },
+    { fecha_analisis: '2026-08-01', ph: 3.9 },
+  ];
+
+  it('devuelve el mas viejo de la corrida que sigue cumpliendo', () => {
+    expect(desdeCuando(filas, (a) => (a.ph == null ? null : Number(a.ph) > 3.75))).toBe('2026-07-01');
+  });
+
+  it('las filas sin el dato no cortan la corrida', () => {
+    const conHueco = [
+      { fecha_analisis: '2026-07-01', ph: 3.9 },
+      { fecha_analisis: '2026-07-15', av: 0.4 },
+      { fecha_analisis: '2026-08-01', ph: 3.9 },
+    ];
+    expect(desdeCuando(conHueco, (a) => (a.ph == null ? null : Number(a.ph) > 3.75))).toBe('2026-07-01');
+  });
+
+  it('si la ultima no cumple, no hay desde', () => {
+    expect(desdeCuando(filas, (a) => (a.ph == null ? null : Number(a.ph) > 4.5))).toBe(null);
   });
 });
 
