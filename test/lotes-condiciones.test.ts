@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   so2LibreDe, valorValido, fechaDia,
-  esMedicionUtil, ultimoControlProceso, estadoFrecuencia,
+  esMedicionUtil, tieneAnalisisValido, ultimoControlProceso, estadoFrecuencia,
 } from '../src/lotes/motores/fml-condiciones';
 import { CRITERIOS_DEFAULT } from '../src/lotes/motores/fml';
 
@@ -41,6 +41,32 @@ describe('medicion util', () => {
 
   it('el -999 no alcanza para ser medicion util', () => {
     expect(esMedicionUtil({ fecha_analisis: '2026-08-01', av: -999 })).toBe(false);
+  });
+
+  it('SO2 que viene dentro de correccion es medicion util', () => {
+    expect(esMedicionUtil({ fecha_analisis: '2026-08-01', correccion: { so2_libre: 20 } })).toBe(true);
+  });
+});
+
+describe('tiene analisis valido', () => {
+  it('arreglo con al menos una fila util devuelve true', () => {
+    const analisis = [
+      { fecha_analisis: '2026-08-01', comentario: 'sin datos' },
+      { fecha_analisis: '2026-08-05', so2_libre: 15 },
+    ];
+    expect(tieneAnalisisValido(analisis)).toBe(true);
+  });
+
+  it('arreglo sin ninguna fila util devuelve false', () => {
+    const analisis = [
+      { fecha_analisis: '2026-08-01', comentario: 'nada' },
+      { fecha_analisis: '2026-08-05', av: -999 },
+    ];
+    expect(tieneAnalisisValido(analisis)).toBe(false);
+  });
+
+  it('arreglo vacio devuelve false', () => {
+    expect(tieneAnalisisValido([])).toBe(false);
   });
 });
 
