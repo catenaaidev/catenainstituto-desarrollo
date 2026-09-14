@@ -32,8 +32,9 @@
  *    y la fuga creceria toda la sesion.
  *
  * La parte de arriba del archivo es pura y tiene tests (test/lotes-anchos.test.mjs);
- * de crearAnchos() para abajo se toca el DOM. Importar el modulo no toca el
- * DOM: por eso los tests pueden correr dentro del runtime de Workers.
+ * la frontera con el DOM esta marcada por la banda de igual-signos a mitad del
+ * archivo. Importar el modulo no toca el DOM: por eso los tests pueden correr
+ * dentro del runtime de Workers.
  */
 'use strict';
 
@@ -252,9 +253,16 @@ export function crearAnchos({ tablaId, claveStorage, filaEncabezado }){
     tabla: null,      // la <table> del ultimo activar(); Analisis la recrea
     styleTag: null,
     onCambio: null,
+    _leido: false,
   };
 
   inst.leer = function(){
+    /* Una sola vez por instancia: Analisis recrea su <table> en cada render, y
+     * sin este flag cada repintado volveria a leer el storage y pisaria los
+     * anchos vivos con {} cuando el navegador tiene el storage bloqueado (el
+     * catch de guardar() se traga el error en silencio). */
+    if (inst._leido) return;
+    inst._leido = true;
     /* Mismo try/catch que usuarioActual() en nucleo.js: si el navegador bloquea
      * el storage la pestana funciona igual y lo unico que se pierde es la
      * memoria de la preferencia. */

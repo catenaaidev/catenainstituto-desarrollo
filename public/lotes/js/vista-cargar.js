@@ -10,7 +10,7 @@ import { ORDEN_PLANILLA, planDeColumnas, parsearFila } from './carga-cols.js';
  * carga-cols.js, con tests. Aca queda lo que necesita DATOS(): validar que el
  * lote exista de verdad. */
 function parsearPegado(texto){
-  const plan = planDeColumnas($('cargarCols').value || ORDEN_PLANILLA);
+  const plan = planDeColumnas($('cargarCols').value.trim() || ORDEN_PLANILLA);
 
   /* Las columnas que se van a MOSTRAR en la previsualizacion: solo las que se
    * guardan. Las descartadas (vasija, año, los huecos) no se listan a
@@ -150,4 +150,10 @@ export function cargarResetCols(){
   $('cargarCols').value = ORDEN_PLANILLA;
 }
 
-registrarVista('cargar', () => { /* sin re-render automático: el usuario controla */ });
+registrarVista('cargar', () => {
+  /* El orden por defecto lo pone el modulo, no el HTML: asi hay UNA sola fuente
+   * de verdad. Solo se rellena si esta vacio, para no pisar un orden que la
+   * persona haya tipeado y todavia no usado. */
+  const el = $('cargarCols');
+  if (el && !el.value.trim()) el.value = ORDEN_PLANILLA;
+});

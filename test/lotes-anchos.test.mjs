@@ -1,10 +1,11 @@
-/* Tests del modulo de anchos de columna de la pestana Lotes.
+/* Tests del modulo de anchos de columna (anchos-cols.js), compartido por las
+ * pestanas Lotes y Analisis.
  *
- * Solo se importan las funciones PURAS de anchos-cols.js: normalizar el mapa
- * que viene del localStorage, generar el CSS y calcular el autoajuste. La parte
- * que toca el DOM (activarAnchos) no se importa aca porque el runtime de
- * Workers no tiene document; la garantia de que el modulo se puede importar sin
- * DOM la da justamente este archivo.
+ * Solo se importan las funciones PURAS: normalizar el mapa que viene del
+ * localStorage, generar el CSS y calcular el autoajuste. La parte que toca el
+ * DOM (crearAnchos) no se importa aca porque el runtime de Workers no tiene
+ * document; la garantia de que el modulo se puede importar sin DOM la da
+ * justamente este archivo.
  */
 import { describe, it, expect } from 'vitest';
 import { MIN_ANCHO, MAX_ANCHO, normalizarAnchos, cssDeAnchos,
@@ -91,6 +92,11 @@ describe('cssDeAnchos', () => {
     // Sin id el selector saldria roto (#undefined). Mejor nada que basura.
     expect(cssDeAnchos({ vinedo: 210 }, '')).toBe('');
     expect(cssDeAnchos({ vinedo: 210 })).toBe('');
+  });
+
+  it('rechaza un tablaId que inyectaria CSS', () => {
+    // La otra mitad del guard: un id con comillas o llaves se colaria al CSS.
+    expect(cssDeAnchos({ vinedo: 210 }, 't"]{color:red}')).toBe('');
   });
 });
 

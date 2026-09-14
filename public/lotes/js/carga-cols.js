@@ -19,7 +19,8 @@
 
 /* El orden de la planilla del laboratorio, 14 columnas. Vive aca y no en el
  * HTML para que el value del input y el default del parser no se separen:
- * vista-cargar.js lo escribe en #cargarCols al arrancar. */
+ * registrarVista('cargar') en vista-cargar.js lo escribe en #cargarCols al
+ * arrancar, solo si el campo esta vacio. */
 export const ORDEN_PLANILLA =
   'lote, vasija, año, fecha, etanol, ph, av, gluc_fruc, malico, lactico, acidez_total, -, -, so2_libre';
 
