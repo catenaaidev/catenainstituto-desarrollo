@@ -72,6 +72,82 @@ export function so2LibreDe(a: Fila): number | null {
   return null;
 }
 
+// -------------------------------------------------------- medicion y controles
+
+const METRICAS_UTILES = ['ph', 'av', 'malico', 'azucar_reductor', 'so2_libre', 'etanol'];
+const METRICAS_PROCESO = ['etanol', 'av', 'malico'];
+
+/** Una fila cuenta como analisis si trae fecha y al menos una medicion real. */
+export function esMedicionUtil(a: Fila): boolean {
+  if (fechaDia(a.fecha_analisis) === null) return false;
+  return METRICAS_UTILES.some((m) => (m === 'so2_libre' ? so2LibreDe(a) : valorValido(a[m])) !== null);
+}
+
+export function tieneAnalisisValido(analisis: Fila[]): boolean {
+  return (analisis ?? []).some(esMedicionUtil);
+}
+
+/**
+ * El control de proceso exige etanol, AV y malico en la MISMA fila: es una
+ * corrida completa del FOSS. Mediciones sueltas no lo reemplazan, y por eso no
+ * reinician la frecuencia.
+ */
+export function ultimoControlProceso(analisis: Fila[]): Fila | null {
+  const ordenados = ordenarPorFecha(analisis);
+  for (let i = ordenados.length - 1; i >= 0; i--) {
+    const a = ordenados[i];
+    if (fechaDia(a.fecha_analisis) === null) continue;
+    if (METRICAS_PROCESO.every((m) => valorValido(a[m]) !== null)) return a;
+  }
+  return null;
+}
+
+export interface ResultadoFrecuencia {
+  estado: 'al_dia' | 'vencido' | 'sin_datos';
+  ultima_fecha_control: string | null;
+  dias_desde_control: number | null;
+  frecuencia_max: number;
+  control_proceso_pendiente: boolean;
+  desde: string | null;   // fecha en que vencio
+}
+
+export function estadoFrecuencia(
+  analisis: Fila[],
+  eff: Criterios,
+  fmlEstado: string,
+  hoy: number,
+): ResultadoFrecuencia {
+  // Solo aflojan a 30 dias los lotes con la FML cerrada o excluida. "sin_dato"
+  // se trata como no terminada: no saber no es una razon para espaciar.
+  const terminada = fmlEstado === 'finalizada' || fmlEstado === 'excluida';
+  const frecuencia_max = terminada ? eff.frecuencia_terminada : eff.frecuencia_no_terminada;
+  const control = ultimoControlProceso(analisis);
+
+  if (!control) {
+    return {
+      estado: 'sin_datos',
+      ultima_fecha_control: null,
+      dias_desde_control: null,
+      frecuencia_max,
+      control_proceso_pendiente: true,
+      desde: null,
+    };
+  }
+
+  const f = fechaDia(control.fecha_analisis) as number;
+  const dias = Math.round((hoy - f) / DIA_MS);
+  const vencido = dias > frecuencia_max;
+
+  return {
+    estado: vencido ? 'vencido' : 'al_dia',
+    ultima_fecha_control: String(control.fecha_analisis).slice(0, 10),
+    dias_desde_control: dias,
+    frecuencia_max,
+    control_proceso_pendiente: false,
+    desde: vencido ? new Date(f + frecuencia_max * DIA_MS).toISOString().slice(0, 10) : null,
+  };
+}
+
 // Re-exportar Criterios como tipo para que los consumidores de este modulo
 // puedan tipear sus funciones sin importar desde fml.ts directamente.
 export type { Criterios };
