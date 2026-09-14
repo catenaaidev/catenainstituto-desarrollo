@@ -17,6 +17,11 @@ const COLS_ANALISIS = [
   { k:'lote',          label:'Lote',          ro:true  },
   { k:'variedad',      label:'Variedad',       ro:true  },
   { k:'fecha_analisis',label:'Fecha',          ro:false },
+  /* Etanol va antes que pH, no al final de la quimica: es el mismo orden en
+   * que viene la planilla del laboratorio (ver ORDEN_PLANILLA en
+   * carga-cols.js), asi que leer esta tabla y leer lo que se pego son el
+   * mismo gesto. */
+  { k:'etanol',        label:'Etanol',         num:true },
   { k:'ph',            label:'pH',             num:true },
   { k:'av',            label:'AV',             num:true },
   { k:'gluc_fruc',       label:'Gluc+Fruc',      num:true },
@@ -24,19 +29,19 @@ const COLS_ANALISIS = [
   { k:'malico',          label:'Málico',        num:true },
   { k:'lactico',       label:'Láctico',        num:true },
   { k:'acidez_total',  label:'Acidez total',   num:true },
-  { k:'etanol',        label:'Etanol',         num:true },
   { k:'so2_libre',     label:'SO₂ libre',      num:true },
   { k:'comentario',    label:'Comentario',     ro:false },
   { k:'ot_n',            label:'OT',              ro:false },
   { k:'so2_deseado',     label:'SO2 deseado',     num:true },
-  { k:'mbk_a_agregar',   label:'MBK a agregar',   num:true },
-  { k:'ml_exactos',      label:'mL exactos',      num:true },
 ];
 
 /* Claves que viven anidadas en analisis.correccion.*, no en el registro raiz.
  * Las demas columnas de COLS_ANALISIS (salvo lote/variedad/fecha_analisis,
  * que se ven en ambos tipos) son de quimica y viven en el registro raiz. */
-const CAMPOS_CORRECCION = new Set(['ot_n', 'so2_deseado', 'mbk_a_agregar', 'ml_exactos']);
+/* mbk_a_agregar y ml_exactos SIGUEN existiendo en analisis.correccion y se
+ * siguen viendo y editando en las pestanas SO2 y Orden de correccion: lo unico
+ * que se saco es la columna de ESTA tabla. */
+const CAMPOS_CORRECCION = new Set(['ot_n', 'so2_deseado']);
 const CAMPOS_COMUNES = new Set(['lote', 'variedad', 'fecha_analisis']);
 
 /** Campos quimicos que el boton de eliminar vacia en una fila de tipo
@@ -252,8 +257,8 @@ export function renderAnalisis(){
    * este array es el mismo indice `f` que usa la grilla. */
   t._rows = filasDeDatos;
 
-  /* encabezados: sin cambios de logica, COLS_ANALISIS ahora tiene 17
-   * entradas (13 de quimica/comunes + 4 de correccion) en vez de 13. */
+  /* encabezados: sin cambios de logica. COLS_ANALISIS tiene 15 entradas
+   * (13 de quimica/comunes + 2 de correccion). */
   let h = '<thead><tr>';
   for (const c of COLS_ANALISIS){
     const ar = sortAnalisis.key===c.k ? `<span class="arrow">${sortAnalisis.dir>0?'▲':'▼'}</span>` : '';
