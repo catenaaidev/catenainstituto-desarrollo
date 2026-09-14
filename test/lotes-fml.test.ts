@@ -53,6 +53,21 @@ describe('criterios efectivos', () => {
     expect(eff.ph_max).toBe(3.65);
     expect(eff.so2_libre_piso).toBe(25.0); // lo no sobrescrito viene del default
   });
+
+  it('trae las claves nuevas del tablero', () => {
+    expect(CRITERIOS_DEFAULT.so2_caida_max).toBe(12.0);
+    expect(CRITERIOS_DEFAULT.so2_aplica).toBe('si');
+    expect(CRITERIOS_DEFAULT.ph_max_inclusive).toBe('no');
+  });
+
+  it('un proyecto puede apagar el SO2', () => {
+    const eff = criteriosEfectivos(
+      { default: { ...CRITERIOS_DEFAULT }, por_proyecto: { 'El Amiguito': { so2_aplica: 'no' } } },
+      'Malbec',
+      'el amiguito',
+    );
+    expect(eff.so2_aplica).toBe('no');
+  });
 });
 
 describe('estado del lote', () => {

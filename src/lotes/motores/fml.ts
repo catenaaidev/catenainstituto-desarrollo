@@ -24,6 +24,9 @@ export interface Criterios {
   av_delta_dias: number;
   frecuencia_no_terminada: number;
   frecuencia_terminada: number;
+  so2_caida_max: number;
+  so2_aplica: string;
+  ph_max_inclusive: string;
   [k: string]: unknown;
 }
 
@@ -40,6 +43,9 @@ export const CRITERIOS_DEFAULT: Criterios = {
   av_delta_dias: 15,
   frecuencia_no_terminada: 15,
   frecuencia_terminada: 30,
+  so2_caida_max: 12.0,
+  so2_aplica: 'si',
+  ph_max_inclusive: 'no',
 };
 
 export const ACCIONES: Record<string, string> = {
