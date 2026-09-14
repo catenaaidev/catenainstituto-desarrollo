@@ -19,6 +19,8 @@
 - **Suite completa:** `npm test` (222 tests al 2026-09-14). Un archivo suelto: `npx vitest run test/<archivo>`.
 - **Typecheck:** `npx tsc --noEmit`.
 - **Claude no puede ejecutar `wrangler`.** El deploy lo corre el usuario a mano. Ningún task lo intenta.
+- **Los números de línea de este plan son pistas, no direcciones.** Se calcularon sobre el árbol en `3517d0a` y cada task corre el resto. Ubicá siempre el punto de edición por el **contenido citado** (el texto que se reemplaza, el ancla que se menciona), nunca por el número solo.
+- **`renderAnalisis` no está en `window`** (solo `cargarPrevisualizar`, `cargarConfirmar`, `cargarLimpiar` y `cargarResetCols` lo están, desde `app.js`). Para forzar un re-render de la pestaña Análisis desde `preview_eval`, disparar el buscador: `const b=document.getElementById('buscaAnalisis'); b.value=''; b.dispatchEvent(new Event('input',{bubbles:true}))`.
 - **Claves canónicas de un análisis** (las únicas que se guardan): `lote`, `fecha_analisis`, `ph`, `av`, `gluc_fruc`, `azucar_reductor`, `malico`, `lactico`, `acidez_total`, `etanol`, `so2_libre`, `comentario`.
 
 ---
@@ -303,7 +305,7 @@ export function parsearFila(linea, plan){
 npx vitest run test/lotes-carga-cols.test.mjs
 ```
 
-Esperado: PASA, 20 tests.
+Esperado: PASA, todos los casos en verde. **No ajustar los tests para llegar a un número**: si uno falla, el que está mal es el módulo.
 
 - [ ] **Step 5: Correr la suite completa**
 
@@ -1334,10 +1336,10 @@ const th=[...document.querySelectorAll('#tAnalisis thead th[data-k]')][3]; const
 
 Esperado: ~70px más que el original (índice 3 es Etanol).
 
-Que el ancho sobreviva al re-render:
+Que el ancho sobreviva al re-render (`renderAnalisis` no es global: se fuerza por el buscador):
 
 ```js
-renderAnalisis(); Math.round(document.querySelectorAll('#tAnalisis thead th[data-k]')[3].getBoundingClientRect().width)
+const b=document.getElementById('buscaAnalisis'); b.value=''; b.dispatchEvent(new Event('input',{bubbles:true})); Math.round(document.querySelectorAll('#tAnalisis thead th[data-k]')[3].getBoundingClientRect().width)
 ```
 
 Esperado: **el mismo número** que el paso anterior.
@@ -1353,7 +1355,7 @@ Esperado: el primero con la columna arrastrada, el segundo `null` (o lo que tuvi
 Que no haya fuga de listeners — es el motivo de todo el refactor:
 
 ```js
-let n=0; const orig=document.addEventListener.bind(document); document.addEventListener=(...a)=>{if(a[0]==='mousedown')n++;return orig(...a)}; for(let i=0;i<20;i++) renderAnalisis(); document.addEventListener=orig; n
+let n=0; const orig=document.addEventListener.bind(document); document.addEventListener=(...a)=>{if(a[0]==='mousedown')n++;return orig(...a)}; for(let i=0;i<20;i++){const b=document.getElementById('buscaAnalisis'); b.value=''; b.dispatchEvent(new Event('input',{bubbles:true}));} document.addEventListener=orig; n
 ```
 
 Esperado: **0**. Veinte re-renders no agregan ni un `mousedown` en `document`.
@@ -1516,7 +1518,7 @@ git commit -m "feat: el dashboard cuenta los analisis totales, hechos y faltante
 npm test && npx tsc --noEmit
 ```
 
-Esperado: todo verde. Los tests pasan de 222 a ~242 (los 20 de `carga-cols` más los 2 nuevos de `anchos`, menos ninguno).
+Esperado: todo verde, y **más** tests que los 222 de partida (suman los de `carga-cols` y los dos nuevos de `anchos`; no se borra ninguno).
 
 - [ ] **Step 2: Recorrida final a ojo de las cuatro pestañas tocadas**
 
