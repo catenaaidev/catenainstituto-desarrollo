@@ -6,6 +6,8 @@ import { toggleSort, escribirCelda, pasaMulti, opcionesValores,
          initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla } from './grilla.js';
 import { armarFilas, esQuimicaReal, esCorreccionReal } from './analisis-filas.js';
+import { crearFiltroLlenado } from './filtro-llenado.js';
+import { estaVacio } from './envases.js';
 
 /* Columnas de la tabla de análisis. Las 4 ultimas son de la CORRECCION de SO2
  * (viven en analisis.correccion.*, no directo en el registro) y solo se ven
@@ -81,6 +83,19 @@ function _buildLoteMap(){
   return m;
 }
 
+/* Mapa de lote -> OBJETO lote. Aparte del de arriba a proposito: ese devuelve
+ * la variedad (un string) y ya hay codigo colgado de esa forma. El filtro de
+ * llenado y el atenuado necesitan el lote entero para mirarle los litros.
+ *
+ * get() de un lote que no existe devuelve undefined, y eso esta bien: un
+ * analisis puede sobrevivir al borrado de su lote, y pasaLlenado/estaVacio lo
+ * tratan como vacio sin ninguna rama especial. */
+function _buildLoteObjMap(){
+  const m = new Map();
+  for (const l of (DATOS().lotes || [])) m.set(String(l.lote ?? ''), l);
+  return m;
+}
+
 /* Sort state para análisis */
 // Ascendente por defecto: dentro de un lote tiene mas sentido leer de mas
 // viejo a mas nuevo. D1 dejaba -1 (mas reciente primero) para la tabla plana;
@@ -96,6 +111,12 @@ let _filtAnalisisBusca    = '';
  * mismas referencias, asi que el estado sobrevive a los re-render. */
 const filtAn = { variedad: new Set(), proyecto: new Set() };
 let _descAn = [], _instAn = [];
+
+/* Segmentado Todos | Llenos | Vacíos, el mismo control que la pestaña Lotes.
+ * Se crea una sola vez y se vuelve a colgar despues de cada render, igual que
+ * _instAn: esta vista rehace su seccion entera con sec.innerHTML, asi que el
+ * nodo se desprende del documento pero el modo elegido viaja con el. */
+let _fltAnLlenado = null;
 
 /** Escribe el valor de una celda, sabiendo (a) si la columna aplica a este
  *  tipo de fila, y (b) si vive en analisis.correccion.* o en analisis.*
@@ -148,6 +169,14 @@ export function renderAnalisis(){
   const sec = $('tab-analisis'); if (!sec) return;
 
   const loteMap = _buildLoteMap();
+  const loteObjMap = _buildLoteObjMap();
+  /* Se crea ACA y no al montarlo mas abajo porque el filtrado pasa antes de
+     armar el HTML: si no existiera todavia, el primer render se dibujaria sin
+     aplicar el modo elegido. */
+  if (!_fltAnLlenado) _fltAnLlenado = crearFiltroLlenado(renderAnalisis);
+  const loteDe = (a) => loteObjMap.get(String(a.lote ?? ''));
+  /* Para el pintado, que tiene a mano el NUMERO de lote y no el analisis. */
+  const esVacio = (numLote) => estaVacio(loteObjMap.get(String(numLote ?? '')));
 
   /* -------- construir opciones de filtros -------- */
   const meses     = [...new Set((DATOS().analisis||[]).map(a => (a.fecha_analisis||'').slice(0,7)).filter(Boolean))].sort().reverse();
@@ -162,6 +191,11 @@ export function renderAnalisis(){
   if (_filtAnalisisMes)
     registrosFiltrados = registrosFiltrados.filter(a => (a.fecha_analisis||'').startsWith(_filtAnalisisMes));
   registrosFiltrados = registrosFiltrados.filter(a => pasaMulti(a, _descAn));
+  /* Llenado: es una propiedad del LOTE, no del analisis, asi que se filtra el
+     registro crudo (como mes/variedad/proyecto) y no la fila virtual. Un lote
+     vacio se lleva sus dos tipos de fila, quimica y correccion, que es lo que
+     corresponde: el lote no tiene litros, no "esta medicion en particular". */
+  registrosFiltrados = registrosFiltrados.filter(a => _fltAnLlenado.pasa(loteDe(a)));
 
   /* "Solo fuera de criterio" ya NO filtra el array crudo: filtra FILAS
    * VIRTUALES, porque el concepto es exclusivo de quimica. Si filtrara el
@@ -198,11 +232,14 @@ export function renderAnalisis(){
     <option value="todas"${_filtAnalisisTipo==='todas'?' selected':''}>Todas las filas</option>
     <option value="fuera"${_filtAnalisisTipo==='fuera'?' selected':''}>Solo fuera de criterio</option>
   </select>
+  <div id="fltAnLlenado"></div>
   <button class="btn" id="btnLimpiarFltAn">🧹 Limpiar filtros</button>
   <span class="tag" id="analisisCount"></span>
 </div>
 <div class="legend-inline">
   <span class="sw" style="display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:2px;background:#fbeeeb;border-left:3px solid var(--nook)"></span> Valor fuera de criterio
+  &nbsp;·&nbsp;
+  <span class="sw vacio"></span> Análisis de un lote sin litros (filas atenuadas)
 </div>
 <div class="scroll tall"><table id="tAnalisis"></table></div>`;
 
@@ -236,7 +273,12 @@ export function renderAnalisis(){
   for (const fila of filasVirtuales){
     if (fila.tipo === 'separador'){
       const variedadDelLote = loteMap.get(String(fila.lote)) || '';
-      tb += `<tr class="analisis-separador"><td colspan="${COLSPAN_TOTAL}">` +
+      /* El atenuado va en el separador Y en cada fila del grupo: son <tr>
+         hermanas, no anidadas, asi que una sola clase no alcanza para las dos.
+         La regla tr.vacio de index.html no esta acotada a #tLotes, por eso
+         sirve tal cual aca. */
+      const clsSep = 'analisis-separador' + (esVacio(fila.lote) ? ' vacio' : '');
+      tb += `<tr class="${clsSep}"><td colspan="${COLSPAN_TOTAL}">` +
             `<button class="alarm-lote-link" data-iralote="${escA(fila.lote)}">${esc(fila.lote)}</button>` +
             (variedadDelLote ? ` — ${esc(variedadDelLote)}` : '') +
             `</td></tr>`;
@@ -252,7 +294,7 @@ export function renderAnalisis(){
       ? (_analisisFlags.get(realIdx) || new Set())
       : new Set();
 
-    tb += '<tr>';
+    tb += esVacio(o.lote) ? '<tr class="vacio">' : '<tr>';
     for (const c of COLS_ANALISIS){
       const metric = c.k;
       const attrs = `data-row="${ri}" data-k="${escA(metric)}"`;
@@ -368,6 +410,11 @@ export function renderAnalisis(){
     }
   }
 
+  /* Se vuelve a colgar el MISMO nodo (no uno nuevo): sec.innerHTML lo
+     desprendio del documento, pero conserva su modo y su listener. */
+  const huecoLlenado = $('fltAnLlenado');
+  if (huecoLlenado) huecoLlenado.appendChild(_fltAnLlenado.el);
+
   const fltTipo = $('fltAnTipo');
   if (fltTipo) fltTipo.addEventListener('change', () => { _filtAnalisisTipo = fltTipo.value; renderAnalisis(); });
 
@@ -376,6 +423,7 @@ export function renderAnalisis(){
     _filtAnalisisBusca = '';
     _filtAnalisisMes = '';
     _filtAnalisisTipo = 'todas';
+    _fltAnLlenado.reset();
     limpiarFiltrosMulti(_descAn, null, _instAn, renderAnalisis);
   });
 

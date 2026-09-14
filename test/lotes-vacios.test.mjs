@@ -23,6 +23,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { estaVacio, litrosDeEnvases } from '../public/lotes/js/envases.js';
+import { pasaLlenado, MODOS_LLENADO } from '../public/lotes/js/filtro-llenado.js';
 
 describe('estaVacio', () => {
   it('dice que no esta vacio el lote con litros', () => {
@@ -68,5 +69,53 @@ describe('estaVacio', () => {
 
     for (const l of [conBarricas, conTanque, mixto, vaciado])
       expect(estaVacio(l)).toBe(litrosDeEnvases(l) === 0);
+  });
+});
+
+/* pasaLlenado es el predicado del segmentado Todos | Llenos | Vacios, que
+ * comparten la pestana Lotes (una fila = un lote) y la pestana Analisis (una
+ * fila = un analisis, y el lote se busca por numero). Es la parte del modulo
+ * que no toca el DOM; crearFiltroLlenado si lo toca y por eso no se prueba
+ * aca, igual que activarAnchos en lotes-anchos.test.mjs. */
+describe('pasaLlenado', () => {
+  const LLENO = { litros_actuales: 900 };
+  const VACIO = { litros_actuales: 0 };
+
+  it('con "todos" no esconde nada', () => {
+    expect(pasaLlenado(LLENO, 'todos')).toBe(true);
+    expect(pasaLlenado(VACIO, 'todos')).toBe(true);
+  });
+
+  it('con "llenos" deja solo los que tienen litros', () => {
+    expect(pasaLlenado(LLENO, 'llenos')).toBe(true);
+    expect(pasaLlenado(VACIO, 'llenos')).toBe(false);
+  });
+
+  it('con "vacios" deja solo los que estan en cero', () => {
+    expect(pasaLlenado(LLENO, 'vacios')).toBe(false);
+    expect(pasaLlenado(VACIO, 'vacios')).toBe(true);
+  });
+
+  it('trata al lote que no existe como vacio', () => {
+    // En Analisis el lote se busca por numero en DATOS().lotes y puede no
+    // estar: los lotes se borran desde la propia aplicacion y el analisis
+    // sobrevive. Hoy son 0 casos en los datos reales. Cae en Vacios porque
+    // estaVacio(undefined) ya es true, sin una rama especial que mantener.
+    expect(pasaLlenado(undefined, 'vacios')).toBe(true);
+    expect(pasaLlenado(undefined, 'llenos')).toBe(false);
+    expect(pasaLlenado(null, 'todos')).toBe(true);
+  });
+
+  it('ante un modo desconocido muestra todo en vez de esconder todo', () => {
+    // El modo sale de un data-llenado del DOM. Si algun dia no matchea, la
+    // tabla tiene que quedar de mas, nunca vacia y sin forma de recuperarla.
+    for (const modo of ['', 'raro', undefined, null]){
+      expect(pasaLlenado(LLENO, modo)).toBe(true);
+      expect(pasaLlenado(VACIO, modo)).toBe(true);
+    }
+  });
+
+  it('expone los tres modos', () => {
+    expect(MODOS_LLENADO).toEqual(['todos', 'llenos', 'vacios']);
   });
 });

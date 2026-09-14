@@ -931,15 +931,10 @@ table.hm td.hm-c{padding:0}
       <input class="txt" id="buscaLotes" placeholder="🔎 Buscar por lote…" style="min-width:180px">
       <div class="mfilt-bar" id="fltLotesBar"></div>
       <!-- Llenado: los lotes en 0 litros no son "cerrados" (23 de los 55 siguen
-           en ingreso/FA/FML/crianza), por eso no alcanza con el filtro Etapa. -->
-      <div class="segm" id="fltLlenado" role="group" aria-label="Filtrar por llenado">
-        <button type="button" data-llenado="todos"  aria-pressed="true"
-          title="Mostrar todos los lotes">Todos</button>
-        <button type="button" data-llenado="llenos" aria-pressed="false"
-          title="Solo los lotes con litros">Llenos</button>
-        <button type="button" data-llenado="vacios" aria-pressed="false"
-          title="Solo los lotes en 0 litros">Vacíos</button>
-      </div>
+           en ingreso/FA/FML/crianza), por eso no alcanza con el filtro Etapa.
+           El hueco lo llena crearFiltroLlenado (filtro-llenado.js), el mismo
+           control que monta la pestaña Análisis. -->
+      <div id="fltLlenado"></div>
       <button class="btn" id="btnLimpiarFltLotes">🧹 Limpiar filtros</button>
       <!-- Anchos de columna (subsistema J). El de restablecer lo muestra
            anchos-cols.js solo cuando hay algun ancho tocado. -->

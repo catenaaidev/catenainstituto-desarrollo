@@ -11,6 +11,7 @@ import { colsVisibles, bandasVisibles, alternar } from './grupos-cols.js';
 import { activarAnchos, autoajustarTodas, restablecerAnchos } from './anchos-cols.js';
 import { CAPACIDADES, resumenEnvases, contarEnvases,
          litrosDeEnvases, tiposDeEnvase, estaVacio } from './envases.js';
+import { crearFiltroLlenado } from './filtro-llenado.js';
 
 /* --- orden del proceso para sort de etapa --- */
 const ETAPAS_ORDEN = ['ingreso', 'fa', 'fml', 'crianza', 'cerrado'];
@@ -139,44 +140,14 @@ let _descLotes=[], _instLotes=[];
  * segmentado en la toolbar se ve de un vistazo cual es; como chip habria que
  * abrir el panel para saberlo.
  *
- * No se guarda en localStorage, al reves que el colapsado de columnas: un
- * filtro que sobrevive a la recarga sin verse de entrada es justo lo que
- * despues parece "faltan lotes". Arranca en 'todos' en cada carga. */
-const MODOS_LLENADO = ['todos', 'llenos', 'vacios'];
-let llenado = 'todos';
-
-function pasaLlenado(lote){
-  if (llenado === 'todos') return true;
-  return estaVacio(lote) === (llenado === 'vacios');
-}
-
-function pintarLlenado(){
-  const bar = $('fltLlenado'); if (!bar) return;
-  bar.querySelectorAll('button[data-llenado]').forEach(b => {
-    b.setAttribute('aria-pressed', String(b.dataset.llenado === llenado));
-  });
-}
-
-function initLlenado(){
-  const bar = $('fltLlenado'); if (!bar) return;
-  bar.addEventListener('click', e => {
-    const b = e.target.closest('button[data-llenado]'); if (!b) return;
-    const modo = b.dataset.llenado;
-    /* Un data-llenado con un typo dejaria el filtro escondiendo todos los lotes
-     * y ningun boton marcado, sin forma de volver salvo recargando. */
-    if (!MODOS_LLENADO.includes(modo) || modo === llenado) return;
-    llenado = modo;
-    pintarLlenado();
-    renderLotes();
-  });
-  pintarLlenado();
-}
+ * El control es el mismo que usa la pestaña Análisis: vive en
+ * filtro-llenado.js y aca solo se cuelga del hueco que deja index.html. */
+let fltLlenado = null;
 
 /* Vuelve el segmentado a 'Todos'. Lo usa el boton Limpiar filtros, que tiene
    que limpiar TODO lo que esconde filas o deja de ser un boton confiable. */
 export function resetLlenado(){
-  llenado = 'todos';
-  pintarLlenado();
+  if (fltLlenado) fltLlenado.reset();
 }
 
 /* Rearma las casillas de todos los filtros contra los lotes que hay ahora.
@@ -267,7 +238,13 @@ function initFiltrosLotes(){
     };
   });
   _instLotes = initFiltrosMulti('fltLotesBar', _descLotes, renderLotes);
-  initLlenado();
+  /* Se monta UNA vez: la toolbar de esta pestaña es fija en index.html y
+     renderLotes solo repinta #tLotes. */
+  const hueco = $('fltLlenado');
+  if (hueco){
+    fltLlenado = crearFiltroLlenado(renderLotes);
+    hueco.appendChild(fltLlenado.el);
+  }
 }
 
 /* Accesores para el bloque de arranque de app.js, que no puede leer un
@@ -479,7 +456,7 @@ export function renderLotes(){
 
   if (q) rows = rows.filter(l => String(l.lote||'').toLowerCase().includes(q));
   rows = rows.filter(l => pasaMulti(l, _descLotes));
-  rows = rows.filter(pasaLlenado);
+  if (fltLlenado) rows = rows.filter(l => fltLlenado.pasa(l));
 
   // Sort: etapa usa _etapa_ord, pct usa _pct, y envases ordena por CANTIDAD de
   // envases (no por litros: para eso ya esta la columna Litros Actuales)
