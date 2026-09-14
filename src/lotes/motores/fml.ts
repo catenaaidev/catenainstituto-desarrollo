@@ -10,6 +10,19 @@
  */
 
 import { litrosDeEnvases } from './envases';
+import {
+  num,
+  fechaDia as fecha,
+  valorValido,
+  ordenarPorFecha,
+  so2LibreDe,
+  INVALIDO,
+  DIA_MS,
+  FECHA_MAX,
+  type Fila,
+} from './fml-condiciones';
+
+export { valorValido, ordenarPorFecha, INVALIDO, type Fila };
 
 export interface Criterios {
   hace_fml: string;
@@ -60,12 +73,7 @@ export const ACCIONES: Record<string, string> = {
   datos_operativos_incompletos: 'completar Mermo/FML en LOTES',
 };
 
-/** Marca de dato medido pero inválido. No es lo mismo que "sin dato". */
-export const INVALIDO = -999;
-
 const INOC_PAT = /vp41|bacterias?|inoc|inoculad/i;
-
-export type Fila = Record<string, unknown>;
 
 // ------------------------------------------------------------- normalización
 
@@ -138,41 +146,7 @@ export function normalizarConfig(datos: Record<string, unknown>): Record<string,
 
 // ------------------------------------------------------------------ helpers
 
-function num(x: unknown): number | null {
-  if (x === null || x === undefined) return null;
-  if (typeof x === 'boolean') return null;
-  const v = typeof x === 'number' ? x : Number(String(x).trim());
-  return Number.isNaN(v) ? null : v;
-}
-
-/** Día en UTC, para restar fechas sin que el huso mueva un día. */
-function fecha(iso: unknown): number | null {
-  if (!iso) return null;
-  const s = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const t = Date.parse(s + 'T00:00:00Z');
-  return Number.isNaN(t) ? null : t;
-}
-
-const DIA_MS = 86_400_000;
-const FECHA_MAX = Number.MAX_SAFE_INTEGER;
-
-/** Análisis ordenados por fecha ascendente; los que no tienen fecha van al final. */
-export function ordenarPorFecha(analisis: Fila[]): Fila[] {
-  return [...(analisis ?? [])].sort(
-    (a, b) => (fecha(a.fecha_analisis) ?? FECHA_MAX) - (fecha(b.fecha_analisis) ?? FECHA_MAX),
-  );
-}
-
-/** null o -999 => inválido. */
-export function valorValido(x: unknown): number | null {
-  const v = num(x);
-  return v === null || v === INVALIDO ? null : v;
-}
-
-// Alias cortos de uso interno. Los nombres exportados son los largos porque
-// etapas.ts los reusa, igual que motor_etapas.py importa los privados de
-// motor_fml para tratar el -999 y el orden por fecha exactamente igual.
+// Alias cortos de uso interno.
 const ordenar = ordenarPorFecha;
 const valido = valorValido;
 
@@ -191,17 +165,6 @@ function ultimoValido(analisis: Fila[], metrica: string): [number | null, number
 function litros(lote: Fila): number {
   const v = num(lote.litros_actuales);
   return v !== null ? v : litrosDeEnvases(lote);
-}
-
-function so2Libre(a: Fila): number | null {
-  for (const campo of ['so2_libre_actual', 'so2_libre']) {
-    let v = valido(a[campo]);
-    if (v === null && a.correccion && typeof a.correccion === 'object') {
-      v = valido((a.correccion as Fila)[campo]);
-    }
-    if (v !== null) return v;
-  }
-  return null;
 }
 
 // -------------------------------------------------------------------- reglas
@@ -408,7 +371,7 @@ export function evaluarLote(
   let so2Ok: boolean | null = null;
   for (let i = ordenados.length - 1; i >= 0; i--) {
     const a = ordenados[i];
-    const s = so2Libre(a);
+    const s = so2LibreDe(a);
     if (s === null) continue;
     let phMuestra = valido(a.ph);
     if (phMuestra === null) phMuestra = phVal;
