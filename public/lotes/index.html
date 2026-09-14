@@ -88,11 +88,11 @@
    * asi que ningun tope de 1552px llega a apretar nada). */
   main{padding:20px 22px;margin:0 auto}
   .view{display:none;max-width:calc(1600px - 48px);margin:0 auto}
-  /* Lotes son 28 columnas: se lleva todo el ancho de la ventana. Los -10px se
-   * comen 10 de los 24px de padding lateral de main y dejan 14px de aire a cada
-   * lado. Gana ~340px sobre el resto de las pestanas, que es media docena de
-   * columnas mas a la vista. */
-  #tab-lotes{max-width:none;margin-left:-10px;margin-right:-10px}
+  /* Lotes son 28 columnas y Analisis 15: las dos se llevan todo el ancho de la
+   * ventana. Los -10px se comen 10 de los 24px de padding lateral de main y
+   * dejan 14px de aire a cada lado. Gana ~340px sobre el resto de las pestanas,
+   * que es media docena de columnas mas a la vista. */
+  #tab-lotes,#tab-analisis{max-width:none;margin-left:-10px;margin-right:-10px}
   .view.active{display:block;animation:fadeUp .3s ease}
   @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   /* ---- controles ---- */
@@ -245,13 +245,18 @@
      handler la detecta por la distancia al borde; esto es solo el blanco
      visual. El cursor col-resize lo pone anchos-cols.js en el mousemove: no hay
      selector CSS para "los ultimos 6px". */
-  #tLotes thead tr:nth-child(2) th[data-k]::after{content:'';position:absolute;
+  /* Lotes tiene encabezado de dos filas y la de columnas es la segunda;
+     Analisis tiene una sola. */
+  #tLotes thead tr:nth-child(2) th[data-k]::after,
+  #tAnalisis thead th[data-k]::after{content:'';position:absolute;
     right:0;top:22%;bottom:22%;width:3px;border-radius:2px;background:transparent}
-  #tLotes thead tr:nth-child(2) th[data-k]:hover::after{background:var(--line)}
+  #tLotes thead tr:nth-child(2) th[data-k]:hover::after,
+  #tAnalisis thead th[data-k]:hover::after{background:var(--line)}
   /* Mientras se arrastra, no seleccionar texto del navegador */
   table.garrastrando{user-select:none}
   /* La columna que se esta arrastrando, marcada mientras dura el gesto */
-  #tLotes th.ganchodrag::after{background:var(--accent) !important}
+  #tLotes th.ganchodrag::after,
+  #tAnalisis th.ganchodrag::after{background:var(--accent) !important}
   /* Textarea que usa el copiado. No puede ser display:none ni visibility:hidden:
      el navegador no copia de un elemento que no esta renderizado. */
   #gclip{position:fixed;top:-1000px;left:-1000px;width:1px;height:1px;opacity:0;
@@ -851,6 +856,21 @@ table.hm td.hm-c{padding:0}
         <div class="kpi-lbl">AV cerca del límite</div>
         <div class="kpi-sub" id="kpiAvSub"></div>
       </div>
+      <div class="kpi-card kpi-neutral">
+        <div class="kpi-val" id="kpiAnTotal">—</div>
+        <div class="kpi-lbl">Análisis totales</div>
+        <div class="kpi-sub" id="kpiAnTotalSub"></div>
+      </div>
+      <div class="kpi-card kpi-ok">
+        <div class="kpi-val" id="kpiAnHechos">—</div>
+        <div class="kpi-lbl">Análisis completados</div>
+        <div class="kpi-sub" id="kpiAnHechosSub"></div>
+      </div>
+      <div class="kpi-card kpi-bad">
+        <div class="kpi-val" id="kpiAnFaltan">—</div>
+        <div class="kpi-lbl">Análisis faltantes</div>
+        <div class="kpi-sub" id="kpiAnFaltanSub"></div>
+      </div>
     </div>
 
     <!-- ===== Gráficos =====
@@ -963,15 +983,16 @@ table.hm td.hm-c{padding:0}
       <p style="color:var(--muted);font-size:13px;margin:-6px 0 14px">
         Copiá las filas desde Excel (Ctrl+C) y pegá en el área de abajo. El separador puede ser tab (Excel por defecto) o coma (CSV).
         Los números con coma decimal se aceptan (ej: 3,22).
+        El orden de abajo es el de la planilla del laboratorio: las columnas que no son campos de un análisis
+        (<code>vasija</code>, <code>año</code>) y los huecos (<code>-</code>) están para que las posiciones calcen, pero no se guardan.
       </p>
 
       <!-- orden de columnas -->
       <div class="controls" style="margin-bottom:10px">
         <label style="font-size:13px;color:var(--muted);white-space:nowrap">Orden de columnas:</label>
         <input class="txt" id="cargarCols" style="flex:1;min-width:320px;font-size:12px;font-family:monospace"
-          value="lote, fecha, ph, av, gluc_fruc, malico, lactico, acidez_total, etanol, so2_libre"
-          placeholder="lote, fecha, ph, av, ...">
-        <button class="btn" onclick="cargarResetCols()" title="Volver al orden por defecto">Resetear</button>
+          placeholder="lote, vasija, año, fecha, etanol, ...">
+        <button class="btn" onclick="cargarResetCols()" title="Volver al orden de la planilla">Resetear</button>
       </div>
 
       <!-- textarea de pegado -->

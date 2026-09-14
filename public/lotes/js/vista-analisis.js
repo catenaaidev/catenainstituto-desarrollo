@@ -2,14 +2,15 @@
 'use strict';
 
 import { $, esc, escA, DATOS, markDirty, registrarVista, irALote } from './nucleo.js';
-import { toggleSort, escribirCelda, pasaMulti, opcionesValores,
+import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla } from './grilla.js';
 import { armarFilas, esQuimicaReal, esCorreccionReal } from './analisis-filas.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
+import { crearAnchos } from './anchos-cols.js';
 
-/* Columnas de la tabla de análisis. Las 4 ultimas son de la CORRECCION de SO2
+/* Columnas de la tabla de análisis. Las 2 ultimas son de la CORRECCION de SO2
  * (viven en analisis.correccion.*, no directo en el registro) y solo se ven
  * en la fila de tipo 'correccion'; las anteriores son de quimica y solo se
  * ven en la fila 'quimica'. lote/variedad/fecha_analisis se ven en las dos. */
@@ -17,6 +18,11 @@ const COLS_ANALISIS = [
   { k:'lote',          label:'Lote',          ro:true  },
   { k:'variedad',      label:'Variedad',       ro:true  },
   { k:'fecha_analisis',label:'Fecha',          ro:false },
+  /* Etanol va antes que pH, no al final de la quimica: es el mismo orden en
+   * que viene la planilla del laboratorio (ver ORDEN_PLANILLA en
+   * carga-cols.js), asi que leer esta tabla y leer lo que se pego son el
+   * mismo gesto. */
+  { k:'etanol',        label:'Etanol',         num:true },
   { k:'ph',            label:'pH',             num:true },
   { k:'av',            label:'AV',             num:true },
   { k:'gluc_fruc',       label:'Gluc+Fruc',      num:true },
@@ -24,19 +30,19 @@ const COLS_ANALISIS = [
   { k:'malico',          label:'Málico',        num:true },
   { k:'lactico',       label:'Láctico',        num:true },
   { k:'acidez_total',  label:'Acidez total',   num:true },
-  { k:'etanol',        label:'Etanol',         num:true },
   { k:'so2_libre',     label:'SO₂ libre',      num:true },
   { k:'comentario',    label:'Comentario',     ro:false },
   { k:'ot_n',            label:'OT',              ro:false },
   { k:'so2_deseado',     label:'SO2 deseado',     num:true },
-  { k:'mbk_a_agregar',   label:'MBK a agregar',   num:true },
-  { k:'ml_exactos',      label:'mL exactos',      num:true },
 ];
 
 /* Claves que viven anidadas en analisis.correccion.*, no en el registro raiz.
  * Las demas columnas de COLS_ANALISIS (salvo lote/variedad/fecha_analisis,
  * que se ven en ambos tipos) son de quimica y viven en el registro raiz. */
-const CAMPOS_CORRECCION = new Set(['ot_n', 'so2_deseado', 'mbk_a_agregar', 'ml_exactos']);
+/* mbk_a_agregar y ml_exactos SIGUEN existiendo en analisis.correccion y se
+ * siguen viendo y editando en las pestanas SO2 y Orden de correccion: lo unico
+ * que se saco es la columna de ESTA tabla. */
+const CAMPOS_CORRECCION = new Set(['ot_n', 'so2_deseado']);
 const CAMPOS_COMUNES = new Set(['lote', 'variedad', 'fecha_analisis']);
 
 /** Campos quimicos que el boton de eliminar vacia en una fila de tipo
@@ -109,7 +115,7 @@ let _filtAnalisisBusca    = '';
 
 /* Un Set por columna filtrable, creados UNA vez: los widgets guardan estas
  * mismas referencias, asi que el estado sobrevive a los re-render. */
-const filtAn = { variedad: new Set(), proyecto: new Set() };
+const filtAn = { lote: new Set(), variedad: new Set(), proyecto: new Set() };
 let _descAn = [], _instAn = [];
 
 /* Segmentado Todos | Llenos | Vacíos, el mismo control que la pestaña Lotes.
@@ -117,6 +123,15 @@ let _descAn = [], _instAn = [];
  * _instAn: esta vista rehace su seccion entera con sec.innerHTML, asi que el
  * nodo se desprende del documento pero el modo elegido viaja con el. */
 let _fltAnLlenado = null;
+
+/* Anchos de columna propios: clave de storage distinta de la de Lotes, asi que
+ * arrastrar 'lote' en una pestana no mueve la otra. El encabezado de esta tabla
+ * es de UNA sola fila (Lotes tiene dos por las bandas de grupo). */
+const anchosAnalisis = crearAnchos({
+  tablaId: 'tAnalisis',
+  claveStorage: 'analisis_cols_ancho',
+  filaEncabezado: 'thead tr',
+});
 
 /** Escribe el valor de una celda, sabiendo (a) si la columna aplica a este
  *  tipo de fila, y (b) si vive en analisis.correccion.* o en analisis.*
@@ -147,6 +162,16 @@ function initFiltrosAn(){
   };
 
   _descAn = [
+    {
+      label: 'Lote',
+      set: filtAn.lote,
+      /* Opciones sobre los ANALISIS, no sobre todos los lotes: el panel ofrece
+       * solo lotes que tienen al menos un analisis cargado, mismo criterio que
+       * Variedad. cmpValores ya ordena numerico cuando los valores son
+       * numeros, asi que los lotes salen en orden. */
+      opciones: () => opcionesValores(DATOS().analisis || [], a => String(a.lote ?? '')),
+      match: matchValor(a => String(a.lote ?? '')),
+    },
     {
       label: 'Variedad',
       set: filtAn.variedad,
@@ -234,6 +259,10 @@ export function renderAnalisis(){
   </select>
   <div id="fltAnLlenado"></div>
   <button class="btn" id="btnLimpiarFltAn">🧹 Limpiar filtros</button>
+  <button class="btn" id="btnAjustarAnchosAn"
+    title="Ajustar el ancho de todas las columnas a su contenido. También se puede arrastrar el borde derecho de cada encabezado, o hacerle doble clic.">↔ Ajustar anchos</button>
+  <button class="btn" id="btnResetAnchosAn" style="display:none"
+    title="Volver al ancho automático de las columnas">↩ Anchos originales</button>
   <span class="tag" id="analisisCount"></span>
 </div>
 <div class="legend-inline">
@@ -252,8 +281,8 @@ export function renderAnalisis(){
    * este array es el mismo indice `f` que usa la grilla. */
   t._rows = filasDeDatos;
 
-  /* encabezados: sin cambios de logica, COLS_ANALISIS ahora tiene 17
-   * entradas (13 de quimica/comunes + 4 de correccion) en vez de 13. */
+  /* encabezados: sin cambios de logica. COLS_ANALISIS tiene 15 entradas
+   * (13 de quimica/comunes + 2 de correccion). */
   let h = '<thead><tr>';
   for (const c of COLS_ANALISIS){
     const ar = sortAnalisis.key===c.k ? `<span class="arrow">${sortAnalisis.dir>0?'▲':'▼'}</span>` : '';
@@ -468,6 +497,21 @@ export function renderAnalisis(){
     },
     onCambio: markDirty,
   });
+
+  /* Anchos de columna. La toolbar se rehace en cada render (sec.innerHTML), asi
+   * que los botones se vuelven a cablear cada vez; la instancia y los anchos
+   * guardados son los mismos siempre. El boton de restablecer solo aparece
+   * cuando hay algo que restablecer, igual que en Lotes. */
+  anchosAnalisis.activar(t, hay => {
+    const b = $('btnResetAnchosAn');
+    if (b) b.style.display = hay ? '' : 'none';
+  });
+
+  const btnAjAn = $('btnAjustarAnchosAn');
+  if (btnAjAn) btnAjAn.addEventListener('click', () => anchosAnalisis.autoajustarTodas());
+
+  const btnResAn = $('btnResetAnchosAn');
+  if (btnResAn) btnResAn.addEventListener('click', () => anchosAnalisis.restablecer());
 }
 
 registrarVista('analisis', () => {

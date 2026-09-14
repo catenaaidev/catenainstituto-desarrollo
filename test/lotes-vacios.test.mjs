@@ -76,7 +76,7 @@ describe('estaVacio', () => {
  * comparten la pestana Lotes (una fila = un lote) y la pestana Analisis (una
  * fila = un analisis, y el lote se busca por numero). Es la parte del modulo
  * que no toca el DOM; crearFiltroLlenado si lo toca y por eso no se prueba
- * aca, igual que activarAnchos en lotes-anchos.test.mjs. */
+ * aca, igual que crearAnchos en lotes-anchos.test.mjs. */
 describe('pasaLlenado', () => {
   const LLENO = { litros_actuales: 900 };
   const VACIO = { litros_actuales: 0 };
