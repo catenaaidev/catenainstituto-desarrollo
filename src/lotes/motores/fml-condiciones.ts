@@ -434,7 +434,7 @@ export function estadoFml(analisis: Fila[], eff: Criterios, lote: Fila) {
     .map((a) => valorValido(a.malico))
     .filter((v): v is number => v !== null);
 
-  if (!malicos.length) return { estado: 'sin_dato', origen: null, desde: null };
+  if (!malicos.length) return { estado: 'sin_dato', origen, desde: null };
 
   const ultimo = malicos[malicos.length - 1];
   const cierra =
@@ -443,7 +443,7 @@ export function estadoFml(analisis: Fila[], eff: Criterios, lote: Fila) {
       ultimo < eff.fml_malico_2ultimas &&
       malicos[malicos.length - 2] < eff.fml_malico_2ultimas);
 
-  if (cierra) return { estado: 'finalizada', origen: null, desde: null };
+  if (cierra) return { estado: 'finalizada', origen, desde: null };
 
   return {
     estado: 'no_finalizada',

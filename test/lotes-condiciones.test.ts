@@ -345,4 +345,52 @@ describe('FML', () => {
     expect(decisionFmlPresente({ lote: '1' }, tinta)).toBe(false);
     expect(decisionFmlPresente({ lote: '1', hace_fml: 'si' }, tinta)).toBe(true);
   });
+
+  it('finalizada informa el origen, no null', () => {
+    // lote con hace_fml:'si' y malico bajo: cierra por finalizada y el origen es 'lote'
+    const r = estadoFml(
+      [{ fecha_analisis: '2026-08-01', malico: 0.05 }],
+      tinta,
+      { lote: '26008', hace_fml: 'si' },
+    );
+    expect(r.estado).toBe('finalizada');
+    expect(r.origen).toBe('lote');
+  });
+});
+
+describe('FA', () => {
+  const base = { ...CRITERIOS_DEFAULT }; // fa_azucar_reductor_max = 5.0
+
+  it('sin ningun azucar reductor valido devuelve sin_dato', () => {
+    const r = estadoFa([{ fecha_analisis: '2026-08-01', ph: 3.5 }], base);
+    expect(r.estado).toBe('sin_dato');
+    expect(r.desde).toBe(null);
+  });
+
+  it('ultimo azucar reductor por encima del max es no_finalizada', () => {
+    // 7.2 > 5.0 => abierta
+    const r = estadoFa(
+      [
+        { fecha_analisis: '2026-07-01', azucar_reductor: 12.0 },
+        { fecha_analisis: '2026-08-01', azucar_reductor: 7.2 },
+      ],
+      base,
+    );
+    expect(r.estado).toBe('no_finalizada');
+    // desde apunta a la mas vieja de la corrida por encima del umbral
+    expect(r.desde).toBe('2026-07-01');
+  });
+
+  it('ultimo azucar reductor por debajo o igual al max es finalizada', () => {
+    // 3.8 <= 5.0 => cerrada
+    const r = estadoFa(
+      [
+        { fecha_analisis: '2026-07-01', azucar_reductor: 9.0 },
+        { fecha_analisis: '2026-08-01', azucar_reductor: 3.8 },
+      ],
+      base,
+    );
+    expect(r.estado).toBe('finalizada');
+    expect(r.desde).toBe(null);
+  });
 });
