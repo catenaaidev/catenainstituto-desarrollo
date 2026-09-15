@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   so2LibreDe, valorValido, fechaDia,
   esMedicionUtil, tieneAnalisisValido, ultimoControlProceso, estadoFrecuencia,
-  desdeCuando, phFueraDeCriterio, estadoPh,
+  desdeCuando, phFueraDeCriterio, estadoPh, estadoSo2,
 } from '../src/lotes/motores/fml-condiciones';
 import { CRITERIOS_DEFAULT } from '../src/lotes/motores/fml';
 
@@ -180,5 +180,57 @@ describe('frecuencia', () => {
     expect(r.control_proceso_pendiente).toBe(true);
     expect(r.estado).toBe('sin_datos');
     expect(r.dias_desde_control).toBe(null);
+  });
+});
+
+describe('SO2', () => {
+  const base = { ...CRITERIOS_DEFAULT, so2_libre_piso: 20 };
+
+  it('en el piso exacto es no OK', () => {
+    const r = estadoSo2([{ fecha_analisis: '2026-08-01', so2_libre: 20, ph: 3.4 }], base);
+    expect(r.estado).toBe('no_ok');
+  });
+
+  it('arriba del piso pero con molecular bajo tambien es no OK', () => {
+    // pH 3.8: molecular = 28 / (1 + 10^2) = 0.277 < 0.38
+    const r = estadoSo2([{ fecha_analisis: '2026-08-01', so2_libre: 28, ph: 3.8 }], base);
+    expect(r.estado).toBe('no_ok');
+    expect(r.molecular).toBeCloseTo(0.277, 3);
+  });
+
+  it('arriba del piso y con molecular suficiente es OK', () => {
+    // pH 3.2: molecular = 24 / (1 + 10^1.4) = 0.925 >= 0.38
+    const r = estadoSo2([{ fecha_analisis: '2026-08-01', so2_libre: 24, ph: 3.2 }], base);
+    expect(r.estado).toBe('ok');
+  });
+
+  it('sin pH en la muestra cae al ultimo pH del lote, como el tablero', () => {
+    // El lote 26031 del tablero aprobado tiene el SO2 del 19/08 y el pH del
+    // 11/09, y queda "ok": el pH de referencia puede venir de otra muestra.
+    const r = estadoSo2(
+      [
+        { fecha_analisis: '2026-08-01', so2_libre: 26 },
+        { fecha_analisis: '2026-09-11', ph: 3.2 },
+      ],
+      base,
+    );
+    expect(r.estado).toBe('ok');
+    expect(r.ph_referencia).toBe(3.2);
+    expect(r.ph_referencia_fecha).toBe('2026-09-11');
+    expect(r.libre_fecha).toBe('2026-08-01');
+  });
+
+  it('sin ningun pH en todo el lote si queda sin datos', () => {
+    const r = estadoSo2([{ fecha_analisis: '2026-08-01', so2_libre: 26 }], base);
+    expect(r.estado).toBe('sin_datos');
+  });
+
+  it('el proyecto sin adicion de SO2 no aplica', () => {
+    const r = estadoSo2([{ fecha_analisis: '2026-08-01', so2_libre: 8, ph: 3.4 }], { ...base, so2_aplica: 'no' });
+    expect(r.estado).toBe('no_aplica');
+  });
+
+  it('el 0 no es una medicion', () => {
+    expect(estadoSo2([{ fecha_analisis: '2026-08-01', so2_libre: 0, ph: 3.4 }], base).estado).toBe('sin_datos');
   });
 });

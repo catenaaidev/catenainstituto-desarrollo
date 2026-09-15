@@ -208,6 +208,107 @@ export function estadoPh(analisis: Fila[], eff: Criterios): ResultadoPh {
   return { estado: 'sin_datos' as const, valor: null, fecha: null, desde: null };
 }
 
+// -------------------------------------------------------------------- SO2
+
+function molecularDe(libre: number, ph: number): number {
+  return libre / (1 + Math.pow(10, ph - 1.8));
+}
+
+/** Ultimo pH valido del lote, con su fecha. Es el pH de referencia de respaldo. */
+function ultimoPh(analisis: Fila[]): [number | null, string | null] {
+  const ordenados = ordenarPorFecha(analisis);
+  for (let i = ordenados.length - 1; i >= 0; i--) {
+    const v = valorValido(ordenados[i].ph);
+    if (v !== null) return [v, String(ordenados[i].fecha_analisis).slice(0, 10)];
+  }
+  return [null, null];
+}
+
+function so2NoOk(a: Fila, eff: Criterios, phRespaldo: number | null): boolean | null {
+  const libre = so2LibreDe(a);
+  if (libre === null) return null;
+  if (libre <= eff.so2_libre_piso) return true;
+  const ph = valorValido(a.ph) ?? phRespaldo;
+  if (ph === null) return null;
+  return molecularDe(libre, ph) < eff.so2_molecular_objetivo;
+}
+
+export interface ResultadoSo2 {
+  estado: 'ok' | 'no_ok' | 'no_aplica' | 'sin_datos';
+  libre: number | null;
+  libre_fecha: string | null;
+  ph_referencia: number | null;
+  ph_referencia_fecha: string | null;
+  molecular: number | null;
+  motivo: string;
+  desde: string | null;
+}
+
+/**
+ * Dos tramos, como el tablero: en el piso o por debajo es no OK sin mirar nada
+ * mas; por encima, decide el molecular.
+ *
+ * El pH sale de la misma muestra cuando esta, y si no del ultimo pH valido del
+ * lote. Verificado contra el tablero aprobado: su lote 26031 tiene el SO2 del
+ * 19/08 y el pH del 11/09 y queda "ok", asi que el respaldo existe alla tambien.
+ * ph_referencia_fecha deja ver de que muestra salio.
+ */
+export function estadoSo2(analisis: Fila[], eff: Criterios): ResultadoSo2 {
+  const vacio = {
+    libre: null, libre_fecha: null, ph_referencia: null,
+    ph_referencia_fecha: null, molecular: null, desde: null,
+  };
+
+  if (String(eff.so2_aplica ?? 'si').trim().toLowerCase() === 'no') {
+    return { ...vacio, estado: 'no_aplica', motivo: 'el proyecto no lleva adicion de SO2' };
+  }
+
+  const [phRespaldo, phRespaldoFecha] = ultimoPh(analisis);
+  const ordenados = ordenarPorFecha(analisis);
+
+  for (let i = ordenados.length - 1; i >= 0; i--) {
+    const a = ordenados[i];
+    const libre = so2LibreDe(a);
+    if (libre === null) continue;
+
+    const libre_fecha = String(a.fecha_analisis).slice(0, 10);
+    const desde = () => desdeCuando(analisis, (f) => so2NoOk(f, eff, phRespaldo));
+
+    if (libre <= eff.so2_libre_piso) {
+      return {
+        ...vacio, estado: 'no_ok', libre, libre_fecha,
+        motivo: `SO2 libre ${libre} ppm, en o por debajo del piso de ${eff.so2_libre_piso}`,
+        desde: desde(),
+      };
+    }
+
+    const propio = valorValido(a.ph);
+    const ph = propio ?? phRespaldo;
+    if (ph === null) {
+      return {
+        ...vacio, estado: 'sin_datos', libre, libre_fecha,
+        motivo: 'el lote no tiene ningun pH, no se puede calcular el molecular',
+      };
+    }
+
+    const molecular = molecularDe(libre, ph);
+    const bajo = molecular < eff.so2_molecular_objetivo;
+    return {
+      estado: bajo ? 'no_ok' : 'ok',
+      libre, libre_fecha,
+      ph_referencia: ph,
+      ph_referencia_fecha: propio !== null ? libre_fecha : phRespaldoFecha,
+      molecular,
+      motivo: bajo
+        ? `molecular ${molecular.toFixed(3)} mg/L, por debajo de ${eff.so2_molecular_objetivo}`
+        : `molecular ${molecular.toFixed(3)} mg/L, suficiente`,
+      desde: bajo ? desde() : null,
+    };
+  }
+
+  return { ...vacio, estado: 'sin_datos', motivo: 'sin ninguna medicion de SO2 libre' };
+}
+
 // Re-exportar Criterios como tipo para que los consumidores de este modulo
 // puedan tipear sus funciones sin importar desde fml.ts directamente.
 export type { Criterios };
