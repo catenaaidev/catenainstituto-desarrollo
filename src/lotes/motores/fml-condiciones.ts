@@ -404,6 +404,85 @@ export function alertaAv(analisis: Fila[], eff: Criterios): ResultadoAv {
   return { alerta: false, motivo: null, valor: null, fecha: null, delta: null, desde: null };
 }
 
+// ----------------------------------------------------------------- FML y FA
+
+function textoDe(v: unknown): string {
+  return String(v ?? '').trim().toLowerCase();
+}
+
+/**
+ * La variedad define el caso general y el lote es la excepcion puntual, asi que
+ * lo que diga la fila del lote pisa a lo que diga config.
+ */
+export function estadoFml(analisis: Fila[], eff: Criterios, lote: Fila) {
+  const decisionLote = textoDe(lote.hace_fml);
+  const excluidaLote = textoDe(lote.fml_excluida);
+
+  // Los nombres de origen son los del tablero (columna fml_excluida_origen).
+  let excluida = false;
+  let origen: 'lote' | 'variedad_blanca' | 'sin_dato' = 'sin_dato';
+  if (excluidaLote === 'si' || decisionLote === 'no') {
+    excluida = true; origen = 'lote';
+  } else if (decisionLote === 'si' || excluidaLote === 'no') {
+    origen = 'lote';
+  } else if (textoDe(eff.hace_fml) === 'no') {
+    excluida = true; origen = 'variedad_blanca';
+  }
+  if (excluida) return { estado: 'excluida', origen, desde: null };
+
+  const malicos = ordenarPorFecha(analisis)
+    .map((a) => valorValido(a.malico))
+    .filter((v): v is number => v !== null);
+
+  if (!malicos.length) return { estado: 'sin_dato', origen: null, desde: null };
+
+  const ultimo = malicos[malicos.length - 1];
+  const cierra =
+    ultimo < eff.fml_malico_finalizada ||
+    (malicos.length >= 2 &&
+      ultimo < eff.fml_malico_2ultimas &&
+      malicos[malicos.length - 2] < eff.fml_malico_2ultimas);
+
+  if (cierra) return { estado: 'finalizada', origen: null, desde: null };
+
+  return {
+    estado: 'no_finalizada',
+    origen,
+    desde: desdeCuando(analisis, (a) => {
+      const v = valorValido(a.malico);
+      return v === null ? null : v >= eff.fml_malico_finalizada;
+    }),
+  };
+}
+
+export function estadoFa(analisis: Fila[], eff: Criterios) {
+  const ordenados = ordenarPorFecha(analisis);
+  for (let i = ordenados.length - 1; i >= 0; i--) {
+    const v = valorValido(ordenados[i].azucar_reductor);
+    if (v === null) continue;
+    const abierta = v > eff.fa_azucar_reductor_max;
+    return {
+      estado: abierta ? 'no_finalizada' : 'finalizada',
+      desde: abierta
+        ? desdeCuando(analisis, (a) => {
+            const x = valorValido(a.azucar_reductor);
+            return x === null ? null : x > eff.fa_azucar_reductor_max;
+          })
+        : null,
+    };
+  }
+  return { estado: 'sin_dato', desde: null };
+}
+
+/** Hay decision de FML si la trae el lote o si la variedad la define por config. */
+export function decisionFmlPresente(lote: Fila, eff: Criterios): boolean {
+  const decisionLote = textoDe(lote.hace_fml);
+  const excluidaLote = textoDe(lote.fml_excluida);
+  if (decisionLote === 'si' || decisionLote === 'no') return true;
+  if (excluidaLote === 'si' || excluidaLote === 'no') return true;
+  return textoDe(eff.hace_fml) === 'no';
+}
+
 // Re-exportar Criterios como tipo para que los consumidores de este modulo
 // puedan tipear sus funciones sin importar desde fml.ts directamente.
 export type { Criterios };

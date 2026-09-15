@@ -3,7 +3,7 @@ import {
   so2LibreDe, valorValido, fechaDia,
   esMedicionUtil, tieneAnalisisValido, ultimoControlProceso, estadoFrecuencia,
   desdeCuando, phFueraDeCriterio, estadoPh, estadoSo2,
-  caidaSo2, alertaAv,
+  caidaSo2, alertaAv, estadoFml, estadoFa, decisionFmlPresente,
 } from '../src/lotes/motores/fml-condiciones';
 import { CRITERIOS_DEFAULT } from '../src/lotes/motores/fml';
 
@@ -304,5 +304,45 @@ describe('AV', () => {
     const r = alertaAv([{ fecha_analisis: '2026-08-01', av: -999 }], base);
     expect(r.alerta).toBe(true);
     expect(r.motivo).toBe('fuera_rango_foss');
+  });
+});
+
+describe('FML', () => {
+  const blanca = { ...CRITERIOS_DEFAULT, hace_fml: 'no' };
+  const tinta = { ...CRITERIOS_DEFAULT };
+
+  it('la variedad blanca excluye, y el origen lo dice', () => {
+    const r = estadoFml([{ fecha_analisis: '2026-08-01', malico: 2.0 }], blanca, { lote: '1' });
+    expect(r.estado).toBe('excluida');
+    expect(r.origen).toBe('variedad_blanca');
+  });
+
+  it('el lote le gana a la variedad', () => {
+    const r = estadoFml([{ fecha_analisis: '2026-08-01', malico: 2.0 }], blanca, { lote: '1', hace_fml: 'si' });
+    expect(r.estado).toBe('no_finalizada');
+    expect(r.origen).toBe('lote');
+  });
+
+  it('sin decision en ningun lado el origen queda sin dato', () => {
+    const r = estadoFml([{ fecha_analisis: '2026-08-01', malico: 2.0 }], tinta, { lote: '1' });
+    expect(r.origen).toBe('sin_dato');
+  });
+
+  it('cierra por malico bajo', () => {
+    expect(estadoFml([{ fecha_analisis: '2026-08-01', malico: 0.1 }], tinta, { lote: '1' }).estado).toBe('finalizada');
+  });
+
+  it('cierra por dos ultimas por debajo de 0.5', () => {
+    const r = estadoFml([
+      { fecha_analisis: '2026-07-01', malico: 0.4 },
+      { fecha_analisis: '2026-08-01', malico: 0.3 },
+    ], tinta, { lote: '1' });
+    expect(r.estado).toBe('finalizada');
+  });
+
+  it('la decision esta presente si la pone la variedad', () => {
+    expect(decisionFmlPresente({ lote: '1' }, blanca)).toBe(true);
+    expect(decisionFmlPresente({ lote: '1' }, tinta)).toBe(false);
+    expect(decisionFmlPresente({ lote: '1', hace_fml: 'si' }, tinta)).toBe(true);
   });
 });
