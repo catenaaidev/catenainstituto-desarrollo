@@ -10,19 +10,11 @@
  * viejo.
  */
 
-import { evaluar, normalizarConfig, type Fila } from './motores/fml';
+import { evaluar, normalizarConfig, CONDICIONES, type Fila } from './motores/fml';
 
-const ETIQUETAS_ALARMA: Record<string, string> = {
-  sin_analisis_valido: 'Sin análisis válido',
-  frecuencia_vencida: 'Frecuencia vencida',
-  fa_no_finalizada: 'FA no terminada',
-  fml_no_finalizada: 'FML no terminada',
-  so2_no_ok: 'SO2 no OK',
-  ph_no_ok: 'pH no OK',
-  no_lleno: 'No lleno',
-  av_alerta: 'AV en alerta',
-  datos_operativos_incompletos: 'Datos operativos incompletos',
-};
+const ETIQUETAS_ALARMA: Record<string, string> = Object.fromEntries(
+  Object.entries(CONDICIONES).map(([k, v]) => [k, v.etiqueta]),
+);
 
 function esc(v: unknown): string {
   const s = v === null || v === undefined ? '' : String(v);
