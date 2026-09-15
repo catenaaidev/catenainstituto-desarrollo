@@ -1,12 +1,16 @@
 /**
- * Motor de reglas FML — port de motor_fml.py.
+ * Motor de reglas FML — las 11 condiciones del tablero aprobado.
  *
  * Los umbrales son POR VARIEDAD Y PROYECTO:
  *   default ⊕ override de variedad ⊕ override de proyecto.
  *
- * Este archivo decide qué lote está en condición y cuál necesita atención, así
- * que cada regla se portó literal. Los tests de test/lotes-fml.test.ts son el
- * port de tests/test_motor_fml.py: si divergen, este archivo está mal.
+ * Arrancó como port literal de motor_fml.py, pero el tablero que aprobaron los
+ * supervisores corrigió parte de esas reglas (piso de SO₂, pH exclusivo,
+ * frecuencia contada desde el control de proceso), así que hoy la referencia es
+ * el tablero y no el Python.
+ *
+ * Cada condición vive como función pura en fml-condiciones.ts; acá sólo se las
+ * ensambla en el resultado del lote.
  */
 
 import { litrosDeEnvases } from './envases';
@@ -15,12 +19,20 @@ import {
   fechaDia as fecha,
   valorValido,
   ordenarPorFecha,
-  so2LibreDe,
   INVALIDO,
   DIA_MS,
-  FECHA_MAX,
   phFueraDeCriterio,
+  estadoFml,
+  estadoFa,
+  estadoFrecuencia,
+  estadoPh,
+  estadoSo2,
+  caidaSo2,
+  alertaAv,
+  tieneAnalisisValido,
+  decisionFmlPresente,
   type Fila,
+  type ResultadoCaida,
 } from './fml-condiciones';
 
 export { valorValido, ordenarPorFecha, INVALIDO, type Fila };
@@ -50,7 +62,10 @@ export const CRITERIOS_DEFAULT: Criterios = {
   fml_malico_finalizada: 0.2,
   fml_malico_2ultimas: 0.5,
   so2_molecular_objetivo: 0.38,
-  so2_libre_piso: 25.0,
+  // El tablero aprobado corrige el piso a 20 ppm: con 25 el cruce con el
+  // objetivo molecular caia en pH 3,61 y dejaba fuera de criterio a media
+  // bodega por reserva antioxidante, no por riesgo microbiologico.
+  so2_libre_piso: 20.0,
   ph_max: 3.75,
   av_max: 0.8,
   av_delta_max: 0.3,
@@ -62,17 +77,51 @@ export const CRITERIOS_DEFAULT: Criterios = {
   ph_max_inclusive: 'no',
 };
 
-export const ACCIONES: Record<string, string> = {
-  sin_analisis_valido: 'hacer OT y analizar',
-  frecuencia_vencida: 'hacer OT y analizar',
-  fa_no_finalizada: 'seguir control de FA',
-  fml_no_finalizada: 'seguir control de FML',
-  so2_no_ok: 'revisar ajuste SO2/pH',
-  ph_no_ok: 'revisar ajuste SO2/pH',
-  no_lleno: 'dar lleno o achicar',
-  av_alerta: 'revisar urgente y confirmar analisis',
-  datos_operativos_incompletos: 'completar Mermo/FML en LOTES',
+export interface MetaCondicion {
+  etiqueta: string;
+  accion: string;
+}
+
+/** Las 11 condiciones del tablero, en su orden de presentacion. */
+export const CONDICIONES: Record<string, MetaCondicion> = {
+  sin_analisis_valido: { etiqueta: 'Sin análisis válido', accion: 'hacer OT y analizar' },
+  control_proceso_pendiente: { etiqueta: 'Sin control de proceso', accion: 'hacer OT y analizar' },
+  frecuencia_vencida: { etiqueta: 'Frecuencia vencida', accion: 'hacer OT y analizar' },
+  av_alerta: { etiqueta: 'AV alerta', accion: 'revisar urgente y confirmar analisis' },
+  so2_caida_alerta: {
+    etiqueta: 'Caída de SO₂ libre >12 ppm',
+    accion: 'confirmar SO2; revisar llenado/mermo y evaluar posible desvio microbiologico',
+  },
+  fa_no_finalizada: { etiqueta: 'FA no finalizada', accion: 'seguir control de FA' },
+  fml_no_finalizada: { etiqueta: 'FML no finalizada', accion: 'seguir control de FML' },
+  so2_no_ok: { etiqueta: 'SO2 no OK', accion: 'revisar ajuste SO2/pH' },
+  ph_no_ok: { etiqueta: 'pH no OK', accion: 'revisar ajuste SO2/pH' },
+  no_lleno: { etiqueta: 'No lleno', accion: 'dar lleno o achicar' },
+  datos_operativos_incompletos: {
+    etiqueta: 'Datos operativos incompletos',
+    accion: 'completar Mermo/FML en el lote',
+  },
 };
+
+/**
+ * La accion sugerida es la UNION de las acciones de las condiciones activas,
+ * sin repetir y separadas por " | ", igual que la columna accion_sugerida del
+ * tablero (p. ej. el lote 26011: "revisar ajuste SO2/pH | completar Mermo/FML
+ * en LOTES"). No se elige una sola por prioridad.
+ */
+export function accionSugerida(claves: string[]): string {
+  const vistas: string[] = [];
+  for (const k of claves) {
+    const a = CONDICIONES[k]?.accion;
+    if (a && !vistas.includes(a)) vistas.push(a);
+  }
+  return vistas.join(' | ');
+}
+
+/** @deprecated usar CONDICIONES. Se conserva porque reporte.ts todavia lo mira. */
+export const ACCIONES: Record<string, string> = Object.fromEntries(
+  Object.entries(CONDICIONES).map(([k, v]) => [k, v.accion]),
+);
 
 const INOC_PAT = /vp41|bacterias?|inoc|inoculad/i;
 
@@ -147,17 +196,8 @@ export function normalizarConfig(datos: Record<string, unknown>): Record<string,
 
 // ------------------------------------------------------------------ helpers
 
-// Alias cortos de uso interno.
-const ordenar = ordenarPorFecha;
+// Alias corto de uso interno.
 const valido = valorValido;
-
-function ultimoValido(analisis: Fila[], metrica: string): [number | null, number | null] {
-  for (let i = analisis.length - 1; i >= 0; i--) {
-    const v = valido(analisis[i][metrica]);
-    if (v !== null) return [v, fecha(analisis[i].fecha_analisis)];
-  }
-  return [null, null];
-}
 
 /**
  * Litros del lote. `litros_actuales` es la fuente de verdad; si falta, se
@@ -169,65 +209,9 @@ function litros(lote: Fila): number {
 }
 
 // -------------------------------------------------------------------- reglas
-
-export function evaluarAvAlerta(analisis: Fila[], eff: Criterios): boolean {
-  const ordenados = ordenar(analisis);
-  // La ÚLTIMA medición con dato de AV manda.
-  for (let i = ordenados.length - 1; i >= 0; i--) {
-    const a = ordenados[i];
-    const raw = num(a.av);
-    if (raw === null) continue;
-    if (raw === INVALIDO) return true;
-
-    const ultimo = raw;
-    const fUltimo = fecha(a.fecha_analisis);
-    if (ultimo > eff.av_max) return true;
-
-    // Salto brusco respecto de una medición anterior cercana.
-    for (let j = ordenados.length - 1; j >= 0; j--) {
-      const prev = ordenados[j];
-      const fp = fecha(prev.fecha_analisis);
-      if (fp === null || fUltimo === null || fp >= fUltimo) continue;
-      const pav = valido(prev.av);
-      if (pav === null) continue;
-      if (fUltimo - fp <= eff.av_delta_dias * DIA_MS && ultimo - pav > eff.av_delta_max) {
-        return true;
-      }
-    }
-    return false;
-  }
-  return false;
-}
-
-function fmlEstado(analisis: Fila[], eff: Criterios, lote: Fila): string {
-  const hace = eff.hace_fml ?? 'si';
-  const decisionLote = String(lote.hace_fml ?? '').trim().toLowerCase();
-  const excluidaLote = String(lote.fml_excluida ?? '').trim().toLowerCase();
-  if (excluidaLote === 'si' || decisionLote === 'no' || hace === 'no') return 'excluida';
-
-  const malicos = ordenar(analisis)
-    .map((a) => valido(a.malico))
-    .filter((v): v is number => v !== null);
-
-  if (!malicos.length) return 'sin_dato';
-
-  const ultimo = malicos[malicos.length - 1];
-  if (ultimo < eff.fml_malico_finalizada) return 'finalizada';
-  if (
-    malicos.length >= 2 &&
-    malicos[malicos.length - 1] < eff.fml_malico_2ultimas &&
-    malicos[malicos.length - 2] < eff.fml_malico_2ultimas
-  ) {
-    return 'finalizada';
-  }
-  return 'no_finalizada';
-}
-
-function faEstado(analisis: Fila[], eff: Criterios): string {
-  const [v] = ultimoValido(ordenar(analisis), 'azucar_reductor');
-  if (v === null) return 'sin_dato';
-  return v > eff.fa_azucar_reductor_max ? 'no_finalizada' : 'finalizada';
-}
+//
+// Las reglas por condicion viven en fml-condiciones.ts. Acá quedan sólo las que
+// miran la fila del lote (no el historial de análisis) y la química del SO2.
 
 function estadoLlenado(lote: Fila): string {
   const mermo = String(lote.mermo ?? '').trim().toLowerCase();
@@ -330,25 +314,63 @@ export function flagsAnalisis(analisisRow: Fila | null, eff: Criterios): string[
 
 // ------------------------------------------------------------------ por lote
 
+/** Una condicion activa del tablero, con su etiqueta y desde cuando rige. */
+export interface CondicionActiva {
+  clave: string;
+  etiqueta: string;
+  accion: string;
+  desde: string | null;
+}
+
 export interface ResultadoLote {
   lote: unknown;
   variedad: unknown;
   litros: number;
   activo: boolean;
+
+  // --- estados del tablero ---
   fa_estado: string;
   fml_estado: string;
+  fml_excluida_origen: 'lote' | 'variedad_blanca' | 'sin_dato';
+  estado_frecuencia: 'al_dia' | 'vencido' | 'sin_datos';
+  control_proceso_pendiente: boolean;
+  ultima_fecha_control: string | null;
+  dias_desde_control: number | null;
+  so2_estado: 'ok' | 'no_ok' | 'no_aplica' | 'sin_datos';
+  so2_libre: number | null;
+  so2_libre_fecha: string | null;
+  so2_ph_referencia: number | null;
+  so2_ph_referencia_fecha: string | null;
+  so2_molecular: number | null;
+  so2_motivo: string;
+  so2_caida: ResultadoCaida;
+  ph_estado: 'ok' | 'no_ok' | 'sin_datos';
+  av_alerta: boolean;
+  av_motivo: 'umbral' | 'aumento' | 'fuera_rango_foss' | null;
+  estado_llenado: string;
+  inoculado: string;
+  inoculado_origen: 'analisis' | 'manual' | null;
+  condiciones: CondicionActiva[];
+  accion_sugerida: string;
+
+  // --- compatibilidad con Dashboard, Evolucion y Orden de muestras ---
   so2_ok: boolean | null;
   ph_ok: boolean | null;
-  av_alerta: boolean;
-  estado_llenado: string;
-  dias_desde_analisis: number | null;
-  frecuencia_max: number;
   vencido: boolean;
-  alarmas: string[];
+  frecuencia_max: number;
+  dias_desde_analisis: number | null;
   ultima_fecha: string | null;
-  inoculado: string;
+  alarmas: string[];
 }
 
+/**
+ * Ensambla las 11 condiciones del tablero para un lote.
+ *
+ * No decide nada por su cuenta: cada estado sale de fml-condiciones.ts. Lo que
+ * sí resuelve acá es qué condiciones quedan activas, en qué orden se muestran y
+ * cómo se traducen a los campos viejos que todavía consumen el Dashboard, la
+ * Evolución y la Orden de muestras.
+ */
 export function evaluarLote(
   lote: Fila,
   analisisDelLote: Fila[],
@@ -356,80 +378,99 @@ export function evaluarLote(
   hoy: number,
 ): ResultadoLote {
   const eff = criteriosEfectivos(config, lote.variedad, lote.proyecto);
-  const ordenados = ordenar(analisisDelLote);
+  const analisis = ordenarPorFecha(analisisDelLote);
   const litrosLote = litros(lote);
-  const fml = fmlEstado(ordenados, eff, lote);
-  const fa = faEstado(ordenados, eff);
 
-  const [phVal] = ultimoValido(ordenados, 'ph');
-  const phOk = phVal === null ? null : phVal < eff.ph_max;
+  const fml = estadoFml(analisis, eff, lote);
+  const fa = estadoFa(analisis, eff);
+  const frec = estadoFrecuencia(analisis, eff, fml.estado, hoy);
+  const ph = estadoPh(analisis, eff);
+  const so2 = estadoSo2(analisis, eff);
+  const caida = caidaSo2(analisis, eff);
+  const av = alertaAv(analisis, eff);
+  const llenado = estadoLlenado(lote);
+  const hayAnalisis = tieneAnalisisValido(analisis);
+  const inoculado = detectarInoculado(analisis);
 
-  // La ÚLTIMA medición válida, no la mejor, y juzgada contra el objetivo que
-  // corresponde al pH de esa misma muestra: el molecular es una propiedad del
-  // par (libre, pH), así que mezclar el SO2 de una muestra con el pH de otra
-  // daría un veredicto que no describe a ninguna. Si la muestra no trae pH, se
-  // cae al último pH válido del lote.
-  let so2Ok: boolean | null = null;
-  for (let i = ordenados.length - 1; i >= 0; i--) {
-    const a = ordenados[i];
-    const s = so2LibreDe(a);
-    if (s === null) continue;
-    let phMuestra = valido(a.ph);
-    if (phMuestra === null) phMuestra = phVal;
-    const objetivo = objetivoSo2Libre(phMuestra, eff);
-    if (objetivo !== null) so2Ok = s >= objetivo;
-    break;
+  const activas: Array<[string, string | null]> = [];
+  if (!hayAnalisis) activas.push(['sin_analisis_valido', null]);
+  if (hayAnalisis && frec.control_proceso_pendiente) activas.push(['control_proceso_pendiente', null]);
+  if (frec.estado === 'vencido') activas.push(['frecuencia_vencida', frec.desde]);
+  if (av.alerta) activas.push(['av_alerta', av.desde]);
+  if (caida.alerta) activas.push(['so2_caida_alerta', caida.desde]);
+  if (fa.estado === 'no_finalizada') activas.push(['fa_no_finalizada', fa.desde]);
+  if (fml.estado === 'no_finalizada') activas.push(['fml_no_finalizada', fml.desde]);
+  if (so2.estado === 'no_ok') activas.push(['so2_no_ok', so2.desde]);
+  if (ph.estado === 'no_ok') activas.push(['ph_no_ok', ph.desde]);
+  if (llenado === 'no_lleno') activas.push(['no_lleno', null]);
+  if (llenado === 'desconocido' || !decisionFmlPresente(lote, eff)) {
+    activas.push(['datos_operativos_incompletos', null]);
   }
 
-  const avAlerta = evaluarAvAlerta(ordenados, eff);
+  // Orden de presentacion = orden de CONDICIONES.
+  const orden = Object.keys(CONDICIONES);
+  activas.sort((a, b) => orden.indexOf(a[0]) - orden.indexOf(b[0]));
 
-  const fechas = ordenados
+  const condiciones: CondicionActiva[] = activas.map(([clave, desde]) => ({
+    clave,
+    etiqueta: CONDICIONES[clave].etiqueta,
+    accion: CONDICIONES[clave].accion,
+    desde,
+  }));
+  const alarmas = condiciones.map((c) => c.clave);
+
+  const accion_sugerida = accionSugerida(alarmas);
+
+  const fechas = analisis
     .map((a) => fecha(a.fecha_analisis))
     .filter((f): f is number => f !== null);
   const ultima = fechas.length ? Math.max(...fechas) : null;
-  const dias = ultima !== null ? Math.round((hoy - ultima) / DIA_MS) : null;
-
-  const frecuencia = fml === 'no_finalizada' ? eff.frecuencia_no_terminada : eff.frecuencia_terminada;
-  const vencido = dias !== null && dias > frecuencia;
-
-  const llenado = estadoLlenado(lote);
-
-  const alarmas: string[] = [];
-  const tieneAnalisisValido = ordenados.some(
-    (a) => valido(a.ph) !== null || valido(a.av) !== null || valido(a.malico) !== null,
-  );
-  if (!tieneAnalisisValido) alarmas.push('sin_analisis_valido');
-  if (vencido) alarmas.push('frecuencia_vencida');
-  if (fa === 'no_finalizada') alarmas.push('fa_no_finalizada');
-  if (fml === 'no_finalizada') alarmas.push('fml_no_finalizada');
-  if (so2Ok === false) alarmas.push('so2_no_ok');
-  if (phOk === false) alarmas.push('ph_no_ok');
-  if (llenado === 'no_lleno') alarmas.push('no_lleno');
-  if (avAlerta) alarmas.push('av_alerta');
-  if (llenado === 'desconocido') alarmas.push('datos_operativos_incompletos');
-
-  const fechasIso = ordenados
-    .filter((a) => fecha(a.fecha_analisis) !== null)
-    .map((a) => String(a.fecha_analisis));
-  const ultimaFecha = fechasIso.length ? fechasIso[fechasIso.length - 1].slice(0, 10) : null;
 
   return {
     lote: lote.lote,
     variedad: lote.variedad,
     litros: litrosLote,
     activo: litrosLote > 0,
-    fa_estado: fa,
-    fml_estado: fml,
-    so2_ok: so2Ok,
-    ph_ok: phOk,
-    av_alerta: avAlerta,
+
+    fa_estado: fa.estado,
+    fml_estado: fml.estado,
+    fml_excluida_origen: fml.origen,
+    estado_frecuencia: frec.estado,
+    control_proceso_pendiente: frec.control_proceso_pendiente,
+    ultima_fecha_control: frec.ultima_fecha_control,
+    dias_desde_control: frec.dias_desde_control,
+    so2_estado: so2.estado,
+    so2_libre: so2.libre,
+    so2_libre_fecha: so2.libre_fecha,
+    so2_ph_referencia: so2.ph_referencia,
+    so2_ph_referencia_fecha: so2.ph_referencia_fecha,
+    so2_molecular: so2.molecular,
+    so2_motivo: so2.motivo,
+    so2_caida: caida,
+    ph_estado: ph.estado,
+    av_alerta: av.alerta,
+    av_motivo: av.motivo,
     estado_llenado: llenado,
-    dias_desde_analisis: dias,
-    frecuencia_max: frecuencia,
-    vencido,
+    inoculado,
+    // El motor solo puede decir 'analisis': el valor cargado a mano vive en
+    // estado_lote, que el motor no lee. La pestana resuelve el 'manual'.
+    inoculado_origen: inoculado === 'si' ? 'analisis' : null,
+    condiciones,
     alarmas,
-    ultima_fecha: ultimaFecha,
-    inoculado: detectarInoculado(ordenados),
+    accion_sugerida,
+
+    // --- compatibilidad con Dashboard, Evolucion y Orden de muestras ---
+    so2_ok:
+      so2.estado === 'ok' || so2.estado === 'no_aplica'
+        ? true
+        : so2.estado === 'no_ok'
+          ? false
+          : null,
+    ph_ok: ph.estado === 'ok' ? true : ph.estado === 'no_ok' ? false : null,
+    vencido: frec.estado === 'vencido',
+    frecuencia_max: frec.frecuencia_max,
+    dias_desde_analisis: ultima !== null ? Math.round((hoy - ultima) / DIA_MS) : null,
+    ultima_fecha: ultima !== null ? new Date(ultima).toISOString().slice(0, 10) : null,
   };
 }
 
@@ -465,7 +506,17 @@ export interface Alarma {
 export interface ResultadoEvaluar {
   lotes: ResultadoLote[];
   alarmas: Record<string, Alarma>;
-  kpis: { total_activos: number; vencidos: number; condicion_ideal: number };
+  kpis: {
+    total_activos: number;
+    vencidos: number;
+    condicion_ideal: number;
+    fml_terminada: number;
+    frecuencia_al_dia: number;
+    so2_conforme: number;
+    ph_ok: number;
+    lleno: number;
+    requieren_accion: number;
+  };
 }
 
 /** Evalúa todos los lotes activos. `hoy` en milisegundos UTC del día. */
@@ -482,23 +533,34 @@ export function evaluar(datos: Record<string, unknown>, hoy: number): ResultadoE
   const alarmas: Record<string, Alarma> = {};
   for (const r of resultados) {
     for (const cond of r.alarmas) {
-      const a = (alarmas[cond] ??= { cantidad: 0, lotes: [], accion: ACCIONES[cond] ?? '' });
+      const a = (alarmas[cond] ??= {
+        cantidad: 0,
+        lotes: [],
+        accion: CONDICIONES[cond]?.accion ?? '',
+      });
       a.cantidad += 1;
       a.lotes.push(String(r.lote));
     }
   }
 
-  const ideal = resultados.filter(
-    (r) => r.so2_ok && r.ph_ok && r.estado_llenado === 'lleno',
-  ).length;
+  const cuenta = (p: (r: ResultadoLote) => boolean) => resultados.filter(p).length;
+  const so2Conforme = (r: ResultadoLote) => r.so2_estado === 'ok' || r.so2_estado === 'no_aplica';
 
   return {
     lotes: resultados,
     alarmas,
     kpis: {
       total_activos: resultados.length,
-      vencidos: resultados.filter((r) => r.vencido).length,
-      condicion_ideal: ideal,
+      vencidos: cuenta((r) => r.vencido),
+      condicion_ideal: cuenta(
+        (r) => so2Conforme(r) && r.ph_estado === 'ok' && r.estado_llenado === 'lleno',
+      ),
+      fml_terminada: cuenta((r) => r.fml_estado === 'finalizada' || r.fml_estado === 'excluida'),
+      frecuencia_al_dia: cuenta((r) => r.estado_frecuencia === 'al_dia'),
+      so2_conforme: cuenta(so2Conforme),
+      ph_ok: cuenta((r) => r.ph_estado === 'ok'),
+      lleno: cuenta((r) => r.estado_llenado === 'lleno'),
+      requieren_accion: cuenta((r) => r.alarmas.length > 0),
     },
   };
 }

@@ -51,7 +51,7 @@ describe('criterios efectivos', () => {
     const eff = criteriosEfectivos(cfg(), 'chardonnay');
     expect(eff.hace_fml).toBe('no');
     expect(eff.ph_max).toBe(3.65);
-    expect(eff.so2_libre_piso).toBe(25.0); // lo no sobrescrito viene del default
+    expect(eff.so2_libre_piso).toBe(20.0); // lo no sobrescrito viene del default
   });
 
   it('trae las claves nuevas del tablero', () => {
@@ -121,7 +121,7 @@ describe('estado del lote', () => {
   });
 
   it('SO2 en criterio', () => {
-    // pH 3.5 => objetivo = max(0.38*(1+10^1.7), 25) = 25, así que 32 está bien.
+    // pH 3.5: 32 > piso 20 y el molecular da 0,626 >= 0,38, así que está bien.
     const an = [{ lote: '1', fecha_analisis: '2026-02-01', so2_libre: 32, ph: 3.5 }];
     const r = evaluarLote({ lote: '1', variedad: 'Malbec', litros_actuales: 100 }, an, cfg(), d('2026-02-02'));
     expect(r.so2_ok).toBe(true);
@@ -134,10 +134,22 @@ describe('estado del lote', () => {
   });
 
   it('vencido por frecuencia de FML no terminada', () => {
-    const an = [{ lote: '1', fecha_analisis: '2026-01-01', malico: 2.0 }];
+    // La frecuencia se cuenta desde el último CONTROL DE PROCESO (etanol + AV +
+    // málico en la misma fila), así que la corrida tiene que estar completa.
+    const an = [{ lote: '1', fecha_analisis: '2026-01-01', etanol: 13.5, av: 0.4, malico: 2.0 }];
     const r = evaluarLote({ lote: '1', variedad: 'Malbec', litros_actuales: 100 }, an, cfg(), d('2026-02-01'));
     expect(r.vencido).toBe(true);
+    expect(r.estado_frecuencia).toBe('vencido');
     expect(r.frecuencia_max).toBe(15);
+  });
+
+  it('una corrida incompleta no reinicia la frecuencia', () => {
+    // Sólo málico: no es control de proceso, así que queda pendiente.
+    const an = [{ lote: '1', fecha_analisis: '2026-01-01', malico: 2.0 }];
+    const r = evaluarLote({ lote: '1', variedad: 'Malbec', litros_actuales: 100 }, an, cfg(), d('2026-02-01'));
+    expect(r.estado_frecuencia).toBe('sin_datos');
+    expect(r.control_proceso_pendiente).toBe(true);
+    expect(r.alarmas).toContain('control_proceso_pendiente');
   });
 
   it('-999 es un valor inválido, no un dato', () => {
@@ -343,15 +355,16 @@ describe('química del SO2', () => {
   });
 
   it('respeta el piso a pH bajo', () => {
-    const eff = { ...CRITERIOS_DEFAULT } as Criterios; // piso 25
-    expect(objetivoSo2Libre(2.93, eff)!).toBeCloseTo(25.0, 6);
+    const eff = { ...CRITERIOS_DEFAULT } as Criterios; // piso 20
+    expect(objetivoSo2Libre(2.93, eff)!).toBeCloseTo(20.0, 6);
     expect(objetivoSo2Libre(3.93, eff)!).toBeCloseTo(51.6, 1);
   });
 
-  it('el cruce entre el piso y el molecular está en pH 3,61', () => {
+  it('el cruce entre el piso y el molecular está en pH 3,51', () => {
+    // Con el piso en 20 el cruce baja de 3,61 a 3,51: 0,38·(1+10^(pH−1,8))=20.
     const eff = { ...CRITERIOS_DEFAULT } as Criterios;
-    expect(objetivoSo2Libre(3.55, eff)!).toBeCloseTo(25.0, 6);
-    expect(objetivoSo2Libre(3.7, eff)!).toBeGreaterThan(25.0);
+    expect(objetivoSo2Libre(3.45, eff)!).toBeCloseTo(20.0, 6);
+    expect(objetivoSo2Libre(3.6, eff)!).toBeGreaterThan(20.0);
   });
 
   it('sin pH no hay objetivo', () => {
@@ -446,18 +459,46 @@ describe('so2_ok mira la última medición, no la mejor', () => {
       cfg(),
       d('2026-08-24'),
     );
-    expect(bajo.so2_ok).toBe(true); // a pH 2,93 manda el piso de 25
+    expect(bajo.so2_ok).toBe(true); // a pH 2,93 el molecular sobra y 28 supera el piso de 20
   });
 
-  it('sin pH no se pronuncia', () => {
+  it('sin pH no se pronuncia por encima del piso', () => {
+    // Arriba del piso el veredicto lo da el molecular, y sin pH no hay molecular.
     const ev = evaluarLote(
       lote225('26004'),
-      [{ lote: '26004', fecha_analisis: '2026-07-15', so2_libre: 10.0 }],
+      [{ lote: '26004', fecha_analisis: '2026-07-15', so2_libre: 30.0 }],
       cfg(),
       d('2026-08-24'),
     );
     expect(ev.so2_ok).toBeNull();
+    expect(ev.so2_estado).toBe('sin_datos');
     expect(ev.alarmas).not.toContain('so2_no_ok');
+  });
+
+  it('en el piso o por debajo se pronuncia aunque no haya pH', () => {
+    // Primer tramo del tablero: 10 ppm es no OK sin mirar nada más.
+    const ev = evaluarLote(
+      lote225('26005'),
+      [{ lote: '26005', fecha_analisis: '2026-07-15', so2_libre: 10.0 }],
+      cfg(),
+      d('2026-08-24'),
+    );
+    expect(ev.so2_estado).toBe('no_ok');
+    expect(ev.so2_ok).toBe(false);
+    expect(ev.alarmas).toContain('so2_no_ok');
+  });
+
+  it('el SO2 justo en el piso es no OK', () => {
+    // Verificado contra el tablero: sus lotes 26008 y 26011, con 20,0 clavado,
+    // son no_ok. Antes 20,0 >= objetivo daba OK.
+    const ev = evaluarLote(
+      lote225('26008'),
+      [{ lote: '26008', fecha_analisis: '2026-07-15', so2_libre: 20.0, ph: 3.5 }],
+      cfg(),
+      d('2026-08-24'),
+    );
+    expect(ev.so2_estado).toBe('no_ok');
+    expect(ev.so2_ok).toBe(false);
   });
 });
 
@@ -510,6 +551,167 @@ describe('detección de inoculado', () => {
   it('sin evidencia queda desconocido', () => {
     expect(detectarInoculado([{ comentario: 'nada' }])).toBe('desconocido');
     expect(detectarInoculado([])).toBe('desconocido');
+  });
+});
+
+describe('tablero: resultado del lote', () => {
+  const lote = { lote: '26001', variedad: 'Malbec', litros_actuales: 225, mermo: 'no', hace_fml: 'si' };
+
+  it('publica los estados nuevos y los viejos a la vez', () => {
+    const r = evaluarLote(
+      lote,
+      [{ fecha_analisis: '2026-08-20', etanol: 14, av: 0.4, malico: 0.1, ph: 3.5, so2_libre: 30 }],
+      cfg(),
+      d('2026-08-24'),
+    );
+    expect(r.so2_estado).toBe('ok');
+    expect(r.ph_estado).toBe('ok');
+    expect(r.estado_frecuencia).toBe('al_dia');
+    // compatibilidad
+    expect(r.so2_ok).toBe(true);
+    expect(r.ph_ok).toBe(true);
+    expect(r.vencido).toBe(false);
+  });
+
+  it('no_aplica cuenta como conforme para la compatibilidad', () => {
+    const r = evaluarLote(
+      { ...lote, proyecto: 'El Amiguito' },
+      [{ fecha_analisis: '2026-08-20', etanol: 14, av: 0.4, malico: 0.1, ph: 3.5, so2_libre: 5 }],
+      { default: { ...CRITERIOS_DEFAULT }, por_proyecto: { 'El Amiguito': { so2_aplica: 'no' } } },
+      d('2026-08-24'),
+    );
+    expect(r.so2_estado).toBe('no_aplica');
+    expect(r.so2_ok).toBe(true);
+    expect(r.alarmas).not.toContain('so2_no_ok');
+  });
+
+  it('cada condicion viene con etiqueta, accion y desde', () => {
+    const r = evaluarLote(
+      lote,
+      [{ fecha_analisis: '2026-06-01', etanol: 14, av: 0.4, malico: 0.1, ph: 3.5, so2_libre: 30 }],
+      cfg(),
+      d('2026-08-24'),
+    );
+    const frec = r.condiciones.find((c) => c.clave === 'frecuencia_vencida');
+    expect(frec?.etiqueta).toBe('Frecuencia vencida');
+    expect(frec?.accion).toBe('hacer OT y analizar');
+    expect(frec?.desde).toBe('2026-07-01');
+  });
+
+  it('la accion sugerida une las de todas las condiciones activas', () => {
+    const r = evaluarLote(
+      lote,
+      [{ fecha_analisis: '2026-06-01', etanol: 14, av: 1.2, malico: 0.1, ph: 3.5, so2_libre: 30 }],
+      cfg(),
+      d('2026-08-24'),
+    );
+    expect(r.alarmas).toContain('av_alerta');
+    expect(r.alarmas).toContain('frecuencia_vencida');
+    // en el orden de CONDICIONES: frecuencia primero, AV despues
+    expect(r.accion_sugerida).toBe('hacer OT y analizar | revisar urgente y confirmar analisis');
+  });
+
+  it('un Chardonnay sin hace_fml no esta incompleto', () => {
+    const r = evaluarLote(
+      { lote: '26002', variedad: 'Chardonnay', litros_actuales: 225, mermo: 'no' },
+      [{ fecha_analisis: '2026-08-20', etanol: 14, av: 0.4, malico: 2.0, ph: 3.5, so2_libre: 30 }],
+      cfg(),
+      d('2026-08-24'),
+    );
+    expect(r.fml_estado).toBe('excluida');
+    expect(r.alarmas).not.toContain('datos_operativos_incompletos');
+  });
+});
+
+describe('tablero: pH, frecuencia y origen de la exclusion', () => {
+  const lote = { lote: '26001', variedad: 'Malbec', litros_actuales: 225, mermo: 'no', hace_fml: 'si' };
+  const an = (ph: number) => [
+    { fecha_analisis: '2026-08-20', etanol: 14, av: 0.4, malico: 0.1, ph, so2_libre: 30 },
+  ];
+
+  it('el pH clavado en el maximo ya no alarma', () => {
+    const r = evaluarLote(lote, an(3.75), cfg(), d('2026-08-24'));
+    expect(r.ph_estado).toBe('ok');
+    expect(r.ph_ok).toBe(true);
+    expect(r.alarmas).not.toContain('ph_no_ok');
+  });
+
+  it('salvo que la variedad lo pida inclusivo, como el Cabernet', () => {
+    const c = {
+      default: { ...CRITERIOS_DEFAULT },
+      por_variedad: { 'Cabernet Sauvignon': { ph_max: 3.75, ph_max_inclusive: 'si' } },
+    };
+    const r = evaluarLote(
+      { ...lote, variedad: 'Cabernet Sauvignon' },
+      an(3.75),
+      c,
+      d('2026-08-24'),
+    );
+    expect(r.ph_estado).toBe('no_ok');
+    expect(r.alarmas).toContain('ph_no_ok');
+  });
+
+  it('evaluarLote y flagsAnalisis juzgan el pH con el mismo criterio', () => {
+    // Las dos decisiones tienen que salir de phFueraDeCriterio: si divergen, la
+    // ficha pinta en rojo un valor que el lote da por bueno.
+    const eff = criteriosEfectivos(cfg(), 'Malbec');
+    for (const ph of [3.6, 3.74, 3.75, 3.76, 3.9]) {
+      const r = evaluarLote(lote, an(ph), cfg(), d('2026-08-24'));
+      expect([ph, r.ph_estado === 'no_ok']).toEqual([ph, flagsAnalisis({ ph }, eff).includes('ph')]);
+    }
+  });
+
+  it('la FML sin dato usa 15 dias, no 30', () => {
+    // No saber no es razon para espaciar: solo aflojan finalizada y excluida.
+    const sinMalico = [{ fecha_analisis: '2026-08-01', etanol: 14, av: 0.4, malico: -999, ph: 3.5 }];
+    const r = evaluarLote(lote, sinMalico, cfg(), d('2026-08-24'));
+    expect(r.fml_estado).toBe('sin_dato');
+    expect(r.frecuencia_max).toBe(15);
+
+    const finalizada = evaluarLote(lote, an(3.5), cfg(), d('2026-08-24'));
+    expect(finalizada.fml_estado).toBe('finalizada');
+    expect(finalizada.frecuencia_max).toBe(30);
+  });
+
+  it('el origen de la decision de FML viaja en los cuatro estados', () => {
+    // No solo cuando esta excluida: la ficha muestra quien mando siempre.
+    expect(evaluarLote(lote, an(3.5), cfg(), d('2026-08-24')).fml_excluida_origen).toBe('lote');
+
+    const blanca = evaluarLote(
+      { lote: '26002', variedad: 'Chardonnay', litros_actuales: 225, mermo: 'no' },
+      an(3.5),
+      cfg(),
+      d('2026-08-24'),
+    );
+    expect(blanca.fml_estado).toBe('excluida');
+    expect(blanca.fml_excluida_origen).toBe('variedad_blanca');
+
+    const sinDecision = evaluarLote(
+      { lote: '26003', variedad: 'Malbec', litros_actuales: 225, mermo: 'no' },
+      an(3.5),
+      cfg(),
+      d('2026-08-24'),
+    );
+    expect(sinDecision.fml_excluida_origen).toBe('sin_dato');
+    expect(sinDecision.alarmas).toContain('datos_operativos_incompletos');
+  });
+});
+
+describe('tablero: KPIs', () => {
+  it('trae los seis ejes del panel', () => {
+    const datos = {
+      config: { criterios_fml: { default: { ...CRITERIOS_DEFAULT } } },
+      lotes: [{ lote: '1', variedad: 'Malbec', litros_actuales: 225, mermo: 'no', hace_fml: 'si' }],
+      analisis: [{ lote: '1', fecha_analisis: '2026-08-20', etanol: 14, av: 0.4, malico: 0.1, ph: 3.5, so2_libre: 30 }],
+    };
+    const ev = evaluar(normalizarConfig(datos), d('2026-08-24'));
+    expect(ev.kpis.fml_terminada).toBe(1);
+    expect(ev.kpis.frecuencia_al_dia).toBe(1);
+    expect(ev.kpis.so2_conforme).toBe(1);
+    expect(ev.kpis.ph_ok).toBe(1);
+    expect(ev.kpis.lleno).toBe(1);
+    expect(ev.kpis.requieren_accion).toBe(0);
+    expect(ev.kpis.condicion_ideal).toBe(1);
   });
 });
 

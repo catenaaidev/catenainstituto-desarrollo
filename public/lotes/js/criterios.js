@@ -11,7 +11,7 @@ export const CRITERIOS_DEFAULT = {
   fml_malico_finalizada:  0.2,
   fml_malico_2ultimas:    0.5,
   so2_molecular_objetivo: 0.38,
-  so2_libre_piso:         25.0,
+  so2_libre_piso:         20.0,
   ph_max:                 3.75,
   av_max:                 0.8,
   av_delta_max:           0.3,
