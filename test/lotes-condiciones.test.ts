@@ -41,8 +41,10 @@ describe('medicion util', () => {
     expect(esMedicionUtil({ fecha_analisis: '2026-08-01', comentario: 'nada' })).toBe(false);
   });
 
-  it('el -999 no alcanza para ser medicion util', () => {
-    expect(esMedicionUtil({ fecha_analisis: '2026-08-01', av: -999 })).toBe(false);
+  it('el -999 del FOSS ya es medicion util', () => {
+    // El FOSS midio y la lectura salio fuera de rango: hubo analisis. Lo que el
+    // -999 no da es un valor para comparar contra un umbral, que es otra cosa.
+    expect(esMedicionUtil({ fecha_analisis: '2026-08-01', av: -999 })).toBe(true);
   });
 
   it('SO2 que viene dentro de correccion es medicion util', () => {
@@ -60,9 +62,11 @@ describe('tiene analisis valido', () => {
   });
 
   it('arreglo sin ninguna fila util devuelve false', () => {
+    // El 0 de SO2 es el placeholder del laboratorio, no una medicion. (Ojo: un
+    // -999 SI haria util a la fila, porque ahi el FOSS corrio.)
     const analisis = [
       { fecha_analisis: '2026-08-01', comentario: 'nada' },
-      { fecha_analisis: '2026-08-05', av: -999 },
+      { fecha_analisis: '2026-08-05', so2_libre: 0 },
     ];
     expect(tieneAnalisisValido(analisis)).toBe(false);
   });
@@ -88,6 +92,13 @@ describe('control de proceso', () => {
       { fecha_analisis: '2026-08-20', ph: 3.6 },
     ];
     expect(ultimoControlProceso(filas)?.fecha_analisis).toBe('2026-08-01');
+  });
+
+  it('el -999 del FOSS no rompe la corrida completa', () => {
+    // Lote 26023 del tablero: etanol 12.3, AV -999 y malico 3.85 en la misma
+    // fila. El -999 dice que el FOSS corrio, asi que hay control de proceso.
+    const filas = [{ fecha_analisis: '2026-09-09', etanol: 12.3, av: -999, malico: 3.85 }];
+    expect(ultimoControlProceso(filas)?.fecha_analisis).toBe('2026-09-09');
   });
 });
 

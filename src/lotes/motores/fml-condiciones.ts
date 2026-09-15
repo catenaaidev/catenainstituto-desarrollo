@@ -77,10 +77,20 @@ export function so2LibreDe(a: Fila): number | null {
 const METRICAS_UTILES = ['ph', 'av', 'malico', 'azucar_reductor', 'so2_libre', 'etanol'];
 const METRICAS_PROCESO = ['etanol', 'av', 'malico'];
 
-/** Una fila cuenta como analisis si trae fecha y al menos una medicion real. */
+/**
+ * Una fila cuenta como analisis si trae fecha y al menos una medicion INFORMADA.
+ *
+ * Informada no es lo mismo que usable: el -999 es el FOSS diciendo "corri y la
+ * lectura salio fuera de rango". Hubo analisis, aunque el numero no sirva para
+ * comparar contra un umbral. Por eso aca se pregunta con num() y no con
+ * valorValido() (el original hace `row.get(metric) is not None`).
+ *
+ * El SO2 libre es la excepcion y sigue pasando por so2LibreDe(): su 0 es el
+ * placeholder que deja el laboratorio cuando no midio, no una medicion.
+ */
 export function esMedicionUtil(a: Fila): boolean {
   if (fechaDia(a.fecha_analisis) === null) return false;
-  return METRICAS_UTILES.some((m) => (m === 'so2_libre' ? so2LibreDe(a) : valorValido(a[m])) !== null);
+  return METRICAS_UTILES.some((m) => (m === 'so2_libre' ? so2LibreDe(a) : num(a[m])) !== null);
 }
 
 export function tieneAnalisisValido(analisis: Fila[]): boolean {
@@ -91,13 +101,17 @@ export function tieneAnalisisValido(analisis: Fila[]): boolean {
  * El control de proceso exige etanol, AV y malico en la MISMA fila: es una
  * corrida completa del FOSS. Mediciones sueltas no lo reemplazan, y por eso no
  * reinician la frecuencia.
+ *
+ * Lo que se pide es que las tres esten INFORMADAS, no que sean usables: un
+ * -999 es el FOSS reportando fuera de rango, o sea que la corrida existio y la
+ * frecuencia se reinicia igual. Por eso num() y no valorValido().
  */
 export function ultimoControlProceso(analisis: Fila[]): Fila | null {
   const ordenados = ordenarPorFecha(analisis);
   for (let i = ordenados.length - 1; i >= 0; i--) {
     const a = ordenados[i];
     if (fechaDia(a.fecha_analisis) === null) continue;
-    if (METRICAS_PROCESO.every((m) => valorValido(a[m]) !== null)) return a;
+    if (METRICAS_PROCESO.every((m) => num(a[m]) !== null)) return a;
   }
   return null;
 }
