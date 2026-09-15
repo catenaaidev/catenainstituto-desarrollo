@@ -3,6 +3,7 @@ import {
   so2LibreDe, valorValido, fechaDia,
   esMedicionUtil, tieneAnalisisValido, ultimoControlProceso, estadoFrecuencia,
   desdeCuando, phFueraDeCriterio, estadoPh, estadoSo2,
+  caidaSo2, alertaAv,
 } from '../src/lotes/motores/fml-condiciones';
 import { CRITERIOS_DEFAULT } from '../src/lotes/motores/fml';
 
@@ -232,5 +233,76 @@ describe('SO2', () => {
 
   it('el 0 no es una medicion', () => {
     expect(estadoSo2([{ fecha_analisis: '2026-08-01', so2_libre: 0, ph: 3.4 }], base).estado).toBe('sin_datos');
+  });
+});
+
+describe('caida de SO2', () => {
+  const base = { ...CRITERIOS_DEFAULT };
+
+  it('una caida de mas de 12 ppm alarma', () => {
+    const r = caidaSo2([
+      { fecha_analisis: '2026-07-01', so2_libre: 35 },
+      { fecha_analisis: '2026-08-01', so2_libre: 22 },
+    ], base);
+    expect(r.alerta).toBe(true);
+    expect(r.caida).toBe(13);
+  });
+
+  it('12 clavado NO alarma: el umbral es estricto', () => {
+    const r = caidaSo2([
+      { fecha_analisis: '2026-07-01', so2_libre: 34 },
+      { fecha_analisis: '2026-08-01', so2_libre: 22 },
+    ], base);
+    expect(r.alerta).toBe(false);
+  });
+
+  it('no se evalua en proyectos sin SO2', () => {
+    const r = caidaSo2([
+      { fecha_analisis: '2026-07-01', so2_libre: 35 },
+      { fecha_analisis: '2026-08-01', so2_libre: 10 },
+    ], { ...base, so2_aplica: 'no' });
+    expect(r.alerta).toBe(false);
+  });
+
+  it('dos mediciones del mismo dia no son dos fechas distintas', () => {
+    const r = caidaSo2([
+      { fecha_analisis: '2026-08-01', so2_libre: 35 },
+      { fecha_analisis: '2026-08-01', so2_libre: 18 },
+    ], base);
+    expect(r.alerta).toBe(false);
+  });
+});
+
+describe('AV', () => {
+  const base = { ...CRITERIOS_DEFAULT };
+
+  it('por encima del umbral', () => {
+    const r = alertaAv([{ fecha_analisis: '2026-08-01', av: 0.95 }], base);
+    expect(r.alerta).toBe(true);
+    expect(r.motivo).toBe('umbral');
+  });
+
+  it('por salto en la ventana de 15 dias', () => {
+    const r = alertaAv([
+      { fecha_analisis: '2026-08-01', av: 0.3 },
+      { fecha_analisis: '2026-08-10', av: 0.7 },
+    ], base);
+    expect(r.alerta).toBe(true);
+    expect(r.motivo).toBe('aumento');
+    expect(r.delta).toBeCloseTo(0.4, 5);
+  });
+
+  it('el mismo salto fuera de la ventana no alarma', () => {
+    const r = alertaAv([
+      { fecha_analisis: '2026-06-01', av: 0.3 },
+      { fecha_analisis: '2026-08-10', av: 0.7 },
+    ], base);
+    expect(r.alerta).toBe(false);
+  });
+
+  it('el -999 del FOSS alarma con su propio motivo', () => {
+    const r = alertaAv([{ fecha_analisis: '2026-08-01', av: -999 }], base);
+    expect(r.alerta).toBe(true);
+    expect(r.motivo).toBe('fuera_rango_foss');
   });
 });

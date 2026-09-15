@@ -309,6 +309,101 @@ export function estadoSo2(analisis: Fila[], eff: Criterios): ResultadoSo2 {
   return { ...vacio, estado: 'sin_datos', motivo: 'sin ninguna medicion de SO2 libre' };
 }
 
+// ----------------------------------------------------------------- Caida SO2
+
+export interface ResultadoCaida {
+  alerta: boolean;
+  anterior: number | null; anterior_fecha: string | null;
+  actual: number | null;   actual_fecha: string | null;
+  caida: number | null;
+  desde: string | null;
+}
+
+/**
+ * Caida entre las dos ultimas FECHAS DISTINTAS con SO2 valido. Dos mediciones
+ * del mismo dia son la misma foto, no una evolucion.
+ */
+export function caidaSo2(analisis: Fila[], eff: Criterios): ResultadoCaida {
+  const vacio: ResultadoCaida = {
+    alerta: false, anterior: null, anterior_fecha: null,
+    actual: null, actual_fecha: null, caida: null, desde: null,
+  };
+  if (String(eff.so2_aplica ?? 'si').trim().toLowerCase() === 'no') return vacio;
+
+  const porFecha = new Map<string, number>();
+  for (const a of ordenarPorFecha(analisis)) {
+    const v = so2LibreDe(a);
+    if (v === null || fechaDia(a.fecha_analisis) === null) continue;
+    porFecha.set(String(a.fecha_analisis).slice(0, 10), v); // la ultima del dia manda
+  }
+  const fechas = [...porFecha.keys()].sort();
+  if (fechas.length < 2) return vacio;
+
+  const actual_fecha = fechas[fechas.length - 1];
+  const anterior_fecha = fechas[fechas.length - 2];
+  const actual = porFecha.get(actual_fecha) as number;
+  const anterior = porFecha.get(anterior_fecha) as number;
+  const caida = anterior - actual;
+  const alerta = caida > eff.so2_caida_max;
+
+  return {
+    alerta, anterior, anterior_fecha, actual, actual_fecha, caida,
+    desde: alerta ? actual_fecha : null,
+  };
+}
+
+// ----------------------------------------------------------------- Alerta AV
+
+export interface ResultadoAv {
+  alerta: boolean;
+  motivo: 'umbral' | 'aumento' | 'fuera_rango_foss' | null;
+  valor: number | null;
+  fecha: string | null;
+  delta: number | null;
+  desde: string | null;
+}
+
+/**
+ * Tres motivos, en orden de prioridad: el FOSS fuera de rango, el umbral y el
+ * salto. El -999 gana porque significa que el valor no es confiable.
+ */
+export function alertaAv(analisis: Fila[], eff: Criterios): ResultadoAv {
+  const ordenados = ordenarPorFecha(analisis);
+  for (let i = ordenados.length - 1; i >= 0; i--) {
+    const a = ordenados[i];
+    const raw = num(a.av);
+    if (raw === null) continue;
+
+    const fecha = String(a.fecha_analisis).slice(0, 10);
+    if (raw === INVALIDO) {
+      return { alerta: true, motivo: 'fuera_rango_foss', valor: null, fecha, delta: null, desde: fecha };
+    }
+
+    const fUltimo = fechaDia(a.fecha_analisis);
+    if (raw > eff.av_max) {
+      return {
+        alerta: true, motivo: 'umbral', valor: raw, fecha, delta: null,
+        desde: desdeCuando(analisis, (f) => {
+          const v = valorValido(f.av);
+          return v === null ? null : v > eff.av_max;
+        }),
+      };
+    }
+
+    for (let j = i - 1; j >= 0; j--) {
+      const fp = fechaDia(ordenados[j].fecha_analisis);
+      const pav = valorValido(ordenados[j].av);
+      if (fp === null || fUltimo === null || pav === null || fp >= fUltimo) continue;
+      if (fUltimo - fp <= eff.av_delta_dias * DIA_MS && raw - pav > eff.av_delta_max) {
+        return { alerta: true, motivo: 'aumento', valor: raw, fecha, delta: raw - pav, desde: fecha };
+      }
+    }
+
+    return { alerta: false, motivo: null, valor: raw, fecha, delta: null, desde: null };
+  }
+  return { alerta: false, motivo: null, valor: null, fecha: null, delta: null, desde: null };
+}
+
 // Re-exportar Criterios como tipo para que los consumidores de este modulo
 // puedan tipear sus funciones sin importar desde fml.ts directamente.
 export type { Criterios };
