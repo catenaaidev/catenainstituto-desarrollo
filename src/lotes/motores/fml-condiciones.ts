@@ -224,13 +224,82 @@ function ultimoPh(analisis: Fila[]): [number | null, string | null] {
   return [null, null];
 }
 
-function so2NoOk(a: Fila, eff: Criterios, phRespaldo: number | null): boolean | null {
+function so2Aplica(eff: Criterios): boolean {
+  return String(eff.so2_aplica ?? 'si').trim().toLowerCase() !== 'no';
+}
+
+/** Veredicto de SO2 de UNA fila. `fuera === null` significa "no hay veredicto". */
+export interface VeredictoSo2 {
+  fuera: boolean | null;
+  libre: number | null;
+  /** pH usado para el molecular: el propio de la fila o el de respaldo. */
+  ph: number | null;
+  ph_propio: boolean;
+  molecular: number | null;
+  motivo: string;
+}
+
+/**
+ * LA regla de SO2: la usan estadoSo2 (veredicto del lote) y flagsAnalisis (la
+ * celda roja de la tabla de Analisis), asi que no pueden contradecirse.
+ *
+ * Dos tramos, como el tablero: en el piso o por debajo es fuera de criterio sin
+ * mirar nada mas; por encima decide el molecular. Devuelve `fuera: null` cuando
+ * no hay con que pronunciarse (proyecto sin SO2, fila sin medicion, o sin
+ * ningun pH por encima del piso).
+ *
+ * `phRespaldo` es el ultimo pH valido del lote. Quien juzga una fila suelta
+ * (flagsAnalisis) no lo tiene y pasa null: ahi, sin pH propio y por encima del
+ * piso, no hay veredicto.
+ */
+export function veredictoSo2(
+  a: Fila,
+  eff: Criterios,
+  phRespaldo: number | null = null,
+): VeredictoSo2 {
+  const vacio = { libre: null, ph: null, ph_propio: false, molecular: null };
+
+  if (!so2Aplica(eff)) {
+    return { ...vacio, fuera: null, motivo: 'el proyecto no lleva adicion de SO2' };
+  }
+
   const libre = so2LibreDe(a);
-  if (libre === null) return null;
-  if (libre <= eff.so2_libre_piso) return true;
-  const ph = valorValido(a.ph) ?? phRespaldo;
-  if (ph === null) return null;
-  return molecularDe(libre, ph) < eff.so2_molecular_objetivo;
+  if (libre === null) {
+    return { ...vacio, fuera: null, motivo: 'sin medicion de SO2 libre' };
+  }
+
+  if (libre <= eff.so2_libre_piso) {
+    return {
+      ...vacio,
+      fuera: true,
+      libre,
+      motivo: `SO2 libre ${libre} ppm, en o por debajo del piso de ${eff.so2_libre_piso}`,
+    };
+  }
+
+  const propio = valorValido(a.ph);
+  const ph = propio ?? phRespaldo;
+  if (ph === null) {
+    return {
+      ...vacio,
+      fuera: null,
+      libre,
+      motivo: 'el lote no tiene ningun pH, no se puede calcular el molecular',
+    };
+  }
+
+  const molecular = molecularDe(libre, ph);
+  const bajo = molecular < eff.so2_molecular_objetivo;
+  return {
+    fuera: bajo,
+    libre,
+    ph,
+    ph_propio: propio !== null,
+    molecular,
+    motivo: bajo
+      ? `molecular ${molecular.toFixed(3)} mg/L, por debajo de ${eff.so2_molecular_objetivo}`
+      : `molecular ${molecular.toFixed(3)} mg/L, suficiente`,
+  };
 }
 
 export interface ResultadoSo2 {
@@ -245,8 +314,8 @@ export interface ResultadoSo2 {
 }
 
 /**
- * Dos tramos, como el tablero: en el piso o por debajo es no OK sin mirar nada
- * mas; por encima, decide el molecular.
+ * Veredicto de SO2 del lote: se busca la ultima fila con SO2 libre medido y se
+ * la juzga con veredictoSo2(). La regla no vive aca, vive alla.
  *
  * El pH sale de la misma muestra cuando esta, y si no del ultimo pH valido del
  * lote. Verificado contra el tablero aprobado: su lote 26031 tiene el SO2 del
@@ -259,7 +328,7 @@ export function estadoSo2(analisis: Fila[], eff: Criterios): ResultadoSo2 {
     ph_referencia_fecha: null, molecular: null, desde: null,
   };
 
-  if (String(eff.so2_aplica ?? 'si').trim().toLowerCase() === 'no') {
+  if (!so2Aplica(eff)) {
     return { ...vacio, estado: 'no_aplica', motivo: 'el proyecto no lleva adicion de SO2' };
   }
 
@@ -268,41 +337,28 @@ export function estadoSo2(analisis: Fila[], eff: Criterios): ResultadoSo2 {
 
   for (let i = ordenados.length - 1; i >= 0; i--) {
     const a = ordenados[i];
-    const libre = so2LibreDe(a);
-    if (libre === null) continue;
+    const v = veredictoSo2(a, eff, phRespaldo);
+    if (v.libre === null) continue;
 
     const libre_fecha = String(a.fecha_analisis).slice(0, 10);
-    const desde = () => desdeCuando(analisis, (f) => so2NoOk(f, eff, phRespaldo));
 
-    if (libre <= eff.so2_libre_piso) {
-      return {
-        ...vacio, estado: 'no_ok', libre, libre_fecha,
-        motivo: `SO2 libre ${libre} ppm, en o por debajo del piso de ${eff.so2_libre_piso}`,
-        desde: desde(),
-      };
+    // Hay SO2 medido pero el lote no tiene ningun pH: no se puede calcular el
+    // molecular y el valor esta por encima del piso, asi que no hay veredicto.
+    if (v.fuera === null) {
+      return { ...vacio, estado: 'sin_datos', libre: v.libre, libre_fecha, motivo: v.motivo };
     }
 
-    const propio = valorValido(a.ph);
-    const ph = propio ?? phRespaldo;
-    if (ph === null) {
-      return {
-        ...vacio, estado: 'sin_datos', libre, libre_fecha,
-        motivo: 'el lote no tiene ningun pH, no se puede calcular el molecular',
-      };
-    }
-
-    const molecular = molecularDe(libre, ph);
-    const bajo = molecular < eff.so2_molecular_objetivo;
     return {
-      estado: bajo ? 'no_ok' : 'ok',
-      libre, libre_fecha,
-      ph_referencia: ph,
-      ph_referencia_fecha: propio !== null ? libre_fecha : phRespaldoFecha,
-      molecular,
-      motivo: bajo
-        ? `molecular ${molecular.toFixed(3)} mg/L, por debajo de ${eff.so2_molecular_objetivo}`
-        : `molecular ${molecular.toFixed(3)} mg/L, suficiente`,
-      desde: bajo ? desde() : null,
+      estado: v.fuera ? 'no_ok' : 'ok',
+      libre: v.libre,
+      libre_fecha,
+      ph_referencia: v.ph,
+      ph_referencia_fecha: v.ph === null ? null : v.ph_propio ? libre_fecha : phRespaldoFecha,
+      molecular: v.molecular,
+      motivo: v.motivo,
+      desde: v.fuera
+        ? desdeCuando(analisis, (f) => veredictoSo2(f, eff, phRespaldo).fuera)
+        : null,
     };
   }
 
@@ -328,7 +384,7 @@ export function caidaSo2(analisis: Fila[], eff: Criterios): ResultadoCaida {
     alerta: false, anterior: null, anterior_fecha: null,
     actual: null, actual_fecha: null, caida: null, desde: null,
   };
-  if (String(eff.so2_aplica ?? 'si').trim().toLowerCase() === 'no') return vacio;
+  if (!so2Aplica(eff)) return vacio;
 
   const porFecha = new Map<string, number>();
   for (const a of ordenarPorFecha(analisis)) {

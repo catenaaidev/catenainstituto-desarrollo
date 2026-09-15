@@ -537,8 +537,66 @@ describe('flags de una fila de análisis', () => {
     expect(flagsAnalisis({ so2_libre: 28.0, ph: 2.93 }, eff())).not.toContain('so2_libre');
   });
 
-  it('sin pH no marca el SO2', () => {
-    expect(flagsAnalisis({ so2_libre: 5.0 }, eff())).not.toContain('so2_libre');
+  it('sin pH no marca el SO2 por encima del piso', () => {
+    // 30 > piso 20 y no hay pH: no se puede calcular el molecular, no hay
+    // veredicto. El lote tambien queda 'sin_datos' (ver estadoSo2).
+    expect(flagsAnalisis({ so2_libre: 30.0 }, eff())).not.toContain('so2_libre');
+  });
+});
+
+// Los cinco bordes donde flagsAnalisis y estadoSo2 divergian: la celda de la
+// tabla de Analisis decia una cosa y el veredicto del lote otra. Hoy los dos
+// salen de veredictoSo2, asi que no pueden contradecirse.
+describe('flagsAnalisis y estadoSo2 juzgan el SO2 con el mismo criterio', () => {
+  const eff = () => criteriosEfectivos(cfg(), 'Malbec');
+  const marca = (fila: Record<string, unknown>, e = eff()) =>
+    flagsAnalisis(fila, e).includes('so2_libre');
+  const delLote = (fila: Record<string, unknown>, conf = cfg()) =>
+    evaluarLote(
+      { lote: '26001', variedad: 'Malbec', litros_actuales: 225, mermo: 'no', hace_fml: 'si' },
+      [{ fecha_analisis: '2026-08-20', ...fila }],
+      conf,
+      d('2026-08-24'),
+    );
+
+  it('el SO2 clavado en el piso se marca, igual que el lote es no_ok', () => {
+    expect(marca({ so2_libre: 20.0, ph: 3.5 })).toBe(true);
+    expect(delLote({ so2_libre: 20.0, ph: 3.5 }).so2_estado).toBe('no_ok');
+  });
+
+  it('bajo el piso y sin pH se marca igual: el piso no necesita pH', () => {
+    expect(marca({ so2_libre: 5.0 })).toBe(true);
+    expect(delLote({ so2_libre: 5.0 }).so2_estado).toBe('no_ok');
+  });
+
+  it('el placeholder 0 no es una medicion: ni se marca ni alarma', () => {
+    expect(marca({ so2_libre: 0, ph: 3.5 })).toBe(false);
+    expect(delLote({ so2_libre: 0, ph: 3.5 }).so2_estado).toBe('sin_datos');
+  });
+
+  it('encuentra el SO2 en so2_libre_actual y dentro de correccion', () => {
+    expect(marca({ so2_libre_actual: 8.0, ph: 3.5 })).toBe(true);
+    expect(delLote({ so2_libre_actual: 8.0, ph: 3.5 }).so2_estado).toBe('no_ok');
+
+    expect(marca({ correccion: { so2_libre: 8.0 }, ph: 3.5 })).toBe(true);
+    expect(delLote({ correccion: { so2_libre: 8.0 }, ph: 3.5 }).so2_estado).toBe('no_ok');
+  });
+
+  it('con so2_aplica en no, no se marca nada', () => {
+    const conf = {
+      default: { ...CRITERIOS_DEFAULT },
+      por_proyecto: { 'El Amiguito': { so2_aplica: 'no' } },
+    };
+    const e = criteriosEfectivos(conf, 'Malbec', 'El Amiguito');
+    expect(marca({ so2_libre: 5.0, ph: 3.5 }, e)).toBe(false);
+
+    const r = evaluarLote(
+      { lote: '26001', variedad: 'Malbec', proyecto: 'El Amiguito', litros_actuales: 225, mermo: 'no', hace_fml: 'si' },
+      [{ fecha_analisis: '2026-08-20', so2_libre: 5.0, ph: 3.5 }],
+      conf,
+      d('2026-08-24'),
+    );
+    expect(r.so2_estado).toBe('no_aplica');
   });
 });
 

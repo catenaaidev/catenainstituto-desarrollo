@@ -31,6 +31,7 @@ import {
   alertaAv,
   tieneAnalisisValido,
   decisionFmlPresente,
+  veredictoSo2,
   type Fila,
   type ResultadoCaida,
 } from './fml-condiciones';
@@ -107,7 +108,11 @@ export const CONDICIONES: Record<string, MetaCondicion> = {
  * La accion sugerida es la UNION de las acciones de las condiciones activas,
  * sin repetir y separadas por " | ", igual que la columna accion_sugerida del
  * tablero (p. ej. el lote 26011: "revisar ajuste SO2/pH | completar Mermo/FML
- * en LOTES"). No se elige una sola por prioridad.
+ * en el lote"). No se elige una sola por prioridad.
+ *
+ * El tablero original decia "completar Mermo/FML en LOTES" porque LOTES era una
+ * hoja del Excel; en la web esa hoja no existe, asi que el texto se adapto a
+ * "en el lote". Es la unica diferencia de redaccion con el tablero aprobado.
  */
 export function accionSugerida(claves: string[]): string {
   const vistas: string[] = [];
@@ -117,11 +122,6 @@ export function accionSugerida(claves: string[]): string {
   }
   return vistas.join(' | ');
 }
-
-/** @deprecated usar CONDICIONES. Se conserva porque reporte.ts todavia lo mira. */
-export const ACCIONES: Record<string, string> = Object.fromEntries(
-  Object.entries(CONDICIONES).map(([k, v]) => [k, v.accion]),
-);
 
 const INOC_PAT = /vp41|bacterias?|inoc|inoculad/i;
 
@@ -305,9 +305,12 @@ export function flagsAnalisis(analisisRow: Fila | null, eff: Criterios): string[
   const az = valido(a.azucar_reductor);
   if (az !== null && az > eff.fa_azucar_reductor_max) fuera.push('azucar_reductor');
 
-  const so2 = valido(a.so2_libre);
-  const objetivoSo2 = objetivoSo2Libre(ph, eff);
-  if (so2 !== null && objetivoSo2 !== null && so2 < objetivoSo2) fuera.push('so2_libre');
+  // El SO2 sale del MISMO veredicto que usa el lote (estadoSo2): dos tramos,
+  // so2LibreDe (que descarta el placeholder 0 y mira so2_libre_actual y
+  // correccion) y so2_aplica. Aca se juzga una fila sola, sin historial, asi que
+  // no hay pH de respaldo: por encima del piso y sin pH propio no hay veredicto
+  // y la celda no se pinta, igual que el lote queda 'sin_datos'.
+  if (veredictoSo2(a, eff).fuera === true) fuera.push('so2_libre');
 
   return fuera;
 }
