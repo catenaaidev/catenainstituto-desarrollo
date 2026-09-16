@@ -13,6 +13,10 @@ const API='/barriles/api';</script>
 <script src="ocr/tesseract.min.js"></script>
 <script src="three.min.js"></script>
 <script src="OrbitControls.js"></script>
+<!-- Regla de quien puede editar una orden guardada. Va aca, como script clasico,
+     porque el arranque de la pagina corre durante el parseo: un type="module"
+     llegaria tarde. Se testea en test/barriles-orden-editable.test.mjs. -->
+<script src="js/orden-editable.js"></script>
 <style>
   :root {
     --vino: #6b1f3a; --vino-osc: #4a1428; --crema: #faf6f0;
@@ -104,6 +108,30 @@ const API='/barriles/api';</script>
   #escResumen { display: none; background: #e6f4e6; border: 2px solid var(--ok); border-radius: 12px; padding: 18px; margin-bottom: 16px; text-align: center; }
   .esc-res-num { font-size: 1.8rem; font-weight: 800; color: var(--ok); }
   .esc-res-detalle { font-size: .95rem; color: #2b2b2b; margin-top: 6px; }
+  /* la orden se guardo igual, pero algo quedo para mirar: mismo cartel, en rojo */
+  #escResumen.revisar { background: #ffebee; border-color: var(--error); }
+  #escResumen.revisar .esc-res-num { color: var(--error); font-size: 1.45rem; }
+  .esc-res-avisos { list-style: none; margin: 12px auto 10px; padding: 0; max-width: 560px; text-align: left; }
+  .esc-res-avisos li { background: #fff; border-left: 4px solid var(--error); border-radius: 6px; padding: 9px 12px; margin-bottom: 7px; font-size: 1rem; line-height: 1.4; }
+  /* orden fuera de la ventana de edicion: el boton sigue ahi y explica por que */
+  .btn.esc-vencida { opacity: .4; filter: grayscale(1); }
+
+  /* ---- historial plegable ---- */
+  .esc-historial > summary { cursor: pointer; list-style: none; user-select: none; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .esc-historial > summary::-webkit-details-marker { display: none; }
+  .esc-historial > summary h2 { margin: 0; }
+  .esc-historial > summary::after { content: '⌄ mostrar'; margin-left: auto; color: var(--vino); font-weight: 700; font-size: .9rem; }
+  .esc-historial[open] > summary::after { content: '⌃ ocultar'; }
+  .esc-historial[open] > summary { border-bottom: 1px solid #efe6dc; padding-bottom: 10px; }
+  .esc-hist-cuerpo { margin-top: 12px; }
+
+  /* ---- carteles de la pestana Escaner ---- */
+  /* Sin `display` aca a proposito: quien lo muestra u oculta es .solo-operario, y
+     un selector de id le ganaria por especificidad. */
+  #escInstrucciones { background: #ffebee; border: 3px solid var(--error); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+  #escInstrucciones h2 { color: var(--error); margin: 0 0 10px; font-size: 1.25rem; }
+  #escInstrucciones ol { margin: 0; padding-left: 26px; font-size: 1.15rem; line-height: 1.85; color: #2b2b2b; }
+  #escInstrucciones b { color: var(--vino-osc); }
   #overlayCamaraEsc { position: fixed; inset: 0; background: #000; z-index: 100; display: none; flex-direction: column; }
   #overlayCamaraEsc.abierto { display: flex; }
   #escVideoCam { flex: 1; width: 100%; object-fit: cover; min-height: 0; }
@@ -297,6 +325,26 @@ const API='/barriles/api';</script>
   /* el operario consulta el inventario, no lo administra: sin importar Excel,
      sin respaldos y sin dar por revisado un pendiente */
   body.rol-operario .solo-prog { display: none; }
+  /* El espejo de .solo-prog: lo que SOLO ve el operario. Ojo, fuerza display:block
+     al mostrarlo, asi que no sirve para algo que tenga que ser flex o inline. */
+  .solo-operario { display: none; }
+  body.rol-operario .solo-operario { display: block; }
+
+  /* ---- pestana Escaner, vista del operario ----------------------------------
+     La nave se trabaja de pie y a un metro de la pantalla: los tres casilleros y
+     los dos botones van grandes. Solo bajo rol-operario, para no cambiarle la
+     pantalla al programador, que ademas ve el historial y la trazabilidad. */
+  body.rol-operario #panel-escaner .esc-tipo { padding: 30px 14px; font-size: 1.5rem; border-radius: 14px; }
+  body.rol-operario #panel-escaner .fila-flex > label { font-size: 1.15rem; font-weight: 700; color: var(--vino-osc); }
+  body.rol-operario #panel-escaner #escFecha,
+  body.rol-operario #panel-escaner #escOT,
+  body.rol-operario #panel-escaner #escLote { font-size: 1.4rem; padding: 12px 14px; height: 56px; border: 2px solid var(--vino); border-radius: 10px; }
+  body.rol-operario #panel-escaner #escOT { width: 200px; }
+  body.rol-operario #panel-escaner #escLote { width: 180px; }
+  body.rol-operario #panel-escaner #escInput { font-size: 1.7rem; padding: 18px; }
+  body.rol-operario #panel-escaner #escBtnGuardar { font-size: 1.25rem; padding: 16px 26px; }
+  /* la ayuda desplegable diria lo mismo que el cartel rojo, dos veces */
+  body.rol-operario #panel-escaner > .ayuda { display: none; }
   /* modo por lote: el mapa va sin inventario, pero los tanques igual se asocian a un lote */
   body.modo-lote .solo-barricas { display: none !important; }
   .cam-btn-rotulo { background:#fff; color:var(--vino); border:none; border-radius:16px; padding:6px 12px; font-size:.9rem; font-weight:700; cursor:pointer; white-space:nowrap; }
@@ -531,6 +579,18 @@ const API='/barriles/api';</script>
         </ul>
       </div>
     </details>
+    <!-- El paso 3 es el que mas falla: la pistola escribe donde este el cursor, asi
+         que sin el foco en el casillero los disparos no llegan a ningun lado. -->
+    <div id="escInstrucciones" class="solo-operario">
+      <h2>⚠️ CÓMO CARGAR CON LA PISTOLA</h2>
+      <ol>
+        <li>Elegí <b>⬇️ Vaciado</b> o <b>⬆️ Llenado</b></li>
+        <li>Escribí el <b>N° de OT</b></li>
+        <li><b>Hacé clic en el casillero blanco</b> antes de disparar</li>
+        <li>Disparale a cada barril — el contador tiene que subir</li>
+        <li>Al terminar, tocá <b>✓ Guardar orden</b></li>
+      </ol>
+    </div>
     <div id="escResumen"></div>
     <div class="tarjeta">
       <h2>🛢️ Escáner — Registro de llenado y vaciado</h2>
@@ -553,7 +613,9 @@ const API='/barriles/api';</script>
       </div>
       <input type="text" id="escInput" placeholder="Escaneá el código de barras…" autocomplete="off">
       <div class="fila-flex" style="margin-top:10px;">
-        <button class="btn" id="escBtnCamara">📱 Escanear con cámara</button>
+        <!-- La nave carga con pistola. La camara queda para el programador, como
+             plan B si se rompe una, pero al operario le sacaba foco del casillero. -->
+        <button class="btn solo-prog" id="escBtnCamara">📱 Escanear con cámara</button>
         <button class="btn sec" id="escBtnDeshacer">↩ Quitar último</button>
         <button class="btn" id="escBtnGuardar" style="background:var(--ok);">✓ Guardar orden</button>
         <button class="btn sec" id="escBtnCancelar">✕ Cancelar</button>
@@ -562,20 +624,26 @@ const API='/barriles/api';</script>
       <div style="overflow:auto; margin-top:14px;"><table class="datos" id="escTabla"></table></div>
     </div>
 
-    <div class="tarjeta">
-      <div class="fila-flex" style="justify-content:space-between;">
-        <h2 style="margin:0;">Historial de órdenes</h2>
-        <button class="btn" id="escBtnExportar">⬇ Exportar a Excel</button>
+    <!-- El historial se pliega: al operario le come la pantalla y le mete adelante
+         datos de ordenes viejas mientras carga. Arranca cerrado para el y abierto
+         para el programador (lo decide aplicarRol). El contador va en el
+         encabezado para que se lea sin desplegar. -->
+    <details class="tarjeta esc-historial" id="escCajaHistorial">
+      <summary>
+        <h2>Historial de órdenes</h2>
+        <span class="nota" id="escHistCount"></span>
+      </summary>
+      <div class="esc-hist-cuerpo">
+        <div class="fila-flex" style="gap:10px; align-items:flex-end;">
+          <label>Buscar: <input type="text" id="escFiltroQ" placeholder="lote, OT o código de barril" style="width:220px;" autocomplete="off"></label>
+          <label>Mes: <select id="escFiltroMes"></select></label>
+          <label>Operación: <select id="escFiltroTipo"></select></label>
+          <button class="btn sec" id="escFiltroLimpiar" style="padding:6px 12px;">Limpiar</button>
+          <button class="btn" id="escBtnExportar">⬇ Exportar a Excel</button>
+        </div>
+        <div style="overflow:auto; margin-top:12px;"><table class="datos" id="escHistorial"></table></div>
       </div>
-      <div class="fila-flex" style="margin-top:10px; gap:10px; align-items:flex-end;">
-        <label>Buscar: <input type="text" id="escFiltroQ" placeholder="lote, OT o código de barril" style="width:220px;" autocomplete="off"></label>
-        <label>Mes: <select id="escFiltroMes"></select></label>
-        <label>Operación: <select id="escFiltroTipo"></select></label>
-        <button class="btn sec" id="escFiltroLimpiar" style="padding:6px 12px;">Limpiar</button>
-      </div>
-      <p class="nota" id="escHistCount" style="margin:8px 0 0;"></p>
-      <div style="overflow:auto;"><table class="datos" id="escHistorial"></table></div>
-    </div>
+    </details>
 
     <div class="tarjeta">
       <div class="fila-flex" style="justify-content:space-between;">
@@ -1625,6 +1693,12 @@ function aplicarRol(r) {
   document.body.classList.toggle('rol-programador', r === 'programador');
   $('pantallaRol').style.display = 'none';
   try { localStorage.setItem(CLAVE_ROL, r); } catch (e) {}
+  // El historial arranca plegado para el operario (le tapa la pantalla de carga)
+  // y desplegado para el programador, que entra justamente a mirarlo.
+  $('escCajaHistorial').open = (r === 'programador');
+  // Los botones del historial dependen del rol y de la hora: hay que redibujar,
+  // o al cambiar de rol quedan los de antes.
+  escDibujarHistorial();
   if (r === 'operario') opSeccion('cargar');
   else if (!document.querySelector('.panel.activo')) activarPanel('inventario');
 }
@@ -4259,14 +4333,31 @@ function escDeshacer() {
 // los códigos, la foto pasa a describir una orden que ya no existe: deshacer
 // revertiría a valores que no corresponden o dejaría barriles sin tocar. Primero
 // se deshace, después se edita.
-function escPuedeEditar(o) {
-  if (!o) return { puede: false, motivo: 'no-existe' };
-  if (o.aplicado) return { puede: false, motivo: 'aplicada' };
-  // Marcada a mano como pasada al inventario, pero sin cambios registrados: no hay
-  // foto que romper, así que se edita — pero la marca puede quedar diciendo algo
-  // que ya no es, y eso conviene preguntarlo antes.
-  if (o.marcas && o.marcas.inventario) return { puede: true, aviso: 'marcada' };
-  return { puede: true };
+// escPuedeEditar(orden, rol, ahora) y ESC_MINUTOS_EDICION viven en
+// js/orden-editable.js, cargado en el <head>. Está afuera para que los tests
+// corran la regla de verdad y no una copia. El rol se le pasa siempre explícito:
+// `rol` es un `let` del script inline y no es visible desde otro archivo.
+
+// El cartel que explica por qué una orden no se puede tocar. El del operario no
+// ofrece salida dentro de la app a propósito: la salida es avisarle a alguien.
+function escMotivoNoEditable(o, motivo) {
+  if (motivo === 'vencida') {
+    return `<h3>Orden ${escapeHtml(o.ot || '(sin OT)')}</h3>` +
+      `<p style="color:#c62828; font-weight:700;">Pasaron más de ${ESC_MINUTOS_EDICION} minutos desde que se guardó.</p>` +
+      '<p class="nota">Las órdenes se pueden corregir apenas se cargan. Después quedan firmes, ' +
+      'porque a esta altura ya se pasaron a la planilla y un cambio acá dejaría los papeles ' +
+      'diciendo otra cosa.</p>' +
+      '<p>Si hay algo mal, avisale al encargado.</p>' +
+      '<div class="acciones-modal"><button class="btn sec" onclick="document.getElementById(\'modal\').classList.remove(\'abierto\')">Cerrar</button></div>';
+  }
+  return `<h3>Orden ${escapeHtml(o.ot || '(sin OT)')}</h3>` +
+    '<p style="color:#ffd180;">Esta orden ya se aplicó al inventario, así que todavía no se puede editar.</p>' +
+    '<p class="nota">Al aplicarla quedó guardado cómo estaba cada barril antes, y eso es lo que usa ' +
+    'Deshacer para volver atrás con exactitud. Si le cambiáramos el lote o los barriles ahora, esa foto ' +
+    'pasaría a describir una orden que ya no existe.</p>' +
+    '<p>Deshacé la aplicación primero y después editala.</p>' +
+    `<div class="acciones-modal"><button class="btn" onclick="escPreviewInventario('${o.id}')">Ir a deshacer</button>` +
+    '<button class="btn sec" onclick="document.getElementById(\'modal\').classList.remove(\'abierto\')">Cerrar</button></div>';
 }
 
 // Los dos botones de abajo cambian de nombre según se esté creando o editando: es
@@ -4282,18 +4373,14 @@ function escPintarModoEdicion() {
 // mano, la ✕ de cada fila) en vez de tener una segunda lista en otra ventana.
 function escEditarOrden(id) {
   const o = (estado.escaneos || []).find(x => x.id === id);
-  const v = escPuedeEditar(o);
+  // Se revalida acá y no sólo al dibujar: el historial no se redibuja solo, así
+  // que un botón dibujado a los 14 minutos sigue siendo clickeable a los 20.
+  const v = escPuedeEditar(o, rol);
   if (!v.puede) {
     if (v.motivo === 'no-existe') { alert('Esa orden ya no está.'); escDibujarHistorial(); return; }
-    $('modalContenido').innerHTML = `<h3>Orden ${escapeHtml(o.ot || '(sin OT)')}</h3>` +
-      '<p style="color:#ffd180;">Esta orden ya se aplicó al inventario, así que todavía no se puede editar.</p>' +
-      '<p class="nota">Al aplicarla quedó guardado cómo estaba cada barril antes, y eso es lo que usa ' +
-      'Deshacer para volver atrás con exactitud. Si le cambiáramos el lote o los barriles ahora, esa foto ' +
-      'pasaría a describir una orden que ya no existe.</p>' +
-      '<p>Deshacé la aplicación primero y después editala.</p>' +
-      `<div class="acciones-modal"><button class="btn" onclick="escPreviewInventario('${o.id}')">Ir a deshacer</button>` +
-      '<button class="btn sec" onclick="document.getElementById(\'modal\').classList.remove(\'abierto\')">Cerrar</button></div>';
+    $('modalContenido').innerHTML = escMotivoNoEditable(o, v.motivo);
     $('modal').classList.add('abierto');
+    escDibujarHistorial();   // que el botón quede gris de una vez
     return;
   }
   if (escSesion.codigos.length && escSesion.editando !== id &&
@@ -4378,14 +4465,59 @@ function escGuardar() {
   escDibujarHistorial();
 }
 
+// Qué quedó para revisar en una orden ya guardada. Si devuelve vacío, el cartel
+// sale verde. La orden se guarda igual en todos los casos: frenarla dejaría al
+// operario trabado en la nave, sin nadie a mano para destrabarlo.
+const ESC_MAX_LISTADOS = 10;   // más que esto no se lee, se cuenta
+
+function escRevisar(o) {
+  const avisos = [];
+  if (!o.ot) avisos.push('Falta el <b>N° de OT</b>.');
+  if (!o.lote) avisos.push('Falta el <b>Lote</b>.');
+
+  const lista = (nums) => {
+    const vistos = nums.slice(0, ESC_MAX_LISTADOS).map(escapeHtml).join(', ');
+    return nums.length > ESC_MAX_LISTADOS ? `${vistos} y ${nums.length - ESC_MAX_LISTADOS} más` : vistos;
+  };
+
+  // Escanear dos veces el mismo barril ya se rechaza en el momento, así que esto
+  // es una red: cubre las órdenes que entraron por el import del Excel o por una
+  // fusión entre dos dispositivos.
+  const vistos = new Set(), repetidos = [];
+  for (const c of o.codigos) {
+    const s = String(c);
+    if (vistos.has(s) && !repetidos.includes(s)) repetidos.push(s);
+    vistos.add(s);
+  }
+  if (repetidos.length) avisos.push(repetidos.length === 1
+    ? `El barril <b>${lista(repetidos)}</b> está cargado dos veces.`
+    : `Hay ${repetidos.length} barriles cargados dos veces: <b>${lista(repetidos)}</b>.`);
+
+  const fuera = o.codigos.map(String).filter(c => !indiceInv.get(c));
+  if (fuera.length) avisos.push(fuera.length === 1
+    ? `El barril <b>${lista(fuera)}</b> no figura en el inventario.`
+    : `Hay ${fuera.length} barriles que no figuran en el inventario: <b>${lista(fuera)}</b>.`);
+
+  return avisos;
+}
+
 function escMostrarResumen(o, editado) {
   const n = o.codigos.length;
   const r = $('escResumen');
+  const avisos = escRevisar(o);
+  const detalle = `<div class="esc-res-detalle">Orden <b>${escapeHtml(o.ot || '(sin OT)')}</b> · ${escapeHtml(ESC_TIPO_LABEL[o.tipo])} · Lote ${escapeHtml(o.lote || '—')} · ${escapeHtml(o.fecha)}</div>`;
   r.style.display = 'block';
-  r.innerHTML = `<div class="esc-res-num">✅ ${editado
-      ? 'Cambios guardados · ' + n + (n === 1 ? ' barril' : ' barriles')
-      : n + (n === 1 ? ' barril cargado' : ' barriles cargados')}</div>
-    <div class="esc-res-detalle">Orden <b>${escapeHtml(o.ot || '(sin OT)')}</b> · ${escapeHtml(ESC_TIPO_LABEL[o.tipo])} · Lote ${escapeHtml(o.lote || '—')} · ${escapeHtml(o.fecha)}</div>`;
+  r.classList.toggle('revisar', avisos.length > 0);
+  if (!avisos.length) {
+    r.innerHTML = `<div class="esc-res-num">✅ ${editado
+        ? 'Cambios guardados · ' + n + (n === 1 ? ' barril' : ' barriles')
+        : n + (n === 1 ? ' barril cargado' : ' barriles cargados')}</div>` + detalle;
+  } else {
+    r.innerHTML = `<div class="esc-res-num">⚠️ ${editado ? 'Cambios guardados' : 'Orden guardada'}, pero hay que revisar</div>` +
+      detalle +
+      '<ul class="esc-res-avisos">' + avisos.map(a => `<li>${a}</li>`).join('') + '</ul>' +
+      '<div class="esc-res-detalle">La orden quedó guardada. Corregila con el ✏️ del historial o avisale al encargado.</div>';
+  }
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -4477,6 +4609,12 @@ function escDibujarHistorial() {
       const celdaMarcas = verMarcas
         ? `<td style="white-space:nowrap;">${btnMarca('lotes', 'Lotes')} ${btnMarca('inventario', 'Inventario')} ${btnMarca('sistema', 'Sistema')}</td>`
         : '';
+      const v = escPuedeEditar(o, rol);
+      const vencida = (v.motivo === 'vencida');
+      const tituloEditar = vencida
+        ? `pasaron más de ${ESC_MINUTOS_EDICION} minutos: sólo la puede editar el programador`
+        : (o.aplicado ? 'ya aplicada al inventario: hay que deshacerla antes de editarla' : 'editar esta orden');
+      const gris = vencida ? ' esc-vencida' : '';
       return `<tr>
       <td>${escapeHtml(o.fecha)}</td><td>${escapeHtml(o.ot || '—')}</td>
       <td>${escapeHtml(ESC_TIPO_EXCEL[o.tipo] || o.tipo)}</td><td>${escapeHtml(o.lote || '—')}</td>
@@ -4484,10 +4622,10 @@ function escDibujarHistorial() {
       ${celdaMarcas}
       <td style="white-space:nowrap;">
         <button class="btn sec" style="padding:4px 9px;" onclick="escVerOrden('${o.id}')">👁</button>
-        <button class="btn sec" style="padding:4px 9px;" title="${o.aplicado
-          ? 'ya aplicada al inventario: hay que deshacerla antes de editarla'
-          : 'editar esta orden'}" onclick="escEditarOrden('${o.id}')">✏️</button>
-        <button class="btn peligro" style="padding:4px 9px;" onclick="escBorrarOrden('${o.id}')">🗑</button></td>
+        <button class="btn sec${gris}" style="padding:4px 9px;" title="${tituloEditar}" onclick="escEditarOrden('${o.id}')">✏️</button>
+        <button class="btn peligro${gris}" style="padding:4px 9px;" title="${vencida
+          ? `pasaron más de ${ESC_MINUTOS_EDICION} minutos: sólo la puede borrar el programador`
+          : 'borrar esta orden'}" onclick="escBorrarOrden('${o.id}')">🗑</button></td>
     </tr>`;
     }).join('');
   escDibujarTrasegados();
@@ -5044,6 +5182,17 @@ function invConfirmarRevertir(id) {
 function escBorrarOrden(id) {
   const o = (estado.escaneos || []).find(x => x.id === id);
   if (!o) return;
+  // Misma ventana de tiempo que el lápiz: dejar el tacho abierto sería peor que
+  // dejar abierta la edición, porque no hay forma de volver atrás. Sólo se mira
+  // 'vencida': borrar una orden ya aplicada sigue siendo cosa del programador,
+  // como hasta ahora.
+  const v = escPuedeEditar(o, rol);
+  if (v.motivo === 'vencida') {
+    $('modalContenido').innerHTML = escMotivoNoEditable(o, v.motivo);
+    $('modal').classList.add('abierto');
+    escDibujarHistorial();
+    return;
+  }
   if (!confirm(`¿Borrar la orden ${o.ot || '(sin OT)'} de ${o.codigos.length} barriles? No se puede deshacer.`)) return;
   estado.escaneos = estado.escaneos.filter(x => x.id !== id);
   guardar();
