@@ -86,3 +86,47 @@ export function chipsDe(fila, hoy){
 
   return chips;
 }
+
+/* --- orden por defecto: las condiciones mas viejas primero --- */
+
+/* Tres escalones, y el del medio es el que importa: un lote con una condicion
+ * activa pero sin fecha (no_lleno, datos incompletos) esta peor que uno sano,
+ * asi que no puede caer al fondo junto con los sanos. */
+const SIN_FECHA = '9999-12-30';
+const SANO = '9999-12-31';
+
+function masVieja(fila){
+  const fechas = (fila.condiciones || []).map(c => c.desde).filter(Boolean).sort();
+  if (fechas.length) return fechas[0];
+  return (fila.condiciones || []).length ? SIN_FECHA : SANO;
+}
+
+export function ordenarPorAntiguedad(filas){
+  return [...filas].sort((a, b) => masVieja(a).localeCompare(masVieja(b)));
+}
+
+/* --- preguntas frecuentes --- */
+
+export const PREGUNTAS = [
+  { val: 'fml_no_terminada', text: 'FML no terminada' },
+  { val: 'fml_terminada',    text: 'FML terminada' },
+  { val: 'mermos',           text: 'Mermos' },
+  { val: 'faltan_analizar',  text: 'Faltan analizar' },
+  { val: 'fa_en_proceso',    text: 'FA en proceso' },
+];
+
+/* Las tres condiciones cuya accion sugerida es "hacer OT y analizar". */
+const PIDEN_OT = ['sin_analisis_valido', 'control_proceso_pendiente', 'frecuencia_vencida'];
+
+export function pasaPregunta(fila, val){
+  if (!val) return true;
+  const alarmas = fila.alarmas || [];
+  switch (val){
+    case 'fml_no_terminada': return fila.fml_estado === 'no_finalizada';
+    case 'fml_terminada':    return fila.fml_estado === 'finalizada' || fila.fml_estado === 'excluida';
+    case 'mermos':           return fila.estado_llenado === 'no_lleno';
+    case 'faltan_analizar':  return PIDEN_OT.some(c => alarmas.includes(c));
+    case 'fa_en_proceso':    return fila.fa_estado === 'no_finalizada';
+    default:                 return true;
+  }
+}

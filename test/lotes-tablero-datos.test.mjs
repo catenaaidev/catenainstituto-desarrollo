@@ -1,7 +1,7 @@
 /* tablero-datos.js es puro (sin DOM ni fetch), asi que se importa tal cual
  * dentro del runtime de Workers, igual que hace lotes-orden-fuente.test.mjs. */
 import { describe, it, expect } from 'vitest';
-import { chipsDe, antiguedadTexto } from '../public/lotes/js/tablero-datos.js';
+import { chipsDe, antiguedadTexto, ordenarPorAntiguedad, pasaPregunta, PREGUNTAS } from '../public/lotes/js/tablero-datos.js';
 
 const HOY = '2026-09-16';
 
@@ -87,5 +87,69 @@ describe('antiguedadTexto', () => {
 
   it('una fecha futura no se disfraza de hoy: un desde adelantado es un error de carga', () => {
     expect(antiguedadTexto('2026-09-18', HOY)).toBe('-2 d');
+  });
+});
+
+const conCondicion = (lote, desde) => ({
+  lote, condiciones: desde === null ? [] : [{ clave: 'ph_no_ok', etiqueta: 'pH no OK', accion: 'x', desde }],
+});
+
+describe('ordenarPorAntiguedad', () => {
+  it('primero la condicion mas vieja', () => {
+    const filas = [conCondicion('B', '2026-09-10'), conCondicion('A', '2026-08-01'), conCondicion('C', '2026-09-15')];
+    expect(ordenarPorAntiguedad(filas).map(f => f.lote)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('los lotes sin condiciones van al final, no al principio', () => {
+    const filas = [conCondicion('SANO', null), conCondicion('VIEJO', '2026-08-01')];
+    expect(ordenarPorAntiguedad(filas).map(f => f.lote)).toEqual(['VIEJO', 'SANO']);
+  });
+
+  it('una condicion sin fecha ordena despues de las fechadas pero antes de las sanas', () => {
+    const sinFecha = { lote: 'SIN_FECHA', condiciones: [{ clave: 'no_lleno', etiqueta: 'No lleno', accion: 'x', desde: null }] };
+    const filas = [conCondicion('SANO', null), sinFecha, conCondicion('VIEJO', '2026-08-01')];
+    expect(ordenarPorAntiguedad(filas).map(f => f.lote)).toEqual(['VIEJO', 'SIN_FECHA', 'SANO']);
+  });
+
+  it('no muta el array que recibe', () => {
+    const filas = [conCondicion('B', '2026-09-10'), conCondicion('A', '2026-08-01')];
+    ordenarPorAntiguedad(filas);
+    expect(filas.map(f => f.lote)).toEqual(['B', 'A']);
+  });
+});
+
+describe('pasaPregunta', () => {
+  const fila = (extra) => ({ fml_estado: 'no_finalizada', fa_estado: 'finalizada', estado_llenado: 'lleno', alarmas: [], ...extra });
+
+  it('las cinco preguntas del tablero, en orden', () => {
+    expect(PREGUNTAS.map(p => p.val)).toEqual(['fml_no_terminada', 'fml_terminada', 'mermos', 'faltan_analizar', 'fa_en_proceso']);
+  });
+
+  it('sin pregunta elegida pasan todas las filas', () => {
+    expect(pasaPregunta(fila(), '')).toBe(true);
+  });
+
+  it('FML no terminada y FML terminada son complementarias', () => {
+    expect(pasaPregunta(fila({ fml_estado: 'no_finalizada' }), 'fml_no_terminada')).toBe(true);
+    expect(pasaPregunta(fila({ fml_estado: 'finalizada' }), 'fml_no_terminada')).toBe(false);
+    expect(pasaPregunta(fila({ fml_estado: 'finalizada' }), 'fml_terminada')).toBe(true);
+    expect(pasaPregunta(fila({ fml_estado: 'excluida' }), 'fml_terminada')).toBe(true);
+  });
+
+  it('mermos mira el estado de llenado', () => {
+    expect(pasaPregunta(fila({ estado_llenado: 'no_lleno' }), 'mermos')).toBe(true);
+    expect(pasaPregunta(fila({ estado_llenado: 'lleno' }), 'mermos')).toBe(false);
+  });
+
+  it('faltan analizar junta las tres condiciones que piden OT', () => {
+    expect(pasaPregunta(fila({ alarmas: ['sin_analisis_valido'] }), 'faltan_analizar')).toBe(true);
+    expect(pasaPregunta(fila({ alarmas: ['control_proceso_pendiente'] }), 'faltan_analizar')).toBe(true);
+    expect(pasaPregunta(fila({ alarmas: ['frecuencia_vencida'] }), 'faltan_analizar')).toBe(true);
+    expect(pasaPregunta(fila({ alarmas: ['ph_no_ok'] }), 'faltan_analizar')).toBe(false);
+  });
+
+  it('FA en proceso es la FA sin terminar', () => {
+    expect(pasaPregunta(fila({ fa_estado: 'no_finalizada' }), 'fa_en_proceso')).toBe(true);
+    expect(pasaPregunta(fila({ fa_estado: 'finalizada' }), 'fa_en_proceso')).toBe(false);
   });
 });
