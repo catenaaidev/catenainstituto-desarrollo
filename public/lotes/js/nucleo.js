@@ -254,6 +254,8 @@ export async function cargarDashboard(){
     if (document.querySelector('.tabs button[data-v="fml"].active')) _vistaObligatoria('fml')();
     // si la pestaña Orden de muestras está activa, repintarla
     if (document.querySelector('.tabs button[data-v="orden"].active')) _vistaObligatoria('orden')();
+    // si la pestaña Tablero FML está activa, repintarla
+    if (document.querySelector('.tabs button[data-v="tablero"].active')) _vistaObligatoria('tablero')();
   } catch(e) {
     // Sin dashboard la app sigue andando, solo se omiten los colores. Pero se
     // deja rastro: si lo que fallo fue una vista y no la red, el silencio

@@ -8,7 +8,7 @@
  */
 'use strict';
 
-import { $, esc, DATOS, dashData, cargarDashboard, registrarVista } from './nucleo.js';
+import { $, DATOS, dashData, dashLoading, cargarDashboard, registrarVista } from './nucleo.js';
 
 /** Los lotes del dashboard cruzados con su fila de DATOS() (proyecto, vasija). */
 export function filasTablero(){
@@ -20,11 +20,18 @@ export function filasTablero(){
     .map(l => ({ ...l, _info: info.get(String(l.lote ?? '')) || {} }));
 }
 
-export async function renderTablero(){
+export function renderTablero(){
   const sec = $('tab-tablero');
-  if (!dashData()) { sec.innerHTML = '<p>Cargando…</p>'; await cargarDashboard(); }
+
+  /* --- si aun no hay datos del dashboard, mostrar placeholder y disparar carga --- */
+  if (!dashData()){
+    sec.innerHTML = '<div class="msg info" style="margin-top:10px">Cargando datos del motor FML…</div>';
+    if (!dashLoading()) cargarDashboard();
+    return;
+  }
+
   const filas = filasTablero();
-  sec.innerHTML = `<p>Estado de los ${esc(filas.length)} lotes.</p>`;
+  sec.innerHTML = `<p>Estado de los ${filas.length} lotes.</p>`;
 }
 
 registrarVista('tablero', () => renderTablero());
