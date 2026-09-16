@@ -74,9 +74,9 @@ y `app.js` (la pestaña pasa a llamarse **"Tablero FML"**), y
 
 ## Las 11 condiciones
 
-Orden de prioridad para la acción sugerida: `av_alerta`, `so2_caida_alerta`,
-`frecuencia_vencida`, `datos_operativos_incompletos`, y el resto en el orden de
-esta tabla.
+La acción sugerida es la **unión** de las acciones de todas las condiciones
+activas, separadas por `" | "` (igual que la columna `accion_sugerida` del
+tablero aprobado). No se elige una sola por prioridad.
 
 | Clave | Etiqueta | Regla | Acción sugerida |
 |---|---|---|---|
@@ -104,8 +104,10 @@ cuenta como análisis válido, como en el tablero.
 **Decisión de FML del lote**: sale de `hace_fml` / `fml_excluida` de la fila del
 lote. Cuando el lote la trae, **le gana** a lo que diga `hace_fml` por variedad
 en `config` — la variedad define el caso general y el lote es la excepción
-puntual. `fml_excluida_origen` reporta cuál de las dos mandó: `'lote'` o
-`'variedad'`.
+puntual. `fml_excluida_origen` reporta cuál de las dos mandó: `'lote'` (el lote
+define explícitamente), `'variedad_blanca'` (la variedad excluye por config),
+o `'sin_dato'` (ninguna de las dos). Se informa en los cuatro estados de FML,
+no sólo al excluir.
 
 **Datos operativos incompletos** se dispara si falta `mermo` **o** si no hay
 decisión de FML por ninguna de las dos vías. Un Chardonnay sin `hace_fml` en la
@@ -210,7 +212,7 @@ estado_frecuencia        'al_dia' | 'vencido' | 'sin_datos'
 control_proceso_pendiente boolean
 ultima_fecha_control     string | null
 dias_desde_control       number | null
-fml_excluida_origen      'variedad' | 'lote' | null
+fml_excluida_origen      'lote' | 'variedad_blanca' | 'sin_dato'   // presente en los cuatro estados de FML
 so2_estado               'ok' | 'no_ok' | 'no_aplica' | 'sin_datos'
 so2_libre                number | null
 so2_libre_fecha          string | null
@@ -223,7 +225,7 @@ ph_estado                'ok' | 'no_ok' | 'sin_datos'
 av_motivo                'umbral' | 'aumento' | 'fuera_rango_foss' | null
 inoculado_origen         'analisis' | 'manual' | null
 condiciones              [{ clave, etiqueta, accion, desde }]
-accion_sugerida          string          // la de mayor prioridad
+accion_sugerida          string          // union de las acciones de todas las condiciones activas, separadas por " | "
 ```
 
 **Campos de compatibilidad**, derivados de los nuevos para no tocar Dashboard,
@@ -287,15 +289,23 @@ estado · evidencia de la caída · acción sugerida · comentario · tabla de l
 
 El tablero usa la hoja `ESTADO_LOTE` como capa de override sobre `LOTES`, con
 una precedencia enredada (`mermo` le gana al override manual; para FML el orden
-es blanca → manual → `hace_fml` → `fml_excluida`). Eso existía porque el Excel
-era la fuente y la hoja auxiliar era el parche. Acá la app **es** la fuente, así
-que la capa sobra:
+es blanca → manual → `hace_fml` → `fml_excluida`).
 
 - **Mermo** y **FML excluida** se escriben directo en el lote (`mermo`,
   `hace_fml`), las mismas columnas que ya se editan en la pestaña Lotes. Un solo
   valor, un solo lugar, sin precedencia que explicar.
 - **Comentario** e **inoculado** siguen en `estado_lote`: no tienen columna
   propia en el lote.
+
+> **ATENCIÓN — dato faltante, bloqueante del despliegue:** la lógica del motor
+> es fiel al diseño. Lo que falta es **el dato**. De los 249 lotes del tablero
+> aprobado, 139 tienen su decisión de FML en la columna `ESTADO_LOTE` del Excel
+> y **nunca se migraron a D1**: `lotes.hace_fml` está cargado en sólo 1 de 249
+> lotes. Con la D1 actual, `datos_operativos_incompletos` dispara en 179 de 249
+> lotes (72 %), contra los 40 (16 %) que aprobaron los supervisores.
+> Antes de desplegar hay que **migrar las 139 decisiones a `lotes.hace_fml`**,
+> como tarea hermana de la siembra de criterios. Es bloqueante del despliegue,
+> no del merge.
 
 **Inoculado** es el único con dos orígenes. El motor lo detecta de los análisis
 (`VP41`, `bacterias`, `inoc`) y además se puede cargar a mano. **Lo detectado
@@ -343,6 +353,13 @@ paralelo mientras se construye.
 
 ## Riesgos
 
+- **BLOQUEANTE DEL DESPLIEGUE — 139 decisiones de FML sin migrar.** De los 249
+  lotes del tablero, 139 tienen su decisión de FML sólo en la hoja `ESTADO_LOTE`
+  del Excel. En D1, `lotes.hace_fml` está cargado en 1 de 249 lotes. Sin migrar
+  ese dato, `datos_operativos_incompletos` dispara en 179/249 (72 %) en vez de
+  los 40/249 (16 %) que aprobaron los supervisores. El código es correcto; lo que
+  falta es el dato. Tarea hermana de la siembra de criterios, antes del
+  despliegue.
 - **Los números del Dashboard cambian** el día que esto salga: con el piso de
   SO₂ en 20 en vez de 25, "SO₂ no OK" baja, y `condicion_ideal` pasa a la
   definición del tablero. Conviene avisarlo antes, no después.

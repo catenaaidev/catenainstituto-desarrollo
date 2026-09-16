@@ -100,8 +100,14 @@ export function analisisPorLote(datos){
   return mapa;
 }
 
-/** SO2 libre de UNA muestra, con el fallback al bloque correccion.
- *  Espejo de motor_fml._so2_libre. */
+/**
+ * SO2 libre de UNA muestra, con el fallback al bloque correccion.
+ *
+ * Divergencia con so2LibreDe() de fml-condiciones.ts (decisión de producto
+ * pendiente, no tocar sin revisión): esta función no descarta el placeholder 0.
+ * so2LibreDe() del motor lo descarta para que un lote sin medición real no
+ * quede como "SO2 no OK"; aquí se conserva el comportamiento anterior.
+ */
 export function so2LibreDe(a){
   const fila = a || {};
   const corr = (fila.correccion && typeof fila.correccion === 'object') ? fila.correccion : {};

@@ -8,8 +8,12 @@
 
 import { numPositivo } from './envases.js';
 
-/* claves de dashData().lotes[i].alarmas que hoy arma _otClasificar() como
- * "atencion" (cualquiera de estas). Coinciden 1:1 con motor_fml.py (linea 24-31). */
+/* Claves de dashData().lotes[i].alarmas que hoy arma _otClasificar() como
+ * "atencion" (cualquiera de estas). Son un subconjunto de las 11 condiciones
+ * de src/lotes/motores/fml.ts, que a su vez sigue el tablero aprobado.
+ * El motor tiene 11 condiciones; esta lista cubre las 6 que dan prioridad a
+ * la orden de muestras (sin sin_analisis_valido, control_proceso_pendiente,
+ * frecuencia_vencida, av_alerta, so2_caida_alerta ni datos_operativos_incompletos). */
 const CRITERIOS_ATENCION = {
   so2:     'so2_no_ok',
   ph:      'ph_no_ok',

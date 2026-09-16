@@ -15,8 +15,6 @@ export const INVALIDO = -999;
 
 export const DIA_MS = 86_400_000;
 
-export const FECHA_MAX = Number.MAX_SAFE_INTEGER;
-
 // ----------------------------------------------------------------- numeros
 
 export function num(x: unknown): number | null {
@@ -50,7 +48,9 @@ export function valorValido(x: unknown): number | null {
 /** Analisis ordenados por fecha ascendente; los que no tienen fecha van al final. */
 export function ordenarPorFecha(analisis: Fila[]): Fila[] {
   return [...(analisis ?? [])].sort(
-    (a, b) => (fechaDia(a.fecha_analisis) ?? FECHA_MAX) - (fechaDia(b.fecha_analisis) ?? FECHA_MAX),
+    (a, b) =>
+      (fechaDia(a.fecha_analisis) ?? Number.MAX_SAFE_INTEGER) -
+      (fechaDia(b.fecha_analisis) ?? Number.MAX_SAFE_INTEGER),
   );
 }
 
@@ -553,6 +553,3 @@ export function decisionFmlPresente(lote: Fila, eff: Criterios): boolean {
   return textoDe(eff.hace_fml) === 'no';
 }
 
-// Re-exportar Criterios como tipo para que los consumidores de este modulo
-// puedan tipear sus funciones sin importar desde fml.ts directamente.
-export type { Criterios };

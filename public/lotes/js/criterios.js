@@ -1,8 +1,9 @@
-/* ===== Lotes CIW — criterios FML (espejo JS de motor_fml.criterios_efectivos) ===== */
+/* ===== Lotes CIW — criterios FML (espejo JS de src/lotes/motores/fml.ts) ===== */
 'use strict';
 
 /**
- * CRITERIOS_DEFAULT replicados desde motor_fml.py.
+ * CRITERIOS_DEFAULT replicados desde src/lotes/motores/fml.ts (CRITERIOS_DEFAULT),
+ * que a su vez sigue el tablero aprobado Dashboard FML.
  * Usados por criteriosEfectivosJS y por el boton "Restaurar valores por defecto".
  */
 export const CRITERIOS_DEFAULT = {
@@ -23,7 +24,7 @@ export const CRITERIOS_DEFAULT = {
   ph_max_inclusive:       'no',
 };
 
-/* --- helpers de criterios (replica JS de criterios_efectivos del motor) --- */
+/* --- helpers de criterios (replica JS de criteriosEfectivos en fml.ts) --- */
 export function _normVar(v){
   return String(v==null?'':v).normalize('NFKD').replace(/[̀-ͯ]/g,'')
     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();

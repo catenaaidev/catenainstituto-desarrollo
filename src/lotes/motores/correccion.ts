@@ -139,7 +139,14 @@ function filaSinBarrica(vasija: unknown, litros: number, diferencia: number): Fi
   };
 }
 
-/** SO2 libre de un análisis, cayendo en correccion.* igual que el motor FML. */
+/**
+ * SO2 libre de un análisis, cayendo en correccion.* si la fila no lo trae.
+ *
+ * Divergencia con so2LibreDe() de fml-condiciones.ts: esta función no descarta
+ * el placeholder 0. so2LibreDe() lo descarta porque el tablero nunca toma el 0
+ * como medición real; aquí se conserva para no cambiar el comportamiento de la
+ * orden de corrección, que es una decisión de producto pendiente.
+ */
 function so2LibreConCorreccion(a: Fila): number | null {
   for (const campo of ['so2_libre_actual', 'so2_libre']) {
     let v = valorValido(a[campo]);
@@ -152,12 +159,19 @@ function so2LibreConCorreccion(a: Fila): number | null {
 }
 
 /**
- * (so2_libre, ph) de la ÚLTIMA medición válida, con la misma semántica que la
- * alarma so2_no_ok del tablero: si la orden mirara otra medición, los dos se
- * contradirían.
+ * (so2_libre, ph) de la ÚLTIMA medición válida del lote, para calcular la
+ * diferencia objetivo − actual que determina la dosis.
  *
  * El pH sale de la misma muestra que el SO2 cuando la trae, porque el molecular
  * es una propiedad del par (libre, pH).
+ *
+ * Tres divergencias conocidas con la alarma so2_no_ok del motor FML (decisión
+ * de producto pendiente, no tocar sin revisión):
+ *  1. Esta función no descarta el placeholder 0 (so2LibreDe() de fml-condiciones sí).
+ *  2. El borde del piso difiere: el motor da no_ok con libre <= piso; la orden
+ *     dosifica cuando so2 < objetivo, o sea que libre == piso puede producir
+ *     corrección aquí pero no alarma allá.
+ *  3. La orden ignora so2_aplica: dosifica aunque el proyecto tenga so2_aplica=no.
  */
 function ultimaMedicion(analisisDelLote: Fila[]): [number | null, number | null] {
   const ordenados = ordenarPorFecha(analisisDelLote);
