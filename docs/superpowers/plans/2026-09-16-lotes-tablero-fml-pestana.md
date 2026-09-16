@@ -511,21 +511,31 @@ git commit -m "feat: la pestana Tablero FML existe y convive con la vieja"
 ### Task 4: `tablero-panel.js` — modo números
 
 **Files:**
-- Create: `public/lotes/js/tablero-panel.js`
+- Create: `public/lotes/js/tablero-panel.js` (sólo HTML)
+- Modify: `public/lotes/js/tablero-datos.js` (las funciones puras)
 - Test: `test/lotes-tablero-panel.test.mjs`
 - Modify: `public/lotes/js/vista-tablero.js`
 
 **Interfaces:**
 - Consumes: `kpis` del dashboard.
-- Produces: `tarjetasDe(kpis) → [{clave, label, cantidad, total, pct, hi}]` (pura, testeable) y `htmlPanel(kpis, filas, modo) → string`.
+- Produces: `tarjetasDe(kpis) → [{clave, label, cantidad, total, pct, hi}]` y `tonoMosaico(fila) → 'ok'|'neutro'|'mal'` **en `tablero-datos.js`**; `htmlPanel(kpis, filas, modo) → string` en `tablero-panel.js`.
+
+> **Por qué las puras no viven en `tablero-panel.js`.** Ese módulo importa
+> `esc`/`escA` de `nucleo.js`, y `nucleo.js:46` llama a `window.addEventListener`
+> en el nivel superior: cualquier test que lo importe muere con
+> `ReferenceError: window is not defined` en el runtime de Workers. Verificado
+> ejecutando. Por eso lo testeable va a `tablero-datos.js`, que no importa nada.
+> Es además lo que dice la Architecture de este plan.
 
 - [ ] **Step 1: Escribir el test que falla**
 
 Crear `test/lotes-tablero-panel.test.mjs`:
 
 ```javascript
+/* Importa de tablero-datos.js, NO de tablero-panel.js: ese importa nucleo.js,
+ * que toca window al cargarse y no existe en el runtime de Workers. */
 import { describe, it, expect } from 'vitest';
-import { tarjetasDe } from '../public/lotes/js/tablero-panel.js';
+import { tarjetasDe, tonoMosaico } from '../public/lotes/js/tablero-datos.js';
 
 const KPIS = {
   total_activos: 249, fml_terminada: 60, frecuencia_al_dia: 200,
@@ -556,14 +566,59 @@ describe('tarjetasDe', () => {
     expect(t.find(x => x.clave === 'ph_ok').hi).toBe(false);
   });
 });
+
+describe('tonoMosaico', () => {
+  it('verde sin condiciones, gris con una, rojo con dos o mas', () => {
+    expect(tonoMosaico({ condiciones: [] })).toBe('ok');
+    expect(tonoMosaico({ condiciones: [{ clave: 'ph_no_ok' }] })).toBe('neutro');
+    expect(tonoMosaico({ condiciones: [{ clave: 'ph_no_ok' }, { clave: 'no_lleno' }] })).toBe('mal');
+  });
+
+  it('una fila sin el campo condiciones cuenta como sana, no rompe', () => {
+    expect(tonoMosaico({})).toBe('ok');
+  });
+});
 ```
 
 - [ ] **Step 2: Correr el test y verlo fallar**
 
 Run: `npx vitest run test/lotes-tablero-panel.test.mjs`
-Expected: FAIL — `Failed to load url ../public/lotes/js/tablero-panel.js`.
+Expected: FAIL — `tarjetasDe is not a function`.
 
-- [ ] **Step 3: Implementar**
+- [ ] **Step 3: Implementar las funciones puras**
+
+Agregar al final de `public/lotes/js/tablero-datos.js`:
+
+```javascript
+/* --- el panel --- */
+
+const EJES_PANEL = [
+  { clave: 'fml_terminada',     label: 'FML terminada' },
+  { clave: 'frecuencia_al_dia', label: 'Frecuencia al día' },
+  { clave: 'so2_conforme',      label: 'SO₂ conforme' },
+  { clave: 'ph_ok',             label: 'pH OK' },
+  { clave: 'lleno',             label: 'Lleno' },
+  { clave: 'requieren_accion',  label: 'Requieren acción', alReves: true },
+];
+
+export function tarjetasDe(kpis){
+  const total = Number((kpis || {}).total_activos) || 0;
+  return EJES_PANEL.map(e => {
+    const cantidad = Number((kpis || {})[e.clave]) || 0;
+    const pct = total ? Math.round((cantidad / total) * 100) : 0;
+    // "Requieren accion" es el unico eje donde mas es peor.
+    return { clave: e.clave, label: e.label, cantidad, total, pct, hi: e.alReves ? cantidad > 0 : false };
+  });
+}
+
+/** Verde sin condiciones, gris con una, rojo con dos o mas. */
+export function tonoMosaico(fila){
+  const n = (fila.condiciones || []).length;
+  return n === 0 ? 'ok' : (n === 1 ? 'neutro' : 'mal');
+}
+```
+
+- [ ] **Step 4: Implementar el armador de HTML**
 
 Crear `public/lotes/js/tablero-panel.js`:
 
@@ -573,29 +628,14 @@ Crear `public/lotes/js/tablero-panel.js`:
  * Dos modos con un toggle: mosaico (un cuadrado por lote) y numeros (seis
  * tarjetas). En el tablero original "numeros" era el fallback sin JS; aca es
  * un modo elegible, porque leer los seis ejes de un vistazo sirve solo.
+ *
+ * Solo arma HTML. Las cuentas estan en tablero-datos.js, que se puede testear
+ * porque no importa nucleo.js (que toca window al cargarse).
  */
 'use strict';
 
 import { esc, escA } from './nucleo.js';
-
-const EJES = [
-  { clave: 'fml_terminada',     label: 'FML terminada' },
-  { clave: 'frecuencia_al_dia', label: 'Frecuencia al día' },
-  { clave: 'so2_conforme',      label: 'SO₂ conforme' },
-  { clave: 'ph_ok',             label: 'pH OK' },
-  { clave: 'lleno',             label: 'Lleno' },
-  { clave: 'requieren_accion',  label: 'Requieren acción', alRevés: true },
-];
-
-export function tarjetasDe(kpis){
-  const total = Number((kpis || {}).total_activos) || 0;
-  return EJES.map(e => {
-    const cantidad = Number((kpis || {})[e.clave]) || 0;
-    const pct = total ? Math.round((cantidad / total) * 100) : 0;
-    // "Requieren accion" es el unico eje donde mas es peor.
-    return { clave: e.clave, label: e.label, cantidad, total, pct, hi: e.alRevés ? cantidad > 0 : false };
-  });
-}
+import { tarjetasDe, tonoMosaico } from './tablero-datos.js';
 
 function htmlNumeros(kpis){
   return `<div class="tb-tarjetas">` + tarjetasDe(kpis).map(t => `
@@ -604,12 +644,6 @@ function htmlNumeros(kpis){
       <div class="tb-label">${esc(t.label)}</div>
       <div class="tb-cant">${t.cantidad} de ${t.total}</div>
     </div>`).join('') + `</div>`;
-}
-
-/** Verde sin condiciones, gris con una, rojo con dos o mas. */
-export function tonoMosaico(fila){
-  const n = (fila.condiciones || []).length;
-  return n === 0 ? 'ok' : (n === 1 ? 'neutro' : 'mal');
 }
 
 function htmlMosaico(filas){
@@ -653,15 +687,15 @@ Agregar a `index.html` los estilos del panel:
   .tb-cuadro.ok{background:var(--tb-ok-bg)} .tb-cuadro.neutro{background:var(--tb-neu-bg)} .tb-cuadro.mal{background:var(--tb-mal-bg)}
 ```
 
-- [ ] **Step 4: Correr el test y verlo pasar**
+- [ ] **Step 5: Correr el test y verlo pasar**
 
 Run: `npx vitest run test/lotes-tablero-panel.test.mjs`
-Expected: PASS — 4 tests.
+Expected: PASS — 6 tests.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add public/lotes/js/tablero-panel.js test/lotes-tablero-panel.test.mjs public/lotes/index.html
+git add public/lotes/js/tablero-panel.js public/lotes/js/tablero-datos.js test/lotes-tablero-panel.test.mjs public/lotes/index.html
 git commit -m "feat: el panel del tablero en sus dos modos"
 ```
 
@@ -946,21 +980,27 @@ git commit -m "feat: la lista del tablero con sus chips y la accion sugerida"
 ### Task 8: `tablero-ficha.js` — la ficha de sólo lectura
 
 **Files:**
-- Create: `public/lotes/js/tablero-ficha.js`
+- Create: `public/lotes/js/tablero-ficha.js` (sólo HTML)
+- Modify: `public/lotes/js/tablero-datos.js` (`ultimasMediciones`)
 - Test: `test/lotes-tablero-ficha.test.mjs`
 - Modify: `public/lotes/js/vista-tablero.js` (enganchar `[data-ficha]`)
 
 **Interfaces:**
 - Consumes: `chipsDe` y `antiguedadTexto` de `tablero-datos.js`.
-- Produces: `ultimasMediciones(analisis, lote, n) → filas` (pura); `htmlFicha(fila, analisis, hoy) → string`.
+- Produces: `ultimasMediciones(analisis, lote, n) → filas` **en `tablero-datos.js`**; `htmlFicha(fila, analisis, hoy) → string` en `tablero-ficha.js`.
+
+> Misma razón que en la Tarea 4: `tablero-ficha.js` importa `nucleo.js`, que toca
+> `window` al cargarse, así que un test que lo importe no arranca. Lo testeable
+> va a `tablero-datos.js`.
 
 - [ ] **Step 1: Escribir el test que falla**
 
 Crear `test/lotes-tablero-ficha.test.mjs`:
 
 ```javascript
+/* Importa de tablero-datos.js, NO de tablero-ficha.js (ver Tarea 4). */
 import { describe, it, expect } from 'vitest';
-import { ultimasMediciones } from '../public/lotes/js/tablero-ficha.js';
+import { ultimasMediciones } from '../public/lotes/js/tablero-datos.js';
 
 const A = (lote, fecha, extra) => ({ lote, fecha_analisis: fecha, ...extra });
 
@@ -998,22 +1038,14 @@ describe('ultimasMediciones', () => {
 - [ ] **Step 2: Correr el test y verlo fallar**
 
 Run: `npx vitest run test/lotes-tablero-ficha.test.mjs`
-Expected: FAIL — `Failed to load url ../public/lotes/js/tablero-ficha.js`.
+Expected: FAIL — `ultimasMediciones is not a function`.
 
-- [ ] **Step 3: Implementar**
+- [ ] **Step 3: Implementar la función pura**
 
-Crear `public/lotes/js/tablero-ficha.js`:
+Agregar al final de `public/lotes/js/tablero-datos.js`:
 
 ```javascript
-/* ===== Lotes CIW — la ficha del tablero =====
- *
- * Todo lo que muestra sale resuelto del motor. La unica cuenta que hace la
- * ficha es elegir que mediciones listar, y eso no es una regla del dominio.
- */
-'use strict';
-
-import { esc, escA } from './nucleo.js';
-import { chipsDe, antiguedadTexto } from './tablero-datos.js';
+/* --- la ficha --- */
 
 /* Los seis campos que el motor considera "medicion util". Se replican aca solo
  * para decidir que filas vale la pena mostrar; ninguna condicion se recalcula. */
@@ -1030,6 +1062,22 @@ export function ultimasMediciones(analisis, lote, n){
     .sort((a, b) => String(b.fecha_analisis).localeCompare(String(a.fecha_analisis)))
     .slice(0, n);
 }
+```
+
+- [ ] **Step 4: Implementar el armador de HTML**
+
+Crear `public/lotes/js/tablero-ficha.js`:
+
+```javascript
+/* ===== Lotes CIW — la ficha del tablero =====
+ *
+ * Todo lo que muestra sale resuelto del motor. La unica cuenta que hace la
+ * ficha es elegir que mediciones listar, y eso vive en tablero-datos.js.
+ */
+'use strict';
+
+import { esc, escA } from './nucleo.js';
+import { chipsDe, ultimasMediciones } from './tablero-datos.js';
 
 const dato = (label, valor) => `<div class="tb-dato"><span>${esc(label)}</span><strong>${esc(valor ?? '—')}</strong></div>`;
 
@@ -1095,7 +1143,7 @@ export function htmlFicha(fila, analisis, hoy){
 }
 ```
 
-- [ ] **Step 4: Engancharla en la vista**
+- [ ] **Step 5: Engancharla en la vista**
 
 En `vista-tablero.js`, agregar el import y el manejo del botón dentro de `cablear`:
 
@@ -1127,16 +1175,16 @@ Agregar los estilos a `index.html`:
   .tb-aviso{background:var(--tb-mal-bg);color:var(--tb-mal-fg);padding:6px 8px;border-radius:6px;margin:6px 0}
 ```
 
-- [ ] **Step 5: Correr el test y verificar en el navegador**
+- [ ] **Step 6: Correr el test y verificar en el navegador**
 
 Run: `npx vitest run test/lotes-tablero-ficha.test.mjs` → PASS (5 tests).
 
 En el navegador: "Ver ficha" abre el overlay con las condiciones activas, la grilla de datos operativos, el bloque de SO₂ y hasta 6 mediciones. En un lote con caída de SO₂ tiene que verse la evidencia con las dos fechas.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add public/lotes/js/tablero-ficha.js test/lotes-tablero-ficha.test.mjs public/lotes/js/vista-tablero.js public/lotes/index.html
+git add public/lotes/js/tablero-ficha.js public/lotes/js/tablero-datos.js test/lotes-tablero-ficha.test.mjs public/lotes/js/vista-tablero.js public/lotes/index.html
 git commit -m "feat: la ficha del tablero, de solo lectura"
 ```
 
@@ -1145,13 +1193,20 @@ git commit -m "feat: la ficha del tablero, de solo lectura"
 ### Task 9: Los campos editables de la ficha
 
 **Files:**
-- Modify: `public/lotes/js/tablero-ficha.js`
-- Modify: `public/lotes/js/vista-tablero.js`
+- Modify: `public/lotes/js/tablero-datos.js` (`aplicarEdicion`)
+- Modify: `public/lotes/js/tablero-ficha.js` (los controles)
+- Modify: `public/lotes/js/vista-tablero.js` (el cableado)
 - Test: `test/lotes-tablero-ficha.test.mjs`
 
 **Interfaces:**
 - Consumes: `guardar`, `markDirty`, `usuarioActual`, `cargarDashboard` de `nucleo.js`.
-- Produces: `aplicarEdicion(datos, lote, campo, valor, autor) → {seccion}` (pura sobre el documento en memoria), donde `seccion` es `'lote'` o `'estado_lote'`.
+- Produces: `aplicarEdicion(datos, lote, campo, valor, autor) → {seccion}` **en `tablero-datos.js`** (pura sobre el documento en memoria), donde `seccion` es `'lote'`, `'estado_lote'` o `null`.
+
+> **El listener NO va en `#tab-tablero`.** `mostrarOverlay` escribe en
+> `#overlayBox` (`nucleo.js:61`), que en `index.html:1078` cuelga de `<body>`,
+> **fuera** de la sección de la pestaña. Un `change` delegado en `sec` no se
+> entera nunca de los campos de la ficha: editar mermo no haría nada, en
+> silencio. Va en `#overlayBox`, con su propia guarda de cableado único.
 
 > **Este es el primer escritor de `hace_fml` y `mermo` en toda la app** (ver "Lo que ya está hecho"). No hay un camino previo que copiar: se construye acá.
 
@@ -1160,7 +1215,7 @@ git commit -m "feat: la ficha del tablero, de solo lectura"
 Agregar a `test/lotes-tablero-ficha.test.mjs`:
 
 ```javascript
-import { aplicarEdicion } from '../public/lotes/js/tablero-ficha.js';
+import { aplicarEdicion } from '../public/lotes/js/tablero-datos.js';
 
 const datos = () => ({ lotes: [{ lote: '26001', variedad: 'Malbec' }], estado_lote: {}, analisis: [] });
 
@@ -1216,7 +1271,7 @@ Expected: FAIL — `aplicarEdicion is not a function`.
 
 - [ ] **Step 3: Implementar**
 
-Agregar a `public/lotes/js/tablero-ficha.js`:
+Agregar al final de `public/lotes/js/tablero-datos.js`:
 
 ```javascript
 /* Donde escribe cada campo.
@@ -1280,30 +1335,47 @@ y, antes de la tabla de mediciones:
 
 - [ ] **Step 4: Cablear el guardado con refresco**
 
-En `vista-tablero.js`, dentro de `cablear`:
+En `vista-tablero.js`, agregar una función de cableado **del overlay**, llamada desde `cablear(sec)`:
 
 ```javascript
-sec.addEventListener('change', async (ev) => {
-  const el = ev.target.closest('.tb-edit');
-  if (!el) return;
-  const lote = el.closest('[data-ficha-de]').dataset.fichaDe;
-  const { seccion } = aplicarEdicion(DATOS(), lote, el.dataset.campo, el.value, usuarioActual());
-  if (!seccion) return;
-  markDirty();
+/* La ficha se dibuja en #overlayBox, que cuelga de <body> y no de la seccion
+ * de la pestana (index.html:1078). Delegar en `sec` no funcionaria: el evento
+ * nunca pasa por ahi. */
+function cablearOverlay(){
+  const caja = $('overlayBox');
+  if (!caja || caja._wiredTablero) return;
+  caja._wiredTablero = true;
 
-  /* Mermo y hace_fml cambian condiciones que calcula el servidor, asi que los
-   * chips quedarian viejos. Se guarda y se vuelve a pedir el dashboard para
-   * que el lote se repinte solo. Comentario e inoculado no mueven ninguna
-   * condicion: alcanza con markDirty y el boton Guardar de siempre. */
-  if (el.dataset.campo === 'mermo' || el.dataset.campo === 'hace_fml'){
-    if (await guardar()){ await cargarDashboard(); renderPanel(); renderLista(); abrirFicha(lote); }
-  }
-});
+  caja.addEventListener('change', async (ev) => {
+    const el = ev.target.closest('.tb-edit');
+    if (!el) return;
+    const cont = el.closest('[data-ficha-de]');
+    if (!cont) return;                       // otra cosa dibujada en el overlay
+    const lote = cont.dataset.fichaDe;
+    const { seccion } = aplicarEdicion(DATOS(), lote, el.dataset.campo, el.value, usuarioActual());
+    if (!seccion) return;
+    markDirty();
+
+    /* Mermo y hace_fml cambian condiciones que calcula el servidor, asi que los
+     * chips quedarian viejos. Se guarda y se vuelve a pedir el dashboard para
+     * que el lote se repinte solo. Comentario e inoculado no mueven ninguna
+     * condicion: alcanza con markDirty y el boton Guardar de siempre. */
+    if (el.dataset.campo === 'mermo' || el.dataset.campo === 'hace_fml'){
+      if (await guardar()){ await cargarDashboard(); renderPanel(); renderLista(); abrirFicha(lote); }
+    }
+  });
+}
 ```
 
-Agregar `guardar`, `markDirty` y `usuarioActual` al import de `nucleo.js`, y `aplicarEdicion` al de `tablero-ficha.js`.
+y llamarla al final de `cablear(sec)`:
 
-> El listener de `change` de la Tarea 6 ya existe para `#tbPregunta`. Agregar este bloque **al principio de ese mismo listener** en vez de registrar uno nuevo, para no depender del orden de registro.
+```javascript
+  cablearOverlay();
+```
+
+Agregar `guardar`, `markDirty` y `usuarioActual` al import de `nucleo.js`, y `aplicarEdicion` al de `tablero-datos.js`.
+
+> La guarda `caja._wiredTablero` importa: `cablear` corre una sola vez hoy, pero el overlay lo comparten otras pantallas (Historial, por ejemplo) y un segundo listener dispararía el guardado dos veces.
 
 - [ ] **Step 5: Correr el test y verificar en el navegador**
 
@@ -1314,7 +1386,7 @@ En el navegador: cambiar **Mermo** de un lote que hoy tiene "Datos operativos in
 - [ ] **Step 6: Commit**
 
 ```bash
-git add public/lotes/js/tablero-ficha.js public/lotes/js/vista-tablero.js test/lotes-tablero-ficha.test.mjs
+git add public/lotes/js/tablero-datos.js public/lotes/js/tablero-ficha.js public/lotes/js/vista-tablero.js test/lotes-tablero-ficha.test.mjs
 git commit -m "feat: la ficha escribe mermo, FML, inoculado y comentario"
 ```
 
