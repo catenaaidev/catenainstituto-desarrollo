@@ -353,6 +353,46 @@ npx wrangler r2 object get catenainstitute-respaldos/prensas/datos-v00087-....js
 | `SQLITE_TOOBIG` al importar | Bajá `TRAMO` en `scripts/importar-prensas.mjs` |
 | Los conteos no coinciden | **No sigas.** Revisá el `datos.json` de origen |
 
+## Los datos del Tablero FML (una sola vez, antes de desplegarlo)
+
+El Tablero FML necesita dos datos que el código no puede inventar, y **sin
+ellos los números no son los que aprobaron los supervisores**:
+
+1. Los **criterios** del tablero en `config.criterios_fml` (piso de SO₂ en 20,
+   `so2_caida_max`, `so2_aplica`, `ph_max_inclusive` y los overrides por
+   variedad y por proyecto).
+2. Las **139 decisiones de FML** que vivían en la hoja `ESTADO_LOTE` del Excel
+   y nunca se migraron a `lotes.hace_fml`. Sin ellas, la condición
+   "Datos operativos incompletos" dispara en **179 de 249** lotes en vez de 40.
+
+Los aplica un solo script. Primero mirá lo que haría, sin escribir nada:
+
+```bash
+node scripts/aplicar-datos-fml.mjs --remote --excel "C:\ruta\Lotes CIW 2026.xlsx"
+```
+
+Tiene que decir **139 lotes a completar** y **32 sin decisión** (esos 32 están
+en `desconocido` en el Excel: quedan incompletos a propósito). Si los números
+son otros, pará y revisá antes de escribir.
+
+Cuando el informe cierre, repetilo agregando `--aplicar`:
+
+```bash
+node scripts/aplicar-datos-fml.mjs --remote --excel "C:\ruta\Lotes CIW 2026.xlsx" --aplicar
+```
+
+Termina con **`Migracion aplicada y verificada`**. Tres cosas que conviene saber:
+
+- **No hace falta `--piso-la-web`**, y no es un olvido: este script no reemplaza
+  el documento como `importar.mjs`. Toca sólo los campos que faltan.
+- **Va con candado de versión.** Si alguien guardó en la web entre la lectura y
+  la escritura, no toca ninguna fila y te avisa. Volvés a correrlo y listo.
+- **Es idempotente.** Correrlo dos veces no cambia nada la segunda, y nunca
+  pisa un valor que alguien haya cargado a mano.
+
+El respaldo previo lo deja solo, en `respaldo-nube-lotes-<fecha>-pre-fml.json`.
+Ése es el camino de vuelta.
+
 ## La reconciliación ocasional del Excel de Lotes
 
 Desde el corte a web-only la fuente de datos es la web. `importar.mjs` sigue

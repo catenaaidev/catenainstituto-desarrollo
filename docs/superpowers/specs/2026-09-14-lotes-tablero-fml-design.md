@@ -292,20 +292,29 @@ una precedencia enredada (`mermo` le gana al override manual; para FML el orden
 es blanca → manual → `hace_fml` → `fml_excluida`).
 
 - **Mermo** y **FML excluida** se escriben directo en el lote (`mermo`,
-  `hace_fml`), las mismas columnas que ya se editan en la pestaña Lotes. Un solo
-  valor, un solo lugar, sin precedencia que explicar.
+  `hace_fml`). Un solo valor, un solo lugar, sin precedencia que explicar.
+
+  > **Corregido el 2026-09-16:** este párrafo decía "las mismas columnas que ya
+  > se editan en la pestaña Lotes". Es falso. Las cuatro columnas AO:AR del
+  > Excel (Hace FML, Freq. análisis, FML Excluida y Mermo) se sacaron de la
+  > grilla a propósito cuando el FML pasó a tener pestaña propia — está escrito
+  > en `COLS_LOTES` de `vista-lotes.js`. Hoy **ningún** lugar de la app edita
+  > `hace_fml` ni `mermo`. La ficha del tablero va a ser el primer escritor,
+  > así que el tramo 3 tiene que construir ese camino entero, no reusar uno.
 - **Comentario** e **inoculado** siguen en `estado_lote`: no tienen columna
   propia en el lote.
 
-> **ATENCIÓN — dato faltante, bloqueante del despliegue:** la lógica del motor
-> es fiel al diseño. Lo que falta es **el dato**. De los 249 lotes del tablero
-> aprobado, 139 tienen su decisión de FML en la columna `ESTADO_LOTE` del Excel
-> y **nunca se migraron a D1**: `lotes.hace_fml` está cargado en sólo 1 de 249
-> lotes. Con la D1 actual, `datos_operativos_incompletos` dispara en 179 de 249
-> lotes (72 %), contra los 40 (16 %) que aprobaron los supervisores.
-> Antes de desplegar hay que **migrar las 139 decisiones a `lotes.hace_fml`**,
-> como tarea hermana de la siembra de criterios. Es bloqueante del despliegue,
-> no del merge.
+> **Dato faltante, bloqueante del despliegue — RESUELTO el 2026-09-16.** La
+> lógica del motor es fiel al diseño; lo que faltaba era **el dato**. De los 249
+> lotes del tablero aprobado, 139 tenían su decisión de FML sólo en la hoja
+> `ESTADO_LOTE` del Excel y nunca se migraron a D1. Con la D1 de entonces,
+> `datos_operativos_incompletos` disparaba en 179 de 249 lotes (72 %), contra
+> los 40 (16 %) que aprobaron los supervisores.
+>
+> Lo migra `scripts/aplicar-datos-fml.mjs`, junto con la siembra de criterios
+> —la tarea hermana, que tampoco estaba aplicada—. Procedimiento en
+> `DESPLIEGUE.md`. **Queda pendiente correrlo contra la nube**: escribir en
+> producción no es algo que haga Claude.
 
 **Inoculado** es el único con dos orígenes. El motor lo detecta de los análisis
 (`VP41`, `bacterias`, `inoc`) y además se puede cargar a mano. **Lo detectado
@@ -353,13 +362,11 @@ paralelo mientras se construye.
 
 ## Riesgos
 
-- **BLOQUEANTE DEL DESPLIEGUE — 139 decisiones de FML sin migrar.** De los 249
-  lotes del tablero, 139 tienen su decisión de FML sólo en la hoja `ESTADO_LOTE`
-  del Excel. En D1, `lotes.hace_fml` está cargado en 1 de 249 lotes. Sin migrar
-  ese dato, `datos_operativos_incompletos` dispara en 179/249 (72 %) en vez de
-  los 40/249 (16 %) que aprobaron los supervisores. El código es correcto; lo que
-  falta es el dato. Tarea hermana de la siembra de criterios, antes del
-  despliegue.
+- ~~**BLOQUEANTE DEL DESPLIEGUE — 139 decisiones de FML sin migrar.**~~
+  Resuelto el 2026-09-16 con `scripts/aplicar-datos-fml.mjs`, que aplica las 139
+  decisiones **y** la siembra de criterios (que tampoco estaba en la nube). Los
+  dos parches van con candado de versión y son idempotentes; el procedimiento
+  está en `DESPLIEGUE.md`. Sigue pendiente **correrlo contra producción**.
 - **Los números del Dashboard cambian** el día que esto salga: con el piso de
   SO₂ en 20 en vez de 25, "SO₂ no OK" baja, y `condicion_ideal` pasa a la
   definición del tablero. Conviene avisarlo antes, no después.
