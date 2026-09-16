@@ -41,6 +41,12 @@
      * "todo bien" a "atender ya"; los graficos la leen con getComputedStyle
      * para que el color del dashboard y el del CSS nunca se desincronicen. */
     --sc-0:#4a8360; --sc-1:#8aa14a; --sc-2:#d0a133; --sc-3:#c9762f; --sc-4:#b03a2e;
+    /* --- Tablero FML (paleta aprobada) ----------------------------------- */
+    --tb-ok-bg:#DCFCE7;   --tb-ok-fg:#166534;
+    --tb-mal-bg:#FDE8EC;  --tb-mal-fg:#8A1538;
+    --tb-neu-bg:#F1F5F9;  --tb-neu-fg:#52606D;
+    --tb-primario:#0B6FAE; --tb-fondo:#F4F7FA;
+    --tb-panel:#FFFFFF;   --tb-linea:#CBD5E1; --tb-tinta:#17212B;
   }
   *{box-sizing:border-box}
   body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;-webkit-font-smoothing:antialiased}
@@ -374,6 +380,11 @@
   /* Chips de etapa y linaje */
   .chip-etapa { display:inline-block; padding:2px 8px; border-radius:10px;
     background:#eceff1; font-weight:600; }
+  /* Chips del Tablero FML */
+  .tb-chip{display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:12px;white-space:nowrap}
+  .tb-chip.ok{background:var(--tb-ok-bg);color:var(--tb-ok-fg)}
+  .tb-chip.mal{background:var(--tb-mal-bg);color:var(--tb-mal-fg)}
+  .tb-chip.neutro{background:var(--tb-neu-bg);color:var(--tb-neu-fg)}
   .linaje-col { display:inline-block; vertical-align:top; min-width:150px; }
 
   /* Ficha lote cerrado */
@@ -817,6 +828,7 @@ table.hm td.hm-c{padding:0}
   <button data-v="cargar">⬆️ Cargar análisis</button>
   <button data-v="analisis">🧪 Análisis</button>
   <button data-v="fml">🧫 Seguimiento FML</button>
+  <button data-v="tablero">🧪 Tablero FML</button>
   <button data-v="so2">🧴 Correcciones SO2</button>
   <button data-v="movimientos">🔄 Movimientos</button>
   <button data-v="evolucion">📈 Evolución</button>
@@ -1022,6 +1034,9 @@ table.hm td.hm-c{padding:0}
 
   <!-- SEGUIMIENTO FML -->
   <section class="view" id="tab-fml"></section>
+
+  <!-- TABLERO FML -->
+  <section class="view" id="tab-tablero"></section>
 
   <!-- CORRECCIONES SO2 -->
   <section class="view" id="tab-so2"></section>
