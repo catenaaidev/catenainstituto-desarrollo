@@ -24,7 +24,7 @@ export function diasEntre(desde, hoy){
 export function antiguedadTexto(desde, hoy){
   const d = diasEntre(desde, hoy);
   if (d === null) return '';
-  return d <= 0 ? 'hoy' : `${d} d`;
+  return d === 0 ? 'hoy' : `${d} d`;
 }
 
 /* Los cinco ejes que siempre se muestran: el chip cambia de texto y de color

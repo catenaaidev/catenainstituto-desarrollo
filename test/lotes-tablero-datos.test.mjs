@@ -84,4 +84,8 @@ describe('antiguedadTexto', () => {
   it('sin fecha devuelve vacio', () => {
     expect(antiguedadTexto(null, HOY)).toBe('');
   });
+
+  it('una fecha futura no se disfraza de hoy: un desde adelantado es un error de carga', () => {
+    expect(antiguedadTexto('2026-09-18', HOY)).toBe('-2 d');
+  });
 });
