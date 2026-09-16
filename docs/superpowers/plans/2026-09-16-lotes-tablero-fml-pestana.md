@@ -474,17 +474,39 @@ export function filasTablero(){
     .map(l => ({ ...l, _info: info.get(String(l.lote ?? '')) || {} }));
 }
 
-export async function renderTablero(){
+export function renderTablero(){
   const sec = $('tab-tablero');
-  if (!dashData()) { sec.innerHTML = '<p>Cargando…</p>'; await cargarDashboard(); }
+  if (!sec) return;
+
+  /* Sin datos del motor todavia: placeholder y disparar la carga, igual que la
+   * pestana vieja. NO se puede `await cargarDashboard()`: tiene guarda de
+   * reentrada (`if (_dashLoading) return`, nucleo.js:240), asi que con una carga
+   * en vuelo resuelve enseguida y sin datos, y lo que sigue reventaria contra
+   * dashData() en null. Quien repinta cuando llegan es cargarDashboard. */
+  if (!dashData()){
+    sec.innerHTML = '<div class="msg info" style="margin-top:10px">Cargando datos del motor FML…</div>';
+    if (!dashLoading()) cargarDashboard();
+    return;
+  }
+
   const filas = filasTablero();
-  sec.innerHTML = `<p>Estado de los ${esc(filas.length)} lotes.</p>`;
+  sec.innerHTML = `<p>Estado de los ${filas.length} lotes.</p>`;
 }
 
 registrarVista('tablero', () => renderTablero());
 ```
 
-- [ ] **Step 3: Importarla en la app**
+con `dashLoading` en el import de `nucleo.js`.
+
+- [ ] **Step 3: Que el dashboard sepa repintar la pestaña nueva**
+
+`cargarDashboard` repinta a mano las pestañas que dependen de él, y sólo conoce cuatro. Sin esto el placeholder se queda pegado hasta que el usuario cambie de pestaña y vuelva. En `public/lotes/js/nucleo.js`, junto a las líneas que repintan `fml` y `orden`:
+
+```javascript
+    if (document.querySelector('.tabs button[data-v="tablero"].active')) _vistaObligatoria('tablero')();
+```
+
+- [ ] **Step 4: Importarla en la app**
 
 En `public/lotes/js/app.js`, después de la línea 16 (`import './js/vista-fml.js';`):
 
@@ -714,14 +736,22 @@ git commit -m "feat: el panel del tablero en sus dos modos"
 
 En `public/lotes/js/vista-tablero.js`, agregar el import y reemplazar `renderTablero`:
 
+> **No toques la guarda de `dashData()`** que puso la Tarea 3: el `return` temprano con el placeholder es lo único que evita que `dashData().kpis` reviente contra un null mientras el dashboard está en vuelo. Todo lo de abajo va **después** de esa guarda.
+
 ```javascript
 import { htmlPanel } from './tablero-panel.js';
 
 let _modoPanel = 'numeros';
 
-export async function renderTablero(){
+export function renderTablero(){
   const sec = $('tab-tablero');
-  if (!dashData()) { sec.innerHTML = '<p>Cargando…</p>'; await cargarDashboard(); }
+  if (!sec) return;
+
+  if (!dashData()){
+    sec.innerHTML = '<div class="msg info" style="margin-top:10px">Cargando datos del motor FML…</div>';
+    if (!dashLoading()) cargarDashboard();
+    return;
+  }
 
   const filas = filasTablero();
   sec.innerHTML = htmlPanel(dashData().kpis || {}, filas, _modoPanel);
@@ -834,9 +864,17 @@ function initFiltros(){
 Reemplazar `renderTablero` y agregar `renderLista`:
 
 ```javascript
-export async function renderTablero(){
+export function renderTablero(){
   const sec = $('tab-tablero');
-  if (!dashData()) { sec.innerHTML = '<p>Cargando…</p>'; await cargarDashboard(); }
+  if (!sec) return;
+
+  // La guarda de la Tarea 3: sin datos del motor no se puede montar nada.
+  if (!dashData()){
+    sec.innerHTML = '<div class="msg info" style="margin-top:10px">Cargando datos del motor FML…</div>';
+    if (!dashLoading()) cargarDashboard();
+    _montado = false;   // el placeholder piso el armazon: hay que rearmarlo
+    return;
+  }
 
   if (!_montado){
     sec.innerHTML = armazon();
