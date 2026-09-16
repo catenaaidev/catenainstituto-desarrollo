@@ -1882,13 +1882,47 @@ function camposDeLote(fila, lote) {
   return campos;
 }
 
+// ¿Este cartel lo abrió una orden de VACIADO que quedó frenada? Los carteles nuevos
+// lo traen guardado; los que ya están en la bodega hay que sacarlo del texto del
+// motivo, que es donde vivía toda la información hasta ahora — mismo criterio que
+// loteOrdenDe. El motivo arranca con el tipo de la orden (ver invAnotarRevisiones).
+function esDeOrdenDeVaciado(r) {
+  if (!r || r.campo !== 'estado-escaner' || r.fuente !== 'escaner') return false;
+  // Solo el vaciado que quedó FRENADO por una corrección a mano: ese es el que dejó
+  // una decisión sin tomar. Los otros omitidos no tienen nada que decidir, y en
+  // "ya figura VACIO" ofrecer vaciar sería peligroso: ese cartel se anotó cuando la
+  // vasija estaba vacía, y si hoy figura llena es porque alguien la volvió a llenar
+  // DESPUÉS de la orden — vaciarla estaría borrando lo último que se sabe.
+  const frenado = r.causaOmision ? String(r.causaOmision) === 'edicion'
+    : /la orden no lo pisa\s*$/.test(String(r.motivo || ''));
+  if (!frenado) return false;
+  if (r.efectoOrden) return String(r.efectoOrden) === 'vaciado';
+  return /^vaciado\b/i.test(String(r.motivo || ''));
+}
+
 function planDePendiente(r) {
   const base = String((r && r.campo) || '').split('-')[0];   // "estado-escaner" -> "estado"
   const prop = String((r && r.propuesta) == null ? '' : r.propuesta).trim();
-  // sin propuesta no hay nada que aplicar, y si el número no está en el Excel no
-  // hay fila donde escribirlo: en los dos casos queda el ✓ Revisado de siempre
-  if (!prop || !CAMPOS_EDITABLES.includes(base) || !indiceInv.has(String(r.num))) return null;
+  // si el número no está en el Excel no hay fila donde escribir: queda el ✓ Revisado
+  if (!CAMPOS_EDITABLES.includes(base) || !indiceInv.has(String(r.num))) return null;
   const fila = indiceInv.get(String(r.num));
+  // Una orden de vaciado frenada no deja propuesta —el escáner no propone un valor,
+  // la orden ya dijo qué hacer con la vasija— y hasta acá se quedaba sin ningún botón
+  // que corrigiera la fila: la única salida era el ✓ Revisado, que marca y NO escribe,
+  // así que el tanque seguía figurando lleno después de darlo por revisado. Es lo que
+  // pasó con el T50 50028 y la orden de vaciado 884. Vaciar no se ofrece en
+  // lotesCandidatos porque es un acto deliberado; acá lo es: lo pide la orden y lo
+  // confirma una persona con un click, igual que los botones de lote de al lado.
+  if (!prop && esDeOrdenDeVaciado(r)) {
+    const campos = camposDeLote(fila, '');
+    // Si la vasija ya figura vacía el botón no cambiaría el dato y sería el ✓ Revisado
+    // disfrazado de opción: la misma regla que aplica lotesCandidatos con los lotes.
+    const cambia = campos.some(([c, v]) =>
+      String(fila[c] == null ? '' : fila[c]).trim() !== String(v == null ? '' : v).trim());
+    return cambia ? { etiqueta: 'Vaciar la vasija', campos: campos } : null;
+  }
+  // sin propuesta no hay nada que aplicar: queda el ✓ Revisado de siempre
+  if (!prop) return null;
   if ((base === 'estado' || base === 'lote') && PROPUESTA_VACIAR.includes(prop.toUpperCase()))
     return { etiqueta: 'Vaciar la vasija', campos: camposDeLote(fila, '') };
   if (base === 'lote') {
@@ -4642,7 +4676,10 @@ function invPlanDeOrden(orden, inventario, hoy, ediciones) {
     const frenaPorEdicion = (choca) => {
       const qué = choca.join(' y ') + (choca.length > 1 ? ' corregidos' : ' corregido') + ' a mano';
       avisos.push(num + ': ' + qué + ' — la orden no lo pisa');
-      omitidos.push({ num: num, motivo: qué + ', la orden no lo pisa' });
+      // causa:'edicion' distingue este omitido —el que pide una decisión— de los
+      // que no tienen nada que decidir ("ya figura VACIO"). Lo usa el cartel para
+      // saber si ofrecer el botón de vaciar (ver esDeOrdenDeVaciado).
+      omitidos.push({ num: num, motivo: qué + ', la orden no lo pisa', causa: 'edicion' });
     };
     if (efecto === 'vaciado') {
       if (est === 'VACIO') { omitidos.push({ num: num, motivo: 'ya figura VACIO' }); continue; }
@@ -4692,8 +4729,8 @@ function invAnotarRevisiones(orden, omitidos) {
   const etiqueta = String(orden.tipo) + ' ' + (orden.ot || '(sin OT)') +
     (orden.lote ? ' lote ' + orden.lote : '');
   const tipo = String(orden.tipo || '');
-  const esLlenado = Object.prototype.hasOwnProperty.call(INV_EFECTO, tipo) &&
-    INV_EFECTO[tipo] === 'llenado';
+  const efecto = Object.prototype.hasOwnProperty.call(INV_EFECTO, tipo) ? INV_EFECTO[tipo] : '';
+  const esLlenado = efecto === 'llenado';
   for (const om of (omitidos || [])) {
     const motivo = etiqueta + ': ' + om.motivo;
     // Un cartel identico ya anotado no se repite, ni siquiera si esta cerrado. La
@@ -4711,9 +4748,17 @@ function invAnotarRevisiones(orden, omitidos) {
     const prev = estado.revisiones.find(r =>
       String(r.num) === String(om.num) && r.campo === 'estado-escaner' &&
       r.fuente === 'escaner' && !r.revisado);
-    if (prev) { prev.motivo = motivo; prev.fecha = hoyISO(); continue; }
+    // El efecto viaja con el cartel para no tener que leerlo del texto del motivo
+    // (ver esDeOrdenDeVaciado). Se reescribe junto con el motivo: un cartel abierto
+    // por un llenado que después reusa un vaciado tiene que quedar como vaciado.
+    if (prev) {
+      prev.motivo = motivo; prev.fecha = hoyISO();
+      prev.efectoOrden = efecto; prev.causaOmision = om.causa || '';
+      continue;
+    }
     const nuevo = { num: String(om.num), campo: 'estado-escaner', motivo: motivo,
-      fuente: 'escaner', fecha: hoyISO(), revisado: false };
+      fuente: 'escaner', fecha: hoyISO(), revisado: false,
+      efectoOrden: efecto, causaOmision: om.causa || '' };
     // El lote que la orden queria escribir, para poder ofrecerlo como boton sin
     // tener que parsear el motivo (ver lotesCandidatos). Solo en los llenados: en
     // un vaciado el lote de la orden es el vino que se saca, no uno para poner.
