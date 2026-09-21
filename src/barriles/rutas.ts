@@ -26,17 +26,37 @@ async function leer(env: Env): Promise<Documento> {
   return JSON.parse(fila.json) as Documento;
 }
 
-async function escribir(env: Env, doc: Documento, email: string) {
-  await env.DB.batch([
-    marcarSesion(env, email),
-    env.DB.prepare(
-      `INSERT INTO documento (modulo, version, json, autor, guardado)
-       VALUES (?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(modulo) DO UPDATE SET
-         version = excluded.version, json = excluded.json,
-         autor = excluded.autor, guardado = excluded.guardado`,
-    ).bind(MODULO, doc.version, JSON.stringify(doc), email),
-  ]);
+/**
+ * Escribe solo si la versión en la base sigue siendo la que se leyó.
+ *
+ * Antes era un ON CONFLICT DO UPDATE, que escribe siempre: el chequeo de versión
+ * de más arriba quedaba fuera de la escritura y dos dispositivos que lo pasaban
+ * con la misma versión escribían los dos. Devuelve false si otro escribió en el
+ * medio; el llamador responde 409 y el cliente fusiona.
+ */
+async function escribir(
+  env: Env,
+  doc: Documento,
+  email: string,
+  versionPrevia: number,
+): Promise<boolean> {
+  const json = JSON.stringify(doc);
+  const escritura =
+    versionPrevia === 0
+      ? // No hay fila todavía. Si otro la creó en el medio, DO NOTHING no toca nada.
+        env.DB.prepare(
+          `INSERT INTO documento (modulo, version, json, autor, guardado)
+           VALUES (?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(modulo) DO NOTHING`,
+        ).bind(MODULO, doc.version, json, email)
+      : env.DB.prepare(
+          `UPDATE documento
+              SET version = ?, json = ?, autor = ?, guardado = datetime('now')
+            WHERE modulo = ? AND version = ?`,
+        ).bind(doc.version, json, email, MODULO, versionPrevia);
+
+  const r = await env.DB.batch([marcarSesion(env, email), escritura]);
+  return (r[1].meta.changes ?? 0) > 0;
 }
 
 export async function rutasBarriles(
@@ -113,12 +133,23 @@ export async function rutasBarriles(
       return json(400, { error: 'JSON invalido' });
     }
 
+    // Sin esto, un POST sin `estado` reemplazaba el documento entero por {}.
+    // La validación va ANTES del chequeo de versión: un POST malformado lo es
+    // independientemente de la versión; si va después, devuelve 409 en vez de
+    // 400 y el defecto queda tapado.
+    if (!pedido.estado || typeof pedido.estado !== 'object' || Array.isArray(pedido.estado)) {
+      return json(400, {
+        error: 'validacion',
+        detalles: ['falta el estado: un guardado sin estado borraría todo'],
+      });
+    }
+
     const doc = await leer(env);
 
     // Otro dispositivo guardó antes: se devuelve el estado actual.
     if (pedido.version !== doc.version) return json(409, doc);
 
-    const nuevoEstado = pedido.estado ?? {};
+    const nuevoEstado = pedido.estado;
 
     // Freno de borrado masivo.
     if (!pedido.confirmarBorrado) {
@@ -134,7 +165,11 @@ export async function rutasBarriles(
     }
 
     const actualizado: Documento = { version: doc.version + 1, estado: nuevoEstado };
-    await escribir(env, actualizado, id!.email);
+
+    if (!(await escribir(env, actualizado, id!.email, doc.version))) {
+      // Otro dispositivo ganó la carrera entre la lectura y la escritura.
+      return json(409, await leer(env));
+    }
 
     await env.DB.prepare(
       `INSERT INTO historial (modulo, version, ts, autor, email, resumen, detalle, forzado)
