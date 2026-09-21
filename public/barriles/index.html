@@ -1373,7 +1373,14 @@ async function sincronizar(avisar) {
         if (sesion) refrescarLibre();
         aplicarModoLote();
         ponerInsignia('ok');
-        if (avisar) alert(`✅ Se subieron ${n} cambio(s) que cargaste sin WiFi.` +
+        // n cuenta solo celdas (diffBoxesLocal + diffPaletsLocal). Si el escáner
+        // tenía órdenes sin subir pero el mapa estaba intacto, n vale 0 y decir
+        // "se subieron 0 cambios" es mentirle al operario justo en el escenario
+        // central del arreglo. Cuando hay celdas, el número se mantiene.
+        if (avisar) alert(
+          (n > 0
+            ? `✅ Se subieron ${n} cambio(s) que cargaste sin WiFi.`
+            : `✅ Se subió lo que habías cargado sin WiFi.`) +
           (conflictos ? `\n\n⚠ ${conflictos} celda(s) también habían cambiado en el servidor; se priorizó lo cargado en este teléfono.` : ''));
         sincronizando = false; return;
       }

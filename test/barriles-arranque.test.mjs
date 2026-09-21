@@ -52,7 +52,26 @@ describe('la salida temprana de sincronizar()', () => {
   it('el marcador se apaga cuando sincronizar() sube con éxito', () => {
     const i = INDEX.indexOf('async function sincronizar(');
     const fin = INDEX.indexOf('function adoptar(', i);
-    expect(INDEX.slice(i, fin)).toContain('limpiarPendiente()');
+    const cuerpo = INDEX.slice(i, fin);
+
+    // El brief exige que limpiarPendiente() quede DENTRO de la rama if (r.ok),
+    // no en el catch ni en el break del 500. Un test que solo busca en todo el
+    // cuerpo pasaría aunque alguien lo mueva al catch — que es exactamente la
+    // regresión que rompería el marcador.
+    const inicioOk = cuerpo.indexOf('if (r.ok)');
+    expect(inicioOk, 'no encontré if (r.ok) en sincronizar()').toBeGreaterThan(-1);
+    // El bloque ok termina justo antes de 'break;' del 500
+    const finOk = cuerpo.indexOf('break;', inicioOk);
+    expect(finOk, 'no encontré el break del 500 después de if (r.ok)').toBeGreaterThan(-1);
+    const bloqueOk = cuerpo.slice(inicioOk, finOk);
+    expect(bloqueOk, 'limpiarPendiente() tiene que estar dentro de if (r.ok)').toContain('limpiarPendiente()');
+
+    // El catch de sincronizar() no debe apagar el marcador: si el servidor
+    // nunca confirmó, el marcador tiene que seguir prendido.
+    const inicioCatch = cuerpo.indexOf('} catch (e)');
+    expect(inicioCatch, 'no encontré el catch en sincronizar()').toBeGreaterThan(-1);
+    const bloqueCatch = cuerpo.slice(inicioCatch);
+    expect(bloqueCatch, 'limpiarPendiente() NO debe estar en el catch de sincronizar()').not.toContain('limpiarPendiente()');
   });
 });
 
