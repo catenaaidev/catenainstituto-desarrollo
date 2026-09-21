@@ -85,6 +85,69 @@ describe('adoptar() y el marcador', () => {
     const cuerpo = INDEX.slice(i, INDEX.indexOf('\n}', i));
     expect(cuerpo).toContain('limpiarPendiente()');
   });
+
+  // Había DOS implementaciones de "adoptar el servidor": adoptar() y el
+  // procedimiento a mano de iniciar(), que se olvidaba de limpiarPendiente().
+  it('iniciar() adopta llamando a adoptar(), no a mano', () => {
+    const i = INDEX.indexOf('async function iniciar()');
+    const cuerpo = INDEX.slice(i, i + 3000);
+    const rama = cuerpo.indexOf("quePasa === 'adoptar-servidor'");
+    expect(rama, 'no encontré la rama adoptar-servidor').toBeGreaterThan(-1);
+    expect(cuerpo.slice(rama, rama + 900)).toContain('adoptar(d)');
+  });
+
+  it('«Descartar copia local» también borra el marcador', () => {
+    const i = INDEX.indexOf("getElementById('btnDescartarLocal')");
+    expect(i, 'no encontré el botón de descartar').toBeGreaterThan(-1);
+    expect(INDEX.slice(i, i + 900)).toContain('removeItem(CLAVE_PENDIENTE)');
+  });
+});
+
+describe('el sello: escanear con el POST en vuelo', () => {
+  // La lógica pura está en decidirConfirmacion() y se testea en
+  // barriles-pendientes.test.mjs. Acá solo se ancla que el archivo real la use
+  // en los DOS lugares que postean, y que el marcador no se apague afuera de la
+  // decisión: si alguien deja un limpiarPendiente() suelto en la rama del 200, el
+  // sello no sirve de nada.
+  it('marcarPendiente() incrementa el sello', () => {
+    const i = INDEX.indexOf('function marcarPendiente()');
+    expect(i, 'no encontré marcarPendiente()').toBeGreaterThan(-1);
+    expect(INDEX.slice(i, INDEX.indexOf('\n}', i))).toContain('selloGuardado++');
+  });
+
+  it('push() captura el sello antes del POST y decide con él', () => {
+    const i = INDEX.indexOf('async function push(');
+    const cuerpo = INDEX.slice(i, INDEX.indexOf('async function sondear(', i));
+    const captura = cuerpo.indexOf('const sello = selloGuardado');
+    expect(captura, 'no encontré la captura del sello').toBeGreaterThan(-1);
+    const post = cuerpo.indexOf("fetch(API+'/estado', { method: 'POST'");
+    expect(captura, 'el sello se captura DESPUÉS del POST').toBeLessThan(post);
+
+    const exito = cuerpo.indexOf('} else if (r.ok) {');
+    const bloqueOk = cuerpo.slice(exito, cuerpo.indexOf('\n    } else {', exito));
+    expect(bloqueOk).toContain('decidirConfirmacion(');
+    // El apagado tiene que colgar de la decisión, no estar suelto en la rama del 200.
+    const decision = bloqueOk.indexOf('decidirConfirmacion(');
+    expect(bloqueOk.indexOf('limpiarPendiente()'), 'limpiarPendiente() fuera de la decisión')
+      .toBeGreaterThan(decision);
+  });
+
+  it('sincronizar() captura el sello antes del POST y decide antes de pisar estado', () => {
+    const i = INDEX.indexOf('async function sincronizar(');
+    const cuerpo = INDEX.slice(i, INDEX.indexOf('function adoptar(', i));
+    const captura = cuerpo.indexOf('const sello = selloGuardado');
+    expect(captura, 'no encontré la captura del sello').toBeGreaterThan(-1);
+    const post = cuerpo.indexOf("fetch(API+'/estado', { method: 'POST'");
+    expect(captura, 'el sello se captura DESPUÉS del POST').toBeLessThan(post);
+
+    const ok = cuerpo.indexOf('if (r.ok)');
+    const bloqueOk = cuerpo.slice(ok, cuerpo.indexOf('break;', ok));
+    const decision = bloqueOk.indexOf('decidirConfirmacion(');
+    expect(decision, 'no se decide con el sello en la rama del 200').toBeGreaterThan(-1);
+    // Tanto apagar el marcador como pisar `estado` van DESPUÉS de la decisión.
+    expect(bloqueOk.indexOf('limpiarPendiente()')).toBeGreaterThan(decision);
+    expect(bloqueOk.indexOf('estado = serv')).toBeGreaterThan(decision);
+  });
 });
 
 describe('push() ante un error del servidor', () => {

@@ -42,5 +42,32 @@ function decidirArranque({ hayLocal, pendienteLocal, hayFotoBase, hayEstadoServi
   return 'vacio';
 }
 
+/**
+ * Llegó el 200 del servidor. ¿Puedo apagar el marcador y adoptar lo que mandé?
+ *
+ * Solo si NADIE escribió mientras el POST viajaba. Un POST tarda cientos de
+ * milisegundos y nada frena a `guardar()` en el medio: `sincronizando` frena a
+ * `sincronizar()` y a `push()`, no a la interfaz. Si el operario escanea justo
+ * ahí, esa orden NO viaja en el cuerpo que se posteó, y el código viejo igual
+ * apagaba el marcador y pisaba `estado` con lo enviado: la orden desaparecía sin
+ * dejar rastro (se reescribía localStorage y el arranque siguiente veía todo
+ * limpio). Es la misma pérdida del 16/09 por otra puerta.
+ *
+ * El sello se incrementa con cada marcado. Se captura justo antes del POST y se
+ * compara al recibir el 200:
+ *  - 'adoptar-envio' : lo que mandé es todo lo que había; confirmado, apagar.
+ *  - 'reintentar'    : el servidor confirmó lo anterior, pero lo nuevo sigue sin
+ *                      confirmar. NO apagar el marcador, NO pisar `estado`, y
+ *                      volver a mandar para que lo nuevo suba.
+ *
+ * Ante la duda (sellos no numéricos) se devuelve 'reintentar': reintentar de más
+ * cuesta un POST; apagar de más cuesta el trabajo del operario.
+ */
+function decidirConfirmacion({ selloEnviado, selloActual }) {
+  if (typeof selloEnviado !== 'number' || typeof selloActual !== 'number') return 'reintentar';
+  return selloEnviado === selloActual ? 'adoptar-envio' : 'reintentar';
+}
+
 globalThis.decidirSincronizacion = decidirSincronizacion;
 globalThis.decidirArranque = decidirArranque;
+globalThis.decidirConfirmacion = decidirConfirmacion;

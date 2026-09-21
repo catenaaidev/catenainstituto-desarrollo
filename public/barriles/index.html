@@ -1005,8 +1005,14 @@ const CLAVE_PENDIENTE = 'mapaBarriles_pendiente_v1';
 let pendienteLocal = false;
 try { pendienteLocal = localStorage.getItem(CLAVE_PENDIENTE) === '1'; } catch (e) {}
 
+// Sello de "cuánto se escribió en este dispositivo". No se persiste a propósito:
+// solo sirve para comparar dentro de una misma corrida, entre el momento en que
+// sale un POST y el momento en que vuelve su 200. Una recarga arranca de cero y
+// el marcador persistido es el que cubre ese caso.
+let selloGuardado = 0;
 function marcarPendiente() {
   pendienteLocal = true;
+  selloGuardado++;   // ver decidirConfirmacion(): distingue "esto es todo lo que mandé" de "entró trabajo nuevo mientras viajaba"
   try { localStorage.setItem(CLAVE_PENDIENTE, '1'); } catch (e) {}
 }
 // Solo lo llama una confirmación del servidor. Nunca lo apagues "porque sí":
@@ -1084,8 +1090,14 @@ function msgPerdidas(info) {
   if (p.revisiones) partes.push(p.revisiones + ' pendiente(s) de revisión');
   if (p.ediciones) partes.push(p.ediciones + ' corrección(es) a mano');
   if (p.pedidos) partes.push(p.pedidos + ' pedido(s) de rótulos');
+  // La segunda línea no es un detalle de cortesía: responder "No" llama a
+  // adoptar(), que descarta TODO lo cargado en este teléfono —no solo el borrado
+  // que se está frenando, también las órdenes que no tienen nada que ver— y baja
+  // la copia del servidor. Sin decirlo, el operario cree que está contestando
+  // "no borres" y lo que hace es "tirá todo lo mío".
   return '⚠ Este cambio borra ' + (partes.join(', ') || 'datos ya cargados') +
-    '.\n¿Continuar de todos modos?';
+    '.\n\nSi elegís Aceptar, se borran.\nSi elegís Cancelar, se descarta TODO lo que cargaste en este teléfono y se baja de nuevo la copia del servidor.' +
+    '\n\n¿Continuar de todos modos?';
 }
 function programarPush() { clearTimeout(pushTimer); pushTimer = setTimeout(push, 400); }
 
@@ -1099,6 +1111,9 @@ async function push(confirmar) {
   }
   pushEnCurso = true;
   try {
+    // El sello se captura ANTES del POST: si el operario escanea mientras la
+    // petición viaja, lo que mande este cuerpo ya no es todo lo que hay.
+    const sello = selloGuardado;
     const r = await fetch(API+'/estado', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ version: versionServidor, estado, confirmarBorrado: !!confirmar }) });
     if (r.status === 409) {
@@ -1117,11 +1132,23 @@ async function push(confirmar) {
       }
       return;
     } else if (r.ok) {
+      // La versión se registra SIEMPRE: el servidor aceptó el POST, así que la
+      // versión nueva es la buena aunque no demos por confirmado lo local.
       versionServidor = (await r.json()).version;
-      limpiarPendiente();          // el servidor lo confirmó: recién ahora
-      snapBoxes();                 // quedó sincronizado: esta es la nueva base
       estabaOffline = false;
-      ponerInsignia('ok');
+      if (decidirConfirmacion({ selloEnviado: sello, selloActual: selloGuardado }) === 'adoptar-envio') {
+        limpiarPendiente();          // el servidor lo confirmó: recién ahora
+        snapBoxes();                 // quedó sincronizado: esta es la nueva base
+        ponerInsignia('ok');
+      } else {
+        // Entró trabajo mientras el POST viajaba. Ni limpiarPendiente() ni
+        // snapBoxes(): snapBoxes tomaría como base el estado ACTUAL, y las celdas
+        // tocadas en el vuelo saldrían del diff justo cuando el marcador que las
+        // cubría se apaga. Se reprograma el envío para que lo nuevo suba; el
+        // próximo 200 con el sello quieto sí cierra. La insignia no se toca: decir
+        // "sincronizado" con trabajo sin confirmar es la mentira de la Entrega 2.
+        programarPush();
+      }
     } else {
       // 500, 502, 503: fetch no rechaza, así que sin esta rama la función salía
       // en silencio dejando al operario con un cartel de "sincronizado" falso.
@@ -1316,6 +1343,15 @@ async function sincronizar(avisar) {
         ponerInsignia('ok'); sincronizando = false; return;
       }
       const n = contarPendientes();
+      // OJO con el alcance de la fusión. Lo que sigue arranca del estado DEL
+      // SERVIDOR y le aplica encima lo local, colección por colección: celdas del
+      // mapa, escaneos, tanques, pedidos, revisiones, ediciones y palets. Todo lo
+      // demás del estado viene tal cual de `d.estado` y pisa lo local: hoy eso es
+      // `inventario`, `fechaInventario` y `modoLote`. El marcador DETECTA que hay
+      // trabajo sin confirmar en cualquier colección, incluidas esas tres, pero
+      // esta fusión no lo RESUELVE: si el único cambio local está en inventario,
+      // se pierde igual. Cerrar ese hueco es alcance de la Entrega 2 (portón único
+      // de escritura). Si agregás una colección nueva al estado, sumala acá.
       const serv = d.estado || { inventario: estado.inventario, boxes: [], escaneos: [], tanques: [], palets: [],
         fechaInventario: estado.fechaInventario, modoLote: estado.modoLote };
       const conflictos = aplicarDiffEnServidor(serv, cambios);
@@ -1356,6 +1392,10 @@ async function sincronizar(avisar) {
         for (const [k, v] of Object.entries(c.sets)) sp.celdas[k] = v;
         for (const k of c.dels) delete sp.celdas[k];
       }
+      // El sello se captura ACÁ, después de armar `serv` (que se arma sin ningún
+      // await de por medio) y antes del POST: cualquier guardado posterior queda
+      // afuera del cuerpo que viaja, y el 200 no lo puede dar por confirmado.
+      const sello = selloGuardado;
       const r = await fetch(API+'/estado', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ version: d.version, estado: serv, confirmarBorrado: confirmar }) });
       if (r.status === 409) continue;              // alguien escribió justo: reintentar
@@ -1367,7 +1407,19 @@ async function sincronizar(avisar) {
         adoptar(d); ponerInsignia('ok'); sincronizando = false; return;   // descartar lo local
       }
       if (r.ok) {
+        // La versión se registra SIEMPRE, se adopte o no lo enviado: el servidor
+        // aceptó la escritura y la versión vieja ya no sirve para el próximo POST.
         versionServidor = (await r.json()).version;
+        if (decidirConfirmacion({ selloEnviado: sello, selloActual: selloGuardado }) !== 'adoptar-envio') {
+          // El operario escaneó mientras el POST viajaba: `serv` no lo contiene.
+          // Pisar `estado` con `serv` borraría esa orden sin dejar rastro. Se
+          // vuelve a girar el bucle: el GET de arriba va a traer la versión que
+          // acabamos de escribir y `serv` se rearma desde el `estado` actual, que
+          // sí tiene lo nuevo. El marcador queda prendido hasta ese 200.
+          // No hay bucle infinito: cada vuelta consume un intento de los 4, y si
+          // se agotan se sale por offline y sondear() vuelve a intentar después.
+          continue;
+        }
         limpiarPendiente();          // el servidor lo confirmó: recién ahora
         estado = serv; reindexar(); snapBoxes();
         try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch (e) {}
@@ -1432,7 +1484,10 @@ document.addEventListener('visibilitychange', () => {
 // volver a bajar la del servidor. No borra el rol ni otros ajustes.
 document.getElementById('btnDescartarLocal')?.addEventListener('click', () => {
   if (!confirm('Se descarta la copia guardada en este teléfono y se baja de nuevo la del servidor.\n¿Continuar?')) return;
-  try { localStorage.removeItem(CLAVE); localStorage.removeItem(CLAVE_BASE); } catch (e) {}
+  // CLAVE_PENDIENTE también: si se borra la copia local y queda el marcador, el
+  // arranque siguiente cree que este teléfono tiene trabajo sin subir contra un
+  // estado que ya es puro servidor, y sube un POST idéntico por cada sondeo.
+  try { localStorage.removeItem(CLAVE); localStorage.removeItem(CLAVE_BASE); localStorage.removeItem(CLAVE_PENDIENTE); } catch (e) {}
   location.reload();
 });
 
@@ -1491,7 +1546,21 @@ async function iniciar() {
         await sincronizar(true);
         return;
       }
-      if (quePasa === 'adoptar-servidor') estado = d.estado;
+      if (quePasa === 'adoptar-servidor') {
+        // adoptar(d) y no el procedimiento a mano: había dos implementaciones de
+        // "lo del servidor pasa a ser lo mío" y esta se olvidaba de
+        // limpiarPendiente(). Con el marcador prendido contra un estado que es
+        // puro servidor (copia local ilegible, o después de «Descartar copia
+        // local»), hayPendientes() daba true y cada sondeo disparaba un
+        // sincronizar() completo que subía un POST idéntico y gastaba una versión.
+        // Diferencia deliberada respecto del código viejo: adoptar() además
+        // redibuja los paneles y aplica el modo por lote. Acá es inofensivo —
+        // el DOM ya está armado cuando corre iniciar() (se la llama al final del
+        // arranque) y los redibujos son idempotentes.
+        adoptar(d);
+        ponerInsignia('ok');   // adoptar() no toca la insignia; sus otros llamadores también la ponen afuera
+        return;
+      }
       reindexar(); snapBoxes(); ponerInsignia('ok');
       return;
     }

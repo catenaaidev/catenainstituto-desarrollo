@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import '../public/barriles/js/pendientes.js';
 
-const { decidirSincronizacion, decidirArranque } = globalThis;
+const { decidirSincronizacion, decidirArranque, decidirConfirmacion } = globalThis;
 
 describe('decidirSincronizacion', () => {
   it('piso lo local solo si no hay absolutamente nada sin confirmar', () => {
@@ -70,5 +70,80 @@ describe('decidirArranque', () => {
   it('el marcador gana aunque falte la foto base', () => {
     expect(decidirArranque({ hayLocal: true, pendienteLocal: true, hayFotoBase: true, hayEstadoServidor: true }))
       .toBe('subir-local');
+  });
+});
+
+describe('decidirConfirmacion', () => {
+  it('adopta lo enviado si nadie escribió mientras el POST viajaba', () => {
+    expect(decidirConfirmacion({ selloEnviado: 7, selloActual: 7 })).toBe('adoptar-envio');
+  });
+
+  // El caso que rompía el invariante: el operario escaneó con el POST en vuelo.
+  it('reintenta si hubo un guardado nuevo durante el vuelo del POST', () => {
+    expect(decidirConfirmacion({ selloEnviado: 7, selloActual: 8 })).toBe('reintentar');
+  });
+
+  it('reintenta ante sellos que no son números, en vez de dar por confirmado', () => {
+    expect(decidirConfirmacion({ selloEnviado: undefined, selloActual: 0 })).toBe('reintentar');
+  });
+});
+
+/**
+ * La carrera completa, con un modelo mínimo de la pantalla: el sello, el
+ * marcador, el estado local y el cuerpo que se postea. No es el index.html real
+ * (eso es alcance de la Entrega 2), pero sí la secuencia exacta que destruía la
+ * orden: postear → escanear durante el vuelo → llegar el 200.
+ */
+describe('escanear con el POST en vuelo', () => {
+  function pantalla() {
+    const p = {
+      estado: { escaneos: [] },
+      pendienteLocal: false,
+      sello: 0,
+      version: 1,
+      marcar() { p.pendienteLocal = true; p.sello++; },
+      limpiar() { p.pendienteLocal = false; },
+      guardar(orden) { p.estado.escaneos.push(orden); p.marcar(); },
+    };
+    return p;
+  }
+
+  it('la orden escaneada durante el vuelo sobrevive y el marcador queda prendido', () => {
+    const p = pantalla();
+    p.guardar({ id: 'orden-vieja' });
+
+    // Se arma el cuerpo y se captura el sello JUSTO antes del POST.
+    const enviado = { escaneos: [...p.estado.escaneos] };
+    const selloEnviado = p.sello;
+
+    // El POST está en vuelo y el operario escanea: nada lo frena.
+    p.guardar({ id: 'orden-nueva' });
+
+    // Llega el 200. El servidor aceptó, así que la versión nueva es válida
+    // aunque no se adopte el cuerpo enviado.
+    p.version = 2;
+    if (decidirConfirmacion({ selloEnviado, selloActual: p.sello }) === 'adoptar-envio') {
+      p.limpiar();
+      p.estado = enviado;
+    }
+
+    expect(p.estado.escaneos.map((o) => o.id)).toEqual(['orden-vieja', 'orden-nueva']);
+    expect(p.pendienteLocal).toBe(true);   // lo nuevo sigue sin confirmar
+    expect(p.version).toBe(2);             // la versión sí se registra
+  });
+
+  it('sin trabajo nuevo, el 200 sí apaga el marcador (no queda en bucle)', () => {
+    const p = pantalla();
+    p.guardar({ id: 'orden-vieja' });
+    const enviado = { escaneos: [...p.estado.escaneos] };
+    const selloEnviado = p.sello;
+
+    if (decidirConfirmacion({ selloEnviado, selloActual: p.sello }) === 'adoptar-envio') {
+      p.limpiar();
+      p.estado = enviado;
+    }
+
+    expect(p.pendienteLocal).toBe(false);
+    expect(p.estado.escaneos.map((o) => o.id)).toEqual(['orden-vieja']);
   });
 });
