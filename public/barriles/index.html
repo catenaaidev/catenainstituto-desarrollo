@@ -1437,7 +1437,9 @@ async function iniciar() {
   let local = null, pbase = null;
   try { local = JSON.parse(localStorage.getItem(CLAVE)); } catch (e) {}
   try { pbase = JSON.parse(localStorage.getItem(CLAVE_BASE)); } catch (e) {}
-  const localTiene = local && (local.boxes?.length || local.inventario?.length);
+  // El marcador cuenta como "hay algo local": una orden del escáner no deja
+  // celdas en el mapa ni filas de inventario, y esa era justamente la ceguera.
+  const localTiene = !!(local && (local.boxes?.length || local.inventario?.length || pendienteLocal));
   try {
     const r = await fetch(API+'/estado', { cache: 'no-store' });
     if (r.ok) {
@@ -1445,15 +1447,23 @@ async function iniciar() {
       modoServidor = true; versionServidor = d.version;
       // No se espera: solo decide textos. Si tarda o falla, queda el modo 'local'.
       pedirInfo().catch(() => {});
-      // Reabrir con datos locales: si quedaron celdas cargadas sin WiFi (local difiere
-      // de la última base sincronizada), fusionarlas y subirlas en vez de descartarlas.
-      if (localTiene && pbase && typeof pbase.boxes === 'string') {
-        estado = local; reindexar(); baseBoxes = pbase.boxes;
-        if (typeof pbase.palets === 'string') basePalets = pbase.palets;
-        if (hayPendientes()) { await sincronizar(true); return; }
+      const hayFotoBase = !!(pbase && typeof pbase.boxes === 'string');
+      const quePasa = decidirArranque({
+        hayLocal: localTiene, pendienteLocal, hayFotoBase, hayEstadoServidor: !!d.estado,
+      });
+
+      if (quePasa === 'fusionar' || quePasa === 'subir-local') {
+        estado = local; reindexar();
+        if (hayFotoBase) {
+          baseBoxes = pbase.boxes;
+          if (typeof pbase.palets === 'string') basePalets = pbase.palets;
+        }
+        // Sin foto base no se puede calcular qué cambió, pero sincronizar()
+        // fusiona por id igual: nunca se pisa lo que cargó el operario.
+        await sincronizar(true);
+        return;
       }
-      if (d.estado) estado = d.estado;
-      else if (localTiene) { estado = local; programarPush(); }
+      if (quePasa === 'adoptar-servidor') estado = d.estado;
       reindexar(); snapBoxes(); ponerInsignia('ok');
       return;
     }
