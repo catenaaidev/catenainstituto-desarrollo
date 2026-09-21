@@ -17,6 +17,10 @@ const API='/barriles/api';</script>
      porque el arranque de la pagina corre durante el parseo: un type="module"
      llegaria tarde. Se testea en test/barriles-orden-editable.test.mjs. -->
 <script src="js/orden-editable.js"></script>
+<!-- Decide si lo local se fusiona o se puede pisar. Va acá, como script clásico,
+     porque el arranque de la página corre durante el parseo: un type="module"
+     llegaría tarde. Se testea en test/barriles-pendientes.test.mjs. -->
+<script src="js/pendientes.js"></script>
 <style>
   :root {
     --vino: #6b1f3a; --vino-osc: #4a1428; --crema: #faf6f0;
@@ -993,6 +997,25 @@ const API='/barriles/api';</script>
 // ================== ESTADO ==================
 const CLAVE = 'mapaBarriles_v1';
 const CLAVE_BASE = 'mapaBarriles_base_v1';   // foto de los boxes en la última sync (para fusionar tras reabrir offline)
+
+// Hay algo escrito en este dispositivo que el servidor todavía no confirmó.
+// Se persiste porque tiene que sobrevivir a la recarga de la página: si no, al
+// arrancar la app no sabe que el celular tiene órdenes sin subir y las pisa.
+const CLAVE_PENDIENTE = 'mapaBarriles_pendiente_v1';
+let pendienteLocal = false;
+try { pendienteLocal = localStorage.getItem(CLAVE_PENDIENTE) === '1'; } catch (e) {}
+
+function marcarPendiente() {
+  pendienteLocal = true;
+  try { localStorage.setItem(CLAVE_PENDIENTE, '1'); } catch (e) {}
+}
+// Solo lo llama una confirmación del servidor. Nunca lo apagues "porque sí":
+// apagarlo sin confirmación es exactamente la falla que este marcador previene.
+function limpiarPendiente() {
+  pendienteLocal = false;
+  try { localStorage.removeItem(CLAVE_PENDIENTE); } catch (e) {}
+}
+
 let estado = { inventario: [], boxes: [], fechaInventario: null, modoLote: false, escaneos: [] };
 let indiceInv = new Map();      // numero(string) -> registro
 let indiceRevisar = new Map();  // numero(string) -> pendientes de revisión de ese barril
@@ -1044,6 +1067,7 @@ let fallaLocal = false;   // localStorage lleno o bloqueado: avisar en la insign
 function guardar() {
   try { localStorage.setItem(CLAVE, JSON.stringify(estado)); fallaLocal = false; }
   catch (e) { fallaLocal = true; }
+  marcarPendiente();
   if (modoServidor) programarPush();
   else if (fallaLocal) ponerInsignia('local');   // sin servidor, que se vea ya mismo
 }
@@ -1091,6 +1115,7 @@ async function push(confirmar) {
       return;
     } else if (r.ok) {
       versionServidor = (await r.json()).version;
+      limpiarPendiente();          // el servidor lo confirmó: recién ahora
       snapBoxes();                 // quedó sincronizado: esta es la nueva base
       estabaOffline = false;
       ponerInsignia('ok');
@@ -1155,7 +1180,13 @@ function diffPaletsLocal() {
   }
   return cambios;
 }
-function hayPendientes() { return diffBoxesLocal().length > 0 || diffPaletsLocal().length > 0; }
+function hayPendientes() {
+  return decidirSincronizacion({
+    pendienteLocal,
+    cambiosBoxes: diffBoxesLocal().length,
+    cambiosPalets: diffPaletsLocal().length,
+  }) === 'fusionar';
+}
 function contarPendientes() {
   let n = 0;
   for (const c of diffBoxesLocal()) n += Object.keys(c.sets).length + c.dels.length;
