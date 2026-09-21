@@ -121,6 +121,58 @@ describe('freno anti-borrado masivo', () => {
   });
 });
 
+describe('el freno de lotes mira identidades, no longitudes', () => {
+  /** n lotes numerados a partir de `desde`, para armar intercambios. */
+  function lotesDesde(desde: number, n: number): Datos {
+    const d = datosDemo();
+    d.lotes = Array.from({ length: n }, (_, i) => ({ lote: desde + i, variedad: 'X' }));
+    return d;
+  }
+
+  // Contar longitudes (`va - vn`) es ciego al intercambio: un guardado que borra
+  // 20 lotes y agrega otros 20 daba cero y pasaba sin frenar. Que es exactamente
+  // la forma que tiene la falla que este freno tiene que atajar — un cliente con
+  // datos viejos que empuja su propio maestro encima del de la bodega.
+  it('frena reemplazar el maestro entero aunque la cantidad no cambie', () => {
+    const a = lotesDesde(1, 20);
+    const n = lotesDesde(1000, 20); // 20 bajas y 20 altas: el delta de longitudes es 0
+    const errores = validarDatos(n, a);
+    expect(errores.some((e) => e.includes('lotes'))).toBe(true);
+  });
+
+  it('frena un intercambio parcial: se van 15 de 40 y entran 15 nuevos', () => {
+    const a = lotesDesde(1, 40);
+    const n = datosDemo();
+    n.lotes = [
+      ...Array.from({ length: 25 }, (_, i) => ({ lote: i + 1, variedad: 'X' })),
+      ...Array.from({ length: 15 }, (_, i) => ({ lote: 5000 + i, variedad: 'X' })),
+    ];
+    const errores = validarDatos(n, a);
+    expect(errores.some((e) => e.includes('lotes'))).toBe(true);
+  });
+
+  // La contracara: editar no es borrar. El número de lote es la identidad, así
+  // que cambiarle la variedad a todos no puede disparar el freno.
+  it('editar todos los lotes sin borrar ninguno no dispara el freno', () => {
+    const a = lotesDesde(1, 40);
+    const n = copia(a);
+    n.lotes = (n.lotes as Record<string, unknown>[]).map((l) => ({ ...l, variedad: 'Cabernet' }));
+    expect(validarDatos(n, a)).toEqual([]);
+  });
+
+  it('agregar lotes nunca es pérdida', () => {
+    const a = lotesDesde(1, 20);
+    const n = lotesDesde(1, 60);
+    expect(validarDatos(n, a)).toEqual([]);
+  });
+
+  it('el intercambio también se puede forzar, como cualquier pérdida', () => {
+    const a = lotesDesde(1, 20);
+    const n = lotesDesde(1000, 20);
+    expect(validarDatos(n, a, true)).toEqual([]);
+  });
+});
+
 describe('registros huérfanos', () => {
   it('detecta un análisis cuyo lote no existe', () => {
     const d = datosDemo();
