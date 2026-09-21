@@ -71,6 +71,15 @@ function conOrdenes(...ids: string[]) {
            escaneos: ids.map((id) => ({ id, ot: '1', lote: '1', tipo: 'vaciado', codigos: [] })) };
 }
 
+/**
+ * Inventario sin campo `num` (como llega del Excel sin identificador).
+ * Necesario para testear el camino "todos anonimos".
+ */
+function conInventarioAnonimo(cantidad: number) {
+  const inventario = Array.from({ length: cantidad }, () => ({ lote: 'L1', variedad: 'MBec' }));
+  return { boxes: [], palets: [], inventario, escaneos: [], tanques: [] };
+}
+
 describe('dos guardados desde la misma version', () => {
   // OJO: en secuencia esto NO prueba nada. El chequeo `pedido.version !==
   // doc.version` YA existe y devuelve 409 para el segundo, asi que un test
@@ -185,6 +194,30 @@ describe('el historial deja rastro de lo que desaparecio', () => {
     ).first<{ detalle: string }>();
 
     expect(JSON.parse(fila!.detalle)).toEqual({ escaneos: ['se-borra'] });
+  });
+});
+
+describe('borrados anonimos: el resumen cuenta la cantidad real, no -1', () => {
+  // Regresion: cuando TODOS los borrados de una coleccion no tienen identificador
+  // (num: undefined), `borrados[coleccion]` era el string "(N sin identificar)".
+  // resumen() chequeaba Array.isArray y devolvía 1 en vez de N.
+  // Este test falla con la implementacion anterior y pasa con el arreglo.
+  it('el resumen dice la cantidad real cuando todos son anonimos', async () => {
+    // Guardamos 5 filas de inventario sin `num` (anonimas).
+    expect((await guardar(await versionActual(), conInventarioAnonimo(5))).status).toBe(200);
+    // Las borramos todas de una sola vez.
+    expect((await guardar(await versionActual(), { ...conInventarioAnonimo(0), escaneos: [], tanques: [] })).status).toBe(200);
+
+    const fila = await env.DB.prepare(
+      `SELECT resumen, detalle FROM historial WHERE modulo = 'barriles'
+        ORDER BY version DESC LIMIT 1`,
+    ).first<{ resumen: string; detalle: string }>();
+
+    // El detalle tiene que agrupar los 5 anonimos correctamente.
+    expect(JSON.parse(fila!.detalle)).toEqual({ inventario: ['(5 sin identificar)'] });
+
+    // El resumen tiene que decir -5, no -1.
+    expect(fila!.resumen).toContain('−5 inventario');
   });
 });
 
