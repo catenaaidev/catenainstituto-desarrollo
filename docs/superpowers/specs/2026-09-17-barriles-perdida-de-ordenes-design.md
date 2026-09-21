@@ -145,11 +145,22 @@ colección que se agregue en el futuro: el marcador se prende en `guardar()`, qu
 es por donde pasa toda escritura, sin depender de que alguien se acuerde de sumar
 la colección a una lista. *Resolver* no. La fusión de `sincronizar()` arranca del
 estado del servidor y le aplica encima, colección por colección, las celdas del
-mapa, `escaneos`, `tanques`, `pedidos`, `revisiones`, `ediciones` y `palets`.
-Quedan afuera `inventario`, `fechaInventario` y `modoLote`: vienen tal cual de
-`d.estado` y pisan lo local. Si el único cambio sin confirmar está en una de esas
-tres, el marcador lo detecta y fuerza la fusión, pero la fusión no lo preserva.
-Una colección nueva que no se sume a esa lista queda en la misma situación.
+mapa (`boxes`), `escaneos`, `tanques`, `pedidos`, `revisiones`, `ediciones` y
+`palets` — siete de las once claves del estado.
+
+Quedan afuera **cuatro**: `inventario`, `fechaInventario`, `inventarioCorte` y
+`modoLote`. Vienen tal cual de `d.estado` y pisan lo local. `inventarioCorte` es
+la fecha de corte que escribe la importación del Excel (`estado.inventarioCorte =
+hoyISO()`) y que después leen el reporte de gerencia y el diagnóstico; faltaba en
+esta lista y en el comentario del código, que es justo lo que la lista promete
+enumerar. Si el único cambio sin confirmar está en una de esas cuatro, el marcador
+lo detecta y fuerza la fusión, pero la fusión no lo preserva.
+
+La fusión tampoco es total dentro de `boxes`: de un box que el servidor ya tiene
+se fusionan las celdas, no `nombre`/`cols`/`filas`. Renombrar o redimensionar un
+box sin tocar ninguna celda no sobrevive.
+
+Una clave nueva que no se sume a esa lista queda en la misma situación.
 Cerrarlo es alcance de la Entrega 2 (portón único de escritura).
 
 Cambios por punto:
