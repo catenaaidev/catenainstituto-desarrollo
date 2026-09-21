@@ -87,3 +87,21 @@ describe('adoptar() y el marcador', () => {
   });
 });
 
+describe('push() ante un error del servidor', () => {
+  // fetch NO rechaza ante un 500. Sin una rama else, la respuesta no matcheaba
+  // 409, ni 412, ni r.ok: la funcion terminaba en silencio y el marcador
+  // quedaba prendido pero la insignia podia seguir diciendo "sincronizado".
+  //
+  // OJO con como se busca: push() YA tiene un `} else {` (el del 412 rechazado,
+  // :1088). Buscarlo suelto daba un test que pasaba sin el arreglo. Hay que
+  // anclar la busqueda DESPUES de la rama del exito.
+  it('tiene una rama para las respuestas que no son 409, 412 ni ok', () => {
+    const i = INDEX.indexOf('async function push(');
+    expect(i, 'no encontré push()').toBeGreaterThan(-1);
+    const cuerpo = INDEX.slice(i, INDEX.indexOf('async function sondear(', i));
+    const exito = cuerpo.indexOf('} else if (r.ok) {');
+    expect(exito, 'no encontré la rama del éxito').toBeGreaterThan(-1);
+    expect(cuerpo.slice(exito)).toMatch(/\}\s*else\s*\{[\s\S]{0,300}ponerInsignia\('offline'\)/);
+  });
+});
+

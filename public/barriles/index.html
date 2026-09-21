@@ -1119,6 +1119,11 @@ async function push(confirmar) {
       snapBoxes();                 // quedó sincronizado: esta es la nueva base
       estabaOffline = false;
       ponerInsignia('ok');
+    } else {
+      // 500, 502, 503: fetch no rechaza, así que sin esta rama la función salía
+      // en silencio dejando al operario con un cartel de "sincronizado" falso.
+      // El marcador NO se toca: lo local sigue sin confirmar.
+      ponerInsignia('offline'); estabaOffline = true; necesitaResync = true;
     }
   } catch (e) { ponerInsignia('offline'); estabaOffline = true; necesitaResync = true; }
   pushEnCurso = false;
