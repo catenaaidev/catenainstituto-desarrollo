@@ -88,22 +88,43 @@ function contarBorrados(
 /**
  * Cómo se identifica un registro de cada colección de lista.
  *
+ * Tipado explícito en vez de `any` para que este archivo, que hace de barrera
+ * de seguridad, rechace en compilación un campo cambiado de nombre.
+ *
  * Sin `Record<string, ...>` a propósito: con esa anotación `keyof` colapsa a
- * `string` y se pierde el chequeo de que la colección exista.
+ * `string` y se pierde el chequeo de que la colección exista en tiempo de
+ * compilación.
  */
 const CLAVE_DE = {
-  inventario: (r: any) => String(r?.num ?? ''),
-  escaneos: (o: any) => String(o?.id ?? ''),
-  tanques: (t: any) => String(t?.num ?? ''),
-  revisiones: (r: any) => String(r?.num ?? '') + '|' + String(r?.campo ?? ''),
-  ediciones: (e: any) => String(e?.num ?? '') + '|' + String(e?.campo ?? ''),
-  pedidos: (p: any) => String(p?.id ?? ''),
+  inventario: (r: { num?: unknown }) => String(r?.num ?? ''),
+  escaneos: (o: { id?: unknown }) => String(o?.id ?? ''),
+  tanques: (t: { num?: unknown }) => String(t?.num ?? ''),
+  revisiones: (r: { num?: unknown; campo?: unknown }) =>
+    String(r?.num ?? '') + '|' + String(r?.campo ?? ''),
+  ediciones: (e: { num?: unknown; campo?: unknown }) =>
+    String(e?.num ?? '') + '|' + String(e?.campo ?? ''),
+  pedidos: (p: { id?: unknown }) => String(p?.id ?? ''),
 };
 
 export type ColeccionLista = keyof typeof CLAVE_DE;
 
 /**
- * Los identificadores que estaban y ya no están.
+ * Garantiza que el valor es array. Si el cliente manda un objeto, un string
+ * u otra cosa rara en lugar de un array, lo tratamos como lista vacía y el
+ * guardado falla cerrado (el freno puede disparar pero no tira excepción).
+ */
+function comoLista(x: unknown): unknown[] {
+  return Array.isArray(x) ? x : [];
+}
+
+/**
+ * Los identificadores que estaban y ya no están, como multiconjunto.
+ *
+ * Se usa Map<clave, cantidad> en vez de Set para tolerar claves duplicadas.
+ * `revisiones` las tiene POR DISEÑO: un barril puede tener dos pendientes del
+ * mismo campo (ver `fusionarRevisiones` en index.html). Con un Set, si había 5
+ * revisiones con la misma clave y se borran 4, la clave sigue presente en el
+ * estado nuevo y el freno contaría 0 en vez de 4.
  *
  * Contar longitudes era ciego al intercambio: un guardado que borra 3 órdenes y
  * agrega otras 3 daba cero y pasaba sin freno. Que es la forma exacta que tiene
@@ -115,18 +136,43 @@ export function idsPerdidos(
   coleccion: ColeccionLista,
 ): string[] {
   const clave = CLAVE_DE[coleccion];
-  const presentes = new Set(((nuevo?.[coleccion] as unknown[]) ?? []).map(clave));
+
+  // Multiconjunto del nuevo estado: cuántas copias de cada clave quedan.
+  const cantidadNueva = new Map<string, number>();
+  for (const x of comoLista(nuevo?.[coleccion])) {
+    const k = clave(x as Parameters<typeof clave>[0]);
+    cantidadNueva.set(k, (cantidadNueva.get(k) ?? 0) + 1);
+  }
+
+  // Por cada registro del estado actual, lo contamos como perdido si no hay
+  // suficientes copias de su clave en el estado nuevo.
   const faltan: string[] = [];
-  for (const x of ((actual?.[coleccion] as unknown[]) ?? [])) {
-    const k = clave(x);
-    if (k && k !== '|' && !presentes.has(k)) faltan.push(k);
+  const consumido = new Map<string, number>();
+  for (const x of comoLista(actual?.[coleccion])) {
+    const k = clave(x as Parameters<typeof clave>[0]);
+    const disponibles = (cantidadNueva.get(k) ?? 0) - (consumido.get(k) ?? 0);
+    if (disponibles > 0) {
+      consumido.set(k, (consumido.get(k) ?? 0) + 1);
+    } else {
+      faltan.push(k);
+    }
   }
   return faltan;
 }
 
 /** Cuánto se pierde al pasar del estado actual al nuevo. Crecer nunca es pérdida. */
 export function contarPerdidas(actual: Estado | undefined, nuevo: Estado | undefined): Perdidas {
-  const caida = (clave: ColeccionLista) => idsPerdidos(actual, nuevo, clave).length;
+  /**
+   * El piso garantiza que ninguna noción futura de identidad pueda debilitar
+   * el freno en silencio. Si `idsPerdidos` subestima (p. ej. porque la clave
+   * resulta vacía para registros que no tienen el campo esperado), el delta de
+   * longitudes actúa de red: el freno nuevo nunca puede quedar más débil que
+   * el viejo conteo por longitudes.
+   */
+  const caida = (c: ColeccionLista) => Math.max(
+    idsPerdidos(actual, nuevo, c).length,
+    comoLista(actual?.[c]).length - comoLista(nuevo?.[c]).length,
+  );
 
   return {
     celdas: contarBorrados(actual, nuevo, 'boxes'),

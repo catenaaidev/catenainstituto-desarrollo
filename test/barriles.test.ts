@@ -176,3 +176,70 @@ describe('idsPerdidos', () => {
     expect(idsPerdidos(antes, despues, 'escaneos')).toEqual(['a']);
   });
 });
+
+describe('claves duplicadas (revisiones con el mismo num+campo)', () => {
+  // revisiones tiene claves duplicadas POR DISEÑO: un barril puede tener dos
+  // pendientes del mismo campo (ver fusionarRevisiones en index.html).
+  // Con un Set puro, si había 5 revisiones con la misma clave y se borran 4,
+  // la clave sigue presente y el freno contaría 0 en vez de 4.
+  it('cuenta 4 perdidas cuando habia 5 revisiones con la misma clave y quedan solo 1', () => {
+    const revision = { num: '42', campo: 'lote' };
+    const antes = estado({ revisiones: [revision, revision, revision, revision, revision] });
+    const despues = estado({ revisiones: [revision] });
+    const p = contarPerdidas(antes, despues);
+    expect(p.revisiones).toBe(4);
+    expect(superanUmbral(p)).toBe(true);
+  });
+});
+
+describe('registros sin clave (inventario con num vacío)', () => {
+  // La importación de Excel pasa el filtro si la celda tiene espacios, y el
+  // registro llega con num: ''. Con un Set, la clave vacía se descartaba y el
+  // freno no los contaba. El piso de longitudes los cubre.
+  it('cuenta los registros sin identificador que desaparecen', () => {
+    const sinClave = { num: '' };
+    const antes = estado({ inventario: [sinClave, sinClave, sinClave, sinClave, sinClave,
+      sinClave, sinClave, sinClave, sinClave, sinClave, sinClave, sinClave, sinClave,
+      sinClave, sinClave, sinClave] }); // 16 > UMBRAL_INVENTARIO (15)
+    const despues = estado({ inventario: [] });
+    const p = contarPerdidas(antes, despues);
+    expect(p.inventario).toBe(16);
+    expect(superanUmbral(p)).toBe(true);
+  });
+});
+
+describe('coleccion que no es array', () => {
+  // La validación de rutas.ts solo exige que `estado` sea un objeto no-array;
+  // las colecciones individuales no se validan. El código viejo (?.length ?? 0)
+  // toleraba eso. El nuevo tampoco debe explotar.
+  it('no tira excepcion cuando la coleccion es un objeto en vez de array', () => {
+    // Construcción manual para saltear el helper estado() que rellena arrays.
+    const antes = { escaneos: { id: 'raro' } } as unknown as Estado;
+    const despues = { escaneos: [{ id: 'a' }] } as unknown as Estado;
+    expect(() => contarPerdidas(antes, despues)).not.toThrow();
+  });
+
+  it('no tira excepcion cuando la coleccion es un string en vez de array', () => {
+    const antes = { inventario: 'hola' } as unknown as Estado;
+    const despues = { inventario: [] } as unknown as Estado;
+    expect(() => contarPerdidas(antes, despues)).not.toThrow();
+  });
+
+  it('no tira excepcion cuando la coleccion falta en actual', () => {
+    const antes = {} as unknown as Estado;
+    const despues = { escaneos: [{ id: 'a' }] } as unknown as Estado;
+    expect(() => contarPerdidas(antes, despues)).not.toThrow();
+  });
+
+  it('no tira excepcion cuando la coleccion falta en nuevo', () => {
+    const antes = { escaneos: [{ id: 'a' }] } as unknown as Estado;
+    const despues = {} as unknown as Estado;
+    expect(() => contarPerdidas(antes, despues)).not.toThrow();
+  });
+
+  it('no tira excepcion cuando la coleccion falta en los dos', () => {
+    const antes = {} as unknown as Estado;
+    const despues = {} as unknown as Estado;
+    expect(() => contarPerdidas(antes, despues)).not.toThrow();
+  });
+});
