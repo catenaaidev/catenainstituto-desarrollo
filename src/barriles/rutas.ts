@@ -13,7 +13,7 @@ import { contarPerdidas, superanUmbral, type Estado } from './guardas';
 
 const MODULO = 'barriles';
 
-interface Documento {
+export interface Documento {
   version: number;
   estado: Estado;
 }
@@ -33,30 +33,42 @@ async function leer(env: Env): Promise<Documento> {
  * de más arriba quedaba fuera de la escritura y dos dispositivos que lo pasaban
  * con la misma versión escribían los dos. Devuelve false si otro escribió en el
  * medio; el llamador responde 409 y el cliente fusiona.
+ *
+ * El INSERT unificado resuelve también la ambigüedad de versionPrevia === 0:
+ * eso puede significar "no hay fila todavía" O "hay una fila cuyo json dice
+ * version: 0" (importar a la nube con un export sin el campo lo deja así).
+ * La rama anterior entraba por DO NOTHING en ambos casos, pero en el segundo
+ * chocaba con la fila existente, changes = 0, y devolvía false para siempre:
+ * la app quedaba trabada en 409 sin poder escribir nunca más.
+ * Con el WHERE en el DO UPDATE, si la fila existe con esa versión se actualiza;
+ * si existe con otra versión no se toca nada y changes = 0 devuelve false.
  */
-async function escribir(
+export async function escribir(
   env: Env,
   doc: Documento,
   email: string,
   versionPrevia: number,
 ): Promise<boolean> {
-  const json = JSON.stringify(doc);
-  const escritura =
-    versionPrevia === 0
-      ? // No hay fila todavía. Si otro la creó en el medio, DO NOTHING no toca nada.
-        env.DB.prepare(
-          `INSERT INTO documento (modulo, version, json, autor, guardado)
-           VALUES (?, ?, ?, ?, datetime('now'))
-           ON CONFLICT(modulo) DO NOTHING`,
-        ).bind(MODULO, doc.version, json, email)
-      : env.DB.prepare(
-          `UPDATE documento
-              SET version = ?, json = ?, autor = ?, guardado = datetime('now')
-            WHERE modulo = ? AND version = ?`,
-        ).bind(doc.version, json, email, MODULO, versionPrevia);
+  const jsonDoc = JSON.stringify(doc);
+  // Una sola sentencia para los dos casos (no hay fila / hay fila con versionPrevia).
+  // El WHERE en el DO UPDATE garantiza que solo se escribe si la versión no cambió,
+  // sin ambigüedad sobre si versionPrevia === 0 significa "fila ausente" o "fila en v0".
+  // IMPORTANTE: version tiene que quedar siempre igual a $.version del json;
+  // leer() saca la versión del json parseado, no de la columna — si se desacoplan
+  // el compare-and-swap empieza a comparar contra el valor equivocado.
+  const escritura = env.DB.prepare(
+    `INSERT INTO documento (modulo, version, json, autor, guardado)
+     VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(modulo) DO UPDATE SET
+       version  = excluded.version,
+       json     = excluded.json,
+       autor    = excluded.autor,
+       guardado = excluded.guardado
+     WHERE documento.version = ?`,
+  ).bind(MODULO, doc.version, jsonDoc, email, versionPrevia);
 
-  const r = await env.DB.batch([marcarSesion(env, email), escritura]);
-  return (r[1].meta.changes ?? 0) > 0;
+  const [, resEscritura] = await env.DB.batch([marcarSesion(env, email), escritura]);
+  return (resEscritura.meta.changes ?? 0) > 0;
 }
 
 export async function rutasBarriles(
