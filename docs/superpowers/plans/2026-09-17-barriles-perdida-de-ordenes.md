@@ -177,7 +177,7 @@ globalThis.decidirArranque = decidirArranque;
 - [ ] **Step 4: Correr el test y ver que pasa**
 
 Run: `npx vitest run test/barriles-pendientes.test.mjs`
-Expected: PASS, 11 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Commit**
 
