@@ -16,6 +16,10 @@ export const UMBRAL_ESCANEOS = 3;
 export const UMBRAL_TANQUES = 5;
 /** Casilleros de palets vaciados (aprox. un palet lleno). */
 export const UMBRAL_PALETS = 9;
+/** Revisiones, ediciones a mano y pedidos de rótulos: mismo criterio que escaneos. */
+export const UMBRAL_REVISIONES = 3;
+export const UMBRAL_EDICIONES = 3;
+export const UMBRAL_PEDIDOS = 3;
 
 /** Un box o un palet: un contenedor con celdas identificadas por clave. */
 export interface Contenedor {
@@ -29,6 +33,9 @@ export interface Estado {
   inventario?: unknown[];
   escaneos?: unknown[];
   tanques?: unknown[];
+  revisiones?: unknown[];
+  ediciones?: unknown[];
+  pedidos?: unknown[];
   [k: string]: unknown;
 }
 
@@ -38,6 +45,9 @@ export interface Perdidas {
   escaneos: number;
   tanques: number;
   palets: number;
+  revisiones: number;
+  ediciones: number;
+  pedidos: number;
 }
 
 /** Claves con valor, agrupadas por contenedor (box o palet). */
@@ -75,10 +85,48 @@ function contarBorrados(
   return total;
 }
 
+/**
+ * Cómo se identifica un registro de cada colección de lista.
+ *
+ * Sin `Record<string, ...>` a propósito: con esa anotación `keyof` colapsa a
+ * `string` y se pierde el chequeo de que la colección exista.
+ */
+const CLAVE_DE = {
+  inventario: (r: any) => String(r?.num ?? ''),
+  escaneos: (o: any) => String(o?.id ?? ''),
+  tanques: (t: any) => String(t?.num ?? ''),
+  revisiones: (r: any) => String(r?.num ?? '') + '|' + String(r?.campo ?? ''),
+  ediciones: (e: any) => String(e?.num ?? '') + '|' + String(e?.campo ?? ''),
+  pedidos: (p: any) => String(p?.id ?? ''),
+};
+
+export type ColeccionLista = keyof typeof CLAVE_DE;
+
+/**
+ * Los identificadores que estaban y ya no están.
+ *
+ * Contar longitudes era ciego al intercambio: un guardado que borra 3 órdenes y
+ * agrega otras 3 daba cero y pasaba sin freno. Que es la forma exacta que tiene
+ * la falla que este freno tiene que atajar.
+ */
+export function idsPerdidos(
+  actual: Estado | undefined,
+  nuevo: Estado | undefined,
+  coleccion: ColeccionLista,
+): string[] {
+  const clave = CLAVE_DE[coleccion];
+  const presentes = new Set(((nuevo?.[coleccion] as unknown[]) ?? []).map(clave));
+  const faltan: string[] = [];
+  for (const x of ((actual?.[coleccion] as unknown[]) ?? [])) {
+    const k = clave(x);
+    if (k && k !== '|' && !presentes.has(k)) faltan.push(k);
+  }
+  return faltan;
+}
+
 /** Cuánto se pierde al pasar del estado actual al nuevo. Crecer nunca es pérdida. */
 export function contarPerdidas(actual: Estado | undefined, nuevo: Estado | undefined): Perdidas {
-  const caida = (clave: 'inventario' | 'escaneos' | 'tanques') =>
-    Math.max(0, (actual?.[clave]?.length ?? 0) - (nuevo?.[clave]?.length ?? 0));
+  const caida = (clave: ColeccionLista) => idsPerdidos(actual, nuevo, clave).length;
 
   return {
     celdas: contarBorrados(actual, nuevo, 'boxes'),
@@ -86,6 +134,9 @@ export function contarPerdidas(actual: Estado | undefined, nuevo: Estado | undef
     escaneos: caida('escaneos'),
     tanques: caida('tanques'),
     palets: contarBorrados(actual, nuevo, 'palets'),
+    revisiones: caida('revisiones'),
+    ediciones: caida('ediciones'),
+    pedidos: caida('pedidos'),
   };
 }
 
@@ -95,6 +146,9 @@ export function superanUmbral(p: Perdidas): boolean {
     p.inventario >= UMBRAL_INVENTARIO ||
     p.escaneos >= UMBRAL_ESCANEOS ||
     p.tanques >= UMBRAL_TANQUES ||
-    p.palets >= UMBRAL_PALETS
+    p.palets >= UMBRAL_PALETS ||
+    p.revisiones >= UMBRAL_REVISIONES ||
+    p.ediciones >= UMBRAL_EDICIONES ||
+    p.pedidos >= UMBRAL_PEDIDOS
   );
 }

@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   contarPerdidas,
   superanUmbral,
+  idsPerdidos,
   UMBRAL_BORRADO,
   UMBRAL_INVENTARIO,
   UMBRAL_ESCANEOS,
@@ -26,10 +27,13 @@ function box(id: string, n: number): Contenedor {
 }
 
 function estado(parcial: Partial<Estado> = {}): Estado {
-  return { boxes: [], palets: [], inventario: [], escaneos: [], tanques: [], ...parcial };
+  return { boxes: [], palets: [], inventario: [], escaneos: [], tanques: [], revisiones: [], ediciones: [], pedidos: [], ...parcial };
 }
 
-const lista = (n: number) => Array.from({ length: n }, (_, i) => ({ id: i }));
+// Los items llevan tanto `id` como `num` para que CLAVE_DE los identifique
+// correctamente en todas las colecciones (inventario/tanques usan `num`,
+// escaneos usa `id`).
+const lista = (n: number) => Array.from({ length: n }, (_, i) => ({ id: i, num: i }));
 
 describe('conteo de celdas vaciadas', () => {
   it('no cuenta nada si no cambió nada', () => {
@@ -88,7 +92,8 @@ describe('caídas en las colecciones', () => {
 });
 
 describe('cuándo se pide confirmación', () => {
-  const cero = { celdas: 0, inventario: 0, escaneos: 0, tanques: 0, palets: 0 };
+  // Incluye las colecciones nuevas para que el tipo `Perdidas` cierre sin error TS.
+  const cero = { celdas: 0, inventario: 0, escaneos: 0, tanques: 0, palets: 0, revisiones: 0, ediciones: 0, pedidos: 0 };
 
   it('no molesta cuando no se pierde nada', () => {
     expect(superanUmbral(cero)).toBe(false);
@@ -116,5 +121,58 @@ describe('cuándo se pide confirmación', () => {
     const p = contarPerdidas(antes, despues);
     expect(p.inventario).toBe(2354);
     expect(superanUmbral(p)).toBe(true);
+  });
+});
+
+describe('el freno ve los intercambios, no solo las bajas netas', () => {
+  // Contar longitudes es ciego a esto: se borran 3 ordenes y se agregan 3, el
+  // delta da 0 y el freno no salta. Es la forma exacta que tiene esta falla.
+  it('frena cuando se borran 3 ordenes y se agregan otras 3', () => {
+    const antes = estado({ escaneos: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] });
+    const despues = estado({ escaneos: [{ id: 'x' }, { id: 'y' }, { id: 'z' }] });
+    const p = contarPerdidas(antes, despues);
+    expect(p.escaneos).toBe(3);
+    expect(superanUmbral(p)).toBe(true);
+  });
+
+  it('no frena si las mismas ordenes siguen estando, en otro orden', () => {
+    const antes = estado({ escaneos: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] });
+    const despues = estado({ escaneos: [{ id: 'c' }, { id: 'a' }, { id: 'b' }] });
+    expect(contarPerdidas(antes, despues).escaneos).toBe(0);
+  });
+
+  it('agregar sin borrar nunca es perdida', () => {
+    const antes = estado({ escaneos: [{ id: 'a' }] });
+    const despues = estado({ escaneos: [{ id: 'a' }, { id: 'b' }] });
+    expect(contarPerdidas(antes, despues).escaneos).toBe(0);
+  });
+});
+
+describe('las colecciones que no tenian ningun freno', () => {
+  it('cuenta las revisiones que desaparecen', () => {
+    const antes = estado({ revisiones: [
+      { num: '1', campo: 'lote' }, { num: '2', campo: 'lote' }, { num: '3', campo: 'lote' }] });
+    const p = contarPerdidas(antes, estado({ revisiones: [] }));
+    expect(p.revisiones).toBe(3);
+    expect(superanUmbral(p)).toBe(true);
+  });
+
+  it('cuenta las ediciones a mano que desaparecen', () => {
+    const antes = estado({ ediciones: [
+      { num: '1', campo: 'litros' }, { num: '2', campo: 'litros' }, { num: '3', campo: 'litros' }] });
+    expect(superanUmbral(contarPerdidas(antes, estado({ ediciones: [] })))).toBe(true);
+  });
+
+  it('cuenta los pedidos de rotulos que desaparecen', () => {
+    const antes = estado({ pedidos: [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }] });
+    expect(superanUmbral(contarPerdidas(antes, estado({ pedidos: [] })))).toBe(true);
+  });
+});
+
+describe('idsPerdidos', () => {
+  it('devuelve los ids concretos, para que el historial pueda nombrarlos', () => {
+    const antes = estado({ escaneos: [{ id: 'a' }, { id: 'b' }] });
+    const despues = estado({ escaneos: [{ id: 'b' }] });
+    expect(idsPerdidos(antes, despues, 'escaneos')).toEqual(['a']);
   });
 });

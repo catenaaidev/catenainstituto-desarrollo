@@ -1081,6 +1081,9 @@ function msgPerdidas(info) {
   if (p.escaneos) partes.push(p.escaneos + ' orden(es) del escáner');
   if (p.tanques) partes.push(p.tanques + ' tanque(s) asociado(s)');
   if (p.palets) partes.push(p.palets + ' casillero(s) de palets');
+  if (p.revisiones) partes.push(p.revisiones + ' pendiente(s) de revisión');
+  if (p.ediciones) partes.push(p.ediciones + ' corrección(es) a mano');
+  if (p.pedidos) partes.push(p.pedidos + ' pedido(s) de rótulos');
   return '⚠ Este cambio borra ' + (partes.join(', ') || 'datos ya cargados') +
     '.\n¿Continuar de todos modos?';
 }
