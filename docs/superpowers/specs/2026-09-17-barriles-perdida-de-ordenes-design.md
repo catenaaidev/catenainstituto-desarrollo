@@ -121,10 +121,20 @@ let pendienteLocal = false;   // hay algo escrito acá que el servidor no confir
 ```
 
 - `guardar()` lo prende y lo persiste en `localStorage` junto al estado.
-- Solo lo apaga un **200 del servidor** (en `push()` :1092 y al cierre exitoso de
-  `sincronizar()`).
+- Lo apaga un **200 del servidor** (en `push()` :1092 y al cierre exitoso de
+  `sincronizar()` :1329) **y `adoptar()`**.
 - `hayPendientes()` pasa a ser
   `pendienteLocal || diffBoxesLocal().length > 0 || diffPaletsLocal().length > 0`.
+
+Que `adoptar()` también lo apague no es una concesión: adoptar el estado del
+servidor significa, por definición, que no queda nada local sin confirmar. Y sin
+eso el arreglo introduce un bucle. `adoptar()` se llama desde cuatro lugares; en
+dos el marcador ya está apagado, pero los otros dos son el camino del **412
+rechazado**: cuando el servidor frena un borrado masivo y el operario contesta
+que no, `push()` (:1089) y `sincronizar()` (:1326) descartan lo local a
+propósito. Con el marcador prendido ahí, `hayPendientes()` daría verdadero para
+siempre y el operario recibiría un cartel de confirmación cada tres segundos, sin
+salida.
 
 Persistirlo es lo que tapa el punto 4: al arrancar, `iniciar()` lee el marcador
 del disco y sabe que ese celular tiene trabajo sin subir aunque no haya tocado el
