@@ -557,12 +557,17 @@ describe('push() ante un error del servidor', () => {
   // fetch NO rechaza ante un 500. Sin una rama else, la respuesta no matcheaba
   // 409, ni 412, ni r.ok: la funcion terminaba en silencio y el marcador
   // quedaba prendido pero la insignia podia seguir diciendo "sincronizado".
+  //
+  // OJO con como se busca: push() YA tiene un `} else {` (el del 412 rechazado,
+  // :1088). Buscarlo suelto daba un test que pasaba sin el arreglo. Hay que
+  // anclar la busqueda DESPUES de la rama del exito.
   it('tiene una rama para las respuestas que no son 409, 412 ni ok', () => {
     const i = INDEX.indexOf('async function push(');
     expect(i, 'no encontré push()').toBeGreaterThan(-1);
     const cuerpo = INDEX.slice(i, INDEX.indexOf('async function sondear(', i));
-    expect(cuerpo).toMatch(/\}\s*else\s*\{/);
-    expect(cuerpo).toContain("ponerInsignia('offline')");
+    const exito = cuerpo.indexOf('} else if (r.ok) {');
+    expect(exito, 'no encontré la rama del éxito').toBeGreaterThan(-1);
+    expect(cuerpo.slice(exito)).toMatch(/\}\s*else\s*\{[\s\S]{0,300}ponerInsignia\('offline'\)/);
   });
 });
 ```
@@ -654,33 +659,66 @@ async function guardar(version: number, estado: unknown) {
   return res!;
 }
 
+/** El documento completo, como lo baja la pantalla. */
+async function leerDoc() {
+  const req = new Request('https://catenainstitute.example/barriles/api/estado', {
+    headers: { 'Cf-Access-Authenticated-User-Email': EDITOR },
+  });
+  const ctx = createExecutionContext();
+  const res = await rutasBarriles(req, env, ctx, '/estado');
+  await waitOnExecutionContext(ctx);
+  return res!.json<{ version: number; estado: { escaneos?: { id: string }[] } }>();
+}
+
+/**
+ * La version que hay AHORA. Los describe de este archivo comparten
+ * almacenamiento, asi que despues del primer guardado la version ya no es 0:
+ * asumirlo hacia que el test rompiera por 409 y no por el defecto que persigue.
+ */
+async function versionActual() {
+  return (await leerDoc()).version;
+}
+
 function conOrdenes(...ids: string[]) {
   return { boxes: [], palets: [], inventario: [], tanques: [],
            escaneos: ids.map((id) => ({ id, ot: '1', lote: '1', tipo: 'vaciado', codigos: [] })) };
 }
 
 describe('dos guardados desde la misma version', () => {
+  // OJO: en secuencia esto NO prueba nada. El chequeo `pedido.version !==
+  // doc.version` YA existe y devuelve 409 para el segundo, asi que un test
+  // secuencial pasa igual sin compare-and-swap.
+  //
+  // La carrera real es que los dos lean ANTES de que cualquiera escriba. Con
+  // Promise.all en un isolate de un solo hilo, los dos llegan a su `await
+  // leer(env)` y ceden; cuando resuelven, los dos tienen la misma version y los
+  // dos pasan el chequeo. Ahi es donde el ON CONFLICT DO UPDATE escribia dos
+  // veces y el segundo se llevaba puesto al primero.
   it('el segundo recibe 409 y no pisa al primero', async () => {
-    const primero = await guardar(0, conOrdenes('a'));
-    expect(primero.status).toBe(200);
-    const { version } = await primero.json<{ version: number }>();
+    const base = await versionActual();
+    expect((await guardar(base, conOrdenes('a'))).status).toBe(200);
+    const version = await versionActual();
 
-    // Dos celulares que bajaron la misma version y guardan casi a la vez.
-    const a = await guardar(version, conOrdenes('a', 'celular-A'));
-    const b = await guardar(version, conOrdenes('a', 'celular-B'));
+    const [a, b] = await Promise.all([
+      guardar(version, conOrdenes('a', 'celular-A')),
+      guardar(version, conOrdenes('a', 'celular-B')),
+    ]);
 
-    expect(a.status).toBe(200);
-    expect(b.status).toBe(409);
+    const estados = [a.status, b.status].sort();
+    expect(estados).toEqual([200, 409]);
 
-    // Y lo del primero sigue estando.
-    const req = new Request('https://catenainstitute.example/barriles/api/estado', {
-      headers: { 'Cf-Access-Authenticated-User-Email': EDITOR },
-    });
-    const ctx = createExecutionContext();
-    const res = await rutasBarriles(req, env, ctx, '/estado');
-    await waitOnExecutionContext(ctx);
-    const doc = await res!.json<{ estado: { escaneos: { id: string }[] } }>();
-    expect(doc.estado.escaneos.map((o) => o.id)).toContain('celular-A');
+    // Y el que gano sigue estando: no quedaron los dos escritos ni se perdieron
+    // los dos.
+    const doc = await leerDoc();
+    const ids = (doc.estado.escaneos ?? []).map((o) => o.id);
+    expect(ids).toContain('a');
+    expect(ids.includes('celular-A') !== ids.includes('celular-B')).toBe(true);
+  });
+
+  it('una version vieja tambien se rechaza', async () => {
+    const version = await versionActual();
+    expect((await guardar(version, conOrdenes('a', 'nuevo'))).status).toBe(200);
+    expect((await guardar(version, conOrdenes('a', 'tarde'))).status).toBe(409);
   });
 });
 
@@ -692,7 +730,22 @@ describe('un POST sin estado', () => {
         'Content-Type': 'application/json',
         'Cf-Access-Authenticated-User-Email': EDITOR,
       },
-      body: JSON.stringify({ version: 0 }),   // sin campo `estado`
+      body: JSON.stringify({ version: await versionActual() }),   // sin campo `estado`
+    });
+    const ctx = createExecutionContext();
+    const res = await rutasBarriles(req, env, ctx, '/estado');
+    await waitOnExecutionContext(ctx);
+    expect(res!.status).toBe(400);
+  });
+
+  it('se rechaza tambien con una version vieja: malformado es malformado', async () => {
+    const req = new Request('https://catenainstitute.example/barriles/api/estado', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cf-Access-Authenticated-User-Email': EDITOR,
+      },
+      body: JSON.stringify({ version: 0 }),
     });
     const ctx = createExecutionContext();
     const res = await rutasBarriles(req, env, ctx, '/estado');
@@ -748,7 +801,11 @@ async function escribir(
 
 - [ ] **Step 4: El POST valida la entrada y respeta el 409**
 
-En el handler del POST, reemplazar la línea `const nuevoEstado = pedido.estado ?? {};` (:121):
+La validación va **antes** del chequeo de versión, inmediatamente después del
+`catch { return json(400, { error: 'JSON invalido' }); }` que cierra el parseo del
+body (:112-114) y antes de `const doc = await leer(env);` (:116). Una petición
+malformada lo es independientemente de la versión; si va después, un POST sin
+`estado` y con versión vieja devuelve 409 en vez de 400 y el defecto queda tapado.
 
 ```ts
     // Sin esto, un POST sin `estado` reemplazaba el documento entero por {}.
@@ -758,6 +815,11 @@ En el handler del POST, reemplazar la línea `const nuevoEstado = pedido.estado 
         detalles: ['falta el estado: un guardado sin estado borraría todo'],
       });
     }
+```
+
+Y reemplazar la línea `const nuevoEstado = pedido.estado ?? {};` (:121) por:
+
+```ts
     const nuevoEstado = pedido.estado;
 ```
 
@@ -1004,9 +1066,10 @@ En `test/barriles-guardado.test.ts`:
 ```ts
 describe('el historial deja rastro de lo que desaparecio', () => {
   it('guarda los ids borrados en detalle, no un corchete vacio', async () => {
-    const primero = await guardar(0, conOrdenes('sobrevive', 'se-borra'));
-    const { version } = await primero.json<{ version: number }>();
-    expect((await guardar(version, conOrdenes('sobrevive'))).status).toBe(200);
+    // versionActual(), no 0: este describe comparte almacenamiento con los de
+    // arriba, asi que el documento ya no esta en la version inicial.
+    expect((await guardar(await versionActual(), conOrdenes('sobrevive', 'se-borra'))).status).toBe(200);
+    expect((await guardar(await versionActual(), conOrdenes('sobrevive'))).status).toBe(200);
 
     const fila = await env.DB.prepare(
       `SELECT detalle FROM historial WHERE modulo = 'barriles'
