@@ -8,8 +8,15 @@
  *
  * La lección: no se infiere del contenido si hay trabajo sin confirmar, se marca
  * el hecho. `pendienteLocal` lo prende cada guardado y solo lo apaga un 200 del
- * servidor. Así queda cubierta cualquier colección, incluidas las que se agreguen
- * después, sin depender de que alguien se acuerde de sumarla a una lista.
+ * servidor.
+ *
+ * Ojo con el alcance, que no es el mismo para las dos mitades del problema:
+ * DETECTAR que hay trabajo sin confirmar sí cubre cualquier colección, incluidas
+ * las que se agreguen después, porque el marcador se prende en `guardar()`, que
+ * es por donde pasa toda escritura. RESOLVERLO no: la fusión de `sincronizar()`
+ * recorre colección por colección una lista escrita a mano, y lo que no figura
+ * ahí viene tal cual del servidor y pisa lo local. Ver el comentario de `serv`
+ * en `sincronizar()` para la enumeración de lo que queda afuera.
  *
  * Se testea en test/barriles-pendientes.test.mjs.
  */
@@ -68,6 +75,37 @@ function decidirConfirmacion({ selloEnviado, selloActual }) {
   return selloEnviado === selloActual ? 'adoptar-envio' : 'reintentar';
 }
 
+/**
+ * Volvió el GET de `/estado` y estoy por pisar lo local con lo del servidor.
+ * ¿Sigue siendo seguro pisar?
+ *
+ * Es la misma carrera de `decidirConfirmacion` por la tercera puerta. En
+ * `sondear()`, la pregunta "¿tengo algo sin subir?" se hacía ANTES de pedir el
+ * estado, y el GET tarda cientos de milisegundos: si el operario escanea en ese
+ * hueco, `adoptar()` pisaba `estado`, apagaba el marcador que cubría la orden
+ * nueva y reescribía localStorage. La orden desaparecía sin dejar rastro.
+ *
+ * Por eso la decisión se vuelve a tomar con la respuesta ya en la mano, y con
+ * las dos señales que ya existen:
+ *  - `hayPendientes`: el marcador más los diffs de celdas, recalculado recién.
+ *  - el sello, que delata un guardado ocurrido durante el vuelo del GET aunque
+ *    el marcador se haya apagado y vuelto a prender en el medio.
+ *
+ * Devuelve 'adoptar' (no había nada local que proteger) o 'fusionar' (apareció
+ * trabajo sin confirmar: que lo resuelva `sincronizar()`, que no descarta nada).
+ * Ante sellos que no son números, fusionar: fusionar de más cuesta un POST.
+ *
+ * No hay bucle: fusionar sube lo local y avanza la versión, así que la vuelta
+ * siguiente ya no ve al servidor adelantado.
+ */
+function decidirAdopcion({ selloAntes, selloActual, hayPendientes }) {
+  if (hayPendientes) return 'fusionar';
+  return decidirConfirmacion({ selloEnviado: selloAntes, selloActual }) === 'adoptar-envio'
+    ? 'adoptar'
+    : 'fusionar';
+}
+
 globalThis.decidirSincronizacion = decidirSincronizacion;
 globalThis.decidirArranque = decidirArranque;
 globalThis.decidirConfirmacion = decidirConfirmacion;
+globalThis.decidirAdopcion = decidirAdopcion;

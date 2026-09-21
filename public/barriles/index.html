@@ -1168,8 +1168,27 @@ async function sondear() {
       if (hayPendientes()) { await sincronizar(true); necesitaResync = false; return; }
     }
     if (d.version !== versionServidor) {
-      if (hayPendientes()) await sincronizar(false);   // no pisar: fusionar
-      else adoptar(await (await fetch(API+'/estado', { cache: 'no-store' })).json());
+      if (hayPendientes()) { await sincronizar(false); }   // no pisar: fusionar
+      else {
+        // El sello se captura ANTES del GET, igual que antes del POST en push().
+        // Este GET tarda cientos de milisegundos y nada frena a `guardar()` en el
+        // medio: el guard de entrada de sondear() ya quedó atrás. Si el operario
+        // escanea acá, adoptar() pisaría `estado` y apagaría el marcador que
+        // cubría esa orden. Por eso la decisión se rehace con la respuesta en la
+        // mano: hayPendientes() de nuevo, más el sello, que delata el guardado
+        // aunque el marcador haya ido y vuelto.
+        const selloAntes = selloGuardado;
+        const remoto = await (await fetch(API+'/estado', { cache: 'no-store' })).json();
+        if (decidirAdopcion({ selloAntes, selloActual: selloGuardado, hayPendientes: hayPendientes() }) === 'adoptar') {
+          adoptar(remoto);
+        } else {
+          // Apareció trabajo sin confirmar durante el vuelo: no se pisa, se
+          // fusiona. No es un bucle: sincronizar() sube lo local y deja
+          // versionServidor al día, así que el próximo sondeo ya no ve al
+          // servidor adelantado y no vuelve a entrar acá.
+          await sincronizar(false);
+        }
+      }
     }
     necesitaResync = false;   // quedamos alineados con el servidor
     ponerInsignia('ok');
@@ -1345,15 +1364,27 @@ async function sincronizar(avisar) {
       const n = contarPendientes();
       // OJO con el alcance de la fusión. Lo que sigue arranca del estado DEL
       // SERVIDOR y le aplica encima lo local, colección por colección: celdas del
-      // mapa, escaneos, tanques, pedidos, revisiones, ediciones y palets. Todo lo
-      // demás del estado viene tal cual de `d.estado` y pisa lo local: hoy eso es
-      // `inventario`, `fechaInventario` y `modoLote`. El marcador DETECTA que hay
-      // trabajo sin confirmar en cualquier colección, incluidas esas tres, pero
-      // esta fusión no lo RESUELVE: si el único cambio local está en inventario,
-      // se pierde igual. Cerrar ese hueco es alcance de la Entrega 2 (portón único
-      // de escritura). Si agregás una colección nueva al estado, sumala acá.
+      // mapa (`boxes`), `escaneos`, `tanques`, `pedidos`, `revisiones`,
+      // `ediciones` y `palets`. Son siete; el estado tiene once claves.
+      //
+      // Las CUATRO que quedan afuera vienen tal cual de `d.estado` y pisan lo
+      // local: `inventario`, `fechaInventario`, `inventarioCorte` y `modoLote`.
+      // Las tres primeras las escribe la importación del Excel de inventario, la
+      // cuarta el switch de modo por lote. Esta lista se verificó una por una
+      // contra las claves que toca la app: si agregás una clave nueva al estado,
+      // o la fusionás acá abajo, o sumala a esta enumeración. Que el comentario
+      // mienta es peor que no tenerlo.
+      //
+      // Y dentro de `boxes` la fusión tampoco es total: de un box que el servidor
+      // YA tiene se fusionan las celdas, no `nombre`/`cols`/`filas`. Renombrar o
+      // redimensionar un box sin tocar ninguna celda no sobrevive a esta fusión.
+      //
+      // El marcador DETECTA que hay trabajo sin confirmar en cualquier clave,
+      // incluidas esas cuatro, pero esta fusión no lo RESUELVE: si el único
+      // cambio local está en `inventario`, se pierde igual. Cerrar ese hueco es
+      // alcance de la Entrega 2 (portón único de escritura).
       const serv = d.estado || { inventario: estado.inventario, boxes: [], escaneos: [], tanques: [], palets: [],
-        fechaInventario: estado.fechaInventario, modoLote: estado.modoLote };
+        fechaInventario: estado.fechaInventario, inventarioCorte: estado.inventarioCorte, modoLote: estado.modoLote };
       const conflictos = aplicarDiffEnServidor(serv, cambios);
       // unir órdenes de escáner por id (por las dudas, aunque no se carguen offline)
       const idsSrv = new Set((serv.escaneos || []).map(o => o.id));

@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import '../public/barriles/js/pendientes.js';
 
-const { decidirSincronizacion, decidirArranque, decidirConfirmacion } = globalThis;
+const { decidirSincronizacion, decidirArranque, decidirConfirmacion, decidirAdopcion } = globalThis;
 
 describe('decidirSincronizacion', () => {
   it('piso lo local solo si no hay absolutamente nada sin confirmar', () => {
@@ -85,6 +85,90 @@ describe('decidirConfirmacion', () => {
 
   it('reintenta ante sellos que no son números, en vez de dar por confirmado', () => {
     expect(decidirConfirmacion({ selloEnviado: undefined, selloActual: 0 })).toBe('reintentar');
+  });
+});
+
+describe('decidirAdopcion', () => {
+  it('adopta si nadie escribió mientras el GET viajaba', () => {
+    expect(decidirAdopcion({ selloAntes: 4, selloActual: 4, hayPendientes: false })).toBe('adoptar');
+  });
+
+  // El agujero del punto 1: sondear() preguntaba hayPendientes() ANTES del GET.
+  it('fusiona si apareció trabajo sin confirmar durante el vuelo del GET', () => {
+    expect(decidirAdopcion({ selloAntes: 4, selloActual: 5, hayPendientes: true })).toBe('fusionar');
+  });
+
+  // El sello solo: cubre el caso en que el marcador se apagó y volvió a prender
+  // (o se apagó por un 200 de otra vía) mientras el GET estaba en el aire.
+  it('fusiona por el sello aunque hayPendientes() diga que no', () => {
+    expect(decidirAdopcion({ selloAntes: 4, selloActual: 5, hayPendientes: false })).toBe('fusionar');
+  });
+
+  it('fusiona si el marcador está prendido aunque el sello no se haya movido', () => {
+    expect(decidirAdopcion({ selloAntes: 4, selloActual: 4, hayPendientes: true })).toBe('fusionar');
+  });
+
+  it('fusiona ante sellos que no son números, en vez de pisar', () => {
+    expect(decidirAdopcion({ selloAntes: undefined, selloActual: 4, hayPendientes: false })).toBe('fusionar');
+  });
+});
+
+/**
+ * La tercera puerta de la misma carrera: sondear() ve que el servidor está
+ * adelantado, pregunta si hay pendientes, y recién DESPUÉS pide el estado. El
+ * GET tarda cientos de milisegundos y el operario escanea en el medio.
+ *
+ * Con el código viejo (decidir antes del GET) la orden desaparecía: adoptar()
+ * pisaba `estado`, apagaba el marcador y reescribía localStorage, así que el
+ * arranque siguiente veía todo limpio. Este test falla sin el arreglo.
+ */
+describe('escanear con el GET de sondear() en vuelo', () => {
+  function pantalla() {
+    const p = {
+      estado: { escaneos: [{ id: 'orden-vieja' }] },
+      pendienteLocal: false,      // lo anterior ya lo confirmó el servidor
+      sello: 3,
+      version: 7,
+      guardar(orden) { p.estado.escaneos.push(orden); p.pendienteLocal = true; p.sello++; },
+      adoptar(remoto) { p.version = remoto.version; p.estado = remoto.estado; p.pendienteLocal = false; },
+    };
+    return p;
+  }
+
+  // Lo que baja el GET: otro dispositivo (la laptop) escribió, así que su copia
+  // no tiene la orden que el celular está escaneando en este mismo instante.
+  const remoto = { version: 8, estado: { escaneos: [{ id: 'orden-vieja' }] } };
+
+  it('la orden escaneada durante el GET sobrevive y no se adopta', () => {
+    const p = pantalla();
+
+    // sondear(): el servidor está adelantado y no hay nada pendiente todavía.
+    expect(p.version).not.toBe(remoto.version);
+    expect(p.pendienteLocal).toBe(false);
+    const selloAntes = p.sello;
+
+    // El GET está en vuelo y el operario escanea: nada lo frena.
+    p.guardar({ id: 'orden-nueva' });
+
+    // Volvió la respuesta. La decisión se rehace ACÁ, no antes del GET.
+    if (decidirAdopcion({ selloAntes, selloActual: p.sello, hayPendientes: p.pendienteLocal }) === 'adoptar') {
+      p.adoptar(remoto);
+    }
+
+    expect(p.estado.escaneos.map((o) => o.id)).toEqual(['orden-vieja', 'orden-nueva']);
+    expect(p.pendienteLocal).toBe(true);   // lo nuevo sigue sin confirmar
+  });
+
+  it('sin escaneo en el medio, el sondeo sí adopta (no queda en bucle)', () => {
+    const p = pantalla();
+    const selloAntes = p.sello;
+
+    if (decidirAdopcion({ selloAntes, selloActual: p.sello, hayPendientes: p.pendienteLocal }) === 'adoptar') {
+      p.adoptar(remoto);
+    }
+
+    expect(p.version).toBe(8);
+    expect(p.pendienteLocal).toBe(false);
   });
 });
 
