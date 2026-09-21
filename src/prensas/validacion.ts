@@ -6,6 +6,8 @@
  * equipo vea exactamente los mismos avisos que hoy.
  */
 
+import { diffLotes } from './cambios';
+
 /** Más del 20 % de una sección… */
 export const PERDIDA_PCT = 0.2;
 /** …y al menos 10 items: recién ahí se frena el guardado. */
@@ -48,6 +50,40 @@ export interface Datos {
 
 function esObjetoPlano(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
+}
+
+/**
+ * Cuántos registros de una sección desaparecen en este guardado.
+ *
+ * `lotes` se mide por IDENTIDAD (el número de lote, su clave natural), no por
+ * cantidad. Contar longitudes era ciego al intercambio: un guardado que borra 20
+ * lotes y agrega otros 20 daba cero y pasaba sin frenar, que es exactamente la
+ * forma que tiene la falla que este freno tiene que atajar — un cliente con el
+ * maestro viejo en memoria empujándolo encima del de la bodega.
+ *
+ * El resto de las secciones sigue con el delta de longitudes. No es un olvido:
+ * no tienen clave natural, y la única identidad disponible sería la fila entera,
+ * con lo cual una EDICIÓN contaría como baja y el freno empezaría a saltar sobre
+ * guardados legítimos. Ese agujero (intercambio en análisis, degustaciones,
+ * agregados y movimientos) sigue abierto a propósito.
+ *
+ * El Math.max hace de red: si `diffLotes` subestima —por ejemplo si las filas no
+ * traen el campo `lote` y todas colapsan en la misma clave— el delta de
+ * longitudes garantiza que el freno nuevo nunca quede más débil que el viejo.
+ */
+function perdidosDe(
+  sec: string,
+  actual: Datos,
+  nuevo: Datos,
+  va: number,
+  vn: number,
+): number {
+  if (sec !== 'lotes') return va - vn;
+  const { eliminados } = diffLotes(
+    (actual.lotes as Record<string, unknown>[]) || [],
+    (nuevo.lotes as Record<string, unknown>[]) || [],
+  );
+  return Math.max(eliminados.length, va - vn);
 }
 
 /**
@@ -101,7 +137,7 @@ export function validarDatos(
     for (const sec of cfg.secciones) {
       const va = ((actual[sec] as unknown[]) || []).length;
       const vn = ((n[sec] as unknown[]) || []).length;
-      const perdidos = va - vn;
+      const perdidos = perdidosDe(sec, actual, n, va, vn);
       if (perdidos >= PERDIDA_MIN && va && perdidos / va > PERDIDA_PCT) {
         errores.push(`se perderían ${perdidos} de ${va} ${sec} en un solo guardado`);
       }
