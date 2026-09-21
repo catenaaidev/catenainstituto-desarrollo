@@ -9,7 +9,7 @@
 
 import { identidad, puedeEscribir, puedeLeer, marcarSesion } from '../auth';
 import { json } from '../respuestas';
-import { contarPerdidas, superanUmbral, type Estado } from './guardas';
+import { contarPerdidas, idsPerdidos, superanUmbral, type ColeccionLista, type Estado } from './guardas';
 
 const MODULO = 'barriles';
 
@@ -183,16 +183,41 @@ export async function rutasBarriles(
       return json(409, await leer(env));
     }
 
+    // Qué desapareció exactamente. El resumen solo anota variaciones netas, así
+    // que un intercambio (se va una orden, entra otra) se leía como "sin cambios".
+    // La investigación del 16/09 tuvo que bajar snapshots de R2 para esto.
+    const borrados: Record<string, string[] | string> = {};
+    for (const coleccion of ['inventario', 'escaneos', 'tanques', 'revisiones', 'ediciones', 'pedidos'] as ColeccionLista[]) {
+      const ids = idsPerdidos(doc.estado, nuevoEstado, coleccion);
+      if (!ids.length) continue;
+
+      // `idsPerdidos` puede devolver '' o 'num|campo' con num vacío para registros
+      // sin identificador (p. ej. inventario importado del Excel con num: '').
+      // Listar cadenas vacías en el historial no le sirve a nadie: agrupamos bajo
+      // una etiqueta explícita con la cantidad para que el rastro sea útil.
+      const identificados = ids.filter((k) => k !== '' && k !== '|');
+      const sinIdentificar = ids.length - identificados.length;
+
+      if (identificados.length && sinIdentificar) {
+        borrados[coleccion] = [...identificados, `(${sinIdentificar} sin identificar)`];
+      } else if (identificados.length) {
+        borrados[coleccion] = identificados;
+      } else {
+        borrados[coleccion] = `(${sinIdentificar} sin identificar)`;
+      }
+    }
+
     await env.DB.prepare(
       `INSERT INTO historial (modulo, version, ts, autor, email, resumen, detalle, forzado)
-       VALUES (?, ?, datetime('now'), ?, ?, ?, '[]', ?)`,
+       VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?)`,
     )
       .bind(
         MODULO,
         actualizado.version,
         id!.nombre ?? id!.email,
         id!.email,
-        resumen(doc.estado, nuevoEstado),
+        resumen(doc.estado, nuevoEstado, borrados),
+        JSON.stringify(borrados),
         pedido.confirmarBorrado ? 1 : 0,
       )
       .run();
@@ -205,14 +230,32 @@ export async function rutasBarriles(
   return null;
 }
 
-/** Texto corto de qué cambió, para el historial. */
-function resumen(antes: Estado, despues: Estado): string {
+/**
+ * Texto corto de qué cambió, para el historial.
+ *
+ * Recibe `borrados` ya calculado para anotar bajas reales en vez de delta de
+ * longitudes. Sin esto, un intercambio (se van 3 órdenes, entran 3) se leía
+ * como "cambios en el mapa" aunque el freno sí lo detectara: la próxima
+ * investigación arrancaría ciega igual que el incidente del 16/09.
+ */
+function resumen(
+  antes: Estado,
+  despues: Estado,
+  borrados: Record<string, string[] | string>,
+): string {
   const partes: string[] = [];
   for (const clave of ['inventario', 'escaneos', 'tanques'] as const) {
     const a = antes?.[clave]?.length ?? 0;
     const d = despues?.[clave]?.length ?? 0;
+    // Altas: el delta de longitudes sigue siendo la fuente correcta.
     if (d > a) partes.push(`+${d - a} ${clave}`);
-    if (d < a) partes.push(`−${a - d} ${clave}`);
+    // Bajas: usamos los ids reales ya calculados, no la diferencia de longitudes.
+    // Un intercambio da delta=0 pero borrados[clave] sí tiene entradas.
+    const bajasReales = borrados[clave];
+    if (bajasReales) {
+      const n = Array.isArray(bajasReales) ? bajasReales.length : 1;
+      partes.push(`−${n} ${clave}`);
+    }
   }
   const p = contarPerdidas(antes, despues);
   if (p.celdas) partes.push(`${p.celdas} celda(s) vaciada(s)`);

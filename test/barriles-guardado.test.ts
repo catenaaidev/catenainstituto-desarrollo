@@ -172,6 +172,22 @@ describe('fila sembrada en version 0 (simula importacion a la nube)', () => {
   });
 });
 
+describe('el historial deja rastro de lo que desaparecio', () => {
+  it('guarda los ids borrados en detalle, no un corchete vacio', async () => {
+    // versionActual(), no 0: este describe comparte almacenamiento con los de
+    // arriba, asi que el documento ya no esta en la version inicial.
+    expect((await guardar(await versionActual(), conOrdenes('sobrevive', 'se-borra'))).status).toBe(200);
+    expect((await guardar(await versionActual(), conOrdenes('sobrevive'))).status).toBe(200);
+
+    const fila = await env.DB.prepare(
+      `SELECT detalle FROM historial WHERE modulo = 'barriles'
+        ORDER BY version DESC LIMIT 1`,
+    ).first<{ detalle: string }>();
+
+    expect(JSON.parse(fila!.detalle)).toEqual({ escaneos: ['se-borra'] });
+  });
+});
+
 describe('compare-and-swap: test unitario deterministico', () => {
   // El test de la carrera con Promise.all depende del planificador y puede dejar
   // de ejercitar el CAS si alguien agrega un await asimetrico antes de leer().
