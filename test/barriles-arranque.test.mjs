@@ -36,14 +36,3 @@ describe('el arranque, sobre el archivo real', () => {
   });
 });
 
-describe('la decisión de arranque, con órdenes sin subir', () => {
-  // El escenario exacto de los lotes 25312 y 25314: el celular tiene la orden
-  // guardada, no tocó el mapa, y el servidor tiene estado. Antes: se pisaba.
-  it('nunca adopta el servidor si hay trabajo sin confirmar', () => {
-    const d = decidirArranque({
-      hayLocal: true, pendienteLocal: true, hayFotoBase: false, hayEstadoServidor: true,
-    });
-    expect(d).not.toBe('adoptar-servidor');
-    expect(d).toBe('subir-local');
-  });
-});

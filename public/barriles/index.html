@@ -1457,9 +1457,15 @@ async function iniciar() {
         if (hayFotoBase) {
           baseBoxes = pbase.boxes;
           if (typeof pbase.palets === 'string') basePalets = pbase.palets;
+        } else {
+          // Sin foto base, el servidor es la base: así diffBoxesLocal() solo
+          // cuenta las celdas que de verdad cambió este teléfono, no todas.
+          // Si dejáramos baseBoxes en '[]', cada celda local aparecería como
+          // "cambio sin subir" y sincronizar() aplastaría el mapa del servidor,
+          // que es justamente la pérdida en dirección contraria que queremos evitar.
+          baseBoxes = JSON.stringify(d.estado?.boxes ?? []);
+          basePalets = JSON.stringify(d.estado?.palets ?? []);
         }
-        // Sin foto base no se puede calcular qué cambió, pero sincronizar()
-        // fusiona por id igual: nunca se pisa lo que cargó el operario.
         await sincronizar(true);
         return;
       }

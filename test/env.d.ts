@@ -9,6 +9,10 @@
 declare module 'cloudflare:test' {
   interface ProvidedEnv extends Env {
     MIGRACIONES: D1Migration[];
+    // INDEX_HTML_BARRILES: leído en Node por vitest.config.ts (el runtime de
+    // Workers no tiene fs) y viajando como binding. Lo usan los tests que
+    // verifican que la regla siga cumplida en el archivo real de producción.
+    INDEX_HTML_BARRILES: string;
   }
 }
 
