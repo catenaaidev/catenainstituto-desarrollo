@@ -36,12 +36,16 @@ async function leer(env: Env): Promise<Documento> {
  *
  * El INSERT unificado resuelve también la ambigüedad de versionPrevia === 0:
  * eso puede significar "no hay fila todavía" O "hay una fila cuyo json dice
- * version: 0" (importar a la nube con un export sin el campo lo deja así).
- * La rama anterior entraba por DO NOTHING en ambos casos, pero en el segundo
- * chocaba con la fila existente, changes = 0, y devolvía false para siempre:
- * la app quedaba trabada en 409 sin poder escribir nunca más.
+ * version: 0". La rama anterior entraba por DO NOTHING en ambos casos, pero en
+ * el segundo chocaba con la fila existente, changes = 0, y devolvía false para
+ * siempre: la app quedaba trabada en 409 sin poder escribir nunca más.
  * Con el WHERE en el DO UPDATE, si la fila existe con esa versión se actualiza;
  * si existe con otra versión no se toca nada y changes = 0 devuelve false.
+ *
+ * Lo que esto NO cubre: una fila cuyo json directamente no traiga el campo
+ * `version`. Ahí leer() devuelve un documento con version undefined y las
+ * comparaciones dejan de tener sentido; no está arreglado ni testeado. El caso
+ * cubierto y testeado es el del json que dice `version: 0`.
  */
 export async function escribir(
   env: Env,

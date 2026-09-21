@@ -183,8 +183,12 @@ describe('fila sembrada en version 0 (simula importacion a la nube)', () => {
 
 describe('el historial deja rastro de lo que desaparecio', () => {
   it('guarda los ids borrados en detalle, no un corchete vacio', async () => {
-    // versionActual(), no 0: este describe comparte almacenamiento con los de
-    // arriba, asi que el documento ya no esta en la version inicial.
+    // versionActual() y no un 0 hardcodeado: no porque haga falta (con el
+    // aislamiento por it() este describe arranca en la version inicial, igual
+    // que los de arriba), sino para que el test no se ate a cual es esa version
+    // inicial. Verificado empiricamente: reemplazando esta llamada por un 0
+    // fijo el test pasa igual, que es la prueba de que el almacenamiento NO se
+    // comparte entre describes.
     expect((await guardar(await versionActual(), conOrdenes('sobrevive', 'se-borra'))).status).toBe(200);
     expect((await guardar(await versionActual(), conOrdenes('sobrevive'))).status).toBe(200);
 

@@ -138,8 +138,19 @@ salida.
 
 Persistirlo es lo que tapa el punto 4: al arrancar, `iniciar()` lee el marcador
 del disco y sabe que ese celular tiene trabajo sin subir aunque no haya tocado el
-mapa. Y cubre por construcción cualquier colección que se agregue en el futuro,
-sin depender de que alguien se acuerde de sumarla a una lista.
+mapa.
+
+**Alcance real del marcador.** *Detectar* sí cubre por construcción cualquier
+colección que se agregue en el futuro: el marcador se prende en `guardar()`, que
+es por donde pasa toda escritura, sin depender de que alguien se acuerde de sumar
+la colección a una lista. *Resolver* no. La fusión de `sincronizar()` arranca del
+estado del servidor y le aplica encima, colección por colección, las celdas del
+mapa, `escaneos`, `tanques`, `pedidos`, `revisiones`, `ediciones` y `palets`.
+Quedan afuera `inventario`, `fechaInventario` y `modoLote`: vienen tal cual de
+`d.estado` y pisan lo local. Si el único cambio sin confirmar está en una de esas
+tres, el marcador lo detecta y fuerza la fusión, pero la fusión no lo preserva.
+Una colección nueva que no se sume a esa lista queda en la misma situación.
+Cerrarlo es alcance de la Entrega 2 (portón único de escritura).
 
 Cambios por punto:
 
