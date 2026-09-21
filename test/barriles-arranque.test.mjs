@@ -36,3 +36,35 @@ describe('el arranque, sobre el archivo real', () => {
   });
 });
 
+describe('la salida temprana de sincronizar()', () => {
+  // sincronizar() tiene la fusión correcta de TODAS las colecciones (escaneos por
+  // id, tanques por num, pedidos, revisiones, ediciones). Pero salía por un return
+  // antes de llegar, si el mapa y los palets estaban intactos.
+  it('no sale temprano cuando el marcador dice que hay trabajo', () => {
+    const i = INDEX.indexOf('async function sincronizar(');
+    expect(i, 'no encontré sincronizar()').toBeGreaterThan(-1);
+    const hastaLaFusion = INDEX.slice(i, INDEX.indexOf('unir órdenes de escáner por id', i));
+    const corte = hastaLaFusion.indexOf('!diffPaletsLocal().length');
+    expect(corte, 'no encontré la condición de salida temprana').toBeGreaterThan(-1);
+    expect(hastaLaFusion.slice(corte, corte + 120)).toContain('pendienteLocal');
+  });
+
+  it('el marcador se apaga cuando sincronizar() sube con éxito', () => {
+    const i = INDEX.indexOf('async function sincronizar(');
+    const fin = INDEX.indexOf('function adoptar(', i);
+    expect(INDEX.slice(i, fin)).toContain('limpiarPendiente()');
+  });
+});
+
+describe('adoptar() y el marcador', () => {
+  // Rechazar un borrado masivo (412) descarta lo local a proposito. Si el
+  // marcador quedara prendido, hayPendientes() daria verdadero para siempre y
+  // el operario se comeria un cartel de confirmacion cada tres segundos.
+  it('apaga el marcador, para no dejar un bucle de carteles', () => {
+    const i = INDEX.indexOf('function adoptar(');
+    expect(i, 'no encontré adoptar()').toBeGreaterThan(-1);
+    const cuerpo = INDEX.slice(i, INDEX.indexOf('\n}', i));
+    expect(cuerpo).toContain('limpiarPendiente()');
+  });
+});
+

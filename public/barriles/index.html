@@ -1301,7 +1301,9 @@ async function sincronizar(avisar) {
     for (let intento = 0; intento < 4; intento++) {
       const d = await (await fetch(API+'/estado', { cache: 'no-store' })).json();
       const cambios = diffBoxesLocal();
-      if (!cambios.length && !diffPaletsLocal().length) {   // nada local: adoptar lo del servidor
+      // El marcador entra acá: sin él, una orden del escáner (que no toca ninguna
+      // celda) hacía salir por este return, salteando la fusión de más abajo.
+      if (!cambios.length && !diffPaletsLocal().length && !pendienteLocal) {
         if (d.version !== versionServidor) adoptar(d); else versionServidor = d.version;
         ponerInsignia('ok'); sincronizando = false; return;
       }
@@ -1358,6 +1360,7 @@ async function sincronizar(avisar) {
       }
       if (r.ok) {
         versionServidor = (await r.json()).version;
+        limpiarPendiente();          // el servidor lo confirmó: recién ahora
         estado = serv; reindexar(); snapBoxes();
         try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch (e) {}
         actualizarEncabezado(); dibujarResumenInv();
@@ -1384,6 +1387,10 @@ async function sincronizar(avisar) {
 function adoptar(d) {
   versionServidor = d.version;
   if (d.estado) { estado = d.estado; reindexar(); }
+  // Adoptar es "lo del servidor pasa a ser lo mío": por definición no queda nada
+  // local sin confirmar. Y si no se apagara acá, rechazar un borrado masivo (412)
+  // dejaría el marcador prendido para siempre, con un cartel cada tres segundos.
+  limpiarPendiente();
   snapBoxes(); estabaOffline = false;   // quedamos alineados con el servidor
   try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch (e) {}
   actualizarEncabezado(); dibujarResumenInv();
