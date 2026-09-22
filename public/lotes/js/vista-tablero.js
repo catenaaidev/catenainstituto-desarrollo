@@ -8,11 +8,11 @@
  */
 'use strict';
 
-import { $, esc, escA, DATOS, dashData, dashLoading, cargarDashboard, registrarVista, mostrarOverlay } from './nucleo.js';
+import { $, esc, escA, DATOS, dashData, dashLoading, cargarDashboard, registrarVista, mostrarOverlay, guardar, markDirty, usuarioActual } from './nucleo.js';
 import { htmlFicha } from './tablero-ficha.js';
 import { htmlPanel } from './tablero-panel.js';
 import { initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, opcionesValores, matchValor } from './tabla.js';
-import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad, chipsDe } from './tablero-datos.js';
+import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad, chipsDe, aplicarEdicion } from './tablero-datos.js';
 
 let _modoPanel = 'numeros';
 
@@ -31,7 +31,10 @@ export function filasTablero(){
   const info = new Map((DATOS().lotes || []).map(l => [String(l.lote ?? ''), l]));
   return (dash.lotes || [])
     .filter(l => l.activo)
-    .map(l => ({ ...l, _info: info.get(String(l.lote ?? '')) || {} }));
+    .map(l => ({ ...l,
+      _info: info.get(String(l.lote ?? '')) || {},
+      _est: (DATOS().estado_lote || {})[String(l.lote ?? '')] || {},
+    }));
 }
 
 /** Las filas que se ven: filtradas y ordenadas. La lista y el export usan esta. */
@@ -147,6 +150,34 @@ function abrirFicha(lote){
   mostrarOverlay(htmlFicha(fila, DATOS().analisis || [], HOY()));
 }
 
+/* La ficha se dibuja en #overlayBox, que cuelga de <body> y no de la seccion
+ * de la pestana (index.html:1078). Delegar en `sec` no funcionaria: el evento
+ * nunca pasa por ahi. */
+function cablearOverlay(){
+  const caja = $('overlayBox');
+  if (!caja || caja._wiredTablero) return;
+  caja._wiredTablero = true;
+
+  caja.addEventListener('change', async (ev) => {
+    const el = ev.target.closest('.tb-edit');
+    if (!el) return;
+    const cont = el.closest('[data-ficha-de]');
+    if (!cont) return;                       // otra cosa dibujada en el overlay
+    const lote = cont.dataset.fichaDe;
+    const { seccion } = aplicarEdicion(DATOS(), lote, el.dataset.campo, el.value, usuarioActual());
+    if (!seccion) return;
+    markDirty();
+
+    /* Mermo y hace_fml cambian condiciones que calcula el servidor, asi que los
+     * chips quedarian viejos. Se guarda y se vuelve a pedir el dashboard para
+     * que el lote se repinte solo. Comentario e inoculado no mueven ninguna
+     * condicion: alcanza con markDirty y el boton Guardar de siempre. */
+    if (el.dataset.campo === 'mermo' || el.dataset.campo === 'hace_fml'){
+      if (await guardar()){ await cargarDashboard(); renderPanel(); renderLista(); abrirFicha(lote); }
+    }
+  });
+}
+
 function cablear(sec){
   sec.addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-modo]');
@@ -164,6 +195,7 @@ function cablear(sec){
   sec.addEventListener('change', (ev) => {
     if (ev.target.id === 'tbPregunta'){ _pregunta = ev.target.value; renderLista(); }
   });
+  cablearOverlay();
 }
 
 registrarVista('tablero', () => renderTablero());

@@ -176,3 +176,32 @@ export function ultimasMediciones(analisis, lote, n){
     .sort((a, b) => String(b.fecha_analisis).localeCompare(String(a.fecha_analisis)))
     .slice(0, n);
 }
+
+/* Donde escribe cada campo.
+ *
+ * mermo y hace_fml tienen columna propia en el lote, asi que van ahi: un solo
+ * valor en un solo lugar, sin capa de override que explicar. Comentario e
+ * inoculado no la tienen y siguen en estado_lote. */
+const EN_EL_LOTE = ['mermo', 'hace_fml'];
+const EN_ESTADO  = ['comentario', 'inoculado'];
+
+export function aplicarEdicion(datos, lote, campo, valor, autor){
+  const clave = String(lote ?? '');
+  const fila = (datos.lotes || []).find(l => String(l.lote ?? '') === clave);
+  if (!fila) return { seccion: null };
+
+  const limpio = String(valor ?? '').trim() === '' ? null : String(valor).trim();
+  const seccion = EN_EL_LOTE.includes(campo) ? 'lote' : (EN_ESTADO.includes(campo) ? 'estado_lote' : null);
+  if (!seccion) return { seccion: null };
+
+  if (seccion === 'lote') fila[campo] = limpio;
+
+  // La firma va siempre a estado_lote: el lote no tiene columnas para quien y cuando.
+  datos.estado_lote = datos.estado_lote || {};
+  const est = (datos.estado_lote[clave] = datos.estado_lote[clave] || {});
+  if (seccion === 'estado_lote') est[campo] = limpio;
+  est.actualizado_por = autor;
+  est.actualizado_el = new Date().toISOString();
+
+  return { seccion };
+}

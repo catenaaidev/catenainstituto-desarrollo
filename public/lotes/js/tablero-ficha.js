@@ -10,6 +10,11 @@ import { chipsDe, ultimasMediciones } from './tablero-datos.js';
 
 const dato = (label, valor) => `<div class="tb-dato"><span>${esc(label)}</span><strong>${esc(valor ?? '—')}</strong></div>`;
 
+function selecFicha(campo, label, valor, opciones){
+  const ops = opciones.map(o => `<option value="${escA(o)}"${String(valor ?? '') === o ? ' selected' : ''}>${esc(o || '—')}</option>`).join('');
+  return `<div class="tb-dato"><span>${esc(label)}</span><select class="tb-edit" data-campo="${escA(campo)}">${ops}</select></div>`;
+}
+
 /* El -999 es el FOSS diciendo "fuera de rango", no una medicion de -999. */
 const celda = (v) => (v === null || v === undefined || v === '') ? '' : (Number(v) === -999 ? 'fuera de rango' : v);
 
@@ -51,9 +56,10 @@ export function htmlFicha(fila, analisis, hoy){
         ${dato('Última medición', fila.ultima_fecha)}
         ${dato('Último control de proceso', fila.ultima_fecha_control)}
         ${dato('Frecuencia', `${fila.frecuencia_max} d (hace ${fila.dias_desde_control ?? '—'})`)}
-        ${dato('Inoculación', inoculado)}
-        ${dato('Mermo', fila._info.mermo)}
-        ${dato('FML excluida', fila.fml_estado === 'excluida' ? `sí (${fila.fml_excluida_origen})` : 'no')}
+        ${/* El motor solo detecta 'analisis'; el valor a mano vive en estado_lote y lo resuelve la pestana. */''}
+        ${selecFicha('inoculado', 'Inoculación', (fila._est || {}).inoculado ?? fila.inoculado, ['', 'si', 'no', 'desconocido'])}
+        ${selecFicha('mermo', 'Mermo', fila._info.mermo, ['', 'si', 'no'])}
+        ${selecFicha('hace_fml', 'Hace FML', fila._info.hace_fml, ['', 'si', 'no'])}
       </div>
       <div class="tb-so2">
         <h4>SO₂</h4>
@@ -64,6 +70,8 @@ export function htmlFicha(fila, analisis, hoy){
       </div>
       ${evidencia}
       <p><strong>Acción sugerida:</strong> ${esc(fila.accion_sugerida || '—')}</p>
+      <div class="tb-dato"><span>Comentario</span>
+        <input class="tb-edit" data-campo="comentario" value="${escA((fila._est || {}).comentario ?? '')}"></div>
       <table class="tb-tabla">
         <thead><tr><th>Fecha</th><th>pH</th><th>AV</th><th>Málico</th><th>Az. red.</th><th>SO₂ libre</th><th>Etanol</th></tr></thead>
         <tbody>${mediciones.map(m => `<tr>
