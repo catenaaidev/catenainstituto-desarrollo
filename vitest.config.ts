@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { defineWorkersConfig, readD1Migrations } from '@cloudflare/vitest-pool-workers/config';
 
 /**
@@ -13,6 +14,12 @@ import { defineWorkersConfig, readD1Migrations } from '@cloudflare/vitest-pool-w
 // contenido viaja como binding y lo aplica el setup.
 const migraciones = await readD1Migrations(path.join(import.meta.dirname, 'migrations'));
 
+// El HTML de barriles se lee acá (en Node) por la misma razón: el runtime de
+// Workers no tiene fs. Lo reciben los tests que necesitan leer el archivo real
+// de producción para verificar que la regla siga cumplida.
+const indexHtmlBarriles = readFileSync(
+  path.join(import.meta.dirname, 'public/barriles/index.html'), 'utf8');
+
 export default defineWorkersConfig({
   test: {
     // Crea las tablas antes de cada archivo de test.
@@ -22,7 +29,7 @@ export default defineWorkersConfig({
         wrangler: { configPath: './wrangler.jsonc' },
         miniflare: {
           d1Databases: ['DB'],
-          bindings: { MIGRACIONES: migraciones },
+          bindings: { MIGRACIONES: migraciones, INDEX_HTML_BARRILES: indexHtmlBarriles },
         },
       },
     },

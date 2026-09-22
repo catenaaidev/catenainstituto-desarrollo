@@ -22,20 +22,58 @@ async function leerDocumento(env: Env): Promise<Datos> {
   return JSON.parse(fila.json) as Datos;
 }
 
-async function escribirDocumento(env: Env, d: Datos, email: string) {
+/**
+ * Escribe solo si la versión en la base sigue siendo la que se leyó.
+ *
+ * Antes era un ON CONFLICT DO UPDATE pelado, que escribe siempre: el chequeo de
+ * versión del handler quedaba FUERA de la escritura, así que dos navegadores que
+ * leían la misma versión antes de que cualquiera escribiera pasaban los dos el
+ * chequeo y escribían los dos. El trabajo del primero desaparecía sin rastro.
+ * Devuelve false si otro escribió en el medio; el llamador responde 409.
+ *
+ * Va todo en UNA sola sentencia a propósito. Ramificar según
+ * `versionPrevia === 0` para distinguir "no hay fila" de "hay fila" es un
+ * defecto: leerDocumento() devuelve versión 0 en los dos casos, y una fila
+ * sembrada por scripts/importar.mjs en versión 0 dejaría la app devolviendo 409
+ * en cada guardado, sin salida. Con el WHERE en el DO UPDATE: si la fila no
+ * existe, entra por el INSERT; si existe con esa versión, se actualiza; si
+ * existe con otra, no se toca nada y changes = 0.
+ *
+ * IMPORTANTE: la columna `version` tiene que quedar siempre igual a
+ * $.meta.version del json, porque leerDocumento() saca la versión del json
+ * parseado y el WHERE compara contra la columna. Si se desacoplan, el
+ * compare-and-swap empieza a comparar contra el valor equivocado.
+ */
+export async function escribirDocumento(
+  env: Env,
+  d: Datos,
+  email: string,
+  versionPrevia: number,
+): Promise<boolean> {
   const meta = (d.meta ?? {}) as Record<string, unknown>;
-  await env.DB.batch([
-    marcarSesion(env, email),
-    env.DB.prepare(
-      `INSERT INTO documento (modulo, version, json, autor, guardado)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(modulo) DO UPDATE SET
-         version = excluded.version,
-         json = excluded.json,
-         autor = excluded.autor,
-         guardado = excluded.guardado`,
-    ).bind(MODULO, Number(meta.version ?? 0), JSON.stringify(d), String(meta.autor ?? ''), String(meta.guardado ?? '')),
-  ]);
+  const escritura = env.DB.prepare(
+    `INSERT INTO documento (modulo, version, json, autor, guardado)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(modulo) DO UPDATE SET
+       version = excluded.version,
+       json = excluded.json,
+       autor = excluded.autor,
+       guardado = excluded.guardado
+     WHERE documento.version = ?`,
+  ).bind(
+    MODULO,
+    Number(meta.version ?? 0),
+    JSON.stringify(d),
+    String(meta.autor ?? ''),
+    String(meta.guardado ?? ''),
+    versionPrevia,
+  );
+
+  // Desestructurar y no indexar con un número mágico: el batch incluye
+  // marcarSesion, y si mañana se le agrega otra sentencia adelante, un índice
+  // fijo leería el meta.changes equivocado y el freno quedaría en nada.
+  const [, resEscritura] = await env.DB.batch([marcarSesion(env, email), escritura]);
+  return (resEscritura.meta.changes ?? 0) > 0;
 }
 
 export async function rutasPrensas(
@@ -62,19 +100,24 @@ export async function rutasPrensas(
     if (cambio && puedeEscribir(id)) {
       const [anterior, nuevoMes] = cambio;
       const meta = (d.meta ??= {}) as Record<string, unknown>;
-      meta.version = Number(meta.version ?? 0) + 1;
+      const versionPrevia = Number(meta.version ?? 0);
+      meta.version = versionPrevia + 1;
       meta.guardado = ahoraBodega(env.TZ_BODEGA);
       meta.autor = 'sistema';
-      await escribirDocumento(env, d, id!.email);
-      await registrarHistorial(env, {
-        version: Number(meta.version),
-        ts: String(meta.guardado),
-        autor: 'sistema',
-        email: id!.email,
-        resumen: `Cambio automático de mes: ${anterior} → ${nuevoMes}`,
-        detalle: [],
-        forzado: false,
-      });
+      // El avance de mes también compite: dos GET simultáneos al cruzar el mes
+      // llegan acá con la misma versión. El que pierde no escribe, y por eso
+      // tampoco anota en el historial un cambio de mes que no ocurrió.
+      if (await escribirDocumento(env, d, id!.email, versionPrevia)) {
+        await registrarHistorial(env, {
+          version: Number(meta.version),
+          ts: String(meta.guardado),
+          autor: 'sistema',
+          email: id!.email,
+          resumen: `Cambio automático de mes: ${anterior} → ${nuevoMes}`,
+          detalle: [],
+          forzado: false,
+        });
+      }
     }
     return json(200, d);
   }
@@ -117,7 +160,13 @@ export async function rutasPrensas(
     const autor = String(meta.autor ?? '').trim().slice(0, 60) || id!.nombre || id!.email;
     meta.autor = autor;
 
-    await escribirDocumento(env, nuevo, id!.email);
+    // El INSERT al historial y el snapshot van DESPUÉS de este chequeo: si la
+    // escritura no ocurrió no hay nada que registrar, y un historial que miente
+    // arruina la próxima investigación.
+    if (!(await escribirDocumento(env, nuevo, id!.email, va))) {
+      // Otra persona ganó la carrera entre la lectura y la escritura.
+      return json(409, { error: 'conflicto', actual: await leerDocumento(env) });
+    }
 
     const { texto: resumen, detalle } = resumenCambios(actual, nuevo);
     await registrarHistorial(env, {

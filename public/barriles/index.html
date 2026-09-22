@@ -13,6 +13,14 @@ const API='/barriles/api';</script>
 <script src="ocr/tesseract.min.js"></script>
 <script src="three.min.js"></script>
 <script src="OrbitControls.js"></script>
+<!-- Regla de quien puede editar una orden guardada. Va aca, como script clasico,
+     porque el arranque de la pagina corre durante el parseo: un type="module"
+     llegaria tarde. Se testea en test/barriles-orden-editable.test.mjs. -->
+<script src="js/orden-editable.js"></script>
+<!-- Decide si lo local se fusiona o se puede pisar. Va acá, como script clásico,
+     porque el arranque de la página corre durante el parseo: un type="module"
+     llegaría tarde. Se testea en test/barriles-pendientes.test.mjs. -->
+<script src="js/pendientes.js"></script>
 <style>
   :root {
     --vino: #6b1f3a; --vino-osc: #4a1428; --crema: #faf6f0;
@@ -104,6 +112,30 @@ const API='/barriles/api';</script>
   #escResumen { display: none; background: #e6f4e6; border: 2px solid var(--ok); border-radius: 12px; padding: 18px; margin-bottom: 16px; text-align: center; }
   .esc-res-num { font-size: 1.8rem; font-weight: 800; color: var(--ok); }
   .esc-res-detalle { font-size: .95rem; color: #2b2b2b; margin-top: 6px; }
+  /* la orden se guardo igual, pero algo quedo para mirar: mismo cartel, en rojo */
+  #escResumen.revisar { background: #ffebee; border-color: var(--error); }
+  #escResumen.revisar .esc-res-num { color: var(--error); font-size: 1.45rem; }
+  .esc-res-avisos { list-style: none; margin: 12px auto 10px; padding: 0; max-width: 560px; text-align: left; }
+  .esc-res-avisos li { background: #fff; border-left: 4px solid var(--error); border-radius: 6px; padding: 9px 12px; margin-bottom: 7px; font-size: 1rem; line-height: 1.4; }
+  /* orden fuera de la ventana de edicion: el boton sigue ahi y explica por que */
+  .btn.esc-vencida { opacity: .4; filter: grayscale(1); }
+
+  /* ---- historial plegable ---- */
+  .esc-historial > summary { cursor: pointer; list-style: none; user-select: none; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .esc-historial > summary::-webkit-details-marker { display: none; }
+  .esc-historial > summary h2 { margin: 0; }
+  .esc-historial > summary::after { content: '⌄ mostrar'; margin-left: auto; color: var(--vino); font-weight: 700; font-size: .9rem; }
+  .esc-historial[open] > summary::after { content: '⌃ ocultar'; }
+  .esc-historial[open] > summary { border-bottom: 1px solid #efe6dc; padding-bottom: 10px; }
+  .esc-hist-cuerpo { margin-top: 12px; }
+
+  /* ---- carteles de la pestana Escaner ---- */
+  /* Sin `display` aca a proposito: quien lo muestra u oculta es .solo-operario, y
+     un selector de id le ganaria por especificidad. */
+  #escInstrucciones { background: #ffebee; border: 3px solid var(--error); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+  #escInstrucciones h2 { color: var(--error); margin: 0 0 10px; font-size: 1.25rem; }
+  #escInstrucciones ol { margin: 0; padding-left: 26px; font-size: 1.15rem; line-height: 1.85; color: #2b2b2b; }
+  #escInstrucciones b { color: var(--vino-osc); }
   #overlayCamaraEsc { position: fixed; inset: 0; background: #000; z-index: 100; display: none; flex-direction: column; }
   #overlayCamaraEsc.abierto { display: flex; }
   #escVideoCam { flex: 1; width: 100%; object-fit: cover; min-height: 0; }
@@ -297,6 +329,26 @@ const API='/barriles/api';</script>
   /* el operario consulta el inventario, no lo administra: sin importar Excel,
      sin respaldos y sin dar por revisado un pendiente */
   body.rol-operario .solo-prog { display: none; }
+  /* El espejo de .solo-prog: lo que SOLO ve el operario. Ojo, fuerza display:block
+     al mostrarlo, asi que no sirve para algo que tenga que ser flex o inline. */
+  .solo-operario { display: none; }
+  body.rol-operario .solo-operario { display: block; }
+
+  /* ---- pestana Escaner, vista del operario ----------------------------------
+     La nave se trabaja de pie y a un metro de la pantalla: los tres casilleros y
+     los dos botones van grandes. Solo bajo rol-operario, para no cambiarle la
+     pantalla al programador, que ademas ve el historial y la trazabilidad. */
+  body.rol-operario #panel-escaner .esc-tipo { padding: 30px 14px; font-size: 1.5rem; border-radius: 14px; }
+  body.rol-operario #panel-escaner .fila-flex > label { font-size: 1.15rem; font-weight: 700; color: var(--vino-osc); }
+  body.rol-operario #panel-escaner #escFecha,
+  body.rol-operario #panel-escaner #escOT,
+  body.rol-operario #panel-escaner #escLote { font-size: 1.4rem; padding: 12px 14px; height: 56px; border: 2px solid var(--vino); border-radius: 10px; }
+  body.rol-operario #panel-escaner #escOT { width: 200px; }
+  body.rol-operario #panel-escaner #escLote { width: 180px; }
+  body.rol-operario #panel-escaner #escInput { font-size: 1.7rem; padding: 18px; }
+  body.rol-operario #panel-escaner #escBtnGuardar { font-size: 1.25rem; padding: 16px 26px; }
+  /* la ayuda desplegable diria lo mismo que el cartel rojo, dos veces */
+  body.rol-operario #panel-escaner > .ayuda { display: none; }
   /* modo por lote: el mapa va sin inventario, pero los tanques igual se asocian a un lote */
   body.modo-lote .solo-barricas { display: none !important; }
   .cam-btn-rotulo { background:#fff; color:var(--vino); border:none; border-radius:16px; padding:6px 12px; font-size:.9rem; font-weight:700; cursor:pointer; white-space:nowrap; }
@@ -531,6 +583,18 @@ const API='/barriles/api';</script>
         </ul>
       </div>
     </details>
+    <!-- El paso 3 es el que mas falla: la pistola escribe donde este el cursor, asi
+         que sin el foco en el casillero los disparos no llegan a ningun lado. -->
+    <div id="escInstrucciones" class="solo-operario">
+      <h2>⚠️ CÓMO CARGAR CON LA PISTOLA</h2>
+      <ol>
+        <li>Elegí <b>⬇️ Vaciado</b> o <b>⬆️ Llenado</b></li>
+        <li>Escribí el <b>N° de OT</b></li>
+        <li><b>Hacé clic en el casillero blanco</b> antes de disparar</li>
+        <li>Disparale a cada barril — el contador tiene que subir</li>
+        <li>Al terminar, tocá <b>✓ Guardar orden</b></li>
+      </ol>
+    </div>
     <div id="escResumen"></div>
     <div class="tarjeta">
       <h2>🛢️ Escáner — Registro de llenado y vaciado</h2>
@@ -553,7 +617,9 @@ const API='/barriles/api';</script>
       </div>
       <input type="text" id="escInput" placeholder="Escaneá el código de barras…" autocomplete="off">
       <div class="fila-flex" style="margin-top:10px;">
-        <button class="btn" id="escBtnCamara">📱 Escanear con cámara</button>
+        <!-- La nave carga con pistola. La camara queda para el programador, como
+             plan B si se rompe una, pero al operario le sacaba foco del casillero. -->
+        <button class="btn solo-prog" id="escBtnCamara">📱 Escanear con cámara</button>
         <button class="btn sec" id="escBtnDeshacer">↩ Quitar último</button>
         <button class="btn" id="escBtnGuardar" style="background:var(--ok);">✓ Guardar orden</button>
         <button class="btn sec" id="escBtnCancelar">✕ Cancelar</button>
@@ -562,20 +628,26 @@ const API='/barriles/api';</script>
       <div style="overflow:auto; margin-top:14px;"><table class="datos" id="escTabla"></table></div>
     </div>
 
-    <div class="tarjeta">
-      <div class="fila-flex" style="justify-content:space-between;">
-        <h2 style="margin:0;">Historial de órdenes</h2>
-        <button class="btn" id="escBtnExportar">⬇ Exportar a Excel</button>
+    <!-- El historial se pliega: al operario le come la pantalla y le mete adelante
+         datos de ordenes viejas mientras carga. Arranca cerrado para el y abierto
+         para el programador (lo decide aplicarRol). El contador va en el
+         encabezado para que se lea sin desplegar. -->
+    <details class="tarjeta esc-historial" id="escCajaHistorial">
+      <summary>
+        <h2>Historial de órdenes</h2>
+        <span class="nota" id="escHistCount"></span>
+      </summary>
+      <div class="esc-hist-cuerpo">
+        <div class="fila-flex" style="gap:10px; align-items:flex-end;">
+          <label>Buscar: <input type="text" id="escFiltroQ" placeholder="lote, OT o código de barril" style="width:220px;" autocomplete="off"></label>
+          <label>Mes: <select id="escFiltroMes"></select></label>
+          <label>Operación: <select id="escFiltroTipo"></select></label>
+          <button class="btn sec" id="escFiltroLimpiar" style="padding:6px 12px;">Limpiar</button>
+          <button class="btn" id="escBtnExportar">⬇ Exportar a Excel</button>
+        </div>
+        <div style="overflow:auto; margin-top:12px;"><table class="datos" id="escHistorial"></table></div>
       </div>
-      <div class="fila-flex" style="margin-top:10px; gap:10px; align-items:flex-end;">
-        <label>Buscar: <input type="text" id="escFiltroQ" placeholder="lote, OT o código de barril" style="width:220px;" autocomplete="off"></label>
-        <label>Mes: <select id="escFiltroMes"></select></label>
-        <label>Operación: <select id="escFiltroTipo"></select></label>
-        <button class="btn sec" id="escFiltroLimpiar" style="padding:6px 12px;">Limpiar</button>
-      </div>
-      <p class="nota" id="escHistCount" style="margin:8px 0 0;"></p>
-      <div style="overflow:auto;"><table class="datos" id="escHistorial"></table></div>
-    </div>
+    </details>
 
     <div class="tarjeta">
       <div class="fila-flex" style="justify-content:space-between;">
@@ -925,6 +997,31 @@ const API='/barriles/api';</script>
 // ================== ESTADO ==================
 const CLAVE = 'mapaBarriles_v1';
 const CLAVE_BASE = 'mapaBarriles_base_v1';   // foto de los boxes en la última sync (para fusionar tras reabrir offline)
+
+// Hay algo escrito en este dispositivo que el servidor todavía no confirmó.
+// Se persiste porque tiene que sobrevivir a la recarga de la página: si no, al
+// arrancar la app no sabe que el celular tiene órdenes sin subir y las pisa.
+const CLAVE_PENDIENTE = 'mapaBarriles_pendiente_v1';
+let pendienteLocal = false;
+try { pendienteLocal = localStorage.getItem(CLAVE_PENDIENTE) === '1'; } catch (e) {}
+
+// Sello de "cuánto se escribió en este dispositivo". No se persiste a propósito:
+// solo sirve para comparar dentro de una misma corrida, entre el momento en que
+// sale un POST y el momento en que vuelve su 200. Una recarga arranca de cero y
+// el marcador persistido es el que cubre ese caso.
+let selloGuardado = 0;
+function marcarPendiente() {
+  pendienteLocal = true;
+  selloGuardado++;   // ver decidirConfirmacion(): distingue "esto es todo lo que mandé" de "entró trabajo nuevo mientras viajaba"
+  try { localStorage.setItem(CLAVE_PENDIENTE, '1'); } catch (e) {}
+}
+// Solo lo llama una confirmación del servidor. Nunca lo apagues "porque sí":
+// apagarlo sin confirmación es exactamente la falla que este marcador previene.
+function limpiarPendiente() {
+  pendienteLocal = false;
+  try { localStorage.removeItem(CLAVE_PENDIENTE); } catch (e) {}
+}
+
 let estado = { inventario: [], boxes: [], fechaInventario: null, modoLote: false, escaneos: [] };
 let indiceInv = new Map();      // numero(string) -> registro
 let indiceRevisar = new Map();  // numero(string) -> pendientes de revisión de ese barril
@@ -976,6 +1073,7 @@ let fallaLocal = false;   // localStorage lleno o bloqueado: avisar en la insign
 function guardar() {
   try { localStorage.setItem(CLAVE, JSON.stringify(estado)); fallaLocal = false; }
   catch (e) { fallaLocal = true; }
+  marcarPendiente();
   if (modoServidor) programarPush();
   else if (fallaLocal) ponerInsignia('local');   // sin servidor, que se vea ya mismo
 }
@@ -989,8 +1087,17 @@ function msgPerdidas(info) {
   if (p.escaneos) partes.push(p.escaneos + ' orden(es) del escáner');
   if (p.tanques) partes.push(p.tanques + ' tanque(s) asociado(s)');
   if (p.palets) partes.push(p.palets + ' casillero(s) de palets');
+  if (p.revisiones) partes.push(p.revisiones + ' pendiente(s) de revisión');
+  if (p.ediciones) partes.push(p.ediciones + ' corrección(es) a mano');
+  if (p.pedidos) partes.push(p.pedidos + ' pedido(s) de rótulos');
+  // La segunda línea no es un detalle de cortesía: responder "No" llama a
+  // adoptar(), que descarta TODO lo cargado en este teléfono —no solo el borrado
+  // que se está frenando, también las órdenes que no tienen nada que ver— y baja
+  // la copia del servidor. Sin decirlo, el operario cree que está contestando
+  // "no borres" y lo que hace es "tirá todo lo mío".
   return '⚠ Este cambio borra ' + (partes.join(', ') || 'datos ya cargados') +
-    '.\n¿Continuar de todos modos?';
+    '.\n\nSi elegís Aceptar, se borran.\nSi elegís Cancelar, se descarta TODO lo que cargaste en este teléfono y se baja de nuevo la copia del servidor.' +
+    '\n\n¿Continuar de todos modos?';
 }
 function programarPush() { clearTimeout(pushTimer); pushTimer = setTimeout(push, 400); }
 
@@ -1004,6 +1111,9 @@ async function push(confirmar) {
   }
   pushEnCurso = true;
   try {
+    // El sello se captura ANTES del POST: si el operario escanea mientras la
+    // petición viaja, lo que mande este cuerpo ya no es todo lo que hay.
+    const sello = selloGuardado;
     const r = await fetch(API+'/estado', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ version: versionServidor, estado, confirmarBorrado: !!confirmar }) });
     if (r.status === 409) {
@@ -1022,10 +1132,28 @@ async function push(confirmar) {
       }
       return;
     } else if (r.ok) {
+      // La versión se registra SIEMPRE: el servidor aceptó el POST, así que la
+      // versión nueva es la buena aunque no demos por confirmado lo local.
       versionServidor = (await r.json()).version;
-      snapBoxes();                 // quedó sincronizado: esta es la nueva base
       estabaOffline = false;
-      ponerInsignia('ok');
+      if (decidirConfirmacion({ selloEnviado: sello, selloActual: selloGuardado }) === 'adoptar-envio') {
+        limpiarPendiente();          // el servidor lo confirmó: recién ahora
+        snapBoxes();                 // quedó sincronizado: esta es la nueva base
+        ponerInsignia('ok');
+      } else {
+        // Entró trabajo mientras el POST viajaba. Ni limpiarPendiente() ni
+        // snapBoxes(): snapBoxes tomaría como base el estado ACTUAL, y las celdas
+        // tocadas en el vuelo saldrían del diff justo cuando el marcador que las
+        // cubría se apaga. Se reprograma el envío para que lo nuevo suba; el
+        // próximo 200 con el sello quieto sí cierra. La insignia no se toca: decir
+        // "sincronizado" con trabajo sin confirmar es la mentira de la Entrega 2.
+        programarPush();
+      }
+    } else {
+      // 500, 502, 503: fetch no rechaza, así que sin esta rama la función salía
+      // en silencio dejando al operario con un cartel de "sincronizado" falso.
+      // El marcador NO se toca: lo local sigue sin confirmar.
+      ponerInsignia('offline'); estabaOffline = true; necesitaResync = true;
     }
   } catch (e) { ponerInsignia('offline'); estabaOffline = true; necesitaResync = true; }
   pushEnCurso = false;
@@ -1040,8 +1168,27 @@ async function sondear() {
       if (hayPendientes()) { await sincronizar(true); necesitaResync = false; return; }
     }
     if (d.version !== versionServidor) {
-      if (hayPendientes()) await sincronizar(false);   // no pisar: fusionar
-      else adoptar(await (await fetch(API+'/estado', { cache: 'no-store' })).json());
+      if (hayPendientes()) { await sincronizar(false); }   // no pisar: fusionar
+      else {
+        // El sello se captura ANTES del GET, igual que antes del POST en push().
+        // Este GET tarda cientos de milisegundos y nada frena a `guardar()` en el
+        // medio: el guard de entrada de sondear() ya quedó atrás. Si el operario
+        // escanea acá, adoptar() pisaría `estado` y apagaría el marcador que
+        // cubría esa orden. Por eso la decisión se rehace con la respuesta en la
+        // mano: hayPendientes() de nuevo, más el sello, que delata el guardado
+        // aunque el marcador haya ido y vuelto.
+        const selloAntes = selloGuardado;
+        const remoto = await (await fetch(API+'/estado', { cache: 'no-store' })).json();
+        if (decidirAdopcion({ selloAntes, selloActual: selloGuardado, hayPendientes: hayPendientes() }) === 'adoptar') {
+          adoptar(remoto);
+        } else {
+          // Apareció trabajo sin confirmar durante el vuelo: no se pisa, se
+          // fusiona. No es un bucle: sincronizar() sube lo local y deja
+          // versionServidor al día, así que el próximo sondeo ya no ve al
+          // servidor adelantado y no vuelve a entrar acá.
+          await sincronizar(false);
+        }
+      }
     }
     necesitaResync = false;   // quedamos alineados con el servidor
     ponerInsignia('ok');
@@ -1087,7 +1234,13 @@ function diffPaletsLocal() {
   }
   return cambios;
 }
-function hayPendientes() { return diffBoxesLocal().length > 0 || diffPaletsLocal().length > 0; }
+function hayPendientes() {
+  return decidirSincronizacion({
+    pendienteLocal,
+    cambiosBoxes: diffBoxesLocal().length,
+    cambiosPalets: diffPaletsLocal().length,
+  }) === 'fusionar';
+}
 function contarPendientes() {
   let n = 0;
   for (const c of diffBoxesLocal()) n += Object.keys(c.sets).length + c.dels.length;
@@ -1202,13 +1355,36 @@ async function sincronizar(avisar) {
     for (let intento = 0; intento < 4; intento++) {
       const d = await (await fetch(API+'/estado', { cache: 'no-store' })).json();
       const cambios = diffBoxesLocal();
-      if (!cambios.length && !diffPaletsLocal().length) {   // nada local: adoptar lo del servidor
+      // El marcador entra acá: sin él, una orden del escáner (que no toca ninguna
+      // celda) hacía salir por este return, salteando la fusión de más abajo.
+      if (!cambios.length && !diffPaletsLocal().length && !pendienteLocal) {
         if (d.version !== versionServidor) adoptar(d); else versionServidor = d.version;
         ponerInsignia('ok'); sincronizando = false; return;
       }
       const n = contarPendientes();
+      // OJO con el alcance de la fusión. Lo que sigue arranca del estado DEL
+      // SERVIDOR y le aplica encima lo local, colección por colección: celdas del
+      // mapa (`boxes`), `escaneos`, `tanques`, `pedidos`, `revisiones`,
+      // `ediciones` y `palets`. Son siete; el estado tiene once claves.
+      //
+      // Las CUATRO que quedan afuera vienen tal cual de `d.estado` y pisan lo
+      // local: `inventario`, `fechaInventario`, `inventarioCorte` y `modoLote`.
+      // Las tres primeras las escribe la importación del Excel de inventario, la
+      // cuarta el switch de modo por lote. Esta lista se verificó una por una
+      // contra las claves que toca la app: si agregás una clave nueva al estado,
+      // o la fusionás acá abajo, o sumala a esta enumeración. Que el comentario
+      // mienta es peor que no tenerlo.
+      //
+      // Y dentro de `boxes` la fusión tampoco es total: de un box que el servidor
+      // YA tiene se fusionan las celdas, no `nombre`/`cols`/`filas`. Renombrar o
+      // redimensionar un box sin tocar ninguna celda no sobrevive a esta fusión.
+      //
+      // El marcador DETECTA que hay trabajo sin confirmar en cualquier clave,
+      // incluidas esas cuatro, pero esta fusión no lo RESUELVE: si el único
+      // cambio local está en `inventario`, se pierde igual. Cerrar ese hueco es
+      // alcance de la Entrega 2 (portón único de escritura).
       const serv = d.estado || { inventario: estado.inventario, boxes: [], escaneos: [], tanques: [], palets: [],
-        fechaInventario: estado.fechaInventario, modoLote: estado.modoLote };
+        fechaInventario: estado.fechaInventario, inventarioCorte: estado.inventarioCorte, modoLote: estado.modoLote };
       const conflictos = aplicarDiffEnServidor(serv, cambios);
       // unir órdenes de escáner por id (por las dudas, aunque no se carguen offline)
       const idsSrv = new Set((serv.escaneos || []).map(o => o.id));
@@ -1247,6 +1423,10 @@ async function sincronizar(avisar) {
         for (const [k, v] of Object.entries(c.sets)) sp.celdas[k] = v;
         for (const k of c.dels) delete sp.celdas[k];
       }
+      // El sello se captura ACÁ, después de armar `serv` (que se arma sin ningún
+      // await de por medio) y antes del POST: cualquier guardado posterior queda
+      // afuera del cuerpo que viaja, y el 200 no lo puede dar por confirmado.
+      const sello = selloGuardado;
       const r = await fetch(API+'/estado', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ version: d.version, estado: serv, confirmarBorrado: confirmar }) });
       if (r.status === 409) continue;              // alguien escribió justo: reintentar
@@ -1258,7 +1438,20 @@ async function sincronizar(avisar) {
         adoptar(d); ponerInsignia('ok'); sincronizando = false; return;   // descartar lo local
       }
       if (r.ok) {
+        // La versión se registra SIEMPRE, se adopte o no lo enviado: el servidor
+        // aceptó la escritura y la versión vieja ya no sirve para el próximo POST.
         versionServidor = (await r.json()).version;
+        if (decidirConfirmacion({ selloEnviado: sello, selloActual: selloGuardado }) !== 'adoptar-envio') {
+          // El operario escaneó mientras el POST viajaba: `serv` no lo contiene.
+          // Pisar `estado` con `serv` borraría esa orden sin dejar rastro. Se
+          // vuelve a girar el bucle: el GET de arriba va a traer la versión que
+          // acabamos de escribir y `serv` se rearma desde el `estado` actual, que
+          // sí tiene lo nuevo. El marcador queda prendido hasta ese 200.
+          // No hay bucle infinito: cada vuelta consume un intento de los 4, y si
+          // se agotan se sale por offline y sondear() vuelve a intentar después.
+          continue;
+        }
+        limpiarPendiente();          // el servidor lo confirmó: recién ahora
         estado = serv; reindexar(); snapBoxes();
         try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch (e) {}
         actualizarEncabezado(); dibujarResumenInv();
@@ -1271,7 +1464,14 @@ async function sincronizar(avisar) {
         if (sesion) refrescarLibre();
         aplicarModoLote();
         ponerInsignia('ok');
-        if (avisar) alert(`✅ Se subieron ${n} cambio(s) que cargaste sin WiFi.` +
+        // n cuenta solo celdas (diffBoxesLocal + diffPaletsLocal). Si el escáner
+        // tenía órdenes sin subir pero el mapa estaba intacto, n vale 0 y decir
+        // "se subieron 0 cambios" es mentirle al operario justo en el escenario
+        // central del arreglo. Cuando hay celdas, el número se mantiene.
+        if (avisar) alert(
+          (n > 0
+            ? `✅ Se subieron ${n} cambio(s) que cargaste sin WiFi.`
+            : `✅ Se subió lo que habías cargado sin WiFi.`) +
           (conflictos ? `\n\n⚠ ${conflictos} celda(s) también habían cambiado en el servidor; se priorizó lo cargado en este teléfono.` : ''));
         sincronizando = false; return;
       }
@@ -1285,6 +1485,10 @@ async function sincronizar(avisar) {
 function adoptar(d) {
   versionServidor = d.version;
   if (d.estado) { estado = d.estado; reindexar(); }
+  // Adoptar es "lo del servidor pasa a ser lo mío": por definición no queda nada
+  // local sin confirmar. Y si no se apagara acá, rechazar un borrado masivo (412)
+  // dejaría el marcador prendido para siempre, con un cartel cada tres segundos.
+  limpiarPendiente();
   snapBoxes(); estabaOffline = false;   // quedamos alineados con el servidor
   try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch (e) {}
   actualizarEncabezado(); dibujarResumenInv();
@@ -1311,7 +1515,10 @@ document.addEventListener('visibilitychange', () => {
 // volver a bajar la del servidor. No borra el rol ni otros ajustes.
 document.getElementById('btnDescartarLocal')?.addEventListener('click', () => {
   if (!confirm('Se descarta la copia guardada en este teléfono y se baja de nuevo la del servidor.\n¿Continuar?')) return;
-  try { localStorage.removeItem(CLAVE); localStorage.removeItem(CLAVE_BASE); } catch (e) {}
+  // CLAVE_PENDIENTE también: si se borra la copia local y queda el marcador, el
+  // arranque siguiente cree que este teléfono tiene trabajo sin subir contra un
+  // estado que ya es puro servidor, y sube un POST idéntico por cada sondeo.
+  try { localStorage.removeItem(CLAVE); localStorage.removeItem(CLAVE_BASE); localStorage.removeItem(CLAVE_PENDIENTE); } catch (e) {}
   location.reload();
 });
 
@@ -1338,7 +1545,9 @@ async function iniciar() {
   let local = null, pbase = null;
   try { local = JSON.parse(localStorage.getItem(CLAVE)); } catch (e) {}
   try { pbase = JSON.parse(localStorage.getItem(CLAVE_BASE)); } catch (e) {}
-  const localTiene = local && (local.boxes?.length || local.inventario?.length);
+  // El marcador cuenta como "hay algo local": una orden del escáner no deja
+  // celdas en el mapa ni filas de inventario, y esa era justamente la ceguera.
+  const localTiene = !!(local && (local.boxes?.length || local.inventario?.length || pendienteLocal));
   try {
     const r = await fetch(API+'/estado', { cache: 'no-store' });
     if (r.ok) {
@@ -1346,15 +1555,43 @@ async function iniciar() {
       modoServidor = true; versionServidor = d.version;
       // No se espera: solo decide textos. Si tarda o falla, queda el modo 'local'.
       pedirInfo().catch(() => {});
-      // Reabrir con datos locales: si quedaron celdas cargadas sin WiFi (local difiere
-      // de la última base sincronizada), fusionarlas y subirlas en vez de descartarlas.
-      if (localTiene && pbase && typeof pbase.boxes === 'string') {
-        estado = local; reindexar(); baseBoxes = pbase.boxes;
-        if (typeof pbase.palets === 'string') basePalets = pbase.palets;
-        if (hayPendientes()) { await sincronizar(true); return; }
+      const hayFotoBase = !!(pbase && typeof pbase.boxes === 'string');
+      const quePasa = decidirArranque({
+        hayLocal: localTiene, pendienteLocal, hayFotoBase, hayEstadoServidor: !!d.estado,
+      });
+
+      if (quePasa === 'fusionar' || quePasa === 'subir-local') {
+        estado = local; reindexar();
+        if (hayFotoBase) {
+          baseBoxes = pbase.boxes;
+          if (typeof pbase.palets === 'string') basePalets = pbase.palets;
+        } else {
+          // Sin foto base, el servidor es la base: así diffBoxesLocal() solo
+          // cuenta las celdas que de verdad cambió este teléfono, no todas.
+          // Si dejáramos baseBoxes en '[]', cada celda local aparecería como
+          // "cambio sin subir" y sincronizar() aplastaría el mapa del servidor,
+          // que es justamente la pérdida en dirección contraria que queremos evitar.
+          baseBoxes = JSON.stringify(d.estado?.boxes ?? []);
+          basePalets = JSON.stringify(d.estado?.palets ?? []);
+        }
+        await sincronizar(true);
+        return;
       }
-      if (d.estado) estado = d.estado;
-      else if (localTiene) { estado = local; programarPush(); }
+      if (quePasa === 'adoptar-servidor') {
+        // adoptar(d) y no el procedimiento a mano: había dos implementaciones de
+        // "lo del servidor pasa a ser lo mío" y esta se olvidaba de
+        // limpiarPendiente(). Con el marcador prendido contra un estado que es
+        // puro servidor (copia local ilegible, o después de «Descartar copia
+        // local»), hayPendientes() daba true y cada sondeo disparaba un
+        // sincronizar() completo que subía un POST idéntico y gastaba una versión.
+        // Diferencia deliberada respecto del código viejo: adoptar() además
+        // redibuja los paneles y aplica el modo por lote. Acá es inofensivo —
+        // el DOM ya está armado cuando corre iniciar() (se la llama al final del
+        // arranque) y los redibujos son idempotentes.
+        adoptar(d);
+        ponerInsignia('ok');   // adoptar() no toca la insignia; sus otros llamadores también la ponen afuera
+        return;
+      }
       reindexar(); snapBoxes(); ponerInsignia('ok');
       return;
     }
@@ -1625,6 +1862,12 @@ function aplicarRol(r) {
   document.body.classList.toggle('rol-programador', r === 'programador');
   $('pantallaRol').style.display = 'none';
   try { localStorage.setItem(CLAVE_ROL, r); } catch (e) {}
+  // El historial arranca plegado para el operario (le tapa la pantalla de carga)
+  // y desplegado para el programador, que entra justamente a mirarlo.
+  $('escCajaHistorial').open = (r === 'programador');
+  // Los botones del historial dependen del rol y de la hora: hay que redibujar,
+  // o al cambiar de rol quedan los de antes.
+  escDibujarHistorial();
   if (r === 'operario') opSeccion('cargar');
   else if (!document.querySelector('.panel.activo')) activarPanel('inventario');
 }
@@ -4259,14 +4502,31 @@ function escDeshacer() {
 // los códigos, la foto pasa a describir una orden que ya no existe: deshacer
 // revertiría a valores que no corresponden o dejaría barriles sin tocar. Primero
 // se deshace, después se edita.
-function escPuedeEditar(o) {
-  if (!o) return { puede: false, motivo: 'no-existe' };
-  if (o.aplicado) return { puede: false, motivo: 'aplicada' };
-  // Marcada a mano como pasada al inventario, pero sin cambios registrados: no hay
-  // foto que romper, así que se edita — pero la marca puede quedar diciendo algo
-  // que ya no es, y eso conviene preguntarlo antes.
-  if (o.marcas && o.marcas.inventario) return { puede: true, aviso: 'marcada' };
-  return { puede: true };
+// escPuedeEditar(orden, rol, ahora) y ESC_MINUTOS_EDICION viven en
+// js/orden-editable.js, cargado en el <head>. Está afuera para que los tests
+// corran la regla de verdad y no una copia. El rol se le pasa siempre explícito:
+// `rol` es un `let` del script inline y no es visible desde otro archivo.
+
+// El cartel que explica por qué una orden no se puede tocar. El del operario no
+// ofrece salida dentro de la app a propósito: la salida es avisarle a alguien.
+function escMotivoNoEditable(o, motivo) {
+  if (motivo === 'vencida') {
+    return `<h3>Orden ${escapeHtml(o.ot || '(sin OT)')}</h3>` +
+      `<p style="color:#c62828; font-weight:700;">Pasaron más de ${ESC_MINUTOS_EDICION} minutos desde que se guardó.</p>` +
+      '<p class="nota">Las órdenes se pueden corregir apenas se cargan. Después quedan firmes, ' +
+      'porque a esta altura ya se pasaron a la planilla y un cambio acá dejaría los papeles ' +
+      'diciendo otra cosa.</p>' +
+      '<p>Si hay algo mal, avisale al encargado.</p>' +
+      '<div class="acciones-modal"><button class="btn sec" onclick="document.getElementById(\'modal\').classList.remove(\'abierto\')">Cerrar</button></div>';
+  }
+  return `<h3>Orden ${escapeHtml(o.ot || '(sin OT)')}</h3>` +
+    '<p style="color:#ffd180;">Esta orden ya se aplicó al inventario, así que todavía no se puede editar.</p>' +
+    '<p class="nota">Al aplicarla quedó guardado cómo estaba cada barril antes, y eso es lo que usa ' +
+    'Deshacer para volver atrás con exactitud. Si le cambiáramos el lote o los barriles ahora, esa foto ' +
+    'pasaría a describir una orden que ya no existe.</p>' +
+    '<p>Deshacé la aplicación primero y después editala.</p>' +
+    `<div class="acciones-modal"><button class="btn" onclick="escPreviewInventario('${o.id}')">Ir a deshacer</button>` +
+    '<button class="btn sec" onclick="document.getElementById(\'modal\').classList.remove(\'abierto\')">Cerrar</button></div>';
 }
 
 // Los dos botones de abajo cambian de nombre según se esté creando o editando: es
@@ -4282,18 +4542,14 @@ function escPintarModoEdicion() {
 // mano, la ✕ de cada fila) en vez de tener una segunda lista en otra ventana.
 function escEditarOrden(id) {
   const o = (estado.escaneos || []).find(x => x.id === id);
-  const v = escPuedeEditar(o);
+  // Se revalida acá y no sólo al dibujar: el historial no se redibuja solo, así
+  // que un botón dibujado a los 14 minutos sigue siendo clickeable a los 20.
+  const v = escPuedeEditar(o, rol);
   if (!v.puede) {
     if (v.motivo === 'no-existe') { alert('Esa orden ya no está.'); escDibujarHistorial(); return; }
-    $('modalContenido').innerHTML = `<h3>Orden ${escapeHtml(o.ot || '(sin OT)')}</h3>` +
-      '<p style="color:#ffd180;">Esta orden ya se aplicó al inventario, así que todavía no se puede editar.</p>' +
-      '<p class="nota">Al aplicarla quedó guardado cómo estaba cada barril antes, y eso es lo que usa ' +
-      'Deshacer para volver atrás con exactitud. Si le cambiáramos el lote o los barriles ahora, esa foto ' +
-      'pasaría a describir una orden que ya no existe.</p>' +
-      '<p>Deshacé la aplicación primero y después editala.</p>' +
-      `<div class="acciones-modal"><button class="btn" onclick="escPreviewInventario('${o.id}')">Ir a deshacer</button>` +
-      '<button class="btn sec" onclick="document.getElementById(\'modal\').classList.remove(\'abierto\')">Cerrar</button></div>';
+    $('modalContenido').innerHTML = escMotivoNoEditable(o, v.motivo);
     $('modal').classList.add('abierto');
+    escDibujarHistorial();   // que el botón quede gris de una vez
     return;
   }
   if (escSesion.codigos.length && escSesion.editando !== id &&
@@ -4378,14 +4634,59 @@ function escGuardar() {
   escDibujarHistorial();
 }
 
+// Qué quedó para revisar en una orden ya guardada. Si devuelve vacío, el cartel
+// sale verde. La orden se guarda igual en todos los casos: frenarla dejaría al
+// operario trabado en la nave, sin nadie a mano para destrabarlo.
+const ESC_MAX_LISTADOS = 10;   // más que esto no se lee, se cuenta
+
+function escRevisar(o) {
+  const avisos = [];
+  if (!o.ot) avisos.push('Falta el <b>N° de OT</b>.');
+  if (!o.lote) avisos.push('Falta el <b>Lote</b>.');
+
+  const lista = (nums) => {
+    const vistos = nums.slice(0, ESC_MAX_LISTADOS).map(escapeHtml).join(', ');
+    return nums.length > ESC_MAX_LISTADOS ? `${vistos} y ${nums.length - ESC_MAX_LISTADOS} más` : vistos;
+  };
+
+  // Escanear dos veces el mismo barril ya se rechaza en el momento, así que esto
+  // es una red: cubre las órdenes que entraron por el import del Excel o por una
+  // fusión entre dos dispositivos.
+  const vistos = new Set(), repetidos = [];
+  for (const c of o.codigos) {
+    const s = String(c);
+    if (vistos.has(s) && !repetidos.includes(s)) repetidos.push(s);
+    vistos.add(s);
+  }
+  if (repetidos.length) avisos.push(repetidos.length === 1
+    ? `El barril <b>${lista(repetidos)}</b> está cargado dos veces.`
+    : `Hay ${repetidos.length} barriles cargados dos veces: <b>${lista(repetidos)}</b>.`);
+
+  const fuera = o.codigos.map(String).filter(c => !indiceInv.get(c));
+  if (fuera.length) avisos.push(fuera.length === 1
+    ? `El barril <b>${lista(fuera)}</b> no figura en el inventario.`
+    : `Hay ${fuera.length} barriles que no figuran en el inventario: <b>${lista(fuera)}</b>.`);
+
+  return avisos;
+}
+
 function escMostrarResumen(o, editado) {
   const n = o.codigos.length;
   const r = $('escResumen');
+  const avisos = escRevisar(o);
+  const detalle = `<div class="esc-res-detalle">Orden <b>${escapeHtml(o.ot || '(sin OT)')}</b> · ${escapeHtml(ESC_TIPO_LABEL[o.tipo])} · Lote ${escapeHtml(o.lote || '—')} · ${escapeHtml(o.fecha)}</div>`;
   r.style.display = 'block';
-  r.innerHTML = `<div class="esc-res-num">✅ ${editado
-      ? 'Cambios guardados · ' + n + (n === 1 ? ' barril' : ' barriles')
-      : n + (n === 1 ? ' barril cargado' : ' barriles cargados')}</div>
-    <div class="esc-res-detalle">Orden <b>${escapeHtml(o.ot || '(sin OT)')}</b> · ${escapeHtml(ESC_TIPO_LABEL[o.tipo])} · Lote ${escapeHtml(o.lote || '—')} · ${escapeHtml(o.fecha)}</div>`;
+  r.classList.toggle('revisar', avisos.length > 0);
+  if (!avisos.length) {
+    r.innerHTML = `<div class="esc-res-num">✅ ${editado
+        ? 'Cambios guardados · ' + n + (n === 1 ? ' barril' : ' barriles')
+        : n + (n === 1 ? ' barril cargado' : ' barriles cargados')}</div>` + detalle;
+  } else {
+    r.innerHTML = `<div class="esc-res-num">⚠️ ${editado ? 'Cambios guardados' : 'Orden guardada'}, pero hay que revisar</div>` +
+      detalle +
+      '<ul class="esc-res-avisos">' + avisos.map(a => `<li>${a}</li>`).join('') + '</ul>' +
+      '<div class="esc-res-detalle">La orden quedó guardada. Corregila con el ✏️ del historial o avisale al encargado.</div>';
+  }
   r.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -4477,6 +4778,12 @@ function escDibujarHistorial() {
       const celdaMarcas = verMarcas
         ? `<td style="white-space:nowrap;">${btnMarca('lotes', 'Lotes')} ${btnMarca('inventario', 'Inventario')} ${btnMarca('sistema', 'Sistema')}</td>`
         : '';
+      const v = escPuedeEditar(o, rol);
+      const vencida = (v.motivo === 'vencida');
+      const tituloEditar = vencida
+        ? `pasaron más de ${ESC_MINUTOS_EDICION} minutos: sólo la puede editar el programador`
+        : (o.aplicado ? 'ya aplicada al inventario: hay que deshacerla antes de editarla' : 'editar esta orden');
+      const gris = vencida ? ' esc-vencida' : '';
       return `<tr>
       <td>${escapeHtml(o.fecha)}</td><td>${escapeHtml(o.ot || '—')}</td>
       <td>${escapeHtml(ESC_TIPO_EXCEL[o.tipo] || o.tipo)}</td><td>${escapeHtml(o.lote || '—')}</td>
@@ -4484,10 +4791,10 @@ function escDibujarHistorial() {
       ${celdaMarcas}
       <td style="white-space:nowrap;">
         <button class="btn sec" style="padding:4px 9px;" onclick="escVerOrden('${o.id}')">👁</button>
-        <button class="btn sec" style="padding:4px 9px;" title="${o.aplicado
-          ? 'ya aplicada al inventario: hay que deshacerla antes de editarla'
-          : 'editar esta orden'}" onclick="escEditarOrden('${o.id}')">✏️</button>
-        <button class="btn peligro" style="padding:4px 9px;" onclick="escBorrarOrden('${o.id}')">🗑</button></td>
+        <button class="btn sec${gris}" style="padding:4px 9px;" title="${tituloEditar}" onclick="escEditarOrden('${o.id}')">✏️</button>
+        <button class="btn peligro${gris}" style="padding:4px 9px;" title="${vencida
+          ? `pasaron más de ${ESC_MINUTOS_EDICION} minutos: sólo la puede borrar el programador`
+          : 'borrar esta orden'}" onclick="escBorrarOrden('${o.id}')">🗑</button></td>
     </tr>`;
     }).join('');
   escDibujarTrasegados();
@@ -5044,6 +5351,17 @@ function invConfirmarRevertir(id) {
 function escBorrarOrden(id) {
   const o = (estado.escaneos || []).find(x => x.id === id);
   if (!o) return;
+  // Misma ventana de tiempo que el lápiz: dejar el tacho abierto sería peor que
+  // dejar abierta la edición, porque no hay forma de volver atrás. Sólo se mira
+  // 'vencida': borrar una orden ya aplicada sigue siendo cosa del programador,
+  // como hasta ahora.
+  const v = escPuedeEditar(o, rol);
+  if (v.motivo === 'vencida') {
+    $('modalContenido').innerHTML = escMotivoNoEditable(o, v.motivo);
+    $('modal').classList.add('abierto');
+    escDibujarHistorial();
+    return;
+  }
   if (!confirm(`¿Borrar la orden ${o.ot || '(sin OT)'} de ${o.codigos.length} barriles? No se puede deshacer.`)) return;
   estado.escaneos = estado.escaneos.filter(x => x.id !== id);
   guardar();
