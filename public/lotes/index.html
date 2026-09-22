@@ -385,6 +385,18 @@
   .tb-chip.ok{background:var(--tb-ok-bg);color:var(--tb-ok-fg)}
   .tb-chip.mal{background:var(--tb-mal-bg);color:var(--tb-mal-fg)}
   .tb-chip.neutro{background:var(--tb-neu-bg);color:var(--tb-neu-fg)}
+  .tb-panel{background:var(--tb-panel);border:1px solid var(--tb-linea);border-radius:8px;padding:12px;margin-bottom:12px}
+  .tb-panel-cab{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .tb-tarjetas{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+  .tb-tarjeta{background:var(--tb-fondo);border:1px solid var(--tb-linea);border-radius:6px;padding:8px;text-align:center}
+  .tb-tarjeta.hi{background:var(--tb-mal-bg);color:var(--tb-mal-fg)}
+  .tb-pct{font-size:22px;font-weight:700;color:var(--tb-primario)}
+  .tb-tarjeta.hi .tb-pct{color:var(--tb-mal-fg)}
+  .tb-label{font-size:12px}
+  .tb-cant{font-size:11px;color:var(--tb-neu-fg)}
+  .tb-mosaico{display:flex;flex-wrap:wrap;gap:3px}
+  .tb-cuadro{width:16px;height:16px;border:1px solid var(--tb-linea);border-radius:3px;padding:0;cursor:pointer}
+  .tb-cuadro.ok{background:var(--tb-ok-bg)} .tb-cuadro.neutro{background:var(--tb-neu-bg)} .tb-cuadro.mal{background:var(--tb-mal-bg)}
   .linaje-col { display:inline-block; vertical-align:top; min-width:150px; }
 
   /* Ficha lote cerrado */

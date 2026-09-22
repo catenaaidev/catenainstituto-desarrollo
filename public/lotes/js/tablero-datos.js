@@ -130,3 +130,30 @@ export function pasaPregunta(fila, val){
     default:                 return true;
   }
 }
+
+/* --- el panel --- */
+
+const EJES_PANEL = [
+  { clave: 'fml_terminada',     label: 'FML terminada' },
+  { clave: 'frecuencia_al_dia', label: 'Frecuencia al día' },
+  { clave: 'so2_conforme',      label: 'SO₂ conforme' },
+  { clave: 'ph_ok',             label: 'pH OK' },
+  { clave: 'lleno',             label: 'Lleno' },
+  { clave: 'requieren_accion',  label: 'Requieren acción', alReves: true },
+];
+
+export function tarjetasDe(kpis){
+  const total = Number((kpis || {}).total_activos) || 0;
+  return EJES_PANEL.map(e => {
+    const cantidad = Number((kpis || {})[e.clave]) || 0;
+    const pct = total ? Math.round((cantidad / total) * 100) : 0;
+    // "Requieren accion" es el unico eje donde mas es peor.
+    return { clave: e.clave, label: e.label, cantidad, total, pct, hi: e.alReves ? cantidad > 0 : false };
+  });
+}
+
+/** Verde sin condiciones, gris con una, rojo con dos o mas. */
+export function tonoMosaico(fila){
+  const n = (fila.condiciones || []).length;
+  return n === 0 ? 'ok' : (n === 1 ? 'neutro' : 'mal');
+}
