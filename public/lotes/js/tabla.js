@@ -2,6 +2,7 @@
 'use strict';
 
 import { $, num } from './nucleo.js';
+import { posicionDePanel } from './posicion-panel.js';
 
 /* --- sort --- */
 export function toggleSort(st, k){ if (st.key===k) st.dir*=-1; else { st.key=k; st.dir=1; } }
@@ -30,11 +31,24 @@ export function opcionesValores(rows, valorDe){
 }
 export function matchValor(valorDe){ return (row,set)=>set.has(normVal(valorDe(row))); }
 
+/* cfg.anclado = true monta el filtro en "modo cabecera": el panel se cuelga de
+ * <body> con position:fixed y el filtro NO trae boton propio -- lo dispara un
+ * elemento externo que le pasa a abrir(). Lo usa la pestaña Lotes, que pone el
+ * embudo dentro de cada <th>.
+ *
+ * El panel tiene que salir del flujo normal si o si: la tabla de Lotes vive
+ * dentro de .scroll.tall{overflow:auto} y un panel position:absolute adentro
+ * quedaria RECORTADO por ese contenedor. Colgarlo de <body> es lo que lo salva.
+ *
+ * Las otras cinco pestañas siguen usando el modo de siempre (boton + panel
+ * absolute dentro de .mfilt), que no cambia en nada. */
 export function crearFiltroMulti(cfg){
   const { label, set } = cfg;
+  const anclado = cfg.anclado === true;
   const wrap=document.createElement('div'); wrap.className='mfilt';
   const btn=document.createElement('button'); btn.type='button'; btn.className='mfilt-btn';
   const panel=document.createElement('div'); panel.className='mfilt-panel';
+  if (anclado) panel.classList.add('mfilt-anclado');
   const search=document.createElement('input'); search.className='mfilt-search'; search.placeholder='buscar…';
   const todas=document.createElement('label'); todas.className='mfilt-opt mfilt-all';
   const todasCb=document.createElement('input'); todasCb.type='checkbox';
@@ -44,7 +58,10 @@ export function crearFiltroMulti(cfg){
   const limpiar=document.createElement('button'); limpiar.type='button'; limpiar.textContent='Limpiar';
   foot.appendChild(limpiar);
   panel.appendChild(search); panel.appendChild(todas); panel.appendChild(list); panel.appendChild(foot);
-  wrap.appendChild(btn); wrap.appendChild(panel);
+  /* En modo anclado el boton no se usa (lo reemplaza el embudo del <th>) y el
+     panel se va a <body>; wrap queda suelto y el llamador no lee .el. */
+  if (anclado) document.body.appendChild(panel);
+  else { wrap.appendChild(btn); wrap.appendChild(panel); }
   let opts=[];
   /* Firma de las opciones con las que se construyo la lista, para poder saltear
    * la reconstruccion cuando no cambiaron. Ver rebuildSiCambio. El separador es
@@ -66,8 +83,13 @@ export function crearFiltroMulti(cfg){
   }
   function actualizar(){
     const n=set.size;
-    btn.textContent=(n?`${label} (${n})`:label)+' ▾';
-    btn.classList.toggle('active', n>0);
+    /* En modo anclado el boton esta detached y nadie lo ve: quien muestra el
+       label y el contador es el embudo del <th>, que la vista repinta en cada
+       render leyendo el tamaño del Set. */
+    if (!anclado){
+      btn.textContent=(n?`${label} (${n})`:label)+' ▾';
+      btn.classList.toggle('active', n>0);
+    }
     const vis=opts.filter(o=>!o.li.classList.contains('hide'));
     todasCb.checked=vis.length>0&&vis.every(o=>o.cb.checked);
   }
@@ -83,16 +105,32 @@ export function crearFiltroMulti(cfg){
     actualizar(); cfg.onChange();
   });
   limpiar.addEventListener('click',()=>{ set.clear(); sync(); cfg.onChange(); });
-  btn.addEventListener('click',(e)=>{
-    e.stopPropagation();
+  /* Abrir/cerrar es un toggle: volver a apretar el mismo disparador lo cierra.
+     `ancla` es el elemento bajo el cual colocarlo y solo lo usa el modo
+     anclado; con el boton propio la posicion la resuelve el CSS. */
+  function alternarPanel(ancla){
     const abierto=panel.classList.contains('open');
     document.querySelectorAll('.mfilt-panel.open').forEach(p=>p.classList.remove('open'));
-    if (!abierto){ panel.classList.add('open'); search.value=''; opts.forEach(o=>o.li.classList.remove('hide')); actualizar(); search.focus(); }
-  });
+    if (abierto) return;
+    panel.classList.add('open'); search.value='';
+    opts.forEach(o=>o.li.classList.remove('hide')); actualizar();
+    /* Posicionar DESPUES de mostrarlo: con display:none el panel mide 0x0 y no
+       habria forma de saber si entra abajo del ancla o hay que volcarlo arriba. */
+    if (anclado && ancla){
+      const a=ancla.getBoundingClientRect(), p=panel.getBoundingClientRect();
+      const {izq,top}=posicionDePanel(
+        { left:a.left, top:a.top, bottom:a.bottom },
+        { ancho:p.width, alto:p.height },
+        { ancho:window.innerWidth, alto:window.innerHeight });
+      panel.style.left=izq+'px'; panel.style.top=top+'px';
+    }
+    search.focus();
+  }
+  btn.addEventListener('click',(e)=>{ e.stopPropagation(); alternarPanel(); });
   panel.addEventListener('click',e=>e.stopPropagation());
   build(); actualizar();
   return {
-    el:wrap, sync,
+    el:wrap, sync, abrir:alternarPanel,
     rebuild:()=>{ build(); actualizar(); },
     /* Igual que rebuild, pero solo rehace la lista si las opciones cambiaron;
      * si son las mismas, se limita a resincronizar los tildes y el contador,

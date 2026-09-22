@@ -126,6 +126,11 @@
     border-radius:4px;color:var(--muted);cursor:pointer;font-family:inherit;
     font-size:11px;padding:1px 5px;margin-left:6px;line-height:1.4}
   th.banda button.chip-grupo:hover{color:var(--txt);border-color:var(--accent)}
+  /* Grupo colapsado que esconde una columna CON el filtro puesto. Sin esta
+     marca el filtro seguiria escondiendo filas y su embudo no estaria a la
+     vista en ningun lado: la unica salida seria adivinar y apretar Limpiar. */
+  th.banda button.chip-grupo.con-filtro{color:var(--accent);border-color:var(--accent);
+    background:var(--panel);font-weight:600}
   /* Banda colapsada por completo: queda una columna angosta de testigo */
   th.banda-testigo{padding:7px 4px}
   th.colstub,td.colstub{width:16px;min-width:16px;padding:7px 2px;
@@ -154,6 +159,17 @@
   tr.crit td:first-child{box-shadow:inset 3px 0 0 var(--nook)}
   tr.venc td{background:#faf2e0}
   tr.venc td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+  /* ---- lote organico: verde pastel ----
+   * Va DESPUES de .crit y .venc a proposito: misma especificidad (0,1,1), asi
+   * que gana la ultima y un lote organico se ve verde aunque tenga alarmas. Es
+   * lo que se pidio: lo que se quiere separar de un vistazo es el organico del
+   * convencional.
+   *
+   * La alarma no se pierde: su marca es un box-shadow en la primera celda, no
+   * un background, asi que la franja roja (o amarilla) sigue saliendo sobre el
+   * verde. Si alguna vez se cambia esa franja a background-color, un lote
+   * organico con alarmas deja de avisar. */
+  tr.org td{background:#eaf3e6}
   /* ---- lote sin litros: la fila entera se atenua ----
    * La opacidad va en el <tr> y no en cada <td> a proposito. Con opacity por
    * celda, el fondo opaco de la columna Lote fija (#tLotes tbody
@@ -180,6 +196,7 @@
   .legend-inline .sw.crit{background:#fbeeeb;border-left:3px solid var(--nook)}
   .legend-inline .sw.venc{background:#faf2e0;border-left:3px solid var(--warn)}
   .legend-inline .sw.vacio{background:var(--panel2);border:1px solid var(--line);opacity:.45}
+  .legend-inline .sw.org{background:#eaf3e6;border:1px solid #cbe1c7}
   /* ---- pill ---- */
   .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
   .pill.bad{background:#f6e4e1;color:#9e3328;border:1px solid #ecccc6}
@@ -218,6 +235,27 @@
   .segm button[aria-pressed="true"]{background:var(--panel);color:var(--accent);font-weight:600}
   .mfilt-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:280px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;display:none}
   .mfilt-panel.open{display:block}
+  /* ---- panel en modo anclado (embudos de la cabecera de Lotes) ----
+   * Cuelga de <body> y no de la barra de filtros, porque la tabla de Lotes vive
+   * dentro de .scroll.tall{overflow:auto} y ahi adentro un panel absolute
+   * quedaria RECORTADO por el contenedor. Al ser fixed, top/left los calcula
+   * posicion-panel.js y los escribe inline al abrirlo; el z-index tiene que
+   * superar al del encabezado sticky (th.ggutter llega a 7). */
+  .mfilt-panel.mfilt-anclado{position:fixed;top:0;left:0;z-index:40}
+  /* ---- embudo de filtro dentro de la cabecera (pestaña Lotes) ----
+   * Cada filtro vive en el <th> de SU columna, como en Excel, en lugar de la
+   * barra de botones que estaba en la toolbar. El panel de casillas que abre es
+   * el mismo .mfilt-panel de siempre, montado en modo anclado.
+   *
+   * No llega al agarre de cambiar el ancho (los ultimos 6px del th): lo frena
+   * el padding derecho de 9px de la regla th,td. */
+  th button.th-flt{background:transparent;border:1px solid transparent;
+    border-radius:4px;color:var(--muted);cursor:pointer;font-family:inherit;
+    font-size:10px;line-height:1.5;padding:0 3px;margin-left:5px;
+    vertical-align:1px;white-space:nowrap}
+  th button.th-flt:hover{color:var(--txt);border-color:var(--accent);background:var(--panel2)}
+  th button.th-flt.active{color:var(--accent);border-color:var(--accent);
+    background:var(--panel2);font-weight:600}
   .mfilt-search{width:100%;box-sizing:border-box;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:13px;font-family:inherit;margin-bottom:6px}
   .mfilt-list{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:1px}
   .mfilt-opt{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:5px;cursor:pointer;font-size:13px;white-space:nowrap}
@@ -308,6 +346,10 @@
   #tLotes tbody tr:hover   td[data-k="lote"]{background:var(--panel2)}
   #tLotes tbody tr.crit    td[data-k="lote"]{background:#fbeeeb}
   #tLotes tbody tr.venc    td[data-k="lote"]{background:#faf2e0}
+  /* Despues de .crit y .venc, por el mismo motivo que la regla tr.org de arriba:
+     misma especificidad, gana la ultima. Sin esta linea la columna Lote fija
+     seria la unica celda blanca de una fila verde al scrollear a lo ancho. */
+  #tLotes tbody tr.org     td[data-k="lote"]{background:#eaf3e6}
   #tLotes tbody td[data-k="lote"].gsel{background:linear-gradient(rgba(138,51,64,.10),rgba(138,51,64,.10)) var(--panel)}
 
   /* La columna ID mide 66 caracteres en el Excel: se acota para que no empuje
@@ -985,7 +1027,11 @@ table.hm td.hm-c{padding:0}
   <section class="view" id="tab-lotes">
     <div class="toolbar">
       <input class="txt" id="buscaLotes" placeholder="🔎 Buscar por lote…" style="min-width:180px">
-      <div class="mfilt-bar" id="fltLotesBar"></div>
+      <!-- Los filtros de casillas NO están acá: cada uno vive en el embudo ▾ de
+           la cabecera de su columna, como en Excel (initFiltrosLotes los monta
+           en modo anclado). El de Llenado sí se queda en la toolbar: son tres
+           opciones excluyentes y siempre hay una puesta, así que se muestra
+           abierto y no tiene una sola columna de la que colgarse. -->
       <!-- Llenado: los lotes en 0 litros no son "cerrados" (23 de los 55 siguen
            en ingreso/FA/FML/crianza), por eso no alcanza con el filtro Etapa.
            El hueco lo llena crearFiltroLlenado (filtro-llenado.js), el mismo
@@ -1003,11 +1049,18 @@ table.hm td.hm-c{padding:0}
       <button class="btn" id="btnAddLote">➕ Agregar lote</button>
     </div>
     <div class="legend-inline">
+      <span class="sw org"></span> Lote orgánico
+      &nbsp;·&nbsp;
       <span class="sw crit"></span> Lote con alarmas (NO OK / sin análisis / vencido)
       &nbsp;·&nbsp;
       <span class="sw venc"></span> Frecuencia vencida (&gt; días permitidos sin análisis)
       &nbsp;·&nbsp;
       <span class="sw vacio"></span> Lote sin litros (fila atenuada)
+      <!-- El verde del orgánico tapa el fondo rojo/amarillo, así que un lote
+           orgánico con alarmas se ve verde: lo que queda de la alarma es la
+           franja de color al borde izquierdo de la fila. -->
+      <br><span style="opacity:.75">En un lote orgánico con alarmas el verde tapa el fondo:
+      la alarma queda en la franja de color del borde izquierdo.</span>
     </div>
     <div class="scroll tall"><table id="tLotes"></table></div>
   </section>
