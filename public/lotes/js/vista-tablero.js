@@ -9,6 +9,9 @@
 'use strict';
 
 import { $, DATOS, dashData, dashLoading, cargarDashboard, registrarVista } from './nucleo.js';
+import { htmlPanel } from './tablero-panel.js';
+
+let _modoPanel = 'numeros';
 
 /** Los lotes del dashboard cruzados con su fila de DATOS() (proyecto, vasija). */
 export function filasTablero(){
@@ -22,8 +25,8 @@ export function filasTablero(){
 
 export function renderTablero(){
   const sec = $('tab-tablero');
+  if (!sec) return;
 
-  /* --- si aun no hay datos del dashboard, mostrar placeholder y disparar carga --- */
   if (!dashData()){
     sec.innerHTML = '<div class="msg info" style="margin-top:10px">Cargando datos del motor FML…</div>';
     if (!dashLoading()) cargarDashboard();
@@ -31,7 +34,17 @@ export function renderTablero(){
   }
 
   const filas = filasTablero();
-  sec.innerHTML = `<p>Estado de los ${filas.length} lotes.</p>`;
+  sec.innerHTML = htmlPanel(dashData().kpis || {}, filas, _modoPanel);
+
+  if (!sec._wiredTablero){
+    sec._wiredTablero = true;
+    sec.addEventListener('click', (ev) => {
+      const b = ev.target.closest('[data-modo]');
+      if (!b) return;
+      _modoPanel = b.dataset.modo;
+      renderTablero();
+    });
+  }
 }
 
 registrarVista('tablero', () => renderTablero());
