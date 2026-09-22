@@ -35,6 +35,12 @@ const EJES = [
     ok: 'Frec',  mal: 'Frec vencida', okSi: 'al_dia' },
   { clave: 'fml',        campo: 'fml_estado',        cond: 'fml_no_finalizada',
     ok: 'FML',   mal: 'FML no',       okSi: ['finalizada', 'excluida'] },
+  /* okSi:'ok' es intencional: el chip de SO2 es neutro cuando so2_estado es
+   * 'no_aplica', porque el chip responde "que se esta midiendo" (y ahi, "no se
+   * evalua" no es lo mismo que "esta bien"). El KPI so2_conforme del panel, en
+   * cambio, cuenta los no_aplica como conformes, porque el panel responde
+   * "cuantos lotes no son un problema" (y uno donde el SO2 no se evalua no lo
+   * es). Son dos respuestas correctas a dos preguntas distintas; no tocar. */
   { clave: 'so2',        campo: 'so2_estado',        cond: 'so2_no_ok',
     ok: 'SO₂',   mal: 'SO₂ no',       okSi: 'ok' },
   { clave: 'ph',         campo: 'ph_estado',         cond: 'ph_no_ok',
@@ -115,17 +121,15 @@ export const PREGUNTAS = [
   { val: 'fa_en_proceso',    text: 'FA en proceso' },
 ];
 
-/* Las tres condiciones cuya accion sugerida es "hacer OT y analizar". */
-const PIDEN_OT = ['sin_analisis_valido', 'control_proceso_pendiente', 'frecuencia_vencida'];
-
 export function pasaPregunta(fila, val){
   if (!val) return true;
-  const alarmas = fila.alarmas || [];
   switch (val){
     case 'fml_no_terminada': return fila.fml_estado === 'no_finalizada';
     case 'fml_terminada':    return fila.fml_estado === 'finalizada' || fila.fml_estado === 'excluida';
     case 'mermos':           return fila.estado_llenado === 'no_lleno';
-    case 'faltan_analizar':  return PIDEN_OT.some(c => alarmas.includes(c));
+    // El motor manda accion: 'hacer OT y analizar' en cada condicion que la pide.
+    // Se usa eso en vez de una lista de claves que puede quedar desincronizada.
+    case 'faltan_analizar':  return (fila.condiciones || []).some(c => c.accion === 'hacer OT y analizar');
     case 'fa_en_proceso':    return fila.fa_estado === 'no_finalizada';
     default:                 return true;
   }
@@ -168,10 +172,22 @@ const UTILES = ['ph', 'av', 'malico', 'azucar_reductor', 'so2_libre', 'etanol'];
 
 const util = (v) => v !== null && v !== undefined && v !== '';
 
-export function ultimasMediciones(analisis, lote, n){
+/**
+ * Devuelve las ultimas N mediciones del lote, descartando las que el motor
+ * excluyó. El set `excluidas` contiene claves `"lote|AAAA-MM-DD"` armadas con
+ * la misma regla que analisisPorLote del servidor: fecha recortada a 10 chars y
+ * usar_registro recortado y en minuscula igual a 'no'.
+ *
+ * Quien llama (htmlFicha via abrirFicha) construye el set a partir de
+ * excepciones_analisis, que viene en DATOS(). Pasarlo desde afuera evita que
+ * este modulo importe nucleo.js, lo que romperia los tests en el runtime de Workers.
+ */
+export function ultimasMediciones(analisis, lote, n, excluidas){
   const clave = String(lote ?? '');
+  const excl = excluidas || new Set();
   return (analisis || [])
     .filter(a => String(a.lote ?? '') === clave && a.fecha_analisis)
+    .filter(a => !excl.has(`${clave}|${String(a.fecha_analisis ?? '').slice(0, 10)}`))
     .filter(a => UTILES.some(k => util(a[k])))
     .sort((a, b) => String(b.fecha_analisis).localeCompare(String(a.fecha_analisis)))
     .slice(0, n);

@@ -32,6 +32,29 @@ describe('ultimasMediciones', () => {
   it('empareja el lote aunque venga como numero', () => {
     expect(ultimasMediciones([A(26001, '2026-09-01', { ph: 3.5 })], '26001', 6)).toHaveLength(1);
   });
+
+  it('un analisis excluido no aparece en el resultado', () => {
+    const analisis = [
+      A('26001', '2026-09-10', { malico: 0.1 }),
+      A('26001', '2026-09-05', { malico: 2.1 }),
+    ];
+    // La segunda fila esta excluida por el motor (usar_registro='no').
+    const excluidas = new Set(['26001|2026-09-05']);
+    const r = ultimasMediciones(analisis, '26001', 6, excluidas);
+    expect(r).toHaveLength(1);
+    expect(r[0].fecha_analisis).toBe('2026-09-10');
+  });
+
+  it('la exclusion es por lote+fecha: otro lote con la misma fecha no se descarta', () => {
+    const analisis = [
+      A('26001', '2026-09-05', { malico: 2.1 }),
+      A('26002', '2026-09-05', { malico: 1.8 }),
+    ];
+    // Solo se excluye 26001 en esa fecha; 26002 sigue disponible.
+    const excluidas = new Set(['26001|2026-09-05']);
+    expect(ultimasMediciones(analisis, '26001', 6, excluidas)).toHaveLength(0);
+    expect(ultimasMediciones(analisis, '26002', 6, excluidas)).toHaveLength(1);
+  });
 });
 
 const datos = () => ({ lotes: [{ lote: '26001', variedad: 'Malbec' }], estado_lote: {}, analisis: [] });

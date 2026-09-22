@@ -19,10 +19,15 @@ function selecFicha(campo, label, valor, opciones){
 /* El -999 es el FOSS diciendo "fuera de rango", no una medicion de -999. */
 const celda = (v) => (v === null || v === undefined || v === '') ? '' : (Number(v) === -999 ? 'fuera de rango' : v);
 
-export function htmlFicha(fila, analisis, hoy){
+/**
+ * `excluidas` es un Set<string> de claves "lote|AAAA-MM-DD" construido por el
+ * llamador (abrirFicha) a partir de excepciones_analisis, replicando la misma
+ * regla que usa el motor en el servidor. Ver ultimasMediciones en tablero-datos.js.
+ */
+export function htmlFicha(fila, analisis, hoy, excluidas){
   const chips = chipsDe(fila, hoy).filter(c => c.tono === 'mal');
   const c = fila.so2_caida || {};
-  const mediciones = ultimasMediciones(analisis, fila.lote, 6);
+  const mediciones = ultimasMediciones(analisis, fila.lote, 6, excluidas);
 
   const avisoAv = fila.av_alerta ? `
     <div class="tb-aviso">

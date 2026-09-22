@@ -56,7 +56,7 @@ describe('chipsDe', () => {
       ...SANO,
       condiciones: [
         { clave: 'av_alerta', etiqueta: 'AV alerta', accion: 'revisar urgente', desde: '2026-09-14' },
-        { clave: 'so2_caida_alerta', etiqueta: 'Caída de SO₂ libre >12 ppm', accion: 'confirmar SO2', desde: '2026-09-15' },
+        { clave: 'so2_caida_alerta', etiqueta: 'Caída de SO₂ libre', accion: 'confirmar SO2', desde: '2026-09-15' },
       ],
       alarmas: ['av_alerta', 'so2_caida_alerta'],
     };
@@ -141,11 +141,13 @@ describe('pasaPregunta', () => {
     expect(pasaPregunta(fila({ estado_llenado: 'lleno' }), 'mermos')).toBe(false);
   });
 
-  it('faltan analizar junta las tres condiciones que piden OT', () => {
-    expect(pasaPregunta(fila({ alarmas: ['sin_analisis_valido'] }), 'faltan_analizar')).toBe(true);
-    expect(pasaPregunta(fila({ alarmas: ['control_proceso_pendiente'] }), 'faltan_analizar')).toBe(true);
-    expect(pasaPregunta(fila({ alarmas: ['frecuencia_vencida'] }), 'faltan_analizar')).toBe(true);
-    expect(pasaPregunta(fila({ alarmas: ['ph_no_ok'] }), 'faltan_analizar')).toBe(false);
+  it('faltan analizar junta las tres condiciones que piden OT (via accion del motor)', () => {
+    const cond = (clave) => [{ clave, etiqueta: clave, accion: 'hacer OT y analizar', desde: null }];
+    expect(pasaPregunta(fila({ alarmas: ['sin_analisis_valido'],       condiciones: cond('sin_analisis_valido')       }), 'faltan_analizar')).toBe(true);
+    expect(pasaPregunta(fila({ alarmas: ['control_proceso_pendiente'], condiciones: cond('control_proceso_pendiente') }), 'faltan_analizar')).toBe(true);
+    expect(pasaPregunta(fila({ alarmas: ['frecuencia_vencida'],        condiciones: cond('frecuencia_vencida')        }), 'faltan_analizar')).toBe(true);
+    // ph_no_ok tiene otra accion: no entra en "faltan analizar"
+    expect(pasaPregunta(fila({ alarmas: ['ph_no_ok'], condiciones: [{ clave: 'ph_no_ok', etiqueta: 'pH no OK', accion: 'revisar ajuste SO2/pH', desde: null }] }), 'faltan_analizar')).toBe(false);
   });
 
   it('FA en proceso es la FA sin terminar', () => {

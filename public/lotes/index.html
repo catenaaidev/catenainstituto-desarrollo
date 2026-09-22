@@ -406,6 +406,10 @@
   .tb-grilla{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 16px;margin:8px 0}
   .tb-dato{display:flex;justify-content:space-between;border-bottom:1px dotted var(--tb-linea);padding:2px 0}
   .tb-aviso{background:var(--tb-mal-bg);color:var(--tb-mal-fg);padding:6px 8px;border-radius:6px;margin:6px 0}
+  .tb-toggle{display:flex;gap:4px}
+  .tb-toggle button{background:var(--tb-neu-bg);color:var(--tb-neu-fg);border:1px solid var(--tb-linea);border-radius:6px;padding:5px 10px;font-size:12px;font-family:inherit;cursor:pointer}
+  .tb-toggle button:hover{border-color:var(--tb-primario)}
+  .tb-toggle button.active{background:var(--tb-primario);color:var(--tb-panel);border-color:var(--tb-primario);font-weight:600}
   .linaje-col { display:inline-block; vertical-align:top; min-width:150px; }
 
   /* Ficha lote cerrado */

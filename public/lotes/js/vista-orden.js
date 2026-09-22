@@ -405,13 +405,15 @@ export function renderOrden(){
   ].map(o => `<option value="${escA(o.v)}"${o.v === _otFuente ? ' selected' : ''}>${esc(o.l)}</option>`).join('');
 
   const atencionOpts = [
-    { v:'todos',    l:'Todos los criterios'    },
-    { v:'so2',      l:'SO2 no OK'              },
-    { v:'ph',       l:'pH no OK'               },
-    { v:'av',       l:'AV alerta'              },
-    { v:'fa',       l:'FA no finalizada'       },
-    { v:'fml',      l:'FML no finalizada'      },
-    { v:'noLleno',  l:'No lleno'               },
+    { v:'todos',      l:'Todos los criterios'    },
+    { v:'so2',        l:'SO2 no OK'              },
+    { v:'ph',         l:'pH no OK'               },
+    { v:'av',         l:'AV alerta'              },
+    { v:'fa',         l:'FA no finalizada'       },
+    { v:'fml',        l:'FML no finalizada'      },
+    { v:'noLleno',    l:'No lleno'               },
+    { v:'so2Caida',   l:'Caída de SO₂ libre'     },
+    { v:'sinControl', l:'Sin control de proceso' },
   ].map(o => `<option value="${escA(o.v)}"${o.v === _otAtencionTipo ? ' selected' : ''}>${esc(o.l)}</option>`).join('');
 
   const recOpts = RECIPIENTES_OT.map(v =>

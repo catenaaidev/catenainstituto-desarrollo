@@ -90,7 +90,7 @@ export const CONDICIONES: Record<string, MetaCondicion> = {
   frecuencia_vencida: { etiqueta: 'Frecuencia vencida', accion: 'hacer OT y analizar' },
   av_alerta: { etiqueta: 'AV alerta', accion: 'revisar urgente y confirmar analisis' },
   so2_caida_alerta: {
-    etiqueta: 'Caída de SO₂ libre >12 ppm',
+    etiqueta: 'Caída de SO₂ libre',
     accion: 'confirmar SO2; revisar llenado/mermo y evaluar posible desvio microbiologico',
   },
   fa_no_finalizada: { etiqueta: 'FA no finalizada', accion: 'seguir control de FA' },

@@ -149,7 +149,14 @@ function renderLista(){
 function abrirFicha(lote){
   const fila = filasTablero().find(f => String(f.lote ?? '') === String(lote));
   if (!fila) return;
-  mostrarOverlay(htmlFicha(fila, DATOS().analisis || [], HOY()));
+  // Replicar la regla de analisisPorLote del motor: clave "lote|AAAA-MM-DD",
+  // con usar_registro recortado y en minuscula igual a 'no'.
+  const excluidas = new Set(
+    (DATOS().excepciones_analisis || [])
+      .filter(e => String(e.usar_registro ?? '').trim().toLowerCase() === 'no')
+      .map(e => `${String(e.lote)}|${String(e.fecha_analisis ?? '').slice(0, 10)}`)
+  );
+  mostrarOverlay(htmlFicha(fila, DATOS().analisis || [], HOY(), excluidas));
 }
 
 /* La ficha se dibuja en #overlayBox, que cuelga de <body> y no de la seccion

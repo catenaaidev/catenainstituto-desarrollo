@@ -172,7 +172,7 @@ async function servirConIdentidad(
     `<script src="/shared/pendientes.js"></script>\n` +
     // La exportación a Excel se arma en el navegador, porque la nube no
     // ejecuta openpyxl. Solo se carga donde hay botón de exportar: es 950 KB.
-    (modulo === 'prensas'
+    (modulo === 'prensas' || modulo === 'lotes'
       ? `<script defer src="/shared/xlsx.full.min.js"></script>\n` +
         `<script defer src="/shared/exportar.js"></script>\n`
       : '') +
