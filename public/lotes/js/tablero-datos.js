@@ -157,3 +157,22 @@ export function tonoMosaico(fila){
   const n = (fila.condiciones || []).length;
   return n === 0 ? 'ok' : (n === 1 ? 'neutro' : 'mal');
 }
+
+/* --- la ficha --- */
+
+/* Los seis campos que el motor considera "medicion util". Se replican aca solo
+ * para decidir que filas vale la pena mostrar; ninguna condicion se recalcula.
+ * Una fila cuenta si trae al menos una metrica informada; un -999 esta
+ * informado (es el FOSS diciendo "fuera de rango"), igual que hace el motor. */
+const UTILES = ['ph', 'av', 'malico', 'azucar_reductor', 'so2_libre', 'etanol'];
+
+const util = (v) => v !== null && v !== undefined && v !== '';
+
+export function ultimasMediciones(analisis, lote, n){
+  const clave = String(lote ?? '');
+  return (analisis || [])
+    .filter(a => String(a.lote ?? '') === clave && a.fecha_analisis)
+    .filter(a => UTILES.some(k => util(a[k])))
+    .sort((a, b) => String(b.fecha_analisis).localeCompare(String(a.fecha_analisis)))
+    .slice(0, n);
+}

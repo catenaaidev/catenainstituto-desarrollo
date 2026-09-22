@@ -8,7 +8,8 @@
  */
 'use strict';
 
-import { $, esc, escA, DATOS, dashData, dashLoading, cargarDashboard, registrarVista } from './nucleo.js';
+import { $, esc, escA, DATOS, dashData, dashLoading, cargarDashboard, registrarVista, mostrarOverlay } from './nucleo.js';
+import { htmlFicha } from './tablero-ficha.js';
 import { htmlPanel } from './tablero-panel.js';
 import { initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, opcionesValores, matchValor } from './tabla.js';
 import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad, chipsDe } from './tablero-datos.js';
@@ -140,10 +141,18 @@ function renderLista(){
        </table>`;
 }
 
+function abrirFicha(lote){
+  const fila = filasTablero().find(f => String(f.lote ?? '') === String(lote));
+  if (!fila) return;
+  mostrarOverlay(htmlFicha(fila, DATOS().analisis || [], HOY()));
+}
+
 function cablear(sec){
   sec.addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-modo]');
     if (b){ _modoPanel = b.dataset.modo; renderPanel(); return; }
+    const vf = ev.target.closest('[data-ficha]');
+    if (vf){ abrirFicha(vf.dataset.ficha); return; }
     if (ev.target.id === 'tbLimpiar'){
       _pregunta = ''; $('tbPregunta').value = '';
       limpiarFiltrosMulti(_desc, 'tbBusca', _inst, () => { _busca = ''; renderLista(); });
