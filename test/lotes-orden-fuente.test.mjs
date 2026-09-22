@@ -177,6 +177,32 @@ describe('litrosDeFila', () => {
   });
 });
 
+describe('clasificarLote — la frecuencia se cuenta desde el control de proceso', () => {
+  it('un analisis suelto ya no reinicia el reloj', () => {
+    // Analisis de ayer, pero el ultimo control de proceso fue hace 40 dias.
+    const fila = { lote: '26003', vencido: false, dias_desde_analisis: 1,
+                   dias_desde_control: 40, frecuencia_max: 30, alarmas: [] };
+    expect(clasificarLote(fila).proximo).toBe(false);
+  });
+
+  it('proximo mira los dias que faltan segun el control', () => {
+    const fila = { lote: '26004', vencido: false, dias_desde_analisis: 0,
+                   dias_desde_control: 27, frecuencia_max: 30, alarmas: [] };
+    expect(clasificarLote(fila).proximo).toBe(true);
+  });
+
+  it('sin control de proceso no inventa que falta poco', () => {
+    const fila = { lote: '26005', vencido: false, dias_desde_analisis: 2,
+                   dias_desde_control: null, frecuencia_max: 30, alarmas: [] };
+    expect(clasificarLote(fila).proximo).toBe(false);
+  });
+
+  it('las dos condiciones nuevas cuentan como atencion', () => {
+    expect(clasificarLote({ alarmas: ['so2_caida_alerta'], frecuencia_max: 30, dias_desde_control: 1 }).atencion).toBe(true);
+    expect(clasificarLote({ alarmas: ['control_proceso_pendiente'], frecuencia_max: 30, dias_desde_control: 1 }).atencion).toBe(true);
+  });
+});
+
 describe('pasaFuente — las fuentes que ya existian', () => {
   /* El segundo argumento de clasificarLote es opcional; estos casos lo omiten
    * a proposito para fijar que la conducta vieja quedo intacta. */
@@ -186,7 +212,8 @@ describe('pasaFuente — las fuentes que ya existian', () => {
   });
 
   it('sigue trayendo los proximos a vencer dentro de los 5 dias', () => {
-    const proximo = { ...AL_DIA, dias_desde_analisis: 27, frecuencia_max: 30 };
+    // dias_desde_control es el dato que manda ahora para "proximo"
+    const proximo = { ...AL_DIA, dias_desde_analisis: 27, dias_desde_control: 27, frecuencia_max: 30 };
     expect(trae(proximo, null, 'proximos')).toBe(true);
     expect(trae(AL_DIA,  null, 'proximos')).toBe(false);
     expect(trae(proximo, null, 'vencidos_proximos')).toBe(true);

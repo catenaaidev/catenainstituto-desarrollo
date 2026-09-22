@@ -11,16 +11,18 @@ import { numPositivo } from './envases.js';
 /* Claves de dashData().lotes[i].alarmas que hoy arma _otClasificar() como
  * "atencion" (cualquiera de estas). Son un subconjunto de las 11 condiciones
  * de src/lotes/motores/fml.ts, que a su vez sigue el tablero aprobado.
- * El motor tiene 11 condiciones; esta lista cubre las 6 que dan prioridad a
- * la orden de muestras (sin sin_analisis_valido, control_proceso_pendiente,
- * frecuencia_vencida, av_alerta, so2_caida_alerta ni datos_operativos_incompletos). */
+ * El motor tiene 11 condiciones; esta lista cubre las 8 que dan prioridad a
+ * la orden de muestras. Quedan afuera: sin_analisis_valido, frecuencia_vencida
+ * y datos_operativos_incompletos (se tratan por separado en pasaFuente). */
 const CRITERIOS_ATENCION = {
-  so2:     'so2_no_ok',
-  ph:      'ph_no_ok',
-  av:      'av_alerta',
-  fa:      'fa_no_finalizada',
-  fml:     'fml_no_finalizada',
-  noLleno: 'no_lleno',
+  so2:       'so2_no_ok',
+  ph:        'ph_no_ok',
+  av:        'av_alerta',
+  fa:        'fa_no_finalizada',
+  fml:       'fml_no_finalizada',
+  noLleno:   'no_lleno',
+  so2Caida:  'so2_caida_alerta',
+  sinControl: 'control_proceso_pendiente',
 };
 
 /* `info` es el lote completo de DATOS().lotes, y es OPCIONAL: la fila del
@@ -28,7 +30,11 @@ const CRITERIOS_ATENCION = {
  * criterio que no se puede decidir sin el. Omitirlo deja rondaTanques en false
  * y no altera nada mas -- las llamadas de un solo argumento siguen valiendo. */
 export function clasificarLote(l, info){
-  const diasRestantes = (l.frecuencia_max ?? 0) - (l.dias_desde_analisis ?? 0);
+  /* La frecuencia se cuenta desde el ultimo CONTROL DE PROCESO, no desde el
+   * ultimo analisis: un pH suelto no reinicia el reloj. Sin control, no hay
+   * cuenta regresiva que mostrar. */
+  const dias = l.dias_desde_control;
+  const diasRestantes = dias === null || dias === undefined ? null : (l.frecuencia_max ?? 0) - dias;
   const alarmas = l.alarmas || [];
 
   const criterios = {};
@@ -41,7 +47,7 @@ export function clasificarLote(l, info){
 
   return {
     vencido:     !!l.vencido,
-    proximo:     !l.vencido && diasRestantes >= 0 && diasRestantes <= 5,
+    proximo:     !l.vencido && diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 5,
     sinAnalisis: alarmas.includes('sin_analisis_valido'),
     atencion,
     criterios,

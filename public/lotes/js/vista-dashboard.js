@@ -20,6 +20,8 @@ const COND_LABELS = {
   no_lleno:                   'No lleno',
   fa_no_finalizada:           'FA no terminada',
   datos_operativos_incompletos: 'Datos operativos incompletos',
+  control_proceso_pendiente:  'Sin control de proceso',
+  so2_caida_alerta:           'Caída de SO₂ libre',
 };
 
 /* ---------- confirmacion de etapas ---------- */
