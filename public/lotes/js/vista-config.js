@@ -13,6 +13,9 @@ const COLS_CONFIG = [
   { k:'fml_malico_2ultimas',    label:'FML málico 2 últimas',   num:true },
   { k:'so2_molecular_objetivo',  label:'SO₂ molecular objetivo', num:true },
   { k:'so2_libre_piso',          label:'SO₂ libre piso',         num:true },
+  { k:'so2_caida_max',          label:'SO₂ caída máx (ppm)',    num:true },
+  { k:'so2_aplica',             label:'Aplica SO₂',             sel:['si','no'] },
+  { k:'ph_max_inclusive',       label:'pH máx inclusivo',       sel:['si','no'] },
   { k:'ph_max',                 label:'pH máx',                 num:true },
   { k:'av_max',                 label:'AV máx',                 num:true },
   { k:'av_delta_max',           label:'AV delta máx',           num:true },
@@ -214,8 +217,8 @@ export function renderConfig(){
   /* ---- encabezado ----
    * "Variedad" queda A PROPOSITO sin data-k: no es un umbral, es la etiqueta
    * de la fila (y en la fila default ni siquiera tiene <td> comparable). Que
-   * quede fuera de la grilla es coherente con "se ven las 11 columnas" al
-   * copiar la tabla completa (las de COLS_CONFIG, no 12). */
+   * quede fuera de la grilla es coherente con "se ven las 15 columnas" al
+   * copiar la tabla completa (las de COLS_CONFIG). */
   let h = '<tr><th>Variedad</th>';
   for (const c of COLS_CONFIG){
     h += `<th data-k="${escA(c.k)}">${esc(c.label)}</th>`;
