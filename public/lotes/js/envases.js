@@ -82,6 +82,34 @@ export function estaVacio(lote){
   return n0(lote.litros_actuales) === 0;
 }
 
+/** ¿El lote es orgánico? Unica definicion de "organico" de la pestaña Lotes:
+ *  la usa el verde pastel de la fila.
+ *
+ *  Vive en este modulo y no en vista-lotes.js por la misma razon que estaVacio:
+ *  es una propiedad derivada del lote, pura, y aca se puede testear (el runtime
+ *  de Workers donde corren los tests no tiene document, asi que vista-lotes.js
+ *  no se puede importar).
+ *
+ *  La comparacion es indulgente -- sin distinguir mayusculas, sin espacios de
+ *  los bordes y con o sin tilde -- aunque en los 304 lotes de produccion el
+ *  valor sea siempre 'Organico' con tilde y la columna sea un <select> que solo
+ *  ofrece esa forma. El motivo es que este campo tambien lo escribio la
+ *  migracion del Excel, donde no hubo ningun <select> que lo forzara, y un
+ *  valor apenas torcido apagaria el color sin ningun error a la vista.
+ *
+ *  Compara el valor ENTERO y no una subcadena: una nota como 'en transicion a
+ *  organico' no vuelve organico al lote. */
+const ORGANICO = ['organico', 'orgánico'];
+
+export function esOrganico(lote){
+  if (!lote) return false;
+  const v = lote.organico_convencional;
+  // typeof antes de trim(): el campo puede traer un numero o un objeto de una
+  // migracion vieja, y String({}) daria '[object Object]' en lugar de false.
+  if (typeof v !== 'string') return false;
+  return ORGANICO.includes(v.trim().toLowerCase());
+}
+
 /** Claves de los tipos de envase presentes, p. ej. ['cap225','cap50'].
  *  El tanque aparece como 'vasija_grande' y siempre al final. Lo usa el filtro
  *  de la pestaña Lotes. */

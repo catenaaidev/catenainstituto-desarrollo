@@ -112,6 +112,12 @@ const AGARRE = 6;
  * + 2px de su borde + 4px de aire. Si cambia el padding de las celdas hay que
  * cambiar este numero. */
 const PAD_AUTOFIT = 36;
+/* Aire extra para el embudo de filtro de la cabecera (pestaña Lotes). El ancho
+ * del embudo se MIDE en vivo (ver autoajustarTh); esto es solo el margen para
+ * un digito mas del contador, que puede crecer despues del autoajuste sin que
+ * nadie vuelva a medir: '▾ 9' -> '▾ 12'. Mismo criterio que los 14px que se le
+ * dejan a la flecha de orden, que tambien aparece despues. */
+const AIRE_EMBUDO = 8;
 
 const acotar = px => Math.min(MAX_ANCHO, Math.max(MIN_ANCHO, Math.ceil(px)));
 
@@ -321,10 +327,28 @@ export function crearAnchos({ tablaId, claveStorage, filaEncabezado }){
     const porCeldas = anchoAutoajustado(textos, t => anchoDeTexto(t, false), PAD_AUTOFIT);
     /* El encabezado tambien tiene que entrar. Va medido en negrita (las th son
      * font-weight:600) y con 14px extra para la flecha de orden, que aparece en
-     * cuanto alguien hace clic en la columna. El label viene sin la flecha, que
-     * es un <span> aparte. */
-    const label = (th.textContent || '').replace(/[▲▼]/g, '').trim();
-    const porLabel = acotar(anchoDeTexto(label, true) + 14 + 18);
+     * cuanto alguien hace clic en la columna.
+     *
+     * El label son los nodos de TEXTO DIRECTOS del th: la flecha de orden es un
+     * <span> y el embudo de filtro un <button>, los dos hijos aparte. Antes esto
+     * leia th.textContent y le sacaba las flechas con un replace; con el embudo
+     * ya no alcanza, porque su ancho real (padding + borde + margen del boton)
+     * no tiene nada que ver con lo que mide su glifo, y el contador que lleva
+     * adentro ('▾ 2') se pegaria al label como si fuera parte del titulo. */
+    const label = [...th.childNodes]
+      .filter(n => n.nodeType === 3)
+      .map(n => n.textContent).join('').trim();
+    /* El embudo se MIDE en vivo en lugar de estimarlo con una constante: su
+     * ancho depende del contador que lleva adentro y del peso de la fuente
+     * ('▾' son 16px, '▾ 1' en negrita son 23), asi que una constante se queda
+     * corta justo cuando el filtro esta puesto -- que es cuando mas falta hace
+     * poder apretarlo. Medido ademas no se desfasa si cambia el CSS del boton. */
+    const emb = th.querySelector('.th-flt');
+    const anchoEmbudo = emb
+      ? emb.getBoundingClientRect().width
+        + parseFloat(getComputedStyle(emb).marginLeft) + AIRE_EMBUDO
+      : 0;
+    const porLabel = acotar(anchoDeTexto(label, true) + 14 + 18 + anchoEmbudo);
 
     inst.anchos[k] = Math.max(porCeldas, porLabel);
     return true;

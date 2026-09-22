@@ -400,6 +400,13 @@ function cablearMouse(tabla, st){
      * que es un gesto que ya se usa todos los dias y no se le roba. */
     const th = e.target.closest('th[data-k]');
     if (th){
+      /* Nunca robarle el mousedown a un boton del encabezado (el embudo de
+       * filtro, el chip de colapsar): misma guardia que la de mas abajo para los
+       * botones de las celdas. Hace falta aca arriba y no alcanza con aquella
+       * porque `e.offsetX` es relativo a e.target, NO al th: apretando cerca del
+       * borde izquierdo del boton offsetX da <= 8 y se seleccionaria la columna
+       * entera en lugar de abrir el filtro. */
+      if (e.target.closest('button')) return;
       if (e.offsetX <= 8){
         e.preventDefault(); e.stopPropagation();
         const c = g.cols.findIndex(x => x.th === th);

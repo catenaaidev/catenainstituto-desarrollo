@@ -5,12 +5,12 @@ import { $, esc, escA, num, DATOS, markDirty, registrarVista,
          registrarInit, dashMap, dashData, invalidarDashMap, cargarDashboard, irALote,
          mostrarOverlay, cerrarOverlay } from './nucleo.js';
 import { toggleSort, sortRows, pasaMulti, opcionesValores, matchValor,
-         initFiltrosMulti } from './tabla.js';
+         crearFiltroMulti } from './tabla.js';
 import { activarGrilla, adaptadorCols, limpiarSeleccion } from './grilla.js';
 import { colsVisibles, bandasVisibles, alternar } from './grupos-cols.js';
 import { crearAnchos } from './anchos-cols.js';
 import { CAPACIDADES, resumenEnvases, contarEnvases,
-         litrosDeEnvases, tiposDeEnvase, estaVacio } from './envases.js';
+         litrosDeEnvases, tiposDeEnvase, estaVacio, esOrganico } from './envases.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 
 /* La clave de storage es la de siempre (lotes_cols_ancho): respeta los anchos
@@ -124,24 +124,35 @@ let sortLotes = { key:'lote', dir:1 };
 
 /* --- filtros de la pestaña Lotes ---
  * Los que empiezan con _ no son campos del lote: se resuelven con un descriptor
- * propio en initFiltrosLotes (opciones + match a mano). */
+ * propio en initFiltrosLotes (opciones + match a mano).
+ *
+ * `col` es la columna de cuyo encabezado cuelga el embudo ▾ que abre el filtro,
+ * como en Excel. Los ocho tienen columna propia, asi que no queda ningun filtro
+ * huerfano: coincide con `campo` salvo en los dos que empiezan con _, que no
+ * son campos del lote pero si tienen una columna que los muestra (Etapa y
+ * Envases). Si una `col` no existe entre las columnas pintadas, su embudo no
+ * aparece y el filtro queda inalcanzable: initFiltrosLotes lo avisa por consola
+ * en lugar de dejarlo pasar callado. */
 const CAMPOS_FLT_LOTES = [
   /* Lote va primero, como en la orden de correccion, y es el mismo descriptor
    * generico que el resto: la lista de casillas la arma opcionesValores y
    * cmpValores la ordena por numero (no alfabeticamente) porque los lotes son
    * numeros en texto. El buscador '🔎 Buscar por lote' sigue existiendo aparte:
    * sirve para ir a uno solo tipeando, y este filtro para elegir varios. */
-  { campo:'lote',     label:'Lote'     },
-  { campo:'variedad', label:'Variedad' },
-  { campo:'distrito', label:'Distrito' },
-  { campo:'proyecto', label:'Proyecto' },
-  { campo:'vinedo',   label:'Viñedo'   },
-  { campo:'organico_convencional', label:'Orgánico/Conv.' },
-  { campo:'_etapa',   label:'Etapa'    },
-  { campo:'_envase',  label:'Envase'   },
+  { campo:'lote',     label:'Lote',     col:'lote'     },
+  { campo:'variedad', label:'Variedad', col:'variedad' },
+  { campo:'distrito', label:'Distrito', col:'distrito' },
+  { campo:'proyecto', label:'Proyecto', col:'proyecto' },
+  { campo:'vinedo',   label:'Viñedo',   col:'vinedo'   },
+  { campo:'organico_convencional', label:'Orgánico/Conv.', col:'organico_convencional' },
+  { campo:'_etapa',   label:'Etapa',    col:'etapa'    },
+  { campo:'_envase',  label:'Envase',   col:'envases'  },
 ];
 const filtLotes = {}; CAMPOS_FLT_LOTES.forEach(c=>filtLotes[c.campo]=new Set());
 let _descLotes=[], _instLotes=[];
+/* columna -> {campo, label, inst}, para que el render sepa que embudo pintar en
+   cada <th> y el clic sepa que panel abrir. Lo llena initFiltrosLotes. */
+const fltPorCol = new Map();
 
 /* --- filtro de llenado (Todos | Llenos | Vacíos) ---
  * No es un filtro multi-select mas, y por eso no esta en CAMPOS_FLT_LOTES: son
@@ -189,7 +200,7 @@ function initFiltrosLotes(){
   _descLotes = CAMPOS_FLT_LOTES.map(c=>{
     if (c.campo === '_etapa'){
       return {
-        label: c.label,
+        label: c.label, campo: c.campo, col: c.col,
         set: filtLotes[c.campo],
         opciones: () => {
           // Opciones ordenadas por el orden del proceso
@@ -210,7 +221,7 @@ function initFiltrosLotes(){
     }
     if (c.campo === '_envase'){
       return {
-        label: c.label,
+        label: c.label, campo: c.campo, col: c.col,
         set: filtLotes[c.campo],
         opciones: () => {
           /* Solo los tipos que hay en los datos, para no ofrecer opciones que no
@@ -240,15 +251,38 @@ function initFiltrosLotes(){
       };
     }
     return {
-      label: c.label,
+      label: c.label, campo: c.campo, col: c.col,
       set: filtLotes[c.campo],
       opciones: () => opcionesValores(DATOS().lotes, l=>l[c.campo]),
       match: matchValor(l=>l[c.campo]),
     };
   });
-  _instLotes = initFiltrosMulti('fltLotesBar', _descLotes, renderLotes);
-  /* Se monta UNA vez: la toolbar de esta pestaña es fija en index.html y
-     renderLotes solo repinta #tLotes. */
+  /* Modo anclado: cada filtro se monta sin boton propio y con el panel colgado
+   * de <body>. El disparador es el embudo ▾ que renderLotes pinta dentro del
+   * <th> de su columna; el panel tiene que salir de la tabla porque .scroll.tall
+   * tiene overflow:auto y ahi adentro quedaria recortado.
+   *
+   * Se monta UNA sola vez, igual que antes: los <th> se rehacen en cada render,
+   * pero los paneles viven afuera y sobreviven, y el clic del embudo se atiende
+   * por delegacion. */
+  _instLotes = _descLotes.map(d => crearFiltroMulti({
+    label:d.label, opciones:d.opciones, set:d.set, onChange:renderLotes, anclado:true,
+  }));
+  /* El mapa se arma desde los descriptores y no cruzando CAMPOS_FLT_LOTES con
+     _instLotes por indice: los descriptores ya llevan campo y col, asi que hay
+     un array paralelo menos del que depender. */
+  fltPorCol.clear();
+  const pintadas = new Set([...COLS_LOTES.map(c => c.k), 'etapa', 'pct']);
+  _descLotes.forEach((d, i) => {
+    if (fltPorCol.has(d.col))
+      console.warn(`Lotes: los filtros "${d.label}" y "${fltPorCol.get(d.col).label}" se pelean la columna "${d.col}"`);
+    /* Un filtro cuya columna no se pinta nunca no tendria embudo: no habria como
+       abrirlo ni como darse cuenta de que esta escondiendo filas. */
+    if (!pintadas.has(d.col))
+      console.warn(`Lotes: el filtro "${d.label}" apunta a la columna "${d.col}", que no existe`);
+    fltPorCol.set(d.col, { campo:d.campo, label:d.label, inst:_instLotes[i] });
+  });
+
   const hueco = $('fltLlenado');
   if (hueco){
     fltLlenado = crearFiltroLlenado(renderLotes);
@@ -261,11 +295,24 @@ function initFiltrosLotes(){
 export function descLotes(){ return _descLotes; }
 export function instLotes(){ return _instLotes; }
 
+/* Cierra cualquier panel de filtro abierto, sea de la cabecera o de otra
+   pestaña. Es el mismo gesto que hace app.js al hacer clic afuera. */
+function cerrarPaneles(){
+  document.querySelectorAll('.mfilt-panel.open').forEach(p => p.classList.remove('open'));
+}
+
 function rowClass(o){
   const cls = [];
   /* 'vacio' sale del propio lote y no del dashboard, asi que la fila ya se
    * pinta atenuada en el primer render, sin esperar a /api/dashboard. */
   if (estaVacio(o)) cls.push('vacio');
+  /* 'org' tambien sale del propio lote. Su verde le GANA al rojo de alarma y al
+   * amarillo de vencido (la regla tr.org td va despues de las dos en el CSS):
+   * es lo que se pidio, porque de un vistazo lo que se quiere separar es el
+   * organico del convencional. La alarma no se pierde del todo -- su franja
+   * roja de 3px al borde izquierdo es un box-shadow, no un background, asi que
+   * sobrevive al verde. Ver el comentario de las reglas en index.html. */
+  if (esOrganico(o)) cls.push('org');
   const e = dashMap() ? dashMap().get(String(o.lote)) : null;
   if (e){
     if (e.alarmas && e.alarmas.length > 0) cls.push('crit');
@@ -487,6 +534,21 @@ export function renderLotes(){
   const colsDe = b => cols.filter(c => c.banda === b.id);
   const flecha = k => sortLotes.key === k
     ? `<span class="arrow">${sortLotes.dir > 0 ? '▲' : '▼'}</span>` : '';
+
+  /* Embudo de filtro de la columna, o '' si no tiene. Es un <button> a
+   * proposito, igual que el chip de colapsar: grilla.js no le roba el clic a un
+   * boton. Se repinta en cada render, asi que el contador y el resaltado salen
+   * siempre del tamaño actual del Set; el panel, en cambio, vive colgado de
+   * <body> y no se rehace. */
+  const embudo = k => {
+    const f = fltPorCol.get(k);
+    if (!f) return '';
+    const n = filtLotes[f.campo].size;
+    const tit = n ? `${f.label}: ${n} valor${n > 1 ? 'es' : ''} elegido${n > 1 ? 's' : ''}`
+                  : `Filtrar por ${f.label}`;
+    return ` <button class="th-flt${n ? ' active' : ''}" data-flt="${escA(k)}"`
+         + ` title="${escA(tit)}">▾${n ? ' ' + n : ''}</button>`;
+  };
   // Marca de columna ordenada que ya usaban Etapa y Avance, se conserva igual.
   const activa = k => sortLotes.key === k ? ' style="color:var(--txt)"' : '';
 
@@ -497,9 +559,21 @@ export function renderLotes(){
   const chip = b => {
     if (!b.grupo) return '';
     const cerrado = b.ocultas > 0;
-    const nombres = COLS_LOTES.filter(c => c.grupo === b.grupo).map(c => c.label).join(', ');
-    const tit = (cerrado ? 'Mostrar: ' : 'Ocultar: ') + nombres;
-    return ` <button class="chip-grupo" data-grupo="${escA(b.grupo)}" title="${escA(tit)}">`
+    const delGrupo = COLS_LOTES.filter(c => c.grupo === b.grupo);
+    const nombres = delGrupo.map(c => c.label).join(', ');
+    let tit = (cerrado ? 'Mostrar: ' : 'Ocultar: ') + nombres;
+    /* Un grupo colapsado se lleva puestos los embudos de sus columnas. Si
+     * alguno estaba filtrando, el filtro sigue escondiendo filas y su unico
+     * acceso ya no esta a la vista: el chip se marca y lo dice, o la unica
+     * salida seria adivinar y apretar Limpiar filtros. Hoy le pasa a Viñedo,
+     * que es la unica columna del grupo id_detalle que tiene filtro. */
+    const filtrando = cerrado
+      ? delGrupo.filter(c => fltPorCol.has(c.k) && filtLotes[fltPorCol.get(c.k).campo].size)
+      : [];
+    if (filtrando.length)
+      tit += ` — filtrando por ${filtrando.map(c => c.label).join(', ')}`;
+    return ` <button class="chip-grupo${filtrando.length ? ' con-filtro' : ''}"`
+         + ` data-grupo="${escA(b.grupo)}" title="${escA(tit)}">`
          + (cerrado ? '⊞' + b.ocultas : '⊟') + '</button>';
   };
 
@@ -521,12 +595,13 @@ export function renderLotes(){
       continue;
     }
     if (b.id === 'estado'){
-      h += `<th data-k="etapa"${activa('etapa')}>Etapa${flecha('etapa')}</th>`;
-      h += `<th data-k="pct"${activa('pct')}>Avance${flecha('pct')}</th>`;
+      h += `<th data-k="etapa"${activa('etapa')}>Etapa${flecha('etapa')}${embudo('etapa')}</th>`;
+      h += `<th data-k="pct"${activa('pct')}>Avance${flecha('pct')}${embudo('pct')}</th>`;
       continue;
     }
     for (const c of colsDe(b))
-      h += `<th data-k="${escA(c.k)}" class="${c.num ? 'num' : ''}">${esc(c.label)}${flecha(c.k)}</th>`;
+      h += `<th data-k="${escA(c.k)}" class="${c.num ? 'num' : ''}">`
+         + `${esc(c.label)}${flecha(c.k)}${embudo(c.k)}</th>`;
   }
   h += '<th></th></tr></thead>';
 
@@ -553,6 +628,34 @@ export function renderLotes(){
   /* edición en memoria */
   if (!t._wired){
     t._wired = true;
+
+    /* --- embudo de filtro de la cabecera ---
+     * En CAPTURA y cortando la propagacion, que resuelve tres cosas de un saque:
+     * el onclick de ordenar del th es de burbuja y nunca llega; el listener de
+     * document de app.js que cierra los paneles al hacer clic afuera tampoco, asi
+     * que el panel recien abierto no se cierra solo; y la grilla no llega a
+     * interpretar el clic.
+     *
+     * Por delegacion y no por boton: renderLotes rehace el <thead> entero en cada
+     * render, asi que un listener por embudo habria que reponerlo cada vez. Los
+     * paneles, en cambio, cuelgan de <body> y sobreviven. */
+    t.addEventListener('click', e => {
+      const b = e.target.closest('[data-flt]');
+      if (!b) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const f = fltPorCol.get(b.dataset.flt);
+      if (f) f.inst.abrir(b);
+    }, true);
+
+    /* El panel es position:fixed: se queda quieto mientras la tabla se mueve por
+     * debajo, asi que al scrollear quedaria flotando lejos de su columna. Se
+     * cierra, que es lo que hace Excel. Mismo motivo al cambiar el tamaño de la
+     * ventana, que ademas mueve el encabezado sticky. */
+    const cont = t.closest('.scroll');
+    if (cont) cont.addEventListener('scroll', cerrarPaneles);
+    window.addEventListener('resize', cerrarPaneles);
+
     t.addEventListener('input', e => {
       const el = e.target.closest('input.cell, select.cell'); if(!el) return;
       const o = t._rows[+el.dataset.row];
