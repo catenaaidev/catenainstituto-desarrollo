@@ -250,8 +250,6 @@ export async function cargarDashboard(){
     }
     _vistaObligatoria('lotes')();      // repintar con colores
     _vistaObligatoria('dashboard')();  // rellenar dashboard si está activo (o prepararlo)
-    // si la pestaña FML está activa, repintarla con los datos recién llegados
-    if (document.querySelector('.tabs button[data-v="fml"].active')) _vistaObligatoria('fml')();
     // si la pestaña Orden de muestras está activa, repintarla
     if (document.querySelector('.tabs button[data-v="orden"].active')) _vistaObligatoria('orden')();
     // si la pestaña Tablero FML está activa, repintarla

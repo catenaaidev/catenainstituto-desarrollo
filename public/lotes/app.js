@@ -13,7 +13,6 @@ import { renderLotes, agregarLote, descLotes, instLotes, resetLlenado,
 import './js/vista-ficha.js';
 import { cargarPrevisualizar, cargarConfirmar, cargarLimpiar, cargarResetCols } from './js/vista-cargar.js';
 import './js/vista-analisis.js';
-import './js/vista-fml.js';
 import './js/vista-tablero.js';
 import './js/vista-so2.js';
 import './js/vista-movimientos.js';
