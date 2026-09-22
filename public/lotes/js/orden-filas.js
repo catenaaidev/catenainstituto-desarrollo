@@ -2,7 +2,7 @@
  * Modulo puro: sin DOM, sin fetch, sin import de nucleo.js (el unico import es
  * envases.js, que tambien es puro). Misma entrada que
  * hoy usa _otClasificar() (un elemento de dashData().lotes), extendida para
- * exponer las 6 alarmas de "atencion" por separado -- eso es lo que habilita
+ * exponer las 8 alarmas de "atencion" por separado -- eso es lo que habilita
  * el filtro granular (antes solo existia el booleano combinado). */
 'use strict';
 

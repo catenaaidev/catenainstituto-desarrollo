@@ -11,7 +11,8 @@ import { chipsDe, ultimasMediciones } from './tablero-datos.js';
 const dato = (label, valor) => `<div class="tb-dato"><span>${esc(label)}</span><strong>${esc(valor ?? '—')}</strong></div>`;
 
 function selecFicha(campo, label, valor, opciones){
-  const ops = opciones.map(o => `<option value="${escA(o)}"${String(valor ?? '') === o ? ' selected' : ''}>${esc(o || '—')}</option>`).join('');
+  const norm = String(valor ?? '').trim().toLowerCase();
+  const ops = opciones.map(o => `<option value="${escA(o)}"${norm === o ? ' selected' : ''}>${esc(o || '—')}</option>`).join('');
   return `<div class="tb-dato"><span>${esc(label)}</span><select class="tb-edit" data-campo="${escA(campo)}">${ops}</select></div>`;
 }
 
@@ -41,10 +42,6 @@ export function htmlFicha(fila, analisis, hoy){
     ? `${fila.so2_ph_referencia} (del ${fila.so2_ph_referencia_fecha})`
     : fila.so2_ph_referencia;
 
-  const inoculado = fila.inoculado_origen === 'analisis' ? `${fila.inoculado} (detectado en el análisis)`
-    : fila.inoculado_origen === 'manual' ? `${fila.inoculado} (cargado a mano)`
-    : fila.inoculado;
-
   return `
     <div class="tb-ficha" data-ficha-de="${escA(fila.lote)}">
       <h3>${esc(fila.lote)} · ${esc(fila.variedad ?? '')}</h3>
@@ -56,8 +53,9 @@ export function htmlFicha(fila, analisis, hoy){
         ${dato('Última medición', fila.ultima_fecha)}
         ${dato('Último control de proceso', fila.ultima_fecha_control)}
         ${dato('Frecuencia', `${fila.frecuencia_max} d (hace ${fila.dias_desde_control ?? '—'})`)}
-        ${/* El motor solo detecta 'analisis'; el valor a mano vive en estado_lote y lo resuelve la pestana. */''}
-        ${selecFicha('inoculado', 'Inoculación', (fila._est || {}).inoculado ?? fila.inoculado, ['', 'si', 'no', 'desconocido'])}
+        ${/* El motor solo detecta 'analisis'; el valor a mano vive en estado_lote y lo resuelve la pestana.
+           * El select prioriza lo que el usuario cargó a mano (_est) y cae al dato del motor si no hay override. */
+          selecFicha('inoculado', 'Inoculación', (fila._est || {}).inoculado ?? fila.inoculado, ['', 'si', 'no', 'desconocido'])}
         ${selecFicha('mermo', 'Mermo', fila._info.mermo, ['', 'si', 'no'])}
         ${selecFicha('hace_fml', 'Hace FML', fila._info.hace_fml, ['', 'si', 'no'])}
       </div>

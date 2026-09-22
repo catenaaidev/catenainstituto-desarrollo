@@ -179,8 +179,9 @@ describe('litrosDeFila', () => {
 
 describe('clasificarLote — la frecuencia se cuenta desde el control de proceso', () => {
   it('un analisis suelto ya no reinicia el reloj', () => {
-    // Analisis de ayer, pero el ultimo control de proceso fue hace 40 dias.
-    const fila = { lote: '26003', vencido: false, dias_desde_analisis: 1,
+    // Analisis reciente (28 dias), pero el ultimo control de proceso fue hace 40 dias.
+    // Con el codigo viejo (dias_desde_analisis) daria proximo:true; el nuevo da false.
+    const fila = { lote: '26003', vencido: false, dias_desde_analisis: 28,
                    dias_desde_control: 40, frecuencia_max: 30, alarmas: [] };
     expect(clasificarLote(fila).proximo).toBe(false);
   });
@@ -192,7 +193,8 @@ describe('clasificarLote — la frecuencia se cuenta desde el control de proceso
   });
 
   it('sin control de proceso no inventa que falta poco', () => {
-    const fila = { lote: '26005', vencido: false, dias_desde_analisis: 2,
+    // Con el codigo viejo (dias_desde_analisis: 28) daria diasRestantes=2 → proximo:true; el nuevo da false.
+    const fila = { lote: '26005', vencido: false, dias_desde_analisis: 28,
                    dias_desde_control: null, frecuencia_max: 30, alarmas: [] };
     expect(clasificarLote(fila).proximo).toBe(false);
   });
