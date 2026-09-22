@@ -1,7 +1,9 @@
 # Tablero FML en el módulo Lotes
 
 Fecha: 2026-09-14
-Estado: aprobado, pendiente de plan de implementación
+Estado: implementado (tramo 1 motor + tramos 2-4 pestaña). Pendiente de desplegar:
+correr `scripts/aplicar-datos-fml.mjs --remote --aplicar` (ver DESPLIEGUE.md) y
+avisarle al equipo que los números del Dashboard cambian.
 
 ## Por qué
 
