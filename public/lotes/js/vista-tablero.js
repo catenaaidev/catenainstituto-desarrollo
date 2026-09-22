@@ -13,6 +13,7 @@ import { htmlFicha } from './tablero-ficha.js';
 import { htmlPanel } from './tablero-panel.js';
 import { initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, opcionesValores, matchValor } from './tabla.js';
 import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad, chipsDe, aplicarEdicion } from './tablero-datos.js';
+import { filasExport, COLUMNAS_EXPORT } from './tablero-export.js';
 
 let _modoPanel = 'numeros';
 
@@ -184,6 +185,13 @@ function cablear(sec){
     if (b){ _modoPanel = b.dataset.modo; renderPanel(); return; }
     const vf = ev.target.closest('[data-ficha]');
     if (vf){ abrirFicha(vf.dataset.ficha); return; }
+    if (ev.target.id === 'tbExportar'){
+      const hoy = HOY();
+      window.CIW_EXPORTAR_HOJAS(`Tablero FML (${hoy}).xlsx`, [
+        { nombre: 'CONDICIONES', columnas: COLUMNAS_EXPORT, filas: filasExport(filasVisibles(), hoy) },
+      ]);
+      return;
+    }
     if (ev.target.id === 'tbLimpiar'){
       _pregunta = ''; $('tbPregunta').value = '';
       limpiarFiltrosMulti(_desc, 'tbBusca', _inst, () => { _busca = ''; renderLista(); });

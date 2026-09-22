@@ -93,5 +93,23 @@
     XLSX.writeFile(wb, titulo + ' (export ' + hoy + ').xlsx');
   }
 
+  /**
+   * Arma y baja un .xlsx a partir de hojas ya armadas, para lo que no es una
+   * seccion del documento. `hojas` es [{nombre, columnas, filas}], con
+   * `columnas` en el mismo formato [clave, titulo] que usa COLUMNAS.
+   */
+  function exportarHojas(nombreArchivo, hojas) {
+    if (typeof XLSX === 'undefined') {
+      alert('No se pudo cargar la librería de Excel. Recargá la página e intentá de nuevo.');
+      return;
+    }
+    var wb = XLSX.utils.book_new();
+    (hojas || []).forEach(function (h) {
+      XLSX.utils.book_append_sheet(wb, hoja(h.filas, h.columnas), h.nombre);
+    });
+    XLSX.writeFile(wb, nombreArchivo);
+  }
+
+  window.CIW_EXPORTAR_HOJAS = exportarHojas;
   window.CIW_EXPORTAR = exportar;
 })();
