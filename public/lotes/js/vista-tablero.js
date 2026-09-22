@@ -8,10 +8,10 @@
  */
 'use strict';
 
-import { $, esc, DATOS, dashData, dashLoading, cargarDashboard, registrarVista } from './nucleo.js';
+import { $, esc, escA, DATOS, dashData, dashLoading, cargarDashboard, registrarVista } from './nucleo.js';
 import { htmlPanel } from './tablero-panel.js';
 import { initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, opcionesValores, matchValor } from './tabla.js';
-import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad } from './tablero-datos.js';
+import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad, chipsDe } from './tablero-datos.js';
 
 let _modoPanel = 'numeros';
 
@@ -69,7 +69,7 @@ function initFiltros(){
     { label: 'Proyecto', set: filt.proyecto,
       opciones: () => opcionesValores(filasTablero(), proyectoDe),
       match: matchValor(proyectoDe) },
-    { label: 'Condicion', set: filt.condicion,
+    { label: 'Condición', set: filt.condicion,
       // Una fila con dos condiciones tiene que aparecer al filtrar por
       // cualquiera de las dos, asi que no sirve matchValor (es uno a uno).
       opciones: () => {
@@ -108,8 +108,36 @@ function renderPanel(){
   $('tbPanel').innerHTML = htmlPanel(dashData().kpis || {}, filasTablero(), _modoPanel);
 }
 
+const HOY = () => new Date().toISOString().slice(0, 10);
+
+const ESTADO_PROCESO = { finalizada: 'terminada', no_finalizada: 'en proceso', excluida: 'excluida', sin_dato: '—' };
+
 function renderLista(){
-  $('tbLista').innerHTML = `<p>${filasVisibles().length} lotes</p>`;   // la Tarea 7 la completa
+  const hoy = HOY();
+  const filas = filasVisibles();
+
+  const cuerpo = filas.map(f => `
+    <tr>
+      <td><strong>${esc(f.lote)}</strong><br><span class="tb-sub">${esc(f.variedad ?? '')}</span></td>
+      <td>${esc(proyectoDe(f))}</td>
+      <td>${esc(f._info.vasija_actual ?? '')}</td>
+      <td>${esc(f.ultima_fecha_control ?? '—')}</td>
+      <td class="tb-sub">FA ${esc(ESTADO_PROCESO[f.fa_estado] ?? f.fa_estado ?? '—')}<br>
+                         FML ${esc(ESTADO_PROCESO[f.fml_estado] ?? f.fml_estado ?? '—')}</td>
+      <td>${chipsDe(f, hoy).map(c => `<span class="tb-chip ${c.tono}" title="${escA(c.titulo)}">${esc(c.texto)}</span>`).join('')}</td>
+      <td class="tb-sub">${esc(f.accion_sugerida || '')}</td>
+      <td><button data-ficha="${escA(f.lote)}">Ver ficha</button></td>
+    </tr>`).join('');
+
+  $('tbLista').innerHTML = filas.length === 0
+    ? '<p>Ningún lote pasa los filtros.</p>'
+    : `<table class="tb-tabla">
+         <thead><tr>
+           <th>Lote</th><th>Proyecto</th><th>Vasija</th><th>Último control</th>
+           <th>Proceso</th><th>Condiciones</th><th>Acción sugerida</th><th></th>
+         </tr></thead>
+         <tbody>${cuerpo}</tbody>
+       </table>`;
 }
 
 function cablear(sec){
