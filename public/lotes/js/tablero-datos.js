@@ -205,3 +205,22 @@ export function aplicarEdicion(datos, lote, campo, valor, autor){
 
   return { seccion };
 }
+
+/* El dialogo "Ver criterios" se arma con los umbrales vigentes. Un texto fijo
+ * mentiria apenas alguien edite Configuracion. */
+export function textoCriterios(eff){
+  const phSigno = String(eff.ph_max_inclusive) === 'si' ? '≥' : '>';
+  return [
+    { titulo: 'Sin análisis válido', regla: 'No hay ninguna fila con fecha y al menos una medición útil.' },
+    { titulo: 'Sin control de proceso', regla: 'Hay análisis, pero ninguno informa etanol, AV y málico a la vez.' },
+    { titulo: 'Frecuencia vencida', regla: `Pasaron más de ${eff.frecuencia_no_terminada} días del último control (${eff.frecuencia_terminada} si la FML está terminada o excluida).` },
+    { titulo: 'AV alerta', regla: `Último AV > ${eff.av_max}, o subió más de ${eff.av_delta_max} en ${eff.av_delta_dias} días, o el FOSS informó −999.` },
+    { titulo: 'Caída de SO₂ libre', regla: String(eff.so2_aplica) === 'no' ? 'No se evalúa en este proyecto.' : `Entre las dos últimas fechas con SO₂ hay una caída mayor a ${eff.so2_caida_max} ppm.` },
+    { titulo: 'FA no finalizada', regla: `Último azúcar reductor > ${eff.fa_azucar_reductor_max}.` },
+    { titulo: 'FML no finalizada', regla: `Último málico ≥ ${eff.fml_malico_finalizada}, y no hay dos últimas mediciones por debajo de ${eff.fml_malico_2ultimas}.` },
+    { titulo: 'SO2 no OK', regla: String(eff.so2_aplica) === 'no' ? 'No se evalúa en este proyecto.' : `Libre ≤ ${eff.so2_libre_piso} ppm, o molecular < ${eff.so2_molecular_objetivo}.` },
+    { titulo: 'pH no OK', regla: `Último pH ${phSigno} ${eff.ph_max}.` },
+    { titulo: 'No lleno', regla: 'El mermo del lote dice que no está lleno.' },
+    { titulo: 'Datos operativos incompletos', regla: 'Falta el mermo o falta la decisión de FML (del lote o de la variedad).' },
+  ];
+}

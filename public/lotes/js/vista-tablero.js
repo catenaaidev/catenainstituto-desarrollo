@@ -12,7 +12,8 @@ import { $, esc, escA, DATOS, dashData, dashLoading, cargarDashboard, registrarV
 import { htmlFicha } from './tablero-ficha.js';
 import { htmlPanel } from './tablero-panel.js';
 import { initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, opcionesValores, matchValor } from './tabla.js';
-import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad, chipsDe, aplicarEdicion } from './tablero-datos.js';
+import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad, chipsDe, aplicarEdicion, textoCriterios } from './tablero-datos.js';
+import { criteriosEfectivosJS } from './criterios.js';
 import { filasExport, COLUMNAS_EXPORT } from './tablero-export.js';
 
 let _modoPanel = 'numeros';
@@ -185,6 +186,14 @@ function cablear(sec){
     if (b){ _modoPanel = b.dataset.modo; renderPanel(); return; }
     const vf = ev.target.closest('[data-ficha]');
     if (vf){ abrirFicha(vf.dataset.ficha); return; }
+    if (ev.target.id === 'tbVerCriterios'){
+      // criteriosEfectivosJS recibe el config ENTERO y busca .criterios_fml adentro
+      // (criterios.js:42-43). Pasarle config.criterios_fml devuelve los defaults.
+      const eff = criteriosEfectivosJS(DATOS().config || {}, null, null);
+      mostrarOverlay(`<h3>Criterios vigentes</h3>` + textoCriterios(eff)
+        .map(c => `<p><strong>${esc(c.titulo)}</strong><br>${esc(c.regla)}</p>`).join(''));
+      return;
+    }
     if (ev.target.id === 'tbExportar'){
       const hoy = HOY();
       window.CIW_EXPORTAR_HOJAS(`Tablero FML (${hoy}).xlsx`, [
