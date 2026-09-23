@@ -188,9 +188,24 @@
    * (focus-within): la fila esta atenuada, no deshabilitada. */
   tr.vacio{opacity:.45}
   tr.vacio:hover,tr.vacio:focus-within{opacity:1}
-  /* ---- separador de lote (Analisis agrupado) ---- */
+  /* ---- separador de lote (Analisis agrupado) ----
+   * Sin veredicto queda gris, como siempre. Con veredicto se pinta entero para
+   * poder barrer la tabla de arriba abajo y ver que lotes tienen algo mal sin
+   * leer celda por celda: verde si TODO lo que se pudo juzgar esta en criterio,
+   * naranja si hay al menos un valor fuera (ver estadoDeLote en
+   * vista-analisis.js — un lote sin ningun veredicto NO sale verde).
+   *
+   * Son un tono mas fuertes que el verde y el naranja de las celdas (1,21 y
+   * 1,19 de contraste contra ellos): asi la banda se lee como una banda y no se
+   * funde con las celdas de su propio grupo. Contra el blanco dan 1,85 y 2,59, y
+   * el texto oscuro encima 8,09 y 5,80.
+   *
+   * La regla :hover va DESPUES de cada una para que pasar el mouse no devuelva
+   * el separador al gris, que es lo que hacia la regla original. */
   tr.analisis-separador td{background:var(--panel2);font-weight:600;padding:6px 9px}
   tr.analisis-separador:hover td{background:var(--panel2)}
+  tr.analisis-separador.ok  td,tr.analisis-separador.ok:hover  td{background:#9ccb8a}
+  tr.analisis-separador.mal td,tr.analisis-separador.mal:hover td{background:#e08e42}
   .rowbtn{background:none;border:none;color:#ff8a7a;cursor:pointer;font-size:15px;padding:2px 6px}
   .rowbtn:hover{color:var(--nook)}
   /* ---- scroll ---- */
@@ -203,6 +218,12 @@
   .legend-inline .sw.venc{background:#faf2e0;border-left:3px solid var(--warn)}
   .legend-inline .sw.vacio{background:var(--panel2);border:1px solid var(--line);opacity:.45}
   .legend-inline .sw.org{background:#b7dba9;border:1px solid #9cc98c}
+  /* Los tres de la pestaña Análisis: los dos veredictos de celda y la banda del
+     lote con algo fuera de criterio. Mismos colores que las reglas td.dentro,
+     td.fuera y tr.analisis-separador.mal de más abajo. */
+  .legend-inline .sw.dentro{background:#b7dba9;border:1px solid #9ccb8a}
+  .legend-inline .sw.fuera{background:#e8a15f;border:1px solid #d98a43}
+  .legend-inline .sw.sep-mal{background:#e08e42;border:1px solid #c47a33}
   /* ---- pill ---- */
   .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
   .pill.bad{background:#f6e4e1;color:#9e3328;border:1px solid #ecccc6}
@@ -313,14 +334,33 @@
     padding:0;border:none;pointer-events:none}
   /* Cartel de resultado de las operaciones en bloque */
   .gmsg{margin:8px 0}
-  /* ---- celda fuera de criterio (análisis) ---- */
-  td.fuera input.cell,td.fuera{background:#fbeeeb !important}
-  td.fuera input.cell{color:#9e3328}
-  /* Una celda fuera de criterio pinta con !important (la regla td.fuera de
-     mas arriba en este archivo) y le ganaria al fondo de la seleccion. Un rojo
-     mas saturado deja ver las dos cosas: que esta fuera de criterio Y que
-     esta seleccionada. */
-  td.fuera.gsel,td.fuera.gsel input.cell{background:#f0cfc8 !important}
+  /* ---- celdas con criterio (análisis) ----
+   * Solo se pintan las columnas que TIENEN criterio (pH, AV, Gluc+Fruc, Az.
+   * Reductor, Malico, SO2 libre y SO2 molecular), y solo cuando hay veredicto:
+   * verde si el valor esta en criterio, naranja si esta fuera. Una celda sin
+   * color es una que no se puede juzgar — sin medicion, o SO2 por encima del
+   * piso sin el pH que hace falta para el molecular. Ver METRICAS_CON_CRITERIO
+   * en vista-analisis.js y veredictosAnalisis en src/lotes/motores/fml.ts: la
+   * pantalla no sabe cual es el criterio de cada metrica, solo lo pinta.
+   *
+   * Solidos, no lavados. El rosa #fbeeeb que estaba antes daba 1,08 contra el
+   * blanco: en la practica se veia como una fila blanca mas. #b7dba9 (el mismo
+   * verde que el lote organico de la pestaña Lotes) da 1,53 y #e8a15f da 2,00,
+   * y entre ellos 1,42, que es lo que importa — el error mas caro aca no es no
+   * ver un color, es confundir el verde con el naranja. Si se retocan, medir
+   * ESA distancia y no solo la del blanco.
+   *
+   * El texto va oscuro y a juego: 7,07 de contraste sobre el verde y 5,01 sobre
+   * el naranja, los dos por encima del 4,5 de AA. */
+  td.dentro input.cell,td.dentro{background:#b7dba9 !important}
+  td.dentro input.cell{color:#24451a}
+  td.fuera input.cell,td.fuera{background:#e8a15f !important}
+  td.fuera input.cell{color:#5a3410}
+  /* Una celda con veredicto pinta con !important y le ganaria al fondo de la
+     seleccion. Un tono mas oscuro del MISMO color deja ver las dos cosas: en
+     que criterio cae Y que esta seleccionada. */
+  td.dentro.gsel,td.dentro.gsel input.cell{background:#93c082 !important}
+  td.fuera.gsel,td.fuera.gsel input.cell{background:#d98a43 !important}
   /* ---- scroll horizontal de la pestana Lotes (subsistema I) ----
    * Con 28 columnas hay scroll a lo ancho, y si se pierde de vista el numero de
    * lote no se sabe que fila se esta editando. Se fijan el gutter y Lote.

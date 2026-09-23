@@ -45,6 +45,13 @@ export function matchValor(valorDe){ return (row,set)=>set.has(normVal(valorDe(r
 export function crearFiltroMulti(cfg){
   const { label, set } = cfg;
   const anclado = cfg.anclado === true;
+  /* cfg.perezoso = true no arma la lista de casillas hasta que alguien abre el
+   * panel. Lo usa la pestaña Analisis, que tiene un embudo en CADA una de sus
+   * 18 columnas: construirlas todas de entrada son ~2000 casillas (6000 nodos)
+   * para paneles que en su enorme mayoria nadie va a abrir, y recorrer los 2601
+   * analisis 18 veces. Al abrir, alternarPanel llama a rebuildSiCambio, que es
+   * justo lo que hacia la vista en cada render. */
+  const perezoso = cfg.perezoso === true;
   const wrap=document.createElement('div'); wrap.className='mfilt';
   const btn=document.createElement('button'); btn.type='button'; btn.className='mfilt-btn';
   const panel=document.createElement('div'); panel.className='mfilt-panel';
@@ -112,6 +119,11 @@ export function crearFiltroMulti(cfg){
     const abierto=panel.classList.contains('open');
     document.querySelectorAll('.mfilt-panel.open').forEach(p=>p.classList.remove('open'));
     if (abierto) return;
+    /* La lista se pone al dia ACA y no en cada render de la vista: es el unico
+       momento en que alguien la va a mirar, y asi el filtro perezoso arma la
+       suya la primera vez que se lo abre. rebuildSiCambio no crea ni un nodo si
+       las opciones no cambiaron. */
+    rebuildSiCambio();
     panel.classList.add('open'); search.value='';
     opts.forEach(o=>o.li.classList.remove('hide')); actualizar();
     /* Posicionar DESPUES de mostrarlo: con display:none el panel mide 0x0 y no
@@ -126,28 +138,29 @@ export function crearFiltroMulti(cfg){
     }
     search.focus();
   }
+  /* Igual que rebuild, pero solo rehace la lista si las opciones cambiaron; si
+   * son las mismas, se limita a resincronizar los tildes y el contador, que no
+   * crea ni un nodo. Lo llaman alternarPanel (al abrir) y las vistas que
+   * quieran forzarlo. Devuelve si reconstruyo, para poder verificarlo.
+   *
+   * Saltear el build es seguro porque los checkbox que ya existen quedan
+   * colgados del `set` de siempre (es el mismo objeto Set, no una copia), asi
+   * que sus listeners siguen escribiendo donde corresponde. */
+  function rebuildSiCambio(){
+    const nuevas=cfg.opciones();
+    if (firmaDe(nuevas)===firma){ sync(); return false; }
+    build(nuevas); actualizar(); return true;
+  }
   btn.addEventListener('click',(e)=>{ e.stopPropagation(); alternarPanel(); });
   panel.addEventListener('click',e=>e.stopPropagation());
-  build(); actualizar();
+  /* El perezoso no arma nada todavia: `firma` queda en null, asi que el primer
+     rebuildSiCambio (el de alternarPanel) siempre construye. `actualizar` si
+     corre, para que el boton nazca con el label y el contador correctos. */
+  if (!perezoso) build();
+  actualizar();
   return {
-    el:wrap, sync, abrir:alternarPanel,
+    el:wrap, sync, abrir:alternarPanel, rebuildSiCambio,
     rebuild:()=>{ build(); actualizar(); },
-    /* Igual que rebuild, pero solo rehace la lista si las opciones cambiaron;
-     * si son las mismas, se limita a resincronizar los tildes y el contador,
-     * que no crea ni un nodo. La pestana Analisis lo llama en CADA render, y su
-     * filtro de Lote tiene un checkbox por lote con analisis: con los ~240 de
-     * produccion son 720 nodos (label + input + span cada uno) rehechos en cada
-     * tecla del buscador, la mayor parte del costo de tipear.
-     *
-     * Saltear el build es seguro porque los checkbox que ya existen quedan
-     * colgados del `set` de siempre (es el mismo objeto Set, no una copia), asi
-     * que sus listeners siguen escribiendo donde corresponde. Devuelve si
-     * reconstruyo, para poder verificarlo. */
-    rebuildSiCambio(){
-      const nuevas=cfg.opciones();
-      if (firmaDe(nuevas)===firma){ sync(); return false; }
-      build(nuevas); actualizar(); return true;
-    },
   };
 }
 
