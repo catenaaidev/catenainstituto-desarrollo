@@ -7,6 +7,7 @@
 
 import { esc, escA } from './nucleo.js';
 import { chipsDe, ultimasMediciones } from './tablero-datos.js';
+import { fmtFecha } from './fechas.js';
 
 const dato = (label, valor) => `<div class="tb-dato"><span>${esc(label)}</span><strong>${esc(valor ?? '—')}</strong></div>`;
 
@@ -38,13 +39,13 @@ export function htmlFicha(fila, analisis, hoy, excluidas){
 
   const evidencia = c.alerta ? `
     <div class="tb-aviso">
-      El SO₂ libre bajó de ${esc(c.anterior)} (${esc(c.anterior_fecha)})
-      a ${esc(c.actual)} (${esc(c.actual_fecha)}): ${esc(c.caida)} ppm.
+      El SO₂ libre bajó de ${esc(c.anterior)} (${esc(fmtFecha(c.anterior_fecha))})
+      a ${esc(c.actual)} (${esc(fmtFecha(c.actual_fecha))}): ${esc(c.caida)} ppm.
     </div>` : '';
 
   // Avisa cuando el pH de referencia viene de otra muestra que la del SO2.
   const phRef = fila.so2_ph_referencia_fecha && fila.so2_ph_referencia_fecha !== fila.so2_libre_fecha
-    ? `${fila.so2_ph_referencia} (del ${fila.so2_ph_referencia_fecha})`
+    ? `${fila.so2_ph_referencia} (del ${fmtFecha(fila.so2_ph_referencia_fecha)})`
     : fila.so2_ph_referencia;
 
   return `
@@ -55,8 +56,10 @@ export function htmlFicha(fila, analisis, hoy, excluidas){
       <div class="tb-grilla">
         ${dato('Vasija', fila._info.vasija_actual)}
         ${dato('Litros', fila.litros)}
-        ${dato('Última medición', fila.ultima_fecha)}
-        ${dato('Último control de proceso', fila.ultima_fecha_control)}
+        ${/* El `|| null` no sobra: fmtFecha devuelve vacio cuando no hay fecha, y
+            * dato() solo pone el guion si le llega null. */''}
+        ${dato('Última medición', fmtFecha(fila.ultima_fecha) || null)}
+        ${dato('Último control de proceso', fmtFecha(fila.ultima_fecha_control) || null)}
         ${dato('Frecuencia', `${fila.frecuencia_max} d (hace ${fila.dias_desde_control ?? '—'})`)}
         ${/* El motor solo detecta 'analisis'; el valor a mano vive en estado_lote y lo resuelve la pestana.
            * El select prioriza lo que el usuario cargó a mano (_est) y cae al dato del motor si no hay override. */
@@ -66,7 +69,7 @@ export function htmlFicha(fila, analisis, hoy, excluidas){
       </div>
       <div class="tb-so2">
         <h4>SO₂</h4>
-        ${dato('Libre', fila.so2_libre !== null ? `${fila.so2_libre} (${fila.so2_libre_fecha ?? '—'})` : '—')}
+        ${dato('Libre', fila.so2_libre !== null ? `${fila.so2_libre} (${fmtFecha(fila.so2_libre_fecha) || '—'})` : '—')}
         ${dato('pH de referencia', phRef)}
         ${dato('Molecular', fila.so2_molecular)}
         ${dato('Motivo', fila.so2_motivo)}
@@ -78,7 +81,7 @@ export function htmlFicha(fila, analisis, hoy, excluidas){
       <table class="tb-tabla">
         <thead><tr><th>Fecha</th><th>pH</th><th>AV</th><th>Málico</th><th>Az. red.</th><th>SO₂ libre</th><th>Etanol</th></tr></thead>
         <tbody>${mediciones.map(m => `<tr>
-          <td>${esc(m.fecha_analisis)}</td><td>${esc(celda(m.ph))}</td><td>${esc(celda(m.av))}</td>
+          <td>${esc(fmtFecha(m.fecha_analisis))}</td><td>${esc(celda(m.ph))}</td><td>${esc(celda(m.av))}</td>
           <td>${esc(celda(m.malico))}</td><td>${esc(celda(m.azucar_reductor))}</td>
           <td>${esc(celda(m.so2_libre))}</td><td>${esc(celda(m.etanol))}</td></tr>`).join('')}</tbody>
       </table>

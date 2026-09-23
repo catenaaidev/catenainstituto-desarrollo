@@ -17,6 +17,8 @@
  */
 'use strict';
 
+import { aIso } from './fechas.js';
+
 /* El orden de la planilla del laboratorio, 14 columnas. Vive aca y no en el
  * HTML para que el value del input y el default del parser no se separen:
  * registrarVista('cargar') en vista-cargar.js lo escribe en #cargarCols al
@@ -48,23 +50,14 @@ const ALIAS = {
 export const NUMERICAS = new Set(['ph', 'av', 'gluc_fruc', 'azucar_reductor',
   'malico', 'lactico', 'acidez_total', 'etanol', 'so2_libre']);
 
-/** Fecha en dd/mm/yyyy, dd-mm-yyyy o yyyy-mm-dd -> 'yyyy-mm-dd', o null.
+/** Fecha en dd/mm/aaaa, dd-mm-aaaa o aaaa-mm-dd -> 'yyyy-mm-dd', o null.
  *  El null no es un detalle: es lo que hace que la fila se marque en rojo en la
  *  previsualizacion en vez de entrar con una fecha inventada. */
 export function parsearFecha(raw){
-  const s = String(raw ?? '').trim();
-  if (!s) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)){
-    return isNaN(new Date(s + 'T00:00:00')) ? null : s;
-  }
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (!m) return null;
-  const iso = m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
-  const d = new Date(iso + 'T00:00:00');
-  /* getUTCDate ademas de isNaN: el 32/01 y el 31/02 construyen una fecha
-   * valida que se pasa de mes, y entrarian como dato bueno. */
-  if (isNaN(d) || d.getUTCDate() !== Number(m[1])) return null;
-  return iso;
+  /* La regla vive en fechas.js, que es la misma que aplica la edicion a mano de
+   * una celda. Aca el vacio tambien es null: en un pegado masivo una fila sin
+   * fecha no es "borrar la fecha", es una fila que no se puede cargar. */
+  return aIso(raw) || null;
 }
 
 /** El texto del campo "Orden de columnas" -> una entrada por POSICION.

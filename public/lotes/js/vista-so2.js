@@ -6,6 +6,7 @@ import { armarCorreccion, aplicarCorreccion, esAnulada } from './so2-bitacora.js
 import { activarGrilla } from './grilla.js';
 import { pasaMulti, opcionesValores,
          initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
+import { fmtFecha } from './fechas.js';
 
 /**
  * Calcula la corrección de SO2.
@@ -254,8 +255,8 @@ function _registrarCorreccionSO2(){
   const { que } = aplicarCorreccion(DATOS().analisis, loteStr, fecha, correccion);
 
   msgEl.innerHTML = (que === 'actualizado')
-    ? `<div class="msg ok">✓ Corrección actualizada en el análisis del ${esc(fecha)} (lote ${esc(loteStr)}). <b>Acordate de Guardar.</b></div>`
-    : `<div class="msg ok">✓ Nueva entrada de corrección creada para lote ${esc(loteStr)}, fecha ${esc(fecha)}. <b>Acordate de Guardar.</b></div>`;
+    ? `<div class="msg ok">✓ Corrección actualizada en el análisis del ${esc(fmtFecha(fecha))} (lote ${esc(loteStr)}). <b>Acordate de Guardar.</b></div>`
+    : `<div class="msg ok">✓ Nueva entrada de corrección creada para lote ${esc(loteStr)}, fecha ${esc(fmtFecha(fecha))}. <b>Acordate de Guardar.</b></div>`;
 
   markDirty();
 
@@ -360,12 +361,12 @@ function _renderBitacoraSO2(loteMap){
     const sello = anulada
       ? ` <span class="so2-anulada-sello" title="Esta corrección se canceló: no cuenta para la orden">ANULADA${
           c.anulada.por ? ' por ' + esc(c.anulada.por) : ''}${
-          c.anulada.fecha ? ' el ' + esc(c.anulada.fecha) : ''}</span>`
+          c.anulada.fecha ? ' el ' + esc(fmtFecha(c.anulada.fecha)) : ''}</span>`
       : '';
     tb += `<tr${anulada ? ' class="so2-anulada"' : ''}>
       <td>${esc(loteStr)}</td>
       <td>${esc(variedad)}</td>
-      <td>${esc(fecha)}</td>
+      <td>${esc(fmtFecha(fecha))}</td>
       <td class="num">${fmt1(c.so2_libre_actual)}</td>
       <td class="num">${fmt1(c.so2_deseado)}</td>
       <td class="num">${fmt1(c.diferencia)}</td>

@@ -6,6 +6,7 @@
 'use strict';
 
 import { antiguedadTexto } from './tablero-datos.js';
+import { fmtFecha } from './fechas.js';
 
 export const COLUMNAS_EXPORT = [
   ['lote', 'Lote'], ['vasija', 'Vasija'], ['litros', 'Litros'],
@@ -21,7 +22,9 @@ export function filasExport(filas, hoy){
         vasija: (f._info || {}).vasija_actual ?? '',
         litros: f.litros,
         condicion: c.etiqueta,
-        desde: c.desde || '',
+        /* Se formatea aca y no en ISO: esta es la salida para imprimir. La
+         * antiguedad se calcula con c.desde crudo, que sigue siendo ISO. */
+        desde: fmtFecha(c.desde),
         antiguedad: antiguedadTexto(c.desde, hoy),
       });
     }

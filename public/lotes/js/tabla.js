@@ -3,6 +3,7 @@
 
 import { $, num } from './nucleo.js';
 import { posicionDePanel } from './posicion-panel.js';
+import { aIso } from './fechas.js';
 
 /* --- sort --- */
 export function toggleSort(st, k){ if (st.key===k) st.dir*=-1; else { st.key=k; st.dir=1; } }
@@ -26,8 +27,14 @@ export function cmpValores(a,b){
   if (aNum&&bNum) return na-nb;
   return a.localeCompare(b,'es');
 }
-export function opcionesValores(rows, valorDe){
-  return [...new Set(rows.map(r=>normVal(valorDe(r))))].sort(cmpValores).map(v=>({val:v,text:(v===''?VACIO_LBL:v)}));
+/* `textoDe` separa el valor que se filtra del texto que se lee en la casilla.
+ * Lo necesita la columna Fecha: el valor tiene que seguir siendo el ISO (es lo
+ * que compara el match, y ordenarlo como texto es ordenarlo cronologicamente),
+ * pero la casilla tiene que decir 10/09/2026. Sin esto, la lista saldria
+ * ordenada por dia: un 01/12 antes que un 02/03. */
+export function opcionesValores(rows, valorDe, textoDe){
+  const texto = textoDe || (v => v);
+  return [...new Set(rows.map(r=>normVal(valorDe(r))))].sort(cmpValores).map(v=>({val:v,text:(v===''?VACIO_LBL:texto(v))}));
 }
 export function matchValor(valorDe){ return (row,set)=>set.has(normVal(valorDe(row))); }
 
@@ -184,42 +191,6 @@ export function limpiarFiltrosMulti(descriptores, buscadorId, instancias, onChan
   onChange();
 }
 
-/* Fechas: se guardan siempre en ISO (YYYY-MM-DD) porque asi las comparan las
- * etapas, el linaje y las alarmas. Se aceptan las tres formas con las que una
- * fecha llega pegada desde el Excel; cualquier otra cosa se rechaza, en lugar de
- * guardar un texto que despues nadie puede comparar. Mismo criterio que
- * norm_fecha en migrar_excel.py.
- *
- * Devuelve el ISO, '' si el texto venia vacio, o null si no es una fecha. */
-const _RE_ISO = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
-const _RE_DMY = /^(\d{1,2})([/-])(\d{1,2})\2(\d{4})$/;
-
-function normalizarFecha(texto){
-  const t = String(texto ?? '').trim();
-  if (t === '') return '';
-
-  let a, m, d;
-  const iso = _RE_ISO.exec(t);
-  if (iso){
-    a = +iso[1]; m = +iso[2]; d = +iso[3];
-  } else {
-    // El backreference \2 obliga a que los dos separadores sean el mismo, asi
-    // que '28/01-2026' no pasa.
-    const dmy = _RE_DMY.exec(t);
-    if (!dmy) return null;
-    d = +dmy[1]; m = +dmy[3]; a = +dmy[4];
-  }
-
-  /* Que tenga la forma correcta no la hace una fecha real: el 31 de febrero no
-   * existe. Se construye en UTC para que la zona horaria no corra el dia. */
-  const f = new Date(Date.UTC(a, m - 1, d));
-  if (f.getUTCFullYear() !== a || f.getUTCMonth() !== m - 1 || f.getUTCDate() !== d)
-    return null;
-
-  const dos = n => String(n).padStart(2, '0');
-  return `${a}-${dos(m)}-${dos(d)}`;
-}
-
 /* --- escritura de celdas ---
  * Unico lugar donde vive la conversion texto -> valor del modelo. La edicion a
  * mano de cada vista y el pegado en bloque de la grilla tienen que aplicar la
@@ -245,7 +216,8 @@ export function escribirCelda(cols, obj, k, texto){
   }
 
   if (c.fecha){
-    const iso = normalizarFecha(t);
+    /* Se guarda en ISO venga como venga escrito: ver fechas.js. */
+    const iso = aIso(t);
     if (iso === null) return 'invalido';
     obj[k] = iso === '' ? null : iso;
     return 'ok';

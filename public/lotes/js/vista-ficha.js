@@ -4,6 +4,7 @@
 import { $, esc, escA, registrarVista, mostrarTab,
          loteActivo, irALote } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
+import { fmtFecha } from './fechas.js';
 
 /* Cache: evita re-pedir si el lote no cambi */
 let _loteCache = null;   // lote str que cacheamos
@@ -28,14 +29,6 @@ function iconoHito(h){
   if (!h.aplica) return '—';
   if (h.cumplido) return '✓';
   return '✗';
-}
-
-function fmtFecha(s){
-  if (!s) return '';
-  // yyyy-mm-dd -> dd/mm/yyyy
-  const p = String(s).split('-');
-  if (p.length === 3) return p[2] + '/' + p[1] + '/' + p[0];
-  return esc(s);
 }
 
 function linkLote(loteStr, etiqueta){
@@ -119,7 +112,7 @@ function htmlFicha(f){
   const tl = (f.linea_tiempo || []).map(ev => {
     const clase = escA(ev.clase || '');
     return `<li class="${clase}">
-      <span class="fecha">${fmtFecha(ev.fecha)}</span>
+      <span class="fecha">${esc(fmtFecha(ev.fecha))}</span>
       <b>${esc(ev.titulo || '')}</b>
       ${ev.detalle ? ` <small style="color:var(--muted)">${esc(ev.detalle)}</small>` : ''}
     </li>`;
@@ -134,7 +127,7 @@ function htmlFicha(f){
   /* ---- recorrido de vasijas ---- */
   const vasRows = (f.recorrido_vasijas || []).map(v => {
     const esActual = v.hasta === null || v.hasta === undefined;
-    const desde = fmtFecha(v.desde) || '—';
+    const desde = esc(fmtFecha(v.desde)) || '—';
     const hasta = esActual ? '<b>(actual)</b>' : esc(fmtFecha(v.hasta) || '—');
     const litros = v.litros != null ? esc(String(v.litros)) : '—';
     return `<tr${esActual ? ' style="font-weight:600"' : ''}>
@@ -161,7 +154,7 @@ function htmlFicha(f){
   const cadena  = f.cadena_identidad || [String(lote.lote ?? '')];
 
   function labelParteLinaje(rel){
-    const partes = [esc(rel.tipo || ''), fmtFecha(rel.fecha), rel.litros != null ? esc(String(rel.litros)) + ' L' : ''].filter(Boolean);
+    const partes = [esc(rel.tipo || ''), esc(fmtFecha(rel.fecha)), rel.litros != null ? esc(String(rel.litros)) + ' L' : ''].filter(Boolean);
     return `${esc(rel.lote)} <small style="color:var(--muted)">(${partes.join(', ')})</small>`;
   }
 
@@ -195,7 +188,7 @@ function htmlFicha(f){
     : linaje.hijos.map(h => `<div style="margin-bottom:4px">${linkLote(h.lote, '')} ${labelParteLinaje(h)}</div>`).join('')}
   ${(linaje.salidas || []).length > 0
     ? `<div style="margin-top:8px;font-size:12px;color:var(--muted);font-weight:600">Salidas externas:</div>`
-      + linaje.salidas.map(s => `<div style="color:var(--muted);font-size:12px;margin-bottom:2px">${esc(s.destino || '—')} &mdash; ${fmtFecha(s.fecha)} &mdash; ${s.litros != null ? esc(String(s.litros)) + ' L' : '—'}</div>`).join('')
+      + linaje.salidas.map(s => `<div style="color:var(--muted);font-size:12px;margin-bottom:2px">${esc(s.destino || '—')} &mdash; ${esc(fmtFecha(s.fecha))} &mdash; ${s.litros != null ? esc(String(s.litros)) + ' L' : '—'}</div>`).join('')
     : ''}
 </div>`;
 

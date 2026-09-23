@@ -18,8 +18,10 @@ describe('filasExport', () => {
   });
 
   it('trae vasija, litros, desde y antiguedad', () => {
+    /* La fecha sale dd/mm/aaaa, igual que en la pantalla: el Excel se imprime y
+     * se reparte. Adentro, la condicion la sigue guardando en ISO. */
     const r = filasExport([fila('26001', [{ clave: 'ph_no_ok', etiqueta: 'pH no OK', accion: 'x', desde: '2026-09-14' }])], HOY);
-    expect(r[0]).toEqual({ lote: '26001', vasija: 'B-12', litros: 1000, condicion: 'pH no OK', desde: '2026-09-14', antiguedad: '2 d' });
+    expect(r[0]).toEqual({ lote: '26001', vasija: 'B-12', litros: 1000, condicion: 'pH no OK', desde: '14/09/2026', antiguedad: '2 d' });
   });
 
   it('la condicion sin fecha deja desde y antiguedad vacios', () => {

@@ -463,11 +463,6 @@
   .so2-result-box .so2-lbl{font-size:12px;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted)}
   .so2-result-box.hi .so2-val{color:var(--warn)}
   .so2-result-box.pos .so2-val{color:var(--ok)}
-  /* ---- evolución: grilla de gráficos ---- */
-  .evo-charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:18px;margin-top:16px}
-  .evo-chart-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
-  .evo-chart-card h3{margin:0 0 8px;font-family:var(--serif);font-size:14px;font-weight:600;color:var(--txt)}
-  .evo-nav{display:flex;gap:8px;align-items:center}
   /* ---- Ficha de lote ---- */
   /* Barra de % de avance */
   .barra { background:#e6e6e6; border-radius:6px; height:14px; overflow:hidden; min-width:70px; display:inline-block; vertical-align:middle; }
@@ -973,7 +968,6 @@ table.hm td.hm-c{padding:0}
   <button data-v="tablero">🧫 Tablero FML</button>
   <button data-v="so2">🧴 Correcciones SO2</button>
   <button data-v="movimientos">🔄 Movimientos</button>
-  <button data-v="evolucion">📈 Evolución</button>
   <button data-v="orden">📝 Orden de muestras</button>
   <button data-v="cruce">🛢️ Cruce con barriles</button>
   <button data-v="ordencorr">💊 Orden de corrección</button>
@@ -1196,9 +1190,6 @@ table.hm td.hm-c{padding:0}
 
   <!-- FICHA DE LOTE (sin boton de pestana, se abre desde irALote) -->
   <section class="view" id="tab-ficha"></section>
-
-  <!-- EVOLUCIÓN -->
-  <section class="view" id="tab-evolucion"></section>
 
   <!-- ORDEN DE MUESTRAS -->
   <section class="view" id="tab-orden"></section>

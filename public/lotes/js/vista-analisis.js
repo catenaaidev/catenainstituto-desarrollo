@@ -10,6 +10,7 @@ import { armarFilas, esQuimicaReal, esCorreccionReal,
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
 import { crearAnchos } from './anchos-cols.js';
+import { fmtFecha, fmtMes } from './fechas.js';
 
 /* Columnas de la tabla de análisis. Las 2 ultimas son de la CORRECCION de SO2
  * (viven en analisis.correccion.*, no directo en el registro) y solo se ven
@@ -24,7 +25,10 @@ const COLS_ANALISIS = [
   { k:'variedad',        label:'Variedad',            ro:true },
   { k:'vasija_crianza',  label:'Vasija de crianza',   ro:true },
   { k:'proyecto',        label:'Proyecto',            ro:true },
-  { k:'fecha_analisis',label:'Fecha',          ro:false },
+  /* `fecha` hace que escribirCelda la guarde en ISO venga escrita como venga, y
+   * `fmt` es como se muestra. El dato sigue siendo ISO: el orden de la tabla y
+   * el agrupado por fecha comparan el valor crudo, no lo que se ve. */
+  { k:'fecha_analisis',label:'Fecha',          ro:false, fecha:true, fmt:fmtFecha },
   /* Etanol va antes que pH, no al final de la quimica: es el mismo orden en
    * que viene la planilla del laboratorio (ver ORDEN_PLANILLA en
    * carga-cols.js), asi que leer esta tabla y leer lo que se pego son el
@@ -319,7 +323,7 @@ function initFiltrosAn(){
       set: filtAn[c.k],
       /* cmpValores ordena numerico cuando los valores son numeros, asi que los
        * lotes y las mediciones salen en orden y no alfabeticamente. */
-      opciones: () => opcionesValores(DATOS().analisis || [], leer),
+      opciones: () => opcionesValores(DATOS().analisis || [], leer, c.fmt),
       match: matchValor(leer),
     };
   });
@@ -470,7 +474,7 @@ export function renderAnalisis(){
   const html = `
 <div class="toolbar" id="analisisToolbar">
   <input class="txt" id="buscaAnalisis" placeholder="🔎 Buscar por lote…" style="min-width:160px" value="${escA(_filtAnalisisBusca)}">
-  <select id="fltAnMes"><option value="">Todos los meses</option>${meses.map(m=>`<option value="${escA(m)}"${m===_filtAnalisisMes?' selected':''}>${esc(m)}</option>`).join('')}</select>
+  <select id="fltAnMes"><option value="">Todos los meses</option>${meses.map(m=>`<option value="${escA(m)}"${m===_filtAnalisisMes?' selected':''}>${esc(fmtMes(m))}</option>`).join('')}</select>
   <select id="fltAnTipo">
     <option value="todas"${_filtAnalisisTipo==='todas'?' selected':''}>Todas las filas</option>
     <option value="fuera"${_filtAnalisisTipo==='fuera'?' selected':''}>Solo fuera de criterio</option>
@@ -667,15 +671,19 @@ export function renderAnalisis(){
        * analisis.correccion y el veredicto de la API), la misma que usan las
        * opciones del embudo de esta columna. */
       const v = _valorDeColumna(o, metric);
+      /* Lo unico que cambia entre el dato y la pantalla. La celda de Fecha se
+       * lee 10/09/2026 y se escribe igual; escribirCelda la vuelve a ISO al
+       * guardar, asi que el valor del modelo nunca ve el formato de pantalla. */
+      const vista = c.fmt ? c.fmt(v) : v;
 
       if (c.ro){
         const cls = 'ro' + marca + (c.num ? ' num' : '');
-        tb += `<td class="${cls}" ${attrs}>${esc(v)}</td>`;
+        tb += `<td class="${cls}" ${attrs}>${esc(vista)}</td>`;
       } else {
         const cls = [marca.trim(), c.num ? 'num' : ''].filter(Boolean).join(' ');
         tb += `<td class="${cls}" ${attrs}>` +
               `<input class="cell${c.num?' num':''}${marca}" type="text" ` +
-              `${attrs} value="${escA(v)}"></td>`;
+              `${attrs} value="${escA(vista)}"></td>`;
       }
     }
     const etiquetaBoton = fila.tipo === 'quimica' ? 'Eliminar medición' : 'Eliminar corrección';
@@ -749,7 +757,7 @@ export function renderAnalisis(){
       const o = fila.analisis;
       const esQuimica = fila.tipo === 'quimica';
       const etiqueta = esQuimica ? 'esta medición' : 'esta corrección';
-      if (!confirm(`¿Eliminar ${etiqueta} del lote ${esc(o.lote)} (${esc(o.fecha_analisis||'sin fecha')})?`)) return;
+      if (!confirm(`¿Eliminar ${etiqueta} del lote ${esc(o.lote)} (${esc(fmtFecha(o.fecha_analisis)||'sin fecha')})?`)) return;
 
       if (esQuimica){
         for (const campo of CAMPOS_QUIMICA_A_VACIAR) o[campo] = null;

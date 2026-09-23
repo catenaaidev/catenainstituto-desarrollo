@@ -9,6 +9,7 @@ import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija,
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
 import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
+import { fmtFecha } from './fechas.js';
 
 /*
  * _otRows: array de objetos { lote, variedad, vasija, litros, motivo, recipiente, cantidad }
@@ -232,9 +233,8 @@ function _otPintarPaginas(){
   if (!cont) return;
 
   const fechaISO = $('otFecha') ? $('otFecha').value : '';
-  const p = fechaISO.split('-');
-  const fechaTxt = p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : fechaISO;
-  const anio = p.length === 3 ? p[0] : '';
+  const fechaTxt = fmtFecha(fechaISO);
+  const anio = fechaISO.slice(0, 4);
   const nro = $('otNumOrden') ? $('otNumOrden').value : '';
   const dia = $('otDia') ? $('otDia').value : '';
   const recibio = $('otRecibio') ? $('otRecibio').value : '';

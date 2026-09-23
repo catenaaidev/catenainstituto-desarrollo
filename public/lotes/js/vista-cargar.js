@@ -4,6 +4,7 @@
 import { $, esc, escA, DATOS, markDirty, registrarVista } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
 import { ORDEN_PLANILLA, planDeColumnas, parsearFila } from './carga-cols.js';
+import { fmtFecha } from './fechas.js';
 
 /* --- parseo principal ---
  * El "que campo es cada posicion" y el "como se lee una celda" viven en
@@ -79,7 +80,10 @@ export function cargarPrevisualizar(){
     tb += `<tr${hayError ? ' style="background:#fbeeeb"' : ''}>`;
     for (const c of colsMostrar){
       const v = f[c];
-      tb += `<td${c==='lote'||c==='fecha_analisis'?'':' class="num"'}>${esc(v == null ? '' : v)}</td>`;
+      /* La fecha ya viene normalizada a ISO por parsearFecha; aca se muestra
+       * como se va a leer despues en Analisis. */
+      const vista = c === 'fecha_analisis' ? fmtFecha(v) : (v == null ? '' : v);
+      tb += `<td${c==='lote'||c==='fecha_analisis'?'':' class="num"'}>${esc(vista)}</td>`;
     }
     if (hayError){
       tb += `<td><span class="pill bad">${esc(f._errores.join(', '))}</span></td>`;

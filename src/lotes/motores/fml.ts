@@ -451,7 +451,7 @@ export interface ResultadoLote {
   condiciones: CondicionActiva[];
   accion_sugerida: string;
 
-  // --- compatibilidad con Dashboard, Evolucion y Orden de muestras ---
+  // --- compatibilidad con Dashboard y Orden de muestras ---
   so2_ok: boolean | null;
   ph_ok: boolean | null;
   vencido: boolean;
@@ -466,8 +466,8 @@ export interface ResultadoLote {
  *
  * No decide nada por su cuenta: cada estado sale de fml-condiciones.ts. Lo que
  * sí resuelve acá es qué condiciones quedan activas, en qué orden se muestran y
- * cómo se traducen a los campos viejos que todavía consumen el Dashboard, la
- * Evolución y la Orden de muestras.
+ * cómo se traducen a los campos viejos que todavía consumen el Dashboard y la
+ * Orden de muestras.
  */
 export function evaluarLote(
   lote: Fila,
@@ -557,7 +557,7 @@ export function evaluarLote(
     alarmas,
     accion_sugerida,
 
-    // --- compatibilidad con Dashboard, Evolucion y Orden de muestras ---
+    // --- compatibilidad con Dashboard y Orden de muestras ---
     so2_ok:
       so2.estado === 'ok' || so2.estado === 'no_aplica'
         ? true

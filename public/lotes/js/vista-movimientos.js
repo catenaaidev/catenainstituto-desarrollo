@@ -7,6 +7,7 @@ import { toggleSort, sortRows, opcionesValores, matchValor,
          initFiltrosMulti, pasaMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla, adaptadorCols } from './grilla.js';
 import { esEjecutado, PENDIENTE, EJECUTADO, proximoNumeroOT } from './ot-movimientos.js';
+import { fmtFecha } from './fechas.js';
 
 /* --- tipos validos --- */
 const TIPOS_MOV = ['descube', 'trasiego', 'relleno', 'traspaso', 'renombre', 'salida'];
@@ -352,7 +353,7 @@ export function renderMovimientos(){
       const b = e.target.closest('[data-del]');
       if (b){
         const o = t._rows[+b.dataset.del]; if (!o) return;
-        if (confirm('¿Eliminar el movimiento del lote ' + esc(o.lote || '(sin lote)') + ' (' + esc(o.tipo || '') + ' ' + esc(o.fecha || '') + ')?')){
+        if (confirm('¿Eliminar el movimiento del lote ' + esc(o.lote || '(sin lote)') + ' (' + esc(o.tipo || '') + ' ' + esc(fmtFecha(o.fecha)) + ')?')){
           const idx = DATOS().movimientos.indexOf(o);
           if (idx !== -1) DATOS().movimientos.splice(idx, 1);
           markDirty();
@@ -485,8 +486,7 @@ function _pintarHojaOT(mov){
 
   const loteMap = _buildLoteMap();
   const info = loteMap.get(String(mov.lote ?? '')) || { variedad:'', proyecto:'', vasija_actual:'' };
-  const p = String(mov.fecha || '').split('-');
-  const fechaTxt = p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : (mov.fecha || '');
+  const fechaTxt = fmtFecha(mov.fecha);
 
   const dato = (etiqueta, valor) =>
     `<div style="margin-bottom:10px"><span style="font-size:12px;color:#555">${etiqueta}</span><br>` +

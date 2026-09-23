@@ -16,7 +16,6 @@ import './js/vista-analisis.js';
 import './js/vista-tablero.js';
 import './js/vista-so2.js';
 import './js/vista-movimientos.js';
-import './js/vista-evolucion.js';
 import './js/vista-orden.js';
 import './js/vista-cruce.js';
 import './js/vista-orden-correccion.js';

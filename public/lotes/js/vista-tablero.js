@@ -15,6 +15,7 @@ import { initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, opcionesValores, matc
 import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad, chipsDe, aplicarEdicion, textoCriterios } from './tablero-datos.js';
 import { criteriosEfectivosJS } from './criterios.js';
 import { filasExport, COLUMNAS_EXPORT } from './tablero-export.js';
+import { fmtFecha } from './fechas.js';
 
 let _modoPanel = 'numeros';
 
@@ -127,7 +128,7 @@ function renderLista(){
       <td><strong>${esc(f.lote)}</strong><br><span class="tb-sub">${esc(f.variedad ?? '')}</span></td>
       <td>${esc(proyectoDe(f))}</td>
       <td>${esc(f._info.vasija_actual ?? '')}</td>
-      <td>${esc(f.ultima_fecha_control ?? '—')}</td>
+      <td>${esc(fmtFecha(f.ultima_fecha_control) || '—')}</td>
       <td class="tb-sub">FA ${esc(ESTADO_PROCESO[f.fa_estado] ?? f.fa_estado ?? '—')}<br>
                          FML ${esc(ESTADO_PROCESO[f.fml_estado] ?? f.fml_estado ?? '—')}</td>
       <td>${chipsDe(f, hoy).map(c => `<span class="tb-chip ${c.tono}" title="${escA(c.titulo)}">${esc(c.texto)}</span>`).join('')}</td>
