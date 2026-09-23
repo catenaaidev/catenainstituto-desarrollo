@@ -568,7 +568,7 @@ function _abrirModalOT(mov){
     lote: '', tipo: 'trasiego', fecha: hoy,
     vasija_origen: '', vasija_destino: '', litros: null,
     lote_destino: '', destino_externo: '', comentario: '',
-    ot: proximoNumeroOT(DATOS().movimientos || [], anio),
+    ot: proximoNumeroOT(DATOS().movimientos || [], anio, DATOS().ordenes_trabajo || []),
   };
 
   const tipoOpts = TIPOS_MOV.map(tp =>

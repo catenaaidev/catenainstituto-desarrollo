@@ -15,9 +15,16 @@ import { proximoNumeroOT } from './ot-movimientos.js';
 import { esOrganico } from './envases.js';
 
 /* Estado del modal abierto: una entrada por lote agregado. */
-let _lotes = [];      // [{lote, id_texto, organico, barriles:[...], tildados:Set<num>, vasijas_manual, litros}]
+let _lotes = [];      // [{lote, id_texto, organico, barriles:[...], tildados:Set<num>, vasijas_manual, litros, litrosManual}]
 let _mapaVersion = null;
 let _mapaCaido = false;
+// Se incrementa cada vez que se abre el modal: si un fetch de _agregarLote
+// termina despues de que el modal se cerro y se reabrio, la sesion ya no
+// coincide y el resultado no se empuja en el modal nuevo.
+let _sesion = 0;
+// Lotes con un fetch de barriles en vuelo: bloquea el doble Enter en red lenta
+// (que sumaria el mismo lote dos veces y duplicaria el movimiento).
+let _pendientes = new Set();
 
 async function _traerBarriles(lote){
   try {
@@ -25,6 +32,7 @@ async function _traerBarriles(lote){
     if (!r.ok){ _mapaCaido = true; return []; }
     const d = await r.json();
     _mapaVersion = d.version ?? _mapaVersion;
+    _mapaCaido = false;
     return (d.por_lote && d.por_lote[lote]) || [];
   } catch (e){
     _mapaCaido = true;
@@ -40,11 +48,18 @@ function _pintarLotes(){
     if (!l.enLotes) avisos.push('⚠ No está en la lista de lotes.');
     const vacios = l.barriles.filter(b => b.estado !== 'LLENO').length;
     if (vacios) avisos.push(`⚠ ${vacios} barril(es) figuran VACÍOS en el Mapa.`);
-    const lista = l.barriles.length
+    const checks = l.barriles.length
       ? l.barriles.map(b => `<label class="ote-barril"><input type="checkbox" data-lote="${i}" data-num="${escA(b.num)}"` +
           `${l.tildados.has(b.num) ? ' checked' : ''}> ${esc(b.num)} · ${esc(b.cap ?? '')} L · ${esc(b.marca)} ${esc(b.anio)} ` +
           `<span style="color:var(--muted)">${esc(b.estado)}</span></label>`).join('')
-      : `<label>Vasijas (sin barriles en el Mapa)</label> <input class="txt" data-manual="${i}" value="${escA(l.vasijas_manual)}" placeholder="p. ej. 1 x t500">`;
+      : '';
+    // Con barriles pero ninguno tildado tambien hace falta el campo manual:
+    // si no, el lote queda sin forma de cargar la vasija y bloquea el emitir.
+    const manual = (!l.barriles.length || !l.tildados.size)
+      ? `<label>Vasijas${l.barriles.length ? '' : ' (sin barriles en el Mapa)'}</label> ` +
+        `<input class="txt" data-manual="${i}" value="${escA(l.vasijas_manual)}" placeholder="p. ej. 1 x t500">`
+      : '';
+    const lista = checks + manual;
     return `<div class="card ote-lote">
   <div><b>${esc(l.lote)}</b> ${esc(l.id_texto)} ${l.organico ? '🟢 orgánico' : ''}
     <button class="rowbtn" data-quitar="${i}" title="Quitar lote">✕</button></div>
@@ -60,9 +75,20 @@ async function _agregarLote(){
   const inp = $('oteLote');
   const lote = inp.value.trim();
   if (!lote) return;
-  if (_lotes.some(l => l.lote === lote)){ inp.value = ''; return; }
+  if (_lotes.some(l => l.lote === lote) || _pendientes.has(lote)){ inp.value = ''; return; }
+  // Limpiar el input y marcar el lote como pendiente ANTES del await: un
+  // segundo Enter mientras el fetch sigue en vuelo (red lenta) no debe volver
+  // a dispararlo, o el lote termina agregado dos veces.
+  inp.value = '';
+  _pendientes.add(lote);
+  const sesion = _sesion;
   const ficha = (DATOS().lotes || []).find(l => String(l.lote) === lote);
   const barriles = await _traerBarriles(lote);
+  _pendientes.delete(lote);
+  // El modal se cerro y se reabrio (otra OT) mientras esperabamos el fetch:
+  // este resultado ya no es de esta sesion, no se empuja.
+  if (sesion !== _sesion) return;
+  if (_lotes.some(l => l.lote === lote)) return;
   const tildados = new Set(barriles.map(b => b.num));
   _lotes.push({
     lote, enLotes: !!ficha,
@@ -70,18 +96,20 @@ async function _agregarLote(){
     organico: !!(ficha && esOrganico(ficha)),
     barriles, tildados, vasijas_manual: '',
     litros: litrosPrevistos(barriles) || null,
+    litrosManual: false,
   });
-  inp.value = '';
   _pintarLotes();
 }
 
 function _recalcularLitros(i){
   const l = _lotes[i];
+  if (l.litrosManual) return; // el usuario ya escribio un valor a mano: no lo pisamos
   l.litros = litrosPrevistos(l.barriles.filter(b => l.tildados.has(b.num))) || null;
 }
 
 export function abrirEmitirOT(onListo){
   _lotes = []; _mapaVersion = null; _mapaCaido = false;
+  _sesion++; _pendientes = new Set();
   const hoy = new Date().toISOString().slice(0, 10);
   const numero = proximoNumeroOT(DATOS().movimientos || [], Number(hoy.slice(0, 4)), DATOS().ordenes_trabajo || []);
   const opts = PLANTILLAS_OT.map(p => `<option value="${escA(p.id)}">${esc(p.nombre)}</option>`).join('');
@@ -113,7 +141,9 @@ export function abrirEmitirOT(onListo){
     } else if (t.dataset.manual !== undefined){
       _lotes[+t.dataset.manual].vasijas_manual = t.value.trim();
     } else if (t.dataset.litros !== undefined){
-      _lotes[+t.dataset.litros].litros = num(t.value);
+      const l = _lotes[+t.dataset.litros];
+      l.litros = num(t.value);
+      l.litrosManual = true;
     }
   });
   $('otePorLote').addEventListener('click', e => {
@@ -128,6 +158,12 @@ async function _emitir(onListo){
   if (!_lotes.length){ alert('Agregá al menos un lote.'); return; }
   const fecha = $('oteFecha').value;
   if (!fecha){ alert('Falta la fecha.'); return; }
+  const numero = $('oteNumero').value.trim();
+  if (!numero){ alert('Falta el número de OT.'); return; }
+  const d0 = DATOS();
+  const yaExiste = (d0.movimientos || []).some(m => m.ot === numero) ||
+    (d0.ordenes_trabajo || []).some(o => o.ot === numero);
+  if (yaExiste && !confirm('El número ' + numero + ' ya existe. ¿Continuar igual?')) return;
   const sinVasijas = _lotes.filter(l => !l.tildados.size && !l.vasijas_manual);
   if (sinVasijas.length){
     alert('El lote ' + sinVasijas[0].lote + ' no tiene barriles tildados ni vasijas cargadas.');
@@ -137,7 +173,7 @@ async function _emitir(onListo){
   const usuario = usuarioActual();
   const ot = armarOT({
     id: 'ot-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    numero: $('oteNumero').value.trim(),
+    numero,
     plantilla: $('otePlantilla').value,
     fecha,
     destino: $('oteDestino').value,
@@ -162,8 +198,8 @@ async function _emitir(onListo){
 
   const ok = await guardar(false);
   if (!ok){
-    alert('La OT quedó en pantalla pero NO se guardó, así que todavía no conviene imprimirla: '
-        + 'resolvé el guardado y usá el botón 🖨 de la fila.');
+    alert('La OT NO se guardó, así que todavía no conviene imprimirla. Resolvé el guardado; '
+        + 'si la fila sigue en la tabla, imprimila con su botón 🖨, y si no, emitila de nuevo.');
     return;
   }
   abrirImprimirOT(ot);

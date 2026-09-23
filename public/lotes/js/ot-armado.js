@@ -42,7 +42,9 @@ export function armarOT({ id, numero, plantilla, fecha, destino, emitio, lotes, 
         organico: !!l.organico,
         barriles,
         vasijas_manual: l.vasijas_manual || '',
-        litros_previstos: l.litros_previstos ?? litrosPrevistos(barriles),
+        // Sin barriles no hay de donde sacar litros: litrosPrevistos([]) da 0 y
+        // un lote manual sin litros cargados quedaria mintiendo "0 L" en la hoja.
+        litros_previstos: l.litros_previstos ?? (barriles.length ? litrosPrevistos(barriles) : null),
         destino_real: '', litros_reales: null, merma: null,
         mov_id: `${id}-${i}`,
       };

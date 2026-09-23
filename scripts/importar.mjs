@@ -28,7 +28,7 @@ const MODULOS = {
   },
   lotes: {
     version: '$.meta.version',
-    secciones: ['lotes', 'analisis', 'movimientos'].map((s) => [s, `$.${s}`]),
+    secciones: ['lotes', 'analisis', 'movimientos', 'ordenes_trabajo'].map((s) => [s, `$.${s}`]),
     autor: (d) => d?.meta?.autor,
     fecha: (d) => d?.meta?.actualizado,
   },

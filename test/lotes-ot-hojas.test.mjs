@@ -48,6 +48,11 @@ describe('hojaOT', () => {
     expect(h).toContain('Litros caudalímetro');
   });
 
+  it('un lote manual sin litros deja la celda de litros en blanco, no en 0', () => {
+    const h = H.hojaOT(ot([{ lote: '25312', barriles: [], vasijas_manual: '1 x T50' }], 'barricas-tanque', 'T 201'));
+    expect(h).not.toMatch(/<td>0<\/td>/);
+  });
+
   it('correcciones: TH2 y SO2 por lote', () => {
     const h = H.hojaOT(ot([{ lote: '1', barriles: [barril('a')] }, { lote: '2', barriles: [barril('b')] }]));
     expect(cuenta(h, '>TH2<')).toBe(2);

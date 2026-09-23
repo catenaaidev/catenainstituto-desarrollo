@@ -69,6 +69,13 @@ describe('armarOT', () => {
     b[0].estado = 'VACIO';
     expect(ot.lotes[0].barriles[0].estado).toBe('LLENO');
   });
+
+  it('un lote manual sin barriles ni litros da litros_previstos null, no 0', () => {
+    const ot = otDe([{ lote: '25312', barriles: [], vasijas_manual: '1 x T50' }]);
+    expect(ot.lotes[0].litros_previstos).toBeNull();
+    const movs = movimientosDeOT(ot, 'ana', '2026-09-23');
+    expect(movs[0].litros).toBeNull();
+  });
 });
 
 describe('movimientosDeOT', () => {

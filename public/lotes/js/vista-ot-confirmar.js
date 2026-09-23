@@ -27,7 +27,6 @@ export function abrirConfirmarOT(ot, onListo){
   <label>Pasos</label><label><input type="checkbox" id="otcPasos"> Todos los pasos de la hoja están cumplidos</label>
   <label>Comentario</label><input class="txt" id="otcComentario">
 </div>
-<div id="otcAviso"></div>
 <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
   <button class="btn" id="otcCancelar">Cancelar</button>
   <button class="btn primary" id="otcAceptar">Confirmar</button>
@@ -45,6 +44,14 @@ async function _aceptar(ot, onListo){
     litros_reales: num($('otcLit' + i).value),
     merma: num($('otcMer' + i).value),
   }));
+  // Sin destino real ni destino previsto de la OT, recorridoVasijas cierra la
+  // estadia del lote sin abrir una nueva: el lote queda sin vasija actual.
+  const sinDestino = por_lote.findIndex(r => !r.destino_real && !ot.destino);
+  if (sinDestino !== -1){
+    alert('Falta el tanque destino real del lote ' + ot.lotes[sinDestino].lote
+        + ': sin él el lote queda sin vasija actual.');
+    return;
+  }
   if (por_lote.some(r => r.litros_reales == null) &&
       !confirm('Hay lotes sin litros reales. ¿Confirmar igual?')) return;
 
@@ -54,6 +61,11 @@ async function _aceptar(ot, onListo){
   }, usuarioActual(), new Date().toISOString().slice(0, 10));
   markDirty();
   onListo();
+
+  // Frenar los botones antes del fetch: el modal sigue en pantalla hasta que
+  // se arman los avisos, y sin esto un clic ahi dispara la confirmacion de nuevo.
+  $('otcCancelar').disabled = true;
+  $('otcAceptar').disabled = true;
 
   const avisos = [];
   if (faltan.length){
