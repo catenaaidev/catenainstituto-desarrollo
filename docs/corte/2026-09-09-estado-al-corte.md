@@ -142,6 +142,74 @@ Resultado, **idéntico al de antes del apagado**:
 apagado ni el congelado tocaron un dato. Los respaldos siguen siendo un
 rollback válido para este estado exacto.
 
+## Prueba de humo de Barriles (Tarea 4): PASÓ
+
+Ejecutada el 2026-09-09 a las 14:19:23 desde la web, por Marcelo (identidad
+verificada por Cloudflare Access; el email no se escribe acá porque este repo es
+público — está en `usuarios.sql`, que está gitignorado).
+
+Resultado en `documento` para `barriles`:
+
+| antes | después |
+|---|---|
+| version 2218, autor `importacion` | **version 2219, autor = email de Office 365** |
+
+**Es concluyente.** Ese `autor` lo escribe el Worker desde la identidad de
+Access: la app local no tiene forma de producir ese valor. El circuito completo
+quedó probado de punta a punta: pantalla del celular → API del Worker → D1.
+
+Con esto **cae el gate de la segunda ola**: Barriles ya puede congelarse.
+
+## Segunda ola: Barriles, congelamiento PARCIAL
+
+Ejecutada el 2026-09-09 después de que pasara la prueba de humo. **Parcial a
+propósito**, por decisión del usuario: la zona de la bodega sin cobertura Wi-Fi
+sigue sin resolver y la pantalla de Barriles no tiene service worker, así que
+cerrar la puerta del todo podría dejar al equipo del escáner sin nada.
+
+El criterio fue **matar el camino accidental y conservar el deliberado**:
+
+| Qué | Acción |
+|---|---|
+| Servidor local (8765/8766) | **apagado** (`python servidor.py`, PID 1244; su padre `py.exe` ya no existía) |
+| `Mapa de Barriles.lnk` de Inicio | **movido** a la carpeta del proyecto como `Mapa de Barriles.lnk.congelado` |
+| `Arranque automatico (instalar).bat` | congelado |
+| `Backup semanal (instalar).bat` | congelado |
+| `Abrir Mapa de Barriles.bat` | **intacto a propósito** — escotilla de emergencia |
+| `Iniciar servidor.bat` | **intacto a propósito** — escotilla de emergencia |
+| Los `(quitar).bat`, diagnóstico y firewall | intactos (son herramientas, no arranques) |
+
+Verificado después: **ningún puerto local escuchando** (8765, 8766, 8772, 8787,
+8788), **ningún proceso python vivo**, y la carpeta de Inicio con solo
+`desktop.ini`. Barriles no tenía supervisor `pythonw` — se verificó antes de
+matar, por la lección de Lotes.
+
+**Nota sobre el `.lnk`:** el proyecto trae su propio desinstalador,
+`Arranque automatico (quitar).bat`, que hace exactamente esto. No se usó porque
+hace `Remove-Item` (borra) y termina en `pause` (bloquea una sesión no
+interactiva). Se replicó su lógica moviendo en vez de borrando, para respetar la
+regla de que en este corte nada se borra.
+
+### Para cerrar Barriles del todo, cuando se resuelva el Wi-Fi
+
+1. Congelar `Abrir Mapa de Barriles.bat` e `Iniciar servidor.bat`.
+2. Nada más: el arranque automático ya está desactivado y el servidor apagado.
+
+### Lo que quedaba pendiente para congelar Barriles (hecho arriba, salvo el punto 2)
+
+1. Matar el servidor local (puertos 8765 y 8766). **Verificar antes si hay un
+   `pythonw` supervisor vivo**, o relanzará el servidor como pasó con Lotes.
+2. Congelar sus cuatro lanzadores: `Abrir Mapa de Barriles.bat`,
+   `Iniciar servidor.bat`, `Arranque automatico (instalar).bat`,
+   `Backup semanal (instalar).bat`.
+3. **Borrar o mover el acceso directo de arranque**, que sobrevive al renombrado:
+   `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Mapa de Barriles.lnk`
+
+Nota: el estado local de Barriles quedó en 2218 y la nube está en 2219, así que
+**lo local ya es la copia vieja.** El snapshot
+`docs/corte/ultimo-estado-local-barriles-2026-09-09.json` (versión 2218) sigue
+siendo la última foto del local.
+
 ### Cómo volver atrás
 
 Renombrar los `.bat.congelado` y `.pyw.congelado` quitándoles el sufijo
