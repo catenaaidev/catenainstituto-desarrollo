@@ -21,6 +21,11 @@ const API='/barriles/api';</script>
      porque el arranque de la página corre durante el parseo: un type="module"
      llegaría tarde. Se testea en test/barriles-pendientes.test.mjs. -->
 <script src="js/pendientes.js"></script>
+<!-- La capa de altas a mano: qué vasijas dadas de alta están vivas, cuáles se
+     deshicieron y cómo se unen las de dos celulares. Va acá, como script clásico,
+     porque el arranque de la página corre durante el parseo: un type="module"
+     llegaría tarde. Se testea en test/barriles-altas.test.mjs. -->
+<script src="js/altas.js"></script>
 <style>
   :root {
     --vino: #6b1f3a; --vino-osc: #4a1428; --crema: #faf6f0;
@@ -99,6 +104,8 @@ const API='/barriles/api';</script>
   .celda-rev { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .btn-rev { padding: 3px 10px; font-size: .8rem; }
   .link-rev { background: none; border: 0; padding: 0; color: #777; font-size: .78rem; text-decoration: underline; cursor: pointer; }
+  .tanda-alta { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+                font-size: .82rem; padding: 4px 0; border-top: 1px solid #eee; }
   /* ---- escaneo ---- */
   @keyframes sacudir { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
   .fb-libre { padding: 14px; border-radius: 8px; margin-top: 12px; font-size: .95rem; }
@@ -516,6 +523,7 @@ const API='/barriles/api';</script>
         </span>
       </div>
       <div class="mini-stats" id="statsInv"></div>
+      <div id="tandasAltas" class="solo-prog solo-barricas"></div>
       <div class="filtros-inv">
         <select id="invTipo" class="solo-barricas">
           <option value="todos">Todos</option>
@@ -1427,14 +1435,16 @@ async function sincronizar(avisar) {
       }
       fusionarRevisiones(serv.revisiones, estado.revisiones);
       serv.ediciones = fusionarEdiciones(serv.ediciones, estado.ediciones);
-      // unir altas a mano por número. Hace falta acá y no alcanza con el push
-      // normal: dar de alta una vasija no toca ninguna celda ni ninguna orden, así
-      // que la fusión —que arranca del estado DEL SERVIDOR— la perdía sin aviso.
-      // Si el número ya figura arriba gana el servidor: pudo haberla retirado
-      // porque el Excel terminó trayéndola, y reponerla la resucitaría.
-      const altasSrv = new Set((serv.altas || []).map(a => String(a.num)));
-      for (const a of (estado.altas || []))
-        if (!altasSrv.has(String(a.num))) (serv.altas = serv.altas || []).push(a);
+      // unir altas a mano. Hace falta acá y no alcanza con el push normal: dar de
+      // alta una vasija no toca ninguna celda ni ninguna orden, así que la fusión
+      // —que arranca del estado DEL SERVIDOR— la perdía sin aviso.
+      //
+      // Se unen por (tanda, número) y no por número a secas: un mismo número puede
+      // figurar dos veces a propósito, la tanda vieja con lápida y la nueva que la
+      // revive. Quién gana lo decide después `resolverAltas()` al reindexar. Un
+      // alta que el servidor retiró porque el Excel terminó trayéndola vuelve a
+      // subir acá, sí, pero `aplicarAltas()` la retira de nuevo en el acto.
+      serv.altas = fusionarAltas(serv.altas, estado.altas);
       // unir palets por casillero (offline-safe): gana lo cargado en este teléfono
       const paletsSrv = new Map((serv.palets || []).map(p => [p.id, p]));
       for (const c of diffPaletsLocal()) {
@@ -1649,7 +1659,9 @@ function edicionDe(num, campo) {
 // las correcciones, viven en una capa aparte (estado.altas) y se vuelven a sumar
 // cada vez que se reindexa. Sin esto la importación las borraría en silencio: hace
 // `estado.inventario = inv`, que reemplaza el array entero en vez de fusionarlo.
-// Una entrada por vasija: { num, cap, estado, marca, lote, cosecha, litros, creadoEl }.
+// Una entrada por vasija: { num, cap, estado, marca, lote, cosecha, litros, creadoEl,
+// tanda, ts }. `tanda` junta las que se cargaron de una y es lo que permite deshacer
+// la carga entera; las altas anteriores a ese campo se agrupan por `creadoEl`.
 //
 // La fila que se empuja al inventario lleva `alta: true`. No es decorativo: sin la
 // marca, en la segunda reindexada la fila ya estaría en el índice y el alta se
@@ -1659,6 +1671,11 @@ function edicionDe(num, campo) {
 //
 // Si el Excel termina trayendo ese número, manda la planilla y el alta se retira
 // para siempre: dejarla resucitaría un dato viejo encima del oficial.
+//
+// Deshacer un alta NO saca la entrada: le pone una lápida (`borrado` + `borradoTs`)
+// que viaja en la fusión. Sacarla no alcanzaría por partida doble —la fila vive en
+// `inventario`, que viene del servidor y pisa lo local, y el otro celular repondría
+// la entrada en el próximo sync—. La regla está en js/altas.js.
 function filaDeAlta(a) {
   return { num: String(a.num), estado: a.estado, cap: a.cap, litros: a.litros,
            anio: '', marca: a.marca, origen: '', trat: '', uso: '',
@@ -1666,10 +1683,32 @@ function filaDeAlta(a) {
 }
 
 function aplicarAltas() {
+  // Quién está viva y qué números quedaron tapiados lo decide js/altas.js, que es
+  // donde está la regla de la lápida y se puede testear.
+  const { vivas, tapiadas } = resolverAltas(estado.altas);
+  const vivasSet = new Set(vivas);
+
+  // Podar ANTES de aplicar el resto. Acá está el motivo de que el deshacer
+  // funcione: `inventario` viene tal cual del servidor y pisa lo local en cada
+  // sync, así que la fila borrada vuelve una y otra vez. La lápida es la verdad y
+  // esta poda se rehace en cada reindexada, corra el inventario de donde corra.
+  // Solo se poda lo que tiene lápida Y `alta: true`: si el Excel terminó trayendo
+  // ese número, la fila es de la planilla y no se toca.
+  if (tapiadas.size) {
+    const restantes = estado.inventario.filter(r => !(r.alta && tapiadas.has(String(r.num))));
+    if (restantes.length !== estado.inventario.length) {
+      estado.inventario = restantes;
+      for (const n of tapiadas) { const r = indiceInv.get(n); if (r && r.alta) indiceInv.delete(n); }
+    }
+  }
+
   const quedan = [];
   for (const a of (estado.altas || [])) {
     const ya = indiceInv.get(String(a.num));
     if (ya && !ya.alta) continue;               // la planilla lo trae: gana el Excel
+    // Las tapiadas siguen en la lista: son la lápida, y si se fueran el otro
+    // celular repondría el alta en la próxima fusión.
+    if (!vivasSet.has(a)) { quedan.push(a); continue; }
     if (!ya) {
       const r = filaDeAlta(a);
       estado.inventario.push(r);
@@ -2846,6 +2885,7 @@ function dibujarResumenInv() {
   const nEsc = (estado.tanques || []).length;
   if (!estado.inventario.length && !nEsc) { $('tarjetaResumenInv').style.display = 'none'; return; }
   $('tarjetaResumenInv').style.display = '';
+  dibujarTandasAltas();
 
   // sin inventario importado (modo por lote) los conteos de vasijas sobran
   const stats = [];
@@ -3062,11 +3102,17 @@ function confirmarAlta() {
   const est = $('altaEstado').value;
   // Los litros no se piden: salen del estado, igual que cuando un escaneo llena una
   // vasija. Sin capacidad quedan vacíos en vez de inventar un 0.
+  // El id de tanda es lo que después permite deshacer la carga entera de una:
+  // `creadoEl` alcanza para agrupar por día, pero no distingue dos tandas del
+  // mismo día. El `ts` decide quién gana cuando un número se da de alta, se
+  // deshace y se vuelve a dar de alta (ver js/altas.js).
+  const ahora = Date.now();
   const alta = {
     cap, estado: est, marca: $('altaMarca').value.trim(),
     lote: $('altaLote').value.trim(), cosecha: $('altaCosecha').value.trim(),
     litros: (est === 'LLENO' && cap) ? Number(cap) : '',
-    creadoEl: hoyISO()
+    creadoEl: hoyISO(),
+    tanda: 't' + ahora + '-' + Math.random().toString(36).slice(2, 7), ts: ahora
   };
   if (!estado.altas) estado.altas = [];
   for (const num of altaPendiente) estado.altas.push({ ...alta, num });
@@ -3080,6 +3126,66 @@ function confirmarAlta() {
 }
 
 $('btnAltaVasijas').addEventListener('click', abrirAltaVasijas);
+
+// ---------- deshacer una tanda de altas ----------
+// El alcance es la tanda entera y no la fila suelta: el error que esto arregla es
+// "cargué 50 con el lote equivocado", y corregirlo celda por celda con el doble
+// click son 50 pasos. Para una sola vasija mal cargada está la corrección a mano.
+const TANDAS_A_LA_VISTA = 8;
+
+function dibujarTandasAltas() {
+  const caja = $('tandasAltas');
+  if (!caja) return;
+  const tandas = agruparTandas(estado.altas);
+  if (!tandas.length) { caja.innerHTML = ''; return; }
+
+  const filas = tandas.slice(0, TANDAS_A_LA_VISTA).map(t => {
+    const rango = t.cuantas === 1 ? t.desde : `${t.desde} – ${t.hasta}`;
+    const detalle = [t.lote && 'lote ' + t.lote, t.marca].filter(Boolean).join(' · ');
+    return `<div class="tanda-alta">` +
+      `<span>${escapeHtml(fechaCorta(t.creadoEl))} · <b>${t.cuantas}</b> ${t.cuantas === 1 ? 'vasija' : 'vasijas'} · ` +
+      `${escapeHtml(rango)}${detalle ? ' · ' + escapeHtml(detalle) : ''}` +
+      (t.legado ? ' <span class="nota">(día completo)</span>' : '') + `</span>` +
+      `<button class="link-rev" data-deshacer-tanda="${escapeHtml(t.id)}">deshacer</button></div>`;
+  }).join('');
+
+  const resto = tandas.length - TANDAS_A_LA_VISTA;
+  caja.innerHTML = `<div class="nota" style="margin-bottom:4px;">➕ Vasijas agregadas a mano:</div>${filas}` +
+    (resto > 0 ? `<div class="nota">…y ${resto} tanda(s) más atrás, que ya no se pueden deshacer desde acá.</div>` : '');
+  caja.querySelectorAll('button[data-deshacer-tanda]').forEach(b =>
+    b.addEventListener('click', () => deshacerTanda(b.dataset.deshacerTanda)));
+}
+
+function deshacerTanda(id) {
+  const t = agruparTandas(estado.altas).find(x => x.id === String(id));
+  if (!t) { dibujarTandasAltas(); return; }
+
+  // Si alguna ya está en uso, no se borra ninguna. Sacar la fila del inventario
+  // dejaría la celda del mapa apuntando a un número que no existe, y eso hoy se
+  // dibuja como '?' sin explicar nada. Que el operario la libere primero.
+  const enUso = usoDeVasijas(t.nums, estado);
+  if (enUso.length) {
+    const lista = enUso.slice(0, 8).map(u => `• ${u.num} (${u.motivos.join(', ')})`).join('\n');
+    const cuantas = t.cuantas === 1 ? 'la vasija de esta tanda ya está en uso'
+      : enUso.length === t.cuantas ? `sus ${t.cuantas} vasijas ya están en uso`
+      : `${enUso.length} de sus ${t.cuantas} ${enUso.length === 1 ? 'vasijas ya está' : 'vasijas ya están'} en uso`;
+    alert(`No se puede deshacer esta tanda: ${cuantas}.\n\n${lista}` +
+      (enUso.length > 8 ? `\n…y ${enUso.length - 8} más.` : '') +
+      `\n\nSacalas de ahí primero y volvé a intentar.`);
+    return;
+  }
+
+  const rango = t.cuantas === 1 ? t.desde : `${t.desde} – ${t.hasta}`;
+  if (!confirm(`¿Deshacer el alta de ${t.cuantas} ${t.cuantas === 1 ? 'vasija' : 'vasijas'} (${rango})?\n\n` +
+    (t.legado ? 'Es una carga vieja sin identificador, así que se deshace TODO lo agregado ese día.\n\n' : '') +
+    'Salen del inventario en este teléfono y en los demás.')) return;
+
+  const r = marcarTandaBorrada(estado.altas, t.id, Date.now());
+  estado.altas = r.altas;
+  reindexar(); guardar();
+  actualizarEncabezado(); refrescarListaInv();
+  alert(`✅ Se ${r.marcadas === 1 ? 'deshizo' : 'deshicieron'} ${r.marcadas} ${r.marcadas === 1 ? 'alta' : 'altas'}.`);
+}
 
 // ================== BOXES ==================
 $('btnAgregarPalet').addEventListener('click', agregarPalet);
