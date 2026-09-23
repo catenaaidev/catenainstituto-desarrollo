@@ -12,6 +12,7 @@ import { crearAnchos } from './anchos-cols.js';
 import { CAPACIDADES, resumenEnvases, contarEnvases,
          litrosDeEnvases, tiposDeEnvase, estaVacio, esOrganico } from './envases.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
+import { fmtFecha } from './fechas.js';
 
 /* La clave de storage es la de siempre (lotes_cols_ancho): respeta los anchos
  * que la gente ya tiene guardados. El encabezado de Lotes son DOS filas
@@ -127,7 +128,7 @@ let sortLotes = { key:'lote', dir:1 };
  * propio en initFiltrosLotes (opciones + match a mano).
  *
  * `col` es la columna de cuyo encabezado cuelga el embudo ▾ que abre el filtro,
- * como en Excel. Los ocho tienen columna propia, asi que no queda ningun filtro
+ * como en Excel. Todos tienen columna propia, asi que no queda ningun filtro
  * huerfano: coincide con `campo` salvo en los dos que empiezan con _, que no
  * son campos del lote pero si tienen una columna que los muestra (Etapa y
  * Envases). Si una `col` no existe entre las columnas pintadas, su embudo no
@@ -145,6 +146,26 @@ const CAMPOS_FLT_LOTES = [
   { campo:'proyecto', label:'Proyecto', col:'proyecto' },
   { campo:'vinedo',   label:'Viñedo',   col:'vinedo'   },
   { campo:'organico_convencional', label:'Orgánico/Conv.', col:'organico_convencional' },
+  { campo:'lote_sistema', label:'Lote Sistema', col:'lote_sistema' },
+  { campo:'ct',           label:'Ct',           col:'ct'           },
+  { campo:'clon',         label:'Clon',         col:'clon'         },
+  { campo:'id_texto',     label:'ID',           col:'id_texto'     },
+  /* Informacion Inicial y fermentacion, y Crianza: un embudo por columna, como
+   * en Analisis. Las fechas muestran dd/mm/aaaa en las casillas (fmt) pero
+   * filtran por el ISO guardado. */
+  { campo:'fecha_ingreso',   label:'Fecha de ingreso',   col:'fecha_ingreso', fmt:fmtFecha },
+  { campo:'n_pesada',        label:'Nº Pesada',          col:'n_pesada'        },
+  { campo:'kilos',           label:'Kilos',              col:'kilos'           },
+  { campo:'vasija_fa',       label:'Vasija FA',          col:'vasija_fa'       },
+  { campo:'descube_fa',      label:'Descube / Final FA', col:'descube_fa', fmt:fmtFecha },
+  { campo:'brix_inicial',    label:'Brix Inicial',       col:'brix_inicial'    },
+  { campo:'ph_inicial',      label:'pH Inicial',         col:'ph_inicial'      },
+  { campo:'at_inicial',      label:'AT inicial',         col:'at_inicial'      },
+  { campo:'npa',             label:'NPA',                col:'npa'             },
+  { campo:'litros_estimado', label:'Litros Estimado',    col:'litros_estimado' },
+  { campo:'litros_actuales', label:'Litros Actuales',    col:'litros_actuales' },
+  { campo:'vasija_actual',   label:'Vasija Actual en Crianza', col:'vasija_actual' },
+  { campo:'categoria',       label:'Categoría',          col:'categoria'       },
   { campo:'_etapa',   label:'Etapa',    col:'etapa'    },
   { campo:'_envase',  label:'Envase',   col:'envases'  },
 ];
@@ -253,7 +274,7 @@ function initFiltrosLotes(){
     return {
       label: c.label, campo: c.campo, col: c.col,
       set: filtLotes[c.campo],
-      opciones: () => opcionesValores(DATOS().lotes, l=>l[c.campo]),
+      opciones: () => opcionesValores(DATOS().lotes, l=>l[c.campo], c.fmt),
       match: matchValor(l=>l[c.campo]),
     };
   });
@@ -267,6 +288,10 @@ function initFiltrosLotes(){
    * por delegacion. */
   _instLotes = _descLotes.map(d => crearFiltroMulti({
     label:d.label, opciones:d.opciones, set:d.set, onChange:renderLotes, anclado:true,
+    /* Perezoso, como en Analisis: con un embudo en cada columna, armar todas
+     * las listas de entrada son miles de casillas para paneles que casi nadie
+     * abre. Cada uno arma la suya (y se pone al dia) al abrirse. */
+    perezoso:true,
   }));
   /* El mapa se arma desde los descriptores y no cruzando CAMPOS_FLT_LOTES con
      _instLotes por indice: los descriptores ya llevan campo y col, asi que hay
@@ -565,8 +590,8 @@ export function renderLotes(){
     /* Un grupo colapsado se lleva puestos los embudos de sus columnas. Si
      * alguno estaba filtrando, el filtro sigue escondiendo filas y su unico
      * acceso ya no esta a la vista: el chip se marca y lo dice, o la unica
-     * salida seria adivinar y apretar Limpiar filtros. Hoy le pasa a Viñedo,
-     * que es la unica columna del grupo id_detalle que tiene filtro. */
+     * salida seria adivinar y apretar Limpiar filtros. Como todas las columnas
+     * tienen embudo, le puede pasar a cualquiera de los dos grupos. */
     const filtrando = cerrado
       ? delGrupo.filter(c => fltPorCol.has(c.k) && filtLotes[fltPorCol.get(c.k).campo].size)
       : [];
