@@ -22,6 +22,9 @@
  * alta viva más nueva le gana a la lápida más nueva. Eso converge igual en los
  * dos órdenes, que es lo único que sirve cuando hay dos celulares cargando.
  *
+ * También viven acá el plazo de 15 minutos del deshacer por tanda y las bajas de
+ * vasijas sueltas (del Excel o a mano), que usan la misma idea de marca que viaja.
+ *
  * Se testea en test/barriles-altas.test.mjs.
  */
 
@@ -171,8 +174,96 @@ function usoDeVasijas(nums, { boxes, escaneos, tanques, palets } = {}) {
   return [...buscados].filter(n => motivos.has(n)).map(n => ({ num: n, motivos: motivos.get(n) }));
 }
 
+// ---------- plazo del deshacer por tanda ----------
+// El deshacer de una tanda entera es para el error recién cometido ("cargué 50
+// con el lote equivocado"). Pasado el plazo desaparece: a esa altura las vasijas
+// ya pueden estar en el mapa o escaneadas, y deshacer 50 de un toque es más riesgo
+// que ayuda. Para corregir después está la baja de a una.
+const PLAZO_DESHACER_MS = 15 * 60 * 1000;
+
+/**
+ * Las tandas que todavía se pueden deshacer, con `quedaMs`. Las de legado no
+ * traen ts, así que no hay forma de saber si están en plazo: no se ofrecen. Un ts
+ * en el futuro (reloj adelantado del celular que cargó) no estira el plazo.
+ */
+function tandasEnPlazo(altas, ahora) {
+  return agruparTandas(altas)
+    .filter(t => !t.legado && t.ts && Number(ahora) - t.ts < PLAZO_DESHACER_MS)
+    .map(t => ({ ...t, quedaMs: Math.min(PLAZO_DESHACER_MS, PLAZO_DESHACER_MS - (Number(ahora) - t.ts)) }));
+}
+
+// ---------- bajas de vasijas ----------
+// Dar de baja sirve para cualquier vasija, venga del Excel o de un alta a mano.
+// Por el mismo motivo que las altas deshechas, la baja no puede ser sacar la fila:
+// `inventario` viene del servidor y pisa lo local, y la próxima importación del
+// Excel la traería de vuelta. Así que es una capa aparte (`estado.bajas`) que se
+// vuelve a aplicar en cada reindexada.
+//
+// Una entrada por número: { num, ts, revividaTs? }. Está vigente mientras la baja
+// sea más nueva que el revivir. Volver a cargar el número (con "Agregar vasijas")
+// pone `revividaTs`; darlo de baja otra vez sube `ts`. Las dos marcas se unen por
+// máximo, que es conmutativo: converge en los dos órdenes de sync.
+
+function bajaVigente(b) {
+  return !!b && Number(b.ts || 0) > Number(b.revividaTs || 0);
+}
+
+function numerosDeBaja(bajas) {
+  const s = new Set();
+  for (const b of (Array.isArray(bajas) ? bajas : [])) if (bajaVigente(b)) s.add(String(b.num));
+  return s;
+}
+
+/**
+ * Da de baja un número. Devuelve arrays nuevos; los originales no se tocan.
+ *
+ * También le pone lápida a las altas vivas de ese número. Sin eso, volver a
+ * cargarlo dejaría dos altas vivas y `aplicarAltas()` pondría la primera, que es
+ * la vieja, con los datos que se quisieron corregir.
+ */
+function darDeBaja(bajas, altas, num, ts) {
+  const n = String(num), t = Number(ts);
+  const lista = (Array.isArray(bajas) ? bajas : []).map(b => b);
+  const i = lista.findIndex(b => b && String(b.num) === n);
+  if (i >= 0) lista[i] = { ...lista[i], ts: Math.max(Number(lista[i].ts || 0), t) };
+  else lista.push({ num: n, ts: t });
+  const salida = (Array.isArray(altas) ? altas : []).map(a =>
+    (a && !a.borrado && String(a.num) === n) ? { ...a, borrado: true, borradoTs: t } : a);
+  return { bajas: lista, altas: salida };
+}
+
+/** Destapa los números que se vuelven a cargar. Devuelve un array nuevo. */
+function revivirBajas(bajas, nums, ts) {
+  const set = new Set((nums || []).map(String));
+  return (Array.isArray(bajas) ? bajas : []).map(b =>
+    (b && set.has(String(b.num)) && bajaVigente(b))
+      ? { ...b, revividaTs: Math.max(Number(b.revividaTs || 0), Number(ts)) } : b);
+}
+
+/** Une las bajas del servidor con las locales. Muta y devuelve el del servidor. */
+function fusionarBajas(bajasServidor, bajasLocales) {
+  const arr = Array.isArray(bajasServidor) ? bajasServidor : [];
+  const ix = new Map();
+  for (const b of arr) if (b && !ix.has(String(b.num))) ix.set(String(b.num), b);
+  for (const b of (Array.isArray(bajasLocales) ? bajasLocales : [])) {
+    if (!b) continue;
+    const s = ix.get(String(b.num));
+    if (!s) { const c = { ...b }; arr.push(c); ix.set(String(b.num), c); continue; }
+    s.ts = Math.max(Number(s.ts || 0), Number(b.ts || 0));
+    const rv = Math.max(Number(s.revividaTs || 0), Number(b.revividaTs || 0));
+    if (rv) s.revividaTs = rv;
+  }
+  return arr;
+}
+
 globalThis.resolverAltas = resolverAltas;
 globalThis.fusionarAltas = fusionarAltas;
 globalThis.agruparTandas = agruparTandas;
 globalThis.marcarTandaBorrada = marcarTandaBorrada;
 globalThis.usoDeVasijas = usoDeVasijas;
+globalThis.PLAZO_DESHACER_MS = PLAZO_DESHACER_MS;
+globalThis.tandasEnPlazo = tandasEnPlazo;
+globalThis.numerosDeBaja = numerosDeBaja;
+globalThis.darDeBaja = darDeBaja;
+globalThis.revivirBajas = revivirBajas;
+globalThis.fusionarBajas = fusionarBajas;
