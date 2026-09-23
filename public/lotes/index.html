@@ -206,6 +206,26 @@
   tr.analisis-separador:hover td{background:var(--panel2)}
   tr.analisis-separador.ok  td,tr.analisis-separador.ok:hover  td{background:#9ccb8a}
   tr.analisis-separador.mal td,tr.analisis-separador.mal:hover td{background:#e08e42}
+  /* ---- filas compactas (solo Analisis) ----
+   * Esta tabla se lee de a muchas filas seguidas: lo que se busca es comparar
+   * la evolucion de un lote de un vistazo, y con el alto por defecto entraban
+   * ~11 analisis en pantalla. Con esto entran ~17.
+   *
+   * El que mandaba el alto era el input.cell, no el td (7+7 del td contra 4+4
+   * del input mas su borde). Por eso se bajan los dos: tocar solo el td dejaba
+   * la fila en 36px.
+   *
+   * Va acotado a #tAnalisis a proposito. Las otras tablas se leen de a una fila
+   * (Movimientos, Correcciones SO2, Orden) y ahi el aire ayuda a no equivocarse
+   * de renglon al cargar un dato. El ancho (9px) no se toca: apretarlo pegaria
+   * las columnas numericas entre si.
+   *
+   * El id le gana por especificidad a la regla del separador de mas arriba
+   * (1,0,2 contra 0,1,2), asi que el separador necesita su propia linea o se
+   * queda tambien con el padding de las filas. */
+  #tAnalisis tbody td{padding:2px 9px}
+  #tAnalisis tbody td input.cell{padding:2px 6px}
+  #tAnalisis tbody tr.analisis-separador td{padding:4px 9px}
   .rowbtn{background:none;border:none;color:#ff8a7a;cursor:pointer;font-size:15px;padding:2px 6px}
   .rowbtn:hover{color:var(--nook)}
   /* ---- scroll ---- */
