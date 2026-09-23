@@ -86,8 +86,8 @@ const API='/barriles/api';</script>
   .alta-campos label { display: flex; flex-direction: column; gap: 3px; font-size: .8rem; color: #777; }
   .alta-campos input, .alta-campos select { width: 100%; box-sizing: border-box; font-size: .92rem; }
   .alta-campos .ancho { grid-column: 1 / -1; }
-  #altaPrevio { font-size: .85rem; border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; background: #f3ede5; }
-  #altaPrevio.malo { background: #fdecea; color: #b3261e; }
+  #altaPrevio, #bajaPrevio { font-size: .85rem; border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; background: #f3ede5; }
+  #altaPrevio.malo, #bajaPrevio.malo { background: #fdecea; color: #b3261e; }
   /* tipo de vasija: sale de la capacidad del Excel, el icono de la marca */
   .p-tanque { background: #e0f2f1; color: #00695c; }
   .p-barrica { background: #f3e5d8; color: #7a4a21; }
@@ -518,6 +518,7 @@ const API='/barriles/api';</script>
         <h2 style="margin:0;">📋 Inventario</h2>
         <span class="fila-flex" style="margin:0; gap:8px;">
           <button class="btn sec solo-prog solo-barricas" id="btnAltaVasijas" title="Dar de alta numeración nueva: una vasija o un rango consecutivo.">➕ Agregar vasijas</button>
+          <button class="btn sec solo-prog solo-barricas" id="btnBajaVasijas" title="Sacar una vasija del inventario escribiendo su número.">⛔ Baja de barricas</button>
           <button class="btn" id="barBtnExportar" title="Baja lo que estás viendo en la lista: respeta el filtro y la búsqueda.">⬇ Exportar a Excel</button>
           <button class="btn sec" id="btnExportarTodo" title="Baja un solo archivo con todos los datos de la app: inventario, mapa, palets, órdenes del escáner, historial de lotes y pendientes. Sin filtros.">⬇ Exportar todo</button>
         </span>
@@ -2771,7 +2772,7 @@ function filaInv(f) {
       <td${ed('lote')}>${celdaLote(f)}${marca('lote')}</td>
       <td${ed('cosecha')}>${r.cosecha ? escapeHtml(r.cosecha) : GUION}${marca('cosecha')}</td>
       <td>${(esc && esc.fecha) ? escapeHtml(fechaCorta(esc.fecha)) : GUION}</td>
-      <td>${celdaHistorial(r.num)}${hist}${f.fuera ? '' : ` <button class="link-rev solo-prog" title="Sacar esta vasija del inventario. Se puede volver a cargar con Agregar vasijas." data-baja="${num}">dar de baja</button>`}</td>
+      <td>${celdaHistorial(r.num)}${hist}</td>
       <td>${borrar}</td></tr>`;
 }
 
@@ -2954,8 +2955,6 @@ function dibujarResumenInv() {
     b.addEventListener('click', () => barBorrar(b.dataset.borrar)));
   t.querySelectorAll('button[data-desed]').forEach(b =>
     b.addEventListener('click', () => borrarEdicion(b.dataset.desed, b.dataset.campo)));
-  t.querySelectorAll('button[data-baja]').forEach(b =>
-    b.addEventListener('click', () => darDeBajaVasija(b.dataset.baja)));
 }
 
 // La cabecera —encabezados más la fila de cajitas— se arma UNA sola vez y después
@@ -3228,25 +3227,68 @@ function deshacerTanda(id) {
   alert(`✅ Se ${r.marcadas === 1 ? 'deshizo' : 'deshicieron'} ${r.marcadas} ${r.marcadas === 1 ? 'alta' : 'altas'}.`);
 }
 
-// ---------- dar de baja una vasija ----------
+// ---------- baja de barricas ----------
 // Para cualquier vasija, del Excel o agregada a mano. No borra la fila y listo:
 // anota la baja en estado.bajas, que se vuelve a aplicar en cada reindexada, así
 // no vuelve con la próxima importación del Excel ni con el sync de otro celular.
 // Se revierte volviéndola a cargar con "Agregar vasijas".
-function darDeBajaVasija(num) {
-  const n = String(num);
-  if (!indiceInv.has(n)) { refrescarListaInv(); return; }
-  if (!confirm(avisoDeUso(usoDeVasijas([n], estado)) +
-    `¿Dar de baja la vasija ${n}?\n\nSale del inventario en este teléfono y en los demás, ` +
-    'y no vuelve aunque se importe de nuevo el Excel. Para recuperarla, cargala otra vez con "Agregar vasijas".')) return;
+//
+// El número se escribe a mano a propósito, y no hay botón por fila: un botón en
+// cada una de las 2355 filas se toca por accidente. Escribirlo es la confirmación.
+let bajaPendiente = '';
 
+function abrirBajaVasijas() {
+  $('modalContenido').innerHTML = `
+    <h3>⛔ Baja de barricas</h3>
+    <p class="nota" style="margin-top:0;">Escribí el número exacto de la vasija. Sale del inventario en todos los
+      teléfonos y no vuelve aunque se importe de nuevo el Excel. Para recuperarla, cargala otra vez con "Agregar vasijas".</p>
+    <div class="alta-campos">
+      <label class="ancho">Número de la vasija<input id="bajaNum" autocomplete="off"></label>
+    </div>
+    <div id="bajaPrevio"></div>
+    <div class="acciones-modal">
+      <button class="btn peligro" id="btnBajaConfirmar" disabled>Dar de baja</button>
+      <button class="btn sec" id="btnCerrarModal">Cancelar</button>
+    </div>`;
+  $('modal').classList.add('abierto');
+  $('btnCerrarModal').onclick = cerrarModal;
+  $('bajaNum').addEventListener('input', repasarBaja);
+  $('btnBajaConfirmar').onclick = confirmarBaja;
+  repasarBaja();
+  $('bajaNum').focus();
+}
+
+function repasarBaja() {
+  const caja = $('bajaPrevio'), boton = $('btnBajaConfirmar');
+  const n = $('bajaNum').value.trim();
+  bajaPendiente = ''; boton.disabled = true; caja.className = '';
+  if (!n) { caja.innerHTML = 'Escribí el número de la vasija que querés dar de baja.'; return; }
+  const r = indiceInv.get(n);
+  if (!r) { caja.className = 'malo'; caja.innerHTML = `⚠ ${escapeHtml(n)} no está en el inventario.`; return; }
+
+  const datos = [r.estado, r.marca, r.lote && 'lote ' + r.lote, r.cap && r.cap + ' L'].filter(Boolean).join(' · ');
+  const uso = avisoDeUso(usoDeVasijas([n], estado));
+  caja.innerHTML = `Se da de baja <b>${escapeHtml(n)}</b>${datos ? ': ' + escapeHtml(datos) : ''}` +
+    (uso ? `<div style="margin-top:6px; white-space:pre-line;">${escapeHtml(uso.trim())}</div>` : '');
+  bajaPendiente = n;
+  boton.disabled = false;
+}
+
+function confirmarBaja() {
+  const n = bajaPendiente;
+  // Se revisa de nuevo: mientras el modal estaba abierto pudo llegar un sync.
+  if (!n || !indiceInv.has(n)) { repasarBaja(); return; }
   const r = darDeBaja(estado.bajas, estado.altas, n, Date.now());
   estado.bajas = r.bajas;
   estado.altas = r.altas;
+  bajaPendiente = '';
   reindexar(); guardar();
+  cerrarModal();
   actualizarEncabezado(); refrescarListaInv();
   alert(`✅ La vasija ${n} se dio de baja.`);
 }
+
+$('btnBajaVasijas').addEventListener('click', abrirBajaVasijas);
 
 // ================== BOXES ==================
 $('btnAgregarPalet').addEventListener('click', agregarPalet);
