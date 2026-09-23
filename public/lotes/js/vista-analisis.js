@@ -45,16 +45,29 @@ const COLS_ANALISIS = [
   { k:'so2_molecular', label:'SO₂ molecular',  ro:true, num:true },
   { k:'comentario',    label:'Comentario',     ro:false },
   { k:'ot_n',            label:'OT',              ro:false },
-  { k:'so2_deseado',     label:'SO2 deseado',     num:true },
+  /* La diferencia de SO2 que se agrego en la correccion (deseado - actual). Se
+   * MUESTRA tal como quedo guardada, no se recalcula: la escribe
+   * armarCorreccion() en so2-bitacora.js cuando alguien registra una correccion
+   * por la app, y ese es el numero que efectivamente se aplico.
+   *
+   * Ojo al leerla: las correcciones que vinieron de la migracion del Excel no
+   * la traen (2 de 2601 al 22/09/2026), asi que la columna va a estar casi
+   * vacia hasta que se acumulen correcciones cargadas por la app. Es a
+   * proposito — calcularla para las viejas exigiria so2_libre_actual, que esas
+   * mismas filas tampoco tienen. */
+  { k:'diferencia',      label:'Diferencia SO₂',  ro:true, num:true },
 ];
 
 /* Claves que viven anidadas en analisis.correccion.*, no en el registro raiz.
- * Las demas columnas de COLS_ANALISIS (salvo lote/variedad/fecha_analisis,
- * que se ven en ambos tipos) son de quimica y viven en el registro raiz. */
-/* mbk_a_agregar y ml_exactos SIGUEN existiendo en analisis.correccion y se
- * siguen viendo y editando en las pestanas SO2 y Orden de correccion: lo unico
- * que se saco es la columna de ESTA tabla. */
-const CAMPOS_CORRECCION = new Set(['ot_n', 'so2_deseado']);
+ * Las demas columnas de COLS_ANALISIS (salvo las comunes, que se ven en ambos
+ * tipos) son de quimica y viven en el registro raiz. */
+/* so2_deseado, mbk_a_agregar y ml_exactos SIGUEN existiendo en
+ * analisis.correccion y se siguen viendo y editando en las pestanas
+ * Correcciones SO2 y Orden de correccion: lo unico que se saco es la columna de
+ * ESTA tabla, que se reemplazo por la diferencia efectivamente aplicada.
+ * esCorreccionReal() sigue mirando so2_deseado en el DATO, asi que sacar la
+ * columna no hace desaparecer ninguna fila de correccion. */
+const CAMPOS_CORRECCION = new Set(['ot_n', 'diferencia']);
 const CAMPOS_COMUNES = new Set([
   'lote', 'fecha_analisis',
   /* Los tres que salen del lote se ven en los DOS tipos de fila por el mismo
@@ -162,13 +175,38 @@ function _buildLoteObjMap(){
 }
 
 /** Valor de una columna derivada del lote (Variedad, Vasija de crianza,
- *  Proyecto) para el analisis `a`. Un analisis cuyo lote ya no existe da ''.
- *  Es LA forma de leer esas tres columnas: la usan el pintado, las opciones de
- *  su filtro y su match, asi que no puede pasar que el panel ofrezca un valor
- *  que la celda muestra distinto. */
+ *  Proyecto) para el analisis `a`. Un analisis cuyo lote ya no existe da ''. */
 function _delLote(a, colKey){
   const l = _ctxRender.loteObjMap.get(String(a.lote ?? ''));
   return l ? (l[CAMPOS_DEL_LOTE.get(colKey)] ?? '') : '';
+}
+
+/** El molecular con los 3 decimales con que se muestra. El criterio se juega en
+ *  la segunda (0,38): con menos, un 0,375 y un 0,384 se verian iguales y uno
+ *  sale naranja y el otro verde. */
+const _fmtMolec = v => (v != null && isFinite(v)) ? Number(v).toFixed(3) : '';
+
+/** LO QUE MUESTRA la celda de la columna `k` para el analisis `a`.
+ *
+ *  Es LA forma de leer una columna: la usan el pintado de la celda, las
+ *  opciones del embudo de esa columna y su match. Con 18 columnas filtrables y
+ *  cuatro procedencias distintas (el registro, el lote, analisis.correccion y
+ *  el veredicto que manda la API), tener la lectura en un solo lugar es lo
+ *  unico que garantiza que el panel no ofrezca un valor que la celda escribe
+ *  distinto — con una copia por consumidor eso se rompe callado.
+ *
+ *  Devuelve el valor CRUDO salvo en so2_molecular, que se muestra formateado:
+ *  sin eso el embudo listaria 2601 floats distintos en vez de los ~200 que se
+ *  leen en pantalla. */
+function _valorDeColumna(a, k){
+  if (k === 'lote') return String(a.lote ?? '');
+  if (CAMPOS_DEL_LOTE.has(k)) return _delLote(a, k);
+  if (k === 'so2_molecular'){
+    const v = _analisisFlags && _analisisFlags.get(_ctxRender.idxDeAnalisis.get(a));
+    return _fmtMolec(v ? v.molec : null);
+  }
+  if (CAMPOS_CORRECCION.has(k)) return (a.correccion || {})[k] ?? '';
+  return a[k] ?? '';
 }
 
 /* Mapas derivados de DATOS().lotes que valen para TODO el render en curso.
@@ -207,21 +245,18 @@ let _filtAnalisisBusca    = '';
 const MS_DEBOUNCE_BUSCA = 150;
 let _timerBusca = null;
 
-/* Las cuatro columnas con embudo de filtro ▾ en su cabecera, como en Excel, en
- * el orden en que aparecen en la tabla. `k` es a la vez la clave del filtro y la
- * de la columna de cuyo <th> cuelga: acá son la misma porque las cuatro tienen
- * columna propia. (En la pestaña Lotes son dos campos distintos, porque alla
- * Etapa y Envase no son campos del lote.) */
-const COLS_FLT_AN = [
-  { k:'lote',           label:'Lote'              },
-  { k:'variedad',       label:'Variedad'          },
-  { k:'vasija_crianza', label:'Vasija de crianza' },
-  { k:'proyecto',       label:'Proyecto'          },
-];
-
-/* Un Set por columna filtrable, creados UNA vez: los widgets guardan estas
- * mismas referencias, asi que el estado sobrevive a los re-render. */
-const filtAn = {}; COLS_FLT_AN.forEach(c => filtAn[c.k] = new Set());
+/* TODAS las columnas llevan embudo de filtro ▾ en su cabecera, como en Excel.
+ * NO hay una lista aparte de cuales lo llevan, justamente para que no pueda
+ * quedar ninguna afuera al agregar una columna: los filtros se derivan de
+ * COLS_ANALISIS, que es la unica definicion de la tabla.
+ *
+ * Que el embudo de una columna con un solo valor distinto (hoy, Comentario y
+ * Az. Reductor) no sirva de nada no hace daño: con la construccion perezosa no
+ * cuesta ni un nodo hasta que alguien lo abre.
+ *
+ * Un Set por columna, creados UNA vez: los widgets guardan estas mismas
+ * referencias, asi que el estado sobrevive a los re-render. */
+const filtAn = {}; COLS_ANALISIS.forEach(c => filtAn[c.k] = new Set());
 let _descAn = [], _instAn = [];
 /* columna -> {label, inst}, para que el render sepa que embudo pintar en cada
    <th> y el clic sepa que panel abrir. Lo llena initFiltrosAn. */
@@ -257,27 +292,23 @@ function _escribirColumnaAnalisis(obj, k, texto, filaTipo){
 }
 
 function initFiltrosAn(){
-  /* Los cuatro descriptores salen del MISMO molde: el valor de la columna para
-   * un analisis es `valorDe`, y con eso se arman las opciones y el match. Las
-   * tres columnas derivadas del lote pasan por _delLote, o sea exactamente la
-   * misma lectura que hace el pintado de la celda.
+  /* Los 18 descriptores salen del MISMO molde: lo que vale una columna para un
+   * analisis es _valorDeColumna, y con eso se arman las opciones y el match. O
+   * sea que el embudo ofrece EXACTAMENTE lo que se lee en las celdas de esa
+   * columna, sin una segunda lectura que pueda divergir.
    *
-   * Las opciones se sacan siempre de los ANALISIS, no de DATOS().lotes: el
-   * embudo de una columna tiene que ofrecer lo que hay EN esa columna, como en
-   * Excel. Antes el de Proyecto listaba los proyectos de todos los lotes, asi
-   * que se podian tildar proyectos sin ningun analisis y la tabla quedaba
-   * vacia sin explicacion. */
-  const valorDe = (k) => k === 'lote'
-    ? (a) => String(a.lote ?? '')
-    : (a) => _delLote(a, k);
-
-  _descAn = COLS_FLT_AN.map(c => {
-    const leer = valorDe(c.k);
+   * Las opciones se sacan de los ANALISIS, no de DATOS().lotes: el embudo de
+   * una columna tiene que ofrecer lo que hay EN esa columna, como en Excel.
+   * Antes el de Proyecto listaba los proyectos de todos los lotes, asi que se
+   * podian tildar proyectos sin ningun analisis y la tabla quedaba vacia sin
+   * explicacion. */
+  _descAn = COLS_ANALISIS.map(c => {
+    const leer = (a) => _valorDeColumna(a, c.k);
     return {
       label: c.label, col: c.k,
       set: filtAn[c.k],
       /* cmpValores ordena numerico cuando los valores son numeros, asi que los
-       * lotes salen en orden y no alfabeticamente. */
+       * lotes y las mediciones salen en orden y no alfabeticamente. */
       opciones: () => opcionesValores(DATOS().analisis || [], leer),
       match: matchValor(leer),
     };
@@ -288,22 +319,21 @@ function initFiltrosAn(){
    * <th> de su columna; el panel tiene que salir de la tabla porque .scroll.tall
    * tiene overflow:auto y ahi adentro quedaria recortado.
    *
+   * Perezoso: con 18 columnas, armar todas las listas de entrada son ~2000
+   * casillas (6000 nodos) y 18 pasadas por los 2601 analisis, para paneles que
+   * en su mayoria nadie abre. Cada uno arma la suya la primera vez que se lo
+   * abre, y ahi mismo se pone al dia.
+   *
    * Se montan UNA sola vez aunque esta vista rehaga su seccion entera en cada
    * render: los paneles viven fuera de #tab-analisis, asi que sobreviven al
    * innerHTML, y el clic del embudo se atiende por delegacion. */
   _instAn = _descAn.map(d => crearFiltroMulti({
-    label:d.label, opciones:d.opciones, set:d.set, onChange:renderAnalisis, anclado:true,
+    label:d.label, opciones:d.opciones, set:d.set, onChange:renderAnalisis,
+    anclado:true, perezoso:true,
   }));
 
   fltPorColAn.clear();
-  const pintadas = new Set(COLS_ANALISIS.map(c => c.k));
-  _descAn.forEach((d, i) => {
-    /* Un filtro cuya columna no se pinta no tendria embudo: no habria como
-       abrirlo ni como darse cuenta de que esta escondiendo filas. */
-    if (!pintadas.has(d.col))
-      console.warn(`Análisis: el filtro "${d.label}" apunta a la columna "${d.col}", que no existe`);
-    fltPorColAn.set(d.col, { label:d.label, inst:_instAn[i] });
-  });
+  _descAn.forEach((d, i) => fltPorColAn.set(d.col, { label:d.label, inst:_instAn[i] }));
 }
 
 /** Le saca el verde y el naranja a una fila (y al separador de su lote): su
@@ -342,11 +372,25 @@ window.addEventListener('resize', cerrarPanelesAn);
 export function renderAnalisis(){
   const sec = $('tab-analisis'); if (!sec) return;
 
-  /* Contexto de ESTE render: lo leen _delLote y los `match` de los filtros, que
-   * corren una vez por analisis. */
-  _ctxRender = { loteObjMap: _buildLoteObjMap() };
+  /* Contexto de ESTE render: lo lee _valorDeColumna, que corre una vez por
+   * analisis y por columna.
+   *
+   * idxDeAnalisis es un solo Map objeto->posicion por render, en lugar de un
+   * indexOf por fila. Lo necesitan los tres lugares que precisan la posicion
+   * del registro dentro de DATOS().analisis: el filtro de "solo fuera de
+   * criterio", el pintado y la columna SO2 molecular (los veredictos que
+   * devuelve la API vienen indexados por esa posicion).
+   *
+   * OJO: vale SOLO durante este render. El handler de borrado, que se cablea
+   * una sola vez y sobrevive a todos los renders, sigue usando indexOf a
+   * proposito — capturar este mapa lo dejaria mirando un array viejo. */
+  _ctxRender = {
+    loteObjMap: _buildLoteObjMap(),
+    idxDeAnalisis: indicesPorObjeto(DATOS().analisis),
+  };
 
   const loteObjMap = _ctxRender.loteObjMap;
+  const idxDeAnalisis = _ctxRender.idxDeAnalisis;
 
   /* Los filtros se montan ANTES de armar el HTML, y no despues como cuando
    * vivian en la toolbar. Dos motivos: el <thead> necesita fltPorColAn para
@@ -357,15 +401,6 @@ export function renderAnalisis(){
    * Sus `opciones` leen _ctxRender, asi que tiene que ir despues de armarlo. */
   if (_descAn.length === 0) initFiltrosAn();
 
-  /* Un solo Map objeto->posicion por render, en lugar de un indexOf por fila.
-   * Lo usan los dos lugares que necesitan la posicion del registro dentro de
-   * DATOS().analisis: el filtro de "solo fuera de criterio" y el pintado (los
-   * flags que devuelve la API vienen indexados por esa posicion).
-   *
-   * OJO: vale SOLO durante este render. El handler de borrado, que se cablea
-   * una sola vez y sobrevive a todos los renders, sigue usando indexOf a
-   * proposito — capturar este mapa lo dejaria mirando un array viejo. */
-  const idxDeAnalisis = indicesPorObjeto(DATOS().analisis);
   /* Se crea ACA y no al montarlo mas abajo porque el filtrado pasa antes de
      armar el HTML: si no existiera todavia, el primer render se dibujaria sin
      aplicar el modo elegido. */
@@ -494,7 +529,7 @@ export function renderAnalisis(){
   };
 
   /* encabezados. COLS_ANALISIS tiene 18 entradas (16 de quimica/comunes + 2 de
-   * correccion); cuatro de ellas llevan embudo. */
+   * correccion) y las 18 llevan embudo. */
   let h = '<thead><tr>';
   for (const c of COLS_ANALISIS){
     const ar = sortAnalisis.key===c.k ? `<span class="arrow">${sortAnalisis.dir>0?'▲':'▼'}</span>` : '';
@@ -532,11 +567,6 @@ export function renderAnalisis(){
     if (v.fuera.size) estadoDeLote.set(lote, 'mal');
     else if (!estadoDeLote.has(lote)) estadoDeLote.set(lote, 'ok');
   }
-
-  /* El molecular se muestra con 3 decimales porque el criterio se juega en la
-   * segunda (0,38): con menos, un 0,375 y un 0,384 se verian iguales y uno sale
-   * naranja y el otro verde. */
-  const fmtMolec = v => (v != null && isFinite(v)) ? Number(v).toFixed(3) : '';
 
   /* filas: se recorre filasVirtuales COMPLETO (con separadores), pero el
    * contador `ri` de data-row solo avanza en las filas de dato — tiene que
@@ -585,23 +615,15 @@ export function renderAnalisis(){
         ? (ver.fuera.has(metric) ? ' fuera' : ver.dentro.has(metric) ? ' dentro' : '')
         : '';
 
-      // el valor sale del registro raiz para columnas comunes/quimica, y de
-      // analisis.correccion para las 2 columnas de correccion.
-      const contenedor = CAMPOS_CORRECCION.has(metric) ? (o.correccion || {}) : o;
+      /* Una sola lectura para las cuatro procedencias (el registro, el lote,
+       * analisis.correccion y el veredicto de la API), la misma que usan las
+       * opciones del embudo de esta columna. */
+      const v = _valorDeColumna(o, metric);
 
-      if (CAMPOS_DEL_LOTE.has(metric)){
-        tb += `<td class="ro" ${attrs}>${esc(_delLote(o, metric))}</td>`;
-      } else if (metric === 'so2_molecular'){
-        /* Calculada, no guardada: sale del veredicto que manda la API, igual
-         * que el color de al lado. Mientras /api/analisis no haya llegado la
-         * celda queda vacia, como los colores. */
-        tb += `<td class="ro num${marca}" ${attrs}>${esc(fmtMolec(ver.molec))}</td>`;
-      } else if (c.ro){
-        const v = contenedor[metric] ?? '';
+      if (c.ro){
         const cls = 'ro' + marca + (c.num ? ' num' : '');
         tb += `<td class="${cls}" ${attrs}>${esc(v)}</td>`;
       } else {
-        const v = contenedor[metric] == null ? '' : contenedor[metric];
         const cls = [marca.trim(), c.num ? 'num' : ''].filter(Boolean).join(' ');
         tb += `<td class="${cls}" ${attrs}>` +
               `<input class="cell${c.num?' num':''}${marca}" type="text" ` +
@@ -727,13 +749,12 @@ export function renderAnalisis(){
    * fuera de #tab-analisis, asi que el sec.innerHTML de arriba no se los lleva.
    * Lo unico que se rehace en cada render es el embudo del <th>, que es HTML.
    *
-   * rebuildSiCambio y no rebuild: las opciones de estos cuatro paneles casi
-   * nunca cambian entre un render y el siguiente (cambian al cargar datos o al
-   * editar un lote, no al tipear en el buscador), y rehacerlas significa crear
-   * un checkbox por lote con analisis — 720 nodos solo el de Lote con los ~240
-   * de produccion. Si la lista es la misma, solo se resincronizan los tildes,
-   * que no crea ni un nodo. */
-  _instAn.forEach(f => f.rebuildSiCambio());
+   * Tampoco se refrescan las listas de casillas en cada render: cada panel se
+   * pone al dia solo al abrirlo (alternarPanel llama a rebuildSiCambio). Con 18
+   * embudos, hacerlo por render costaba 18 pasadas sobre los 2601 analisis en
+   * cada tecla del buscador y en cada cambio de filtro, para listas que nadie
+   * estaba mirando. El contador del embudo no depende de eso: sale del tamaño
+   * del Set, que el <thead> lee directo. */
 
   /* Se vuelve a colgar el MISMO nodo (no uno nuevo): sec.innerHTML lo
      desprendio del documento, pero conserva su modo y su listener. */
