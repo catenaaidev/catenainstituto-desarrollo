@@ -70,6 +70,19 @@ const API='/barriles/api';</script>
   .filtros-inv { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 14px 0 8px; }
   .filtros-inv input[type="search"] { flex: 1 1 240px; min-width: 180px; padding: 9px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 1rem; }
   .filtros-inv select { padding: 9px 10px; border: 1px solid #ccc; border-radius: 8px; font-size: .95rem; background: #fff; }
+  /* ---- una cajita de filtro por columna, bajo los encabezados ---- */
+  table.datos tr.filtros-col th { background: #faf6f0; padding: 4px 5px; }
+  table.datos tr.filtros-col input, table.datos tr.filtros-col select {
+    width: 100%; box-sizing: border-box; padding: 4px 6px; font-size: .8rem;
+    border: 1px solid #d6cec2; border-radius: 5px; background: #fff; font-weight: 400; }
+  table.datos tr.filtros-col .con-filtro { border-color: var(--vino); background: #fdf6f7; }
+  /* ---- alta de vasijas nuevas (modal) ---- */
+  .alta-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 12px; }
+  .alta-campos label { display: flex; flex-direction: column; gap: 3px; font-size: .8rem; color: #777; }
+  .alta-campos input, .alta-campos select { width: 100%; box-sizing: border-box; font-size: .92rem; }
+  .alta-campos .ancho { grid-column: 1 / -1; }
+  #altaPrevio { font-size: .85rem; border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; background: #f3ede5; }
+  #altaPrevio.malo { background: #fdecea; color: #b3261e; }
   /* tipo de vasija: sale de la capacidad del Excel, el icono de la marca */
   .p-tanque { background: #e0f2f1; color: #00695c; }
   .p-barrica { background: #f3e5d8; color: #7a4a21; }
@@ -497,6 +510,7 @@ const API='/barriles/api';</script>
       <div class="fila-flex" style="justify-content:space-between;">
         <h2 style="margin:0;">📋 Inventario</h2>
         <span class="fila-flex" style="margin:0; gap:8px;">
+          <button class="btn sec solo-prog solo-barricas" id="btnAltaVasijas" title="Dar de alta numeración nueva: una vasija o un rango consecutivo.">➕ Agregar vasijas</button>
           <button class="btn" id="barBtnExportar" title="Baja lo que estás viendo en la lista: respeta el filtro y la búsqueda.">⬇ Exportar a Excel</button>
           <button class="btn sec" id="btnExportarTodo" title="Baja un solo archivo con todos los datos de la app: inventario, mapa, palets, órdenes del escáner, historial de lotes y pendientes. Sin filtros.">⬇ Exportar todo</button>
         </span>
@@ -1365,7 +1379,7 @@ async function sincronizar(avisar) {
       // OJO con el alcance de la fusión. Lo que sigue arranca del estado DEL
       // SERVIDOR y le aplica encima lo local, colección por colección: celdas del
       // mapa (`boxes`), `escaneos`, `tanques`, `pedidos`, `revisiones`,
-      // `ediciones` y `palets`. Son siete; el estado tiene once claves.
+      // `ediciones`, `palets` y `altas`. Son ocho; el estado tiene doce claves.
       //
       // Las CUATRO que quedan afuera vienen tal cual de `d.estado` y pisan lo
       // local: `inventario`, `fechaInventario`, `inventarioCorte` y `modoLote`.
@@ -1413,6 +1427,14 @@ async function sincronizar(avisar) {
       }
       fusionarRevisiones(serv.revisiones, estado.revisiones);
       serv.ediciones = fusionarEdiciones(serv.ediciones, estado.ediciones);
+      // unir altas a mano por número. Hace falta acá y no alcanza con el push
+      // normal: dar de alta una vasija no toca ninguna celda ni ninguna orden, así
+      // que la fusión —que arranca del estado DEL SERVIDOR— la perdía sin aviso.
+      // Si el número ya figura arriba gana el servidor: pudo haberla retirado
+      // porque el Excel terminó trayéndola, y reponerla la resucitaría.
+      const altasSrv = new Set((serv.altas || []).map(a => String(a.num)));
+      for (const a of (estado.altas || []))
+        if (!altasSrv.has(String(a.num))) (serv.altas = serv.altas || []).push(a);
       // unir palets por casillero (offline-safe): gana lo cargado en este teléfono
       const paletsSrv = new Map((serv.palets || []).map(p => [p.id, p]));
       for (const c of diffPaletsLocal()) {
@@ -1623,6 +1645,41 @@ function edicionDe(num, campo) {
     String(e.num) === String(num) && e.campo === campo) || null;
 }
 
+// Las vasijas dadas de alta a mano tampoco se escriben sobre el inventario: como
+// las correcciones, viven en una capa aparte (estado.altas) y se vuelven a sumar
+// cada vez que se reindexa. Sin esto la importación las borraría en silencio: hace
+// `estado.inventario = inv`, que reemplaza el array entero en vez de fusionarlo.
+// Una entrada por vasija: { num, cap, estado, marca, lote, cosecha, litros, creadoEl }.
+//
+// La fila que se empuja al inventario lleva `alta: true`. No es decorativo: sin la
+// marca, en la segunda reindexada la fila ya estaría en el índice y el alta se
+// retiraría creyendo que la trajo el Excel, quedando como una fila común que la
+// próxima importación borra. La marca distingue "ya la puse yo" de "la trae la
+// planilla".
+//
+// Si el Excel termina trayendo ese número, manda la planilla y el alta se retira
+// para siempre: dejarla resucitaría un dato viejo encima del oficial.
+function filaDeAlta(a) {
+  return { num: String(a.num), estado: a.estado, cap: a.cap, litros: a.litros,
+           anio: '', marca: a.marca, origen: '', trat: '', uso: '',
+           lote: a.lote, cosecha: a.cosecha, alta: true };
+}
+
+function aplicarAltas() {
+  const quedan = [];
+  for (const a of (estado.altas || [])) {
+    const ya = indiceInv.get(String(a.num));
+    if (ya && !ya.alta) continue;               // la planilla lo trae: gana el Excel
+    if (!ya) {
+      const r = filaDeAlta(a);
+      estado.inventario.push(r);
+      indiceInv.set(r.num, r);
+    }
+    quedan.push(a);
+  }
+  if (quedan.length !== (estado.altas || []).length) estado.altas = quedan;
+}
+
 function reindexar() {
   indiceInv = new Map();
   for (const r of estado.inventario) indiceInv.set(String(r.num), r);
@@ -1632,6 +1689,10 @@ function reindexar() {
   if (!estado.palets) estado.palets = [];       // estados viejos no traían los palets de tanques
   if (!estado.revisiones) estado.revisiones = []; // estados viejos no traían los pendientes de revisión
   if (!estado.ediciones) estado.ediciones = [];   // estados viejos no traían las correcciones a mano
+  if (!estado.altas) estado.altas = [];           // estados viejos no traían las altas a mano
+  // Antes que las correcciones: una corrección sobre una vasija dada de alta tiene
+  // que encontrar la fila ya puesta para poder pisarle el campo.
+  aplicarAltas();
   aplicarEdiciones();
   indiceRevisar = indexarRevisiones(estado.revisiones);
   migrarBoxes();
@@ -1953,12 +2014,21 @@ $('btnImportar').addEventListener('click', () => {
   estado.inventario = inv;
   estado.fechaInventario = new Date().toLocaleString('es-AR');
   estado.inventarioCorte = hoyISO();
-  reindexar(); guardar();   // reindexar vuelve a aplicar las correcciones a mano encima
+  // Se mide antes de reindexar: ahí adentro las altas que la planilla ya trae se
+  // retiran, y después de la llamada la diferencia ya no se puede reconstruir.
+  const altasAntes = (estado.altas || []).length;
+  reindexar(); guardar();   // reindexar vuelve a sumar las altas y a aplicar las correcciones encima
   // se cuentan después de reindexar: solo valen las que engancharon con una fila
   const nEd = (estado.ediciones || []).filter(e => indiceInv.has(String(e.num))).length;
   const reaplicadas = nEd
     ? ` Se volvieron a aplicar <b>${nEd}</b> ${nEd === 1 ? 'corrección hecha' : 'correcciones hechas'} a mano.` : '';
-  $('resultadoImport').innerHTML = `<b style="color:var(--ok)">✅ Importados ${inv.length} registros.</b> Los barriles ya ubicados en el mapa conservan su posición.${reaplicadas}`;
+  const nAltas = (estado.altas || []).length;
+  const sumadas = nAltas
+    ? ` Se volvieron a sumar <b>${nAltas}</b> ${nAltas === 1 ? 'vasija dada' : 'vasijas dadas'} de alta a mano.` : '';
+  const retiradas = altasAntes - nAltas;
+  const absorbidas = retiradas > 0
+    ? ` <b>${retiradas}</b> ${retiradas === 1 ? 'alta a mano ya viene' : 'altas a mano ya vienen'} en la planilla: manda el Excel.` : '';
+  $('resultadoImport').innerHTML = `<b style="color:var(--ok)">✅ Importados ${inv.length} registros.</b> Los barriles ya ubicados en el mapa conservan su posición.${reaplicadas}${sumadas}${absorbidas}`;
   actualizarEncabezado(); dibujarResumenInv();
 });
 
@@ -2050,19 +2120,44 @@ function filasInvTodas() {
   return escaneadas.concat(resto, fuera);
 }
 
-function filasInvFiltradas() {
+// Una cajita de filtro por columna, arriba de los datos. Se suman con AND entre
+// ellas y con los filtros de más arriba (el selector de tipo, el buscador y el
+// check de pendientes), que quedaron como estaban.
+const filtrosCol = { cap: '', num: '', estado: '', marca: '', lote: '', cosecha: '' };
+
+// Los desplegables comparan por igualdad exacta contra un valor que salió del
+// propio inventario; las cajas de texto, por "contiene". El lote mira también el
+// del escaneo porque es lo que la celda muestra: en las filas que no figuran en el
+// inventario, el único lote visible es ese.
+function coincideFiltrosCol(f) {
+  for (const campo of ['cap', 'estado', 'marca', 'cosecha']) {
+    const v = filtrosCol[campo];
+    if (v && String(f.r[campo] ?? '').trim() !== v) return false;
+  }
+  const num = filtrosCol.num.trim().toUpperCase();
+  if (num && !String(f.r.num ?? '').toUpperCase().includes(num)) return false;
+  const lote = filtrosCol.lote.trim().toUpperCase();
+  if (lote && ![f.r.lote, f.esc && f.esc.lote]
+    .some(v => String(v ?? '').toUpperCase().includes(lote))) return false;
+  return true;
+}
+
+// `universo` es filasInvTodas() ya calculado. Se recibe en vez de recalcularlo para
+// que un dibujo no lo arme dos veces (los desplegables de columna también lo usan).
+function filasInvFiltradas(universo) {
   // en modo por lote no se importa inventario: el selector está escondido y no filtra
   const tipo = estado.modoLote ? 'todos' : (($('invTipo') && $('invTipo').value) || 'todos');
   const txt = ($('filtroInv').value || '').trim().toUpperCase();
   const solo = $('soloRevisar').checked;
 
-  return filasInvTodas().filter(f => {
+  return (universo || filasInvTodas()).filter(f => {
     if (tipo === 'escaneados' && !f.esc) return false;
     // las filas que no figuran no tienen capacidad: no son ni tanque ni barrica
     if (f.fuera && (tipo === 'tanque50' || tipo === 'barrica')) return false;
     if (tipo === 'tanque50' && String(f.r.cap) !== '50') return false;
     if (tipo === 'barrica' && String(f.r.cap) === '50') return false;
     if (solo && !hayPendiente(f.r.num)) return false;
+    if (!coincideFiltrosCol(f)) return false;
     if (!txt) return true;
     return [f.r.num, f.r.lote, f.r.marca, f.esc && f.esc.lote]
       .some(v => String(v || '').toUpperCase().includes(txt));
@@ -2771,16 +2866,15 @@ function dibujarResumenInv() {
   }
   $('statsInv').innerHTML = stats.join('');
 
-  const todas = filasInvFiltradas();
+  const universo = filasInvTodas();
+  const todas = filasInvFiltradas(universo);
   const filas = todas.slice(0, visiblesInv);
   $('contadorInv').textContent = todas.length
     ? `Mostrando ${filas.length} de ${todas.length}` : 'Sin coincidencias.';
   $('btnMasInv').style.display = todas.length > filas.length ? '' : 'none';
 
-  $('tablaPreview').innerHTML =
-    '<tr><th>Tipo</th><th>Número</th><th>Estado</th><th>Marca</th><th>Lote</th>' +
-    '<th>Cosecha</th><th>Fecha</th><th>Historial</th><th></th></tr>' +
-    filas.map(filaInv).join('');
+  asegurarCabeceraInv(universo);
+  $('cuerpoInv').innerHTML = filas.map(filaInv).join('');
 
   const t = $('tablaPreview');
   t.querySelectorAll('button[data-rev]').forEach(b =>
@@ -2797,6 +2891,61 @@ function dibujarResumenInv() {
     b.addEventListener('click', () => borrarEdicion(b.dataset.desed, b.dataset.campo)));
 }
 
+// La cabecera —encabezados más la fila de cajitas— se arma UNA sola vez y después
+// no se vuelve a pisar: cada dibujo reescribe solo el <tbody>. Antes se regeneraba
+// la tabla entera, y con inputs adentro eso le arrancaba el foco al operario en la
+// primera tecla que escribía.
+function asegurarCabeceraInv(universo) {
+  const t = $('tablaPreview');
+  if (!t.querySelector('thead')) {
+    const caja = (campo, etiqueta) => etiqueta
+      ? `<th><input data-fcol="${campo}" placeholder="${etiqueta}" autocomplete="off"></th>`
+      : `<th><select data-fcol="${campo}"></select></th>`;
+    t.innerHTML =
+      '<thead>' +
+      '<tr><th>Tipo</th><th>Número</th><th>Estado</th><th>Marca</th><th>Lote</th>' +
+      '<th>Cosecha</th><th>Fecha</th><th>Historial</th><th></th></tr>' +
+      '<tr class="filtros-col">' +
+      caja('cap') + caja('num', 'filtrar…') + caja('estado') + caja('marca') +
+      caja('lote', 'filtrar…') + caja('cosecha') +
+      '<th></th><th></th><th></th></tr></thead><tbody id="cuerpoInv"></tbody>';
+    t.querySelectorAll('[data-fcol]').forEach(el =>
+      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+        filtrosCol[el.dataset.fcol] = el.value;
+        el.classList.toggle('con-filtro', !!el.value);
+        refrescarListaInv();
+      }));
+  }
+  refrescarOpcionesFiltroCol(universo);
+}
+
+// Los desplegables se pueblan con los valores que realmente hay, y desde el universo
+// SIN filtrar: poblarlos con las filas ya filtradas haría que elegir un estado
+// vaciara las marcas de las otras filas, incluida a veces la que se acababa de
+// elegir. La firma evita reconstruir el <select> cuando la lista no cambió, porque
+// reconstruirlo mientras está abierto lo cierra.
+function refrescarOpcionesFiltroCol(universo) {
+  const t = $('tablaPreview');
+  const columnas = [['cap', 'Todas', v => v + ' L'], ['estado', 'Todos', v => v],
+                    ['marca', 'Todas', v => v], ['cosecha', 'Todas', v => v]];
+  for (const [campo, vacio, texto] of columnas) {
+    const sel = t.querySelector(`select[data-fcol="${campo}"]`);
+    if (!sel) continue;
+    const vals = [...new Set((universo || []).map(f => String(f.r[campo] ?? '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    const firma = JSON.stringify(vals);   // comparar la lista entera, sin separador que se pueda confundir
+    if (sel.dataset.firma === firma) continue;
+    sel.dataset.firma = firma;
+    sel.innerHTML = `<option value="">${vacio}</option>` +
+      vals.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(texto(v))}</option>`).join('');
+    // Si el valor elegido ya no existe (se reimportó el Excel, por ejemplo), el
+    // filtro se suelta en vez de dejar la lista vacía sin explicación visible.
+    sel.value = vals.includes(filtrosCol[campo]) ? filtrosCol[campo] : '';
+    filtrosCol[campo] = sel.value;
+    sel.classList.toggle('con-filtro', !!sel.value);
+  }
+}
+
 function refrescarListaInv() { visiblesInv = TANDA_INV; dibujarResumenInv(); }
 $('filtroInv').addEventListener('input', refrescarListaInv);
 $('soloRevisar').addEventListener('change', refrescarListaInv);
@@ -2811,6 +2960,126 @@ function pildoraEstado(e) {
   const cl = e === 'LLENO' ? 'p-lleno' : e === 'MERMO' ? 'p-mermo' : 'p-vacio';
   return `<span class="pildora ${cl}">${escapeHtml(e || '—')}</span>`;
 }
+
+// ---------- alta de vasijas nuevas ----------
+// Numeración que todavía no existe, o sea que sube el total de vasijas. Es otra cosa
+// que corregir a mano, que reescribe una fila que ya está.
+
+// Tope por tanda. No es una regla del negocio: es el freno para que un dedazo en el
+// "hasta" (1.26.0.129 → 1.26.0.1290) no cargue mil vasijas de una.
+const MAX_ALTA = 500;
+
+// El rango sale del ÚLTIMO tramo numérico, no del número entero: la bodega numera
+// tanto "50017" como "1.26.0.125", y en el segundo lo que avanza es el "125" con el
+// prefijo intacto. El relleno de ceros se copia del "desde", así que 007→012 da
+// 007, 008… y no 7, 8…
+function partirNumero(s) {
+  const m = /^(.*?)(\d+)$/.exec(String(s ?? '').trim());
+  return m ? { prefijo: m[1], digitos: m[2], n: parseInt(m[2], 10) } : null;
+}
+
+function expandirRango(desde, hasta) {
+  const a = partirNumero(desde);
+  if (!a) return { error: 'El número de "desde" tiene que terminar en dígitos.' };
+  if (!String(hasta ?? '').trim()) return { nums: [a.prefijo + a.digitos] };
+  const b = partirNumero(hasta);
+  if (!b) return { error: 'El número de "hasta" tiene que terminar en dígitos.' };
+  if (a.prefijo !== b.prefijo)
+    return { error: `Los dos números tienen que compartir el prefijo: "${a.prefijo || '(ninguno)'}" contra "${b.prefijo || '(ninguno)'}".` };
+  if (b.n < a.n) return { error: 'El "hasta" es más chico que el "desde".' };
+  const cuantos = b.n - a.n + 1;
+  if (cuantos > MAX_ALTA) return { error: `Ese rango son ${cuantos} vasijas y el tope por tanda es ${MAX_ALTA}. Revisá el "hasta".` };
+  const nums = [];
+  for (let i = a.n; i <= b.n; i++) nums.push(a.prefijo + String(i).padStart(a.digitos.length, '0'));
+  return { nums };
+}
+
+// Lo que se va a crear, recalculado en cada tecla. Vive acá y no se recalcula al
+// confirmar: lo que se da de alta es exactamente lo que decía la vista previa.
+let altaPendiente = [];
+
+function abrirAltaVasijas() {
+  $('modalContenido').innerHTML = `
+    <h3>➕ Agregar vasijas</h3>
+    <p class="nota" style="margin-top:0;">Numeración nueva: suma al total de vasijas. Para dar de alta una sola, dejá "hasta" vacío.</p>
+    <div class="alta-campos">
+      <label>Desde<input id="altaDesde" placeholder="1.26.0.125" autocomplete="off"></label>
+      <label>Hasta (opcional)<input id="altaHasta" placeholder="1.26.0.129" autocomplete="off"></label>
+      <label>Capacidad (L)<input id="altaCap" type="number" min="1" placeholder="225"></label>
+      <label>Estado<select id="altaEstado">
+        <option value="VACIO">VACIO</option>
+        <option value="LLENO">LLENO</option>
+        <option value="MERMO">MERMO</option>
+      </select></label>
+      <label class="ancho">Marca / vasija<input id="altaMarca" placeholder="TANQUE INOX 50" autocomplete="off"></label>
+      <label>Lote<input id="altaLote" autocomplete="off"></label>
+      <label>Cosecha<input id="altaCosecha" placeholder="2026" autocomplete="off"></label>
+    </div>
+    <div id="altaPrevio"></div>
+    <div class="acciones-modal">
+      <button class="btn" id="btnAltaConfirmar" disabled>Dar de alta</button>
+      <button class="btn sec" id="btnCerrarModal">Cancelar</button>
+    </div>`;
+  $('modal').classList.add('abierto');
+  $('btnCerrarModal').onclick = cerrarModal;
+  $('altaDesde').addEventListener('input', repasarAlta);
+  $('altaHasta').addEventListener('input', repasarAlta);
+  $('btnAltaConfirmar').onclick = confirmarAlta;
+  repasarAlta();
+  $('altaDesde').focus();
+}
+
+function repasarAlta() {
+  const caja = $('altaPrevio'), boton = $('btnAltaConfirmar');
+  const frenar = (clase, html) => { caja.className = clase; caja.innerHTML = html; boton.disabled = true; altaPendiente = []; };
+  altaPendiente = [];
+  if (!$('altaDesde').value.trim()) return frenar('', 'Escribí el número de la primera vasija.');
+
+  const r = expandirRango($('altaDesde').value, $('altaHasta').value);
+  if (r.error) return frenar('malo', '⚠ ' + escapeHtml(r.error));
+
+  // Una vasija que ya está NUNCA se pisa: el alta es para numeración nueva, y
+  // sobrescribir una fila existente con los datos del formulario sería justo lo que
+  // nadie pidió. Se saltean, y se dice cuáles.
+  const existen = r.nums.filter(n => indiceInv.has(n));
+  const nuevos = r.nums.filter(n => !indiceInv.has(n));
+  if (!nuevos.length) return frenar('malo', 'Todos esos números ya están en el inventario: no hay nada para dar de alta.');
+
+  const yaHay = existen.length
+    ? `<div style="margin-top:6px;">⚠ <b>${existen.length}</b> ya ${existen.length === 1 ? 'está' : 'están'} en el inventario y se ${existen.length === 1 ? 'saltea' : 'saltean'}: ` +
+      `${escapeHtml(existen.slice(0, 8).join(', '))}${existen.length > 8 ? '…' : ''}</div>`
+    : '';
+  altaPendiente = nuevos;
+  const lista = nuevos.length <= 6 ? nuevos.join(', ') : `${nuevos[0]} … ${nuevos[nuevos.length - 1]}`;
+  caja.className = '';
+  caja.innerHTML = `Se dan de alta <b>${nuevos.length}</b> ${nuevos.length === 1 ? 'vasija' : 'vasijas'}: ${escapeHtml(lista)}${yaHay}`;
+  boton.disabled = false;
+}
+
+function confirmarAlta() {
+  if (!altaPendiente.length) return;
+  const cap = $('altaCap').value.trim();
+  const est = $('altaEstado').value;
+  // Los litros no se piden: salen del estado, igual que cuando un escaneo llena una
+  // vasija. Sin capacidad quedan vacíos en vez de inventar un 0.
+  const alta = {
+    cap, estado: est, marca: $('altaMarca').value.trim(),
+    lote: $('altaLote').value.trim(), cosecha: $('altaCosecha').value.trim(),
+    litros: (est === 'LLENO' && cap) ? Number(cap) : '',
+    creadoEl: hoyISO()
+  };
+  if (!estado.altas) estado.altas = [];
+  for (const num of altaPendiente) estado.altas.push({ ...alta, num });
+
+  const n = altaPendiente.length;
+  altaPendiente = [];
+  reindexar(); guardar();
+  cerrarModal();
+  actualizarEncabezado(); refrescarListaInv();
+  alert(`✅ Se ${n === 1 ? 'dio' : 'dieron'} de alta ${n} ${n === 1 ? 'vasija' : 'vasijas'}.`);
+}
+
+$('btnAltaVasijas').addEventListener('click', abrirAltaVasijas);
 
 // ================== BOXES ==================
 $('btnAgregarPalet').addEventListener('click', agregarPalet);
