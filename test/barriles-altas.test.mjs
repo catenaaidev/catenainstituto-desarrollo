@@ -12,7 +12,8 @@
 import { describe, it, expect } from 'vitest';
 import '../public/barriles/js/altas.js';
 
-const { resolverAltas, fusionarAltas, agruparTandas, marcarTandaBorrada, usoDeVasijas } = globalThis;
+const { resolverAltas, fusionarAltas, agruparTandas, marcarTandaBorrada, usoDeVasijas,
+        PLAZO_DESHACER_MS, tandasEnPlazo, darDeBaja, revivirBajas, fusionarBajas, numerosDeBaja } = globalThis;
 
 // Un alta como la que arma `confirmarAlta()`, con lo mínimo para las pruebas.
 const alta = (num, extra = {}) => ({
@@ -218,5 +219,115 @@ describe('usoDeVasijas', () => {
 
   it('aguanta colecciones ausentes', () => {
     expect(usoDeVasijas(['101'], {})).toEqual([]);
+  });
+});
+
+describe('tandasEnPlazo', () => {
+  const MIN = 60 * 1000;
+  const T = 1_790_000_000_000;   // una hora cualquiera: ts 0 es "sin hora"
+
+  it('el plazo es de 15 minutos', () => {
+    expect(PLAZO_DESHACER_MS).toBe(15 * MIN);
+  });
+
+  it('lista la tanda recién cargada y dice cuánto le queda', () => {
+    const t = tandasEnPlazo([alta(101, { ts: T })], T + 3 * MIN);
+    expect(t.map(x => x.id)).toEqual(['t1']);
+    expect(t[0].quedaMs).toBe(12 * MIN);
+  });
+
+  it('a los 15 minutos la tanda ya no se ofrece', () => {
+    expect(tandasEnPlazo([alta(101, { ts: T })], T + 15 * MIN)).toEqual([]);
+  });
+
+  // Las viejas no traen ts: no hay forma de saber si están en plazo.
+  it('las altas de legado no se ofrecen nunca', () => {
+    expect(tandasEnPlazo([{ num: '101', creadoEl: '2026-09-01' }], T)).toEqual([]);
+  });
+
+  // Un celular con el reloj adelantado: el plazo no puede pasar de 15 minutos.
+  it('un ts en el futuro no estira el plazo', () => {
+    const t = tandasEnPlazo([alta(101, { ts: T + 10 * MIN })], T);
+    expect(t[0].quedaMs).toBe(15 * MIN);
+  });
+});
+
+describe('darDeBaja', () => {
+  it('anota la baja con su ts', () => {
+    const r = darDeBaja([], [], '101', 5000);
+    expect(r.bajas).toEqual([{ num: '101', ts: 5000 }]);
+  });
+
+  it('una baja repetida actualiza la misma entrada', () => {
+    const r = darDeBaja([{ num: '101', ts: 1000, revividaTs: 2000 }], [], '101', 5000);
+    expect(r.bajas).toEqual([{ num: '101', ts: 5000, revividaTs: 2000 }]);
+    expect([...numerosDeBaja(r.bajas)]).toEqual(['101']);
+  });
+
+  // Si no se tapan las altas vivas del número, volver a cargarlo dejaría dos
+  // altas vivas y aplicarAltas() pondría la vieja, con los datos equivocados.
+  it('le pone lápida a las altas vivas de ese número y a ninguna otra', () => {
+    const r = darDeBaja([], [alta(101), alta(102)], '101', 5000);
+    expect(r.altas[0]).toMatchObject({ num: '101', borrado: true, borradoTs: 5000 });
+    expect(r.altas[1].borrado).toBeUndefined();
+  });
+
+  it('no modifica los arrays originales', () => {
+    const bajas = [], altas = [alta(101)];
+    darDeBaja(bajas, altas, '101', 5000);
+    expect(bajas).toEqual([]);
+    expect(altas[0].borrado).toBeUndefined();
+  });
+});
+
+describe('revivirBajas y numerosDeBaja', () => {
+  it('una baja vigente tapa el número', () => {
+    expect([...numerosDeBaja([{ num: '101', ts: 1000 }])]).toEqual(['101']);
+  });
+
+  it('volver a cargar el número lo destapa', () => {
+    const b = revivirBajas([{ num: '101', ts: 1000 }], ['101'], 2000);
+    expect([...numerosDeBaja(b)]).toEqual([]);
+  });
+
+  it('una baja posterior al revivir vuelve a tapar', () => {
+    let b = revivirBajas([{ num: '101', ts: 1000 }], ['101'], 2000);
+    b = darDeBaja(b, [], '101', 3000).bajas;
+    expect([...numerosDeBaja(b)]).toEqual(['101']);
+  });
+
+  it('solo toca los números que tienen baja', () => {
+    const b = revivirBajas([{ num: '101', ts: 1000 }], ['102'], 2000);
+    expect(b).toEqual([{ num: '101', ts: 1000 }]);
+  });
+
+  it('aguanta nulos', () => {
+    expect([...numerosDeBaja(null)]).toEqual([]);
+    expect(revivirBajas(undefined, ['101'], 1)).toEqual([]);
+  });
+});
+
+describe('fusionarBajas', () => {
+  it('sube las bajas locales que el servidor no tiene', () => {
+    const r = fusionarBajas([{ num: '101', ts: 1 }], [{ num: '102', ts: 2 }]);
+    expect(r.map(b => b.num)).toEqual(['101', '102']);
+  });
+
+  it('por número se queda con el ts más nuevo de cada marca', () => {
+    const r = fusionarBajas([{ num: '101', ts: 1000, revividaTs: 3000 }], [{ num: '101', ts: 4000 }]);
+    expect(r).toEqual([{ num: '101', ts: 4000, revividaTs: 3000 }]);
+  });
+
+  it('converge igual en los dos órdenes', () => {
+    const a = () => [{ num: '101', ts: 1000 }, { num: '102', ts: 5000 }];
+    const b = () => [{ num: '101', ts: 1000, revividaTs: 2000 }];
+    const ab = fusionarBajas(a(), b()), ba = fusionarBajas(b(), a());
+    expect([...numerosDeBaja(ab)].sort()).toEqual([...numerosDeBaja(ba)].sort());
+    expect([...numerosDeBaja(ab)]).toEqual(['102']);
+  });
+
+  it('aguanta que un lado no exista', () => {
+    expect(fusionarBajas(undefined, [{ num: '101', ts: 1 }])).toEqual([{ num: '101', ts: 1 }]);
+    expect(fusionarBajas([{ num: '101', ts: 1 }], null)).toEqual([{ num: '101', ts: 1 }]);
   });
 });
