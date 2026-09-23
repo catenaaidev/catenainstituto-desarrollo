@@ -168,8 +168,14 @@
    * La alarma no se pierde: su marca es un box-shadow en la primera celda, no
    * un background, asi que la franja roja (o amarilla) sigue saliendo sobre el
    * verde. Si alguna vez se cambia esa franja a background-color, un lote
-   * organico con alarmas deja de avisar. */
-  tr.org td{background:#eaf3e6}
+   * organico con alarmas deja de avisar.
+   *
+   * El verde arranco en #eaf3e6 y NO se leia. Contra el blanco daba 1,14 de
+   * contraste, y contra el rojo de alarma (#fbeeeb) daba 1,00: misma
+   * luminancia, cambiaba solo el tono, asi que las dos filas se veian como el
+   * mismo lavado palido. #b7dba9 da 1,53 y 1,35. Si se vuelve a aclarar, medir
+   * antes contra esos DOS fondos y no solo contra el blanco. */
+  tr.org td{background:#b7dba9}
   /* ---- lote sin litros: la fila entera se atenua ----
    * La opacidad va en el <tr> y no en cada <td> a proposito. Con opacity por
    * celda, el fondo opaco de la columna Lote fija (#tLotes tbody
@@ -196,7 +202,7 @@
   .legend-inline .sw.crit{background:#fbeeeb;border-left:3px solid var(--nook)}
   .legend-inline .sw.venc{background:#faf2e0;border-left:3px solid var(--warn)}
   .legend-inline .sw.vacio{background:var(--panel2);border:1px solid var(--line);opacity:.45}
-  .legend-inline .sw.org{background:#eaf3e6;border:1px solid #cbe1c7}
+  .legend-inline .sw.org{background:#b7dba9;border:1px solid #9cc98c}
   /* ---- pill ---- */
   .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
   .pill.bad{background:#f6e4e1;color:#9e3328;border:1px solid #ecccc6}
@@ -349,7 +355,7 @@
   /* Despues de .crit y .venc, por el mismo motivo que la regla tr.org de arriba:
      misma especificidad, gana la ultima. Sin esta linea la columna Lote fija
      seria la unica celda blanca de una fila verde al scrollear a lo ancho. */
-  #tLotes tbody tr.org     td[data-k="lote"]{background:#eaf3e6}
+  #tLotes tbody tr.org     td[data-k="lote"]{background:#b7dba9}
   #tLotes tbody td[data-k="lote"].gsel{background:linear-gradient(rgba(138,51,64,.10),rgba(138,51,64,.10)) var(--panel)}
 
   /* La columna ID mide 66 caracteres en el Excel: se acota para que no empuje
