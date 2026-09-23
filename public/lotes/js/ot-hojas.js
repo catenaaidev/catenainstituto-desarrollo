@@ -31,11 +31,21 @@ function lineaDestino(ot){
   return ot.destino ? esc(ot.destino) : 'Tanque pulmón: ________';
 }
 
+/* La cantidad y, debajo, los números de barril: el operario busca las barricas
+ * por número, y con solo "10 barricas" tenía que ir a la planilla de la hoja 2.
+ * Con una sola barrica resumenVasijas() ya trae el número. */
+function celdaVasijas(l){
+  const resumen = esc(resumenVasijas(l));
+  const bs = l.barriles || [];
+  if (bs.length < 2) return resumen;
+  return `${resumen}<div class="ot-nums">${bs.map(b => esc(b.num)).join(' · ')}</div>`;
+}
+
 function tablaVaciado(ot, columnas){
   const celda = (l, c) => {
     switch (c){
       case 'lote':    return esc(l.lote);
-      case 'vasijas': return esc(resumenVasijas(l));
+      case 'vasijas': return celdaVasijas(l);
       case 'litros':  return esc(fmtL(l.litros_previstos));
       case 'destino': return lineaDestino(ot);
       default:        return ''; // caudalimetro y merma: los anota el operario

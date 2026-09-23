@@ -39,6 +39,15 @@ describe('hojaOT', () => {
     expect(H.hojaOT(ot([{ lote: '1', barriles: [barril('a')] }], 'barricas-tanque', 'T 201'))).toContain('T 201');
   });
 
+  it('la columna Vasija lista los numeros de barril, no solo la cantidad', () => {
+    // El operario busca las barricas por numero: con solo "3 barricas" tenia
+    // que ir a la planilla de la hoja 2 para saber cuales eran.
+    const h = H.hojaOT(ot([{ lote: '26126', barriles: [barril('1250083'), barril('1250085'), barril('1250356')] }]));
+    const tabla = h.slice(h.indexOf('<table class="ot-tabla">'), h.indexOf('</table>'));
+    expect(tabla).toContain('3 barricas');
+    for (const n of ['1250083', '1250085', '1250356']) expect(tabla).toContain(n);
+  });
+
   it('un corte: una fila de vaciado por lote y el total de litros', () => {
     const h = H.hojaOT(ot([{ lote: '25315', barriles: [barril('a'), barril('b')] },
                           { lote: '25324', barriles: [barril('c')] }], 'barricas-tanque', 'T 201'));
