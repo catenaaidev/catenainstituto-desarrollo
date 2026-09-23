@@ -35,11 +35,14 @@ export function esEjecutado(mov){
  * repetidos sin que nadie se entere.
  *
  * Los `ot` con formato ajeno se ignoran en vez de romper: el campo es de texto
- * libre y editable, asi que puede tener cualquier cosa. */
-export function proximoNumeroOT(movimientos, anio){
+ * libre y editable, asi que puede tener cualquier cosa.
+ *
+ * `ordenes` son las OT de trasiego (DATOS().ordenes_trabajo): comparten
+ * numeracion con los movimientos sueltos, asi que se miran las dos listas. */
+export function proximoNumeroOT(movimientos, anio, ordenes = []){
   const prefijo = `OT-${anio}-`;
   let max = 0;
-  for (const m of (movimientos || [])){
+  for (const m of [...(movimientos || []), ...(ordenes || [])]){
     const ot = String((m || {}).ot ?? '').trim();
     if (!ot.startsWith(prefijo)) continue;
     const n = parseInt(ot.slice(prefijo.length), 10);
