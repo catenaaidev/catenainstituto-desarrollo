@@ -8,6 +8,9 @@ import { toggleSort, sortRows, opcionesValores, matchValor,
 import { activarGrilla, adaptadorCols } from './grilla.js';
 import { esEjecutado, PENDIENTE, EJECUTADO, proximoNumeroOT } from './ot-movimientos.js';
 import { fmtFecha } from './fechas.js';
+import { abrirEmitirOT, abrirImprimirOT } from './vista-ot-emitir.js';
+import { abrirConfirmarOT } from './vista-ot-confirmar.js';
+import { otDeMovimiento } from './ot-armado.js';
 
 /* --- tipos validos --- */
 const TIPOS_MOV = ['descube', 'trasiego', 'relleno', 'traspaso', 'renombre', 'salida'];
@@ -341,13 +344,21 @@ export function renderMovimientos(){
       const bConf = e.target.closest('[data-confirmar]');
       if (bConf){
         const fila = t._rows[+bConf.dataset.confirmar];
-        if (fila) _abrirModalOT(fila);
+        if (!fila) return;
+        // Un movimiento que salió de una OT de trasiego se confirma con la OT
+        // entera (todos sus lotes a la vez); uno suelto, con el modal de siempre.
+        const ot = otDeMovimiento(DATOS().ordenes_trabajo, fila);
+        if (ot) abrirConfirmarOT(ot, renderMovimientos); else _abrirModalOT(fila);
         return;
       }
       const bImp = e.target.closest('[data-imprimirot]');
       if (bImp){
         const fila = t._rows[+bImp.dataset.imprimirot];
-        if (fila) _imprimirOT(fila);
+        if (!fila) return;
+        // Las OT anteriores a las plantillas no tienen entrada en
+        // ordenes_trabajo: siguen saliendo con la hoja genérica.
+        const ot = otDeMovimiento(DATOS().ordenes_trabajo, fila);
+        if (ot) abrirImprimirOT(ot); else _imprimirOT(fila);
         return;
       }
       const b = e.target.closest('[data-del]');
@@ -411,7 +422,10 @@ export function renderMovimientos(){
     renderMovimientos();
   });
 
-  $('btnEmitirOT').addEventListener('click', () => _abrirModalOT(null));
+  // Emitir usa el formato RCI 08 con plantillas y barriles del Mapa. El modal
+  // viejo (_abrirModalOT) queda solo para CONFIRMAR movimientos sueltos que no
+  // tienen una OT de trasiego detrás.
+  $('btnEmitirOT').addEventListener('click', () => abrirEmitirOT(renderMovimientos));
 
   /* Grilla tipo planilla, con TRES reglas que solo la vista puede aplicar:
    *
@@ -554,7 +568,7 @@ function _abrirModalOT(mov){
     lote: '', tipo: 'trasiego', fecha: hoy,
     vasija_origen: '', vasija_destino: '', litros: null,
     lote_destino: '', destino_externo: '', comentario: '',
-    ot: proximoNumeroOT(DATOS().movimientos || [], anio),
+    ot: proximoNumeroOT(DATOS().movimientos || [], anio, DATOS().ordenes_trabajo || []),
   };
 
   const tipoOpts = TIPOS_MOV.map(tp =>

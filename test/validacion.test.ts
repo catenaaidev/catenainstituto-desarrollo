@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { validarDatos, registrosHuerfanos, avanzarMesSiCorresponde, type Datos } from '../src/prensas/validacion';
+import { validarDatos, registrosHuerfanos, avanzarMesSiCorresponde, SECCIONES_LOTES, type Datos } from '../src/prensas/validacion';
 
 const TZ = 'America/Argentina/Mendoza';
 
@@ -221,5 +221,32 @@ describe('cambio automático de mes', () => {
     const cambio = avanzarMesSiCorresponde(d, TZ, new Date('2026-03-10T12:00:00Z'));
     expect(cambio).toBeNull();
     expect((d.meta as Record<string, unknown>).mes_actual).toBe(8);
+  });
+});
+
+describe('ordenes_trabajo en Lotes', () => {
+  const base = (ots: unknown) => ({
+    meta: { version: 1 },
+    lotes: [{ lote: '26217' }],
+    analisis: [],
+    movimientos: [],
+    ordenes_trabajo: ots,
+  });
+  const ot = (i: number) => ({ id: 'ot-' + i, ot: 'OT-2026-' + String(i).padStart(3, '0'), lotes: [] });
+
+  it('rechaza ordenes_trabajo que no es una lista', () => {
+    const e = validarDatos(base({ no: 'lista' }), base([]), false, SECCIONES_LOTES);
+    expect(e.join(' ')).toMatch(/ordenes_trabajo/);
+  });
+
+  it('acepta que ordenes_trabajo no venga (documentos viejos)', () => {
+    const { ordenes_trabajo: _, ...sin } = base([]);
+    expect(validarDatos(sin, sin, false, SECCIONES_LOTES)).toEqual([]);
+  });
+
+  it('frena perder la mayoria de las OT en un solo guardado', () => {
+    const muchas = Array.from({ length: 30 }, (_, i) => ot(i + 1));
+    const e = validarDatos(base(muchas.slice(0, 5)), base(muchas), false, SECCIONES_LOTES);
+    expect(e.join(' ')).toMatch(/se perderían 25 de 30 ordenes_trabajo/);
   });
 });

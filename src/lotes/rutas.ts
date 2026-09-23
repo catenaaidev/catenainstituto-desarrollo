@@ -15,6 +15,7 @@ import { normalizarMapa, MapaNoDisponible } from './motores/mapa';
 import { cruzar } from './motores/cruce';
 import { armarOrden } from './motores/correccion';
 import { ETAPAS } from './motores/etapas';
+import { barrilesDeLotes } from './motores/barriles-lote';
 
 const MODULO = 'lotes';
 const HISTORIAL_MAX = 200;
@@ -259,6 +260,24 @@ export async function rutasLotes(
     try {
       const mapa = normalizarMapa(await leerMapaBarriles(env));
       return json(200, armarOrden(await leerDocumento(env), mapa, hoy));
+    } catch (e) {
+      if (e instanceof MapaNoDisponible) return json(503, { error: e.message });
+      throw e;
+    }
+  }
+
+  // ---------- GET /barriles?lotes=26217,26218 ----------
+  // Para las OT de trasiego: los barriles de cada lote con los datos de la
+  // planilla. Solo lectura: el Mapa lo escribe el escáner, nunca una OT.
+  if (ruta === '/barriles' && req.method === 'GET') {
+    const pedidos = (new URL(req.url).searchParams.get('lotes') ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!pedidos.length) return json(400, { error: 'falta el parámetro lotes' });
+    try {
+      const doc = await leerMapaBarriles(env);
+      return json(200, { version: doc.version, por_lote: barrilesDeLotes(doc.estado ?? {}, pedidos) });
     } catch (e) {
       if (e instanceof MapaNoDisponible) return json(503, { error: e.message });
       throw e;
