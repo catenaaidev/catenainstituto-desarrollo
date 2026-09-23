@@ -3,7 +3,7 @@
 
 import { $, esc, escA, DATOS, markDirty, registrarVista, irALote } from './nucleo.js';
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
-         initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
+         crearFiltroMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla } from './grilla.js';
 import { armarFilas, esQuimicaReal, esCorreccionReal,
          indicesPorObjeto } from './analisis-filas.js';
@@ -17,7 +17,13 @@ import { crearAnchos } from './anchos-cols.js';
  * ven en la fila 'quimica'. lote/variedad/fecha_analisis se ven en las dos. */
 const COLS_ANALISIS = [
   { k:'lote',          label:'Lote',          ro:true  },
-  { k:'variedad',      label:'Variedad',       ro:true  },
+  /* Variedad, Vasija de crianza y Proyecto no viven en el registro de analisis:
+   * salen del LOTE (ver CAMPOS_DEL_LOTE). Son de solo lectura porque el lugar
+   * para editarlas es la pestaña Lotes; aca estan para poder leerlas y, sobre
+   * todo, para colgarles el embudo de su filtro. */
+  { k:'variedad',        label:'Variedad',            ro:true },
+  { k:'vasija_crianza',  label:'Vasija de crianza',   ro:true },
+  { k:'proyecto',        label:'Proyecto',            ro:true },
   { k:'fecha_analisis',label:'Fecha',          ro:false },
   /* Etanol va antes que pH, no al final de la quimica: es el mismo orden en
    * que viene la planilla del laboratorio (ver ORDEN_PLANILLA en
@@ -32,6 +38,11 @@ const COLS_ANALISIS = [
   { k:'lactico',       label:'Láctico',        num:true },
   { k:'acidez_total',  label:'Acidez total',   num:true },
   { k:'so2_libre',     label:'SO₂ libre',      num:true },
+  /* Calculada, no guardada: la API la manda por fila como so2_molec_calc
+   * (Henderson-Hasselbalch sobre el SO2 libre y el pH de ESA fila). Es de solo
+   * lectura porque no es un dato que se cargue — cambiarla seria cambiar el pH
+   * o el libre. */
+  { k:'so2_molecular', label:'SO₂ molecular',  ro:true, num:true },
   { k:'comentario',    label:'Comentario',     ro:false },
   { k:'ot_n',            label:'OT',              ro:false },
   { k:'so2_deseado',     label:'SO2 deseado',     num:true },
@@ -44,7 +55,29 @@ const COLS_ANALISIS = [
  * siguen viendo y editando en las pestanas SO2 y Orden de correccion: lo unico
  * que se saco es la columna de ESTA tabla. */
 const CAMPOS_CORRECCION = new Set(['ot_n', 'so2_deseado']);
-const CAMPOS_COMUNES = new Set(['lote', 'variedad', 'fecha_analisis']);
+const CAMPOS_COMUNES = new Set([
+  'lote', 'fecha_analisis',
+  /* Los tres que salen del lote se ven en los DOS tipos de fila por el mismo
+   * motivo que el numero de lote: identifican de que se esta hablando, no son
+   * una medicion de esta fila. */
+  'variedad', 'vasija_crianza', 'proyecto',
+]);
+
+/* Columnas que NO viven en el registro de analisis: se leen del LOTE al que
+ * pertenece. `campo` es el nombre que tienen alla — 'vasija_actual' es la
+ * "Vasija Actual en Crianza" de la pestaña Lotes. */
+const CAMPOS_DEL_LOTE = new Map([
+  ['variedad',       'variedad'],
+  ['vasija_crianza', 'vasija_actual'],
+  ['proyecto',       'proyecto'],
+]);
+
+/* Las metricas con criterio, o sea las unicas celdas que pueden salir verdes o
+ * naranjas. No se declara aca cual es el criterio de cada una: eso vive en el
+ * motor (veredictosAnalisis en src/lotes/motores/fml.ts) y llega por la API. */
+const METRICAS_CON_CRITERIO = new Set([
+  'ph', 'av', 'malico', 'gluc_fruc', 'azucar_reductor', 'so2_libre', 'so2_molecular',
+]);
 
 /** Campos quimicos que el boton de eliminar vacia en una fila de tipo
  *  'quimica' (los mismos que decide si una fila quimica existe, en
@@ -61,9 +94,28 @@ function _columnaAplica(colKey, filaTipo){
   return filaTipo === 'correccion' ? esColCorreccion : !esColCorreccion;
 }
 
-/* Flags de fuera de criterio: Map<idx(en DATOS.analisis) -> Set<metric>> */
+/* Veredicto por fila de analisis:
+ *   Map<idx(en DATOS.analisis) -> {fuera:Set<metric>, dentro:Set<metric>, molec:number|null}>
+ *
+ * Son DOS conjuntos y no uno con su complemento a proposito: una metrica que no
+ * esta en ninguno es una que no tiene veredicto (sin medicion, o sin con que
+ * juzgarla), y esa no se pinta de ningun color. Tratar "no esta en fuera" como
+ * "esta bien" pintaria de verde una celda vacia. */
 let _analisisFlags = null;  // null = no cargado aún
 let _analisisFlagsLoading = false;
+/* Version del documento con la que se calcularon los veredictos de arriba. Los
+ * calcula el SERVIDOR sobre lo GUARDADO (analisisConFlags lee el documento de
+ * la base), asi que despues de un Guardar los que hay en memoria describen la
+ * version anterior. Sin esto, editar un pH, guardar y volver a la pestaña
+ * dejaba la celda del color viejo para siempre. */
+let _flagsVersion = null;
+
+/* Veredicto de una fila que todavia no se cargo, o de una fila de correccion:
+ * todo vacio. Se devuelve este objeto congelado en vez de null para que el
+ * pintado no tenga que preguntar en cada celda. */
+const SIN_VEREDICTO = Object.freeze({
+  fuera: new Set(), dentro: new Set(), molec: null,
+});
 
 async function cargarAnalisisFlags(){
   if (_analisisFlagsLoading) return;
@@ -72,30 +124,36 @@ async function cargarAnalisisFlags(){
     const r = await fetch(API+'/analisis');
     if (!r.ok) return;
     const j = await r.json();
+    /* GET /analisis devuelve el ARRAY pelado (rutas.ts: json(200,
+     * analisisConFlags(...))), no un objeto con una clave `analisis` adentro.
+     * Esto leia j.analisis, que en un array es undefined, asi que el Map
+     * quedaba VACIO siempre: ninguna celda se pintaba nunca y "Solo fuera de
+     * criterio" no devolvia ninguna fila. Como fallaba en silencio — Map vacio,
+     * no excepcion — se veia igual que "no hay nada fuera de criterio".
+     * Se aceptan las dos formas por si alguna vez la ruta pasa a envolverlo. */
+    const filas = Array.isArray(j) ? j : (j.analisis || []);
     _analisisFlags = new Map();
-    for (const row of (j.analisis || [])){
-      _analisisFlags.set(row.idx, new Set(row.fuera || []));
+    for (const row of filas){
+      _analisisFlags.set(row.idx, {
+        fuera:  new Set(row.fuera || []),
+        dentro: new Set(row.dentro || []),
+        /* El molecular calculado viaja con el veredicto y no se recalcula en el
+         * navegador: es la misma cuenta que juzga la celda, asi que si alguna
+         * vez cambia (el 1.8 del pKa, por ejemplo) no puede quedar una copia
+         * vieja aca mostrando un numero que no se corresponde con su color. */
+        molec: row.so2_molec_calc ?? null,
+      });
     }
+    _flagsVersion = (DATOS().meta || {}).version ?? null;
     renderAnalisis();  // repintar con colores una vez que lleguen los flags
   } catch(e) { /* sin flags: los colores se omiten */ }
   finally { _analisisFlagsLoading = false; }
 }
 
-/* Mapa de lote -> variedad para lookup rápido */
-function _buildLoteMap(){
-  const m = new Map();
-  for (const l of (DATOS().lotes || [])){
-    m.set(String(l.lote ?? ''), l.variedad ?? '');
-  }
-  return m;
-}
-
-/* Mapa de lote -> OBJETO lote. Aparte del de arriba a proposito: ese devuelve
- * la variedad (un string) y ya hay codigo colgado de esa forma. El filtro de
- * llenado y el atenuado necesitan el lote entero para mirarle los litros.
+/* Mapa de lote -> OBJETO lote.
  *
  * get() de un lote que no existe devuelve undefined, y eso esta bien: un
- * analisis puede sobrevivir al borrado de su lote, y pasaLlenado/estaVacio lo
+ * analisis puede sobrevivir al borrado de su lote, y estaVacio/_delLote lo
  * tratan como vacio sin ninguna rama especial. */
 function _buildLoteObjMap(){
   const m = new Map();
@@ -103,18 +161,28 @@ function _buildLoteObjMap(){
   return m;
 }
 
+/** Valor de una columna derivada del lote (Variedad, Vasija de crianza,
+ *  Proyecto) para el analisis `a`. Un analisis cuyo lote ya no existe da ''.
+ *  Es LA forma de leer esas tres columnas: la usan el pintado, las opciones de
+ *  su filtro y su match, asi que no puede pasar que el panel ofrezca un valor
+ *  que la celda muestra distinto. */
+function _delLote(a, colKey){
+  const l = _ctxRender.loteObjMap.get(String(a.lote ?? ''));
+  return l ? (l[CAMPOS_DEL_LOTE.get(colKey)] ?? '') : '';
+}
+
 /* Mapas derivados de DATOS().lotes que valen para TODO el render en curso.
  * renderAnalisis() lo rearma al principio de cada pasada.
  *
- * Existe por una razon de costo: los `match` de los filtros Variedad y Proyecto
+ * Existe por una razon de costo: los `match` de los filtros derivados del lote
  * los llama pasaMulti UNA VEZ POR ANALISIS, y antes cada una de esas llamadas
  * reconstruia el mapa entero de lotes desde cero. Con ~240 lotes y miles de
  * analisis eso era O(analisis x lotes) en cada repintado — el mismo costo
  * cuadratico que el indexOf del pintado, solo que escondido detras de un filtro
  * y por eso mas dificil de ver.
  *
- * NO se cachea entre renders a proposito: variedad y proyecto son editables, y
- * un mapa viejo dejaria el filtro decidiendo por el valor anterior. */
+ * NO se cachea entre renders a proposito: variedad, vasija y proyecto son
+ * editables, y un mapa viejo dejaria el filtro decidiendo por el valor anterior. */
 let _ctxRender = null;
 
 /* Sort state para análisis */
@@ -139,10 +207,25 @@ let _filtAnalisisBusca    = '';
 const MS_DEBOUNCE_BUSCA = 150;
 let _timerBusca = null;
 
+/* Las cuatro columnas con embudo de filtro ▾ en su cabecera, como en Excel, en
+ * el orden en que aparecen en la tabla. `k` es a la vez la clave del filtro y la
+ * de la columna de cuyo <th> cuelga: acá son la misma porque las cuatro tienen
+ * columna propia. (En la pestaña Lotes son dos campos distintos, porque alla
+ * Etapa y Envase no son campos del lote.) */
+const COLS_FLT_AN = [
+  { k:'lote',           label:'Lote'              },
+  { k:'variedad',       label:'Variedad'          },
+  { k:'vasija_crianza', label:'Vasija de crianza' },
+  { k:'proyecto',       label:'Proyecto'          },
+];
+
 /* Un Set por columna filtrable, creados UNA vez: los widgets guardan estas
  * mismas referencias, asi que el estado sobrevive a los re-render. */
-const filtAn = { lote: new Set(), variedad: new Set(), proyecto: new Set() };
+const filtAn = {}; COLS_FLT_AN.forEach(c => filtAn[c.k] = new Set());
 let _descAn = [], _instAn = [];
+/* columna -> {label, inst}, para que el render sepa que embudo pintar en cada
+   <th> y el clic sepa que panel abrir. Lo llena initFiltrosAn. */
+const fltPorColAn = new Map();
 
 /* Segmentado Todos | Llenos | Vacíos, el mismo control que la pestaña Lotes.
  * Se crea una sola vez y se vuelve a colgar despues de cada render, igual que
@@ -174,69 +257,105 @@ function _escribirColumnaAnalisis(obj, k, texto, filaTipo){
 }
 
 function initFiltrosAn(){
-  /* OJO: _buildLoteMap() de esta pestana devuelve lote -> STRING de variedad
-   * (no el objeto lote, a diferencia de FML y SO2). Ver el uso en el render. */
-  const variedadDe = (m) => (a) => m.get(String(a.lote ?? '')) || '';
-  /* Set de lotes que pertenecen a los proyectos tildados. Se recalcula UNA VEZ
-   * POR RENDER, no en cada match: los proyectos de los lotes son editables, asi
-   * que no se puede cachear para siempre, pero tampoco cambian a mitad de un
-   * filtrado. Antes se rearmaba por cada analisis evaluado.
+  /* Los cuatro descriptores salen del MISMO molde: el valor de la columna para
+   * un analisis es `valorDe`, y con eso se arman las opciones y el match. Las
+   * tres columnas derivadas del lote pasan por _delLote, o sea exactamente la
+   * misma lectura que hace el pintado de la celda.
    *
-   * Un solo hueco en el contexto alcanza porque hay un solo filtro de Proyecto;
-   * si alguna vez hubiera dos, esto tendria que ir por descriptor. */
-  const lotesDeProyectos = (set) => {
-    if (!_ctxRender.lotesDeProyectos){
-      const s = new Set();
-      for (const l of (DATOS().lotes || [])){
-        if (set.has((l.proyecto || '').trim())) s.add(String(l.lote ?? ''));
-      }
-      _ctxRender.lotesDeProyectos = s;
-    }
-    return _ctxRender.lotesDeProyectos;
-  };
+   * Las opciones se sacan siempre de los ANALISIS, no de DATOS().lotes: el
+   * embudo de una columna tiene que ofrecer lo que hay EN esa columna, como en
+   * Excel. Antes el de Proyecto listaba los proyectos de todos los lotes, asi
+   * que se podian tildar proyectos sin ningun analisis y la tabla quedaba
+   * vacia sin explicacion. */
+  const valorDe = (k) => k === 'lote'
+    ? (a) => String(a.lote ?? '')
+    : (a) => _delLote(a, k);
 
-  _descAn = [
-    {
-      label: 'Lote',
-      set: filtAn.lote,
-      /* Opciones sobre los ANALISIS, no sobre todos los lotes: el panel ofrece
-       * solo lotes que tienen al menos un analisis cargado, mismo criterio que
-       * Variedad. cmpValores ya ordena numerico cuando los valores son
-       * numeros, asi que los lotes salen en orden. */
-      opciones: () => opcionesValores(DATOS().analisis || [], a => String(a.lote ?? '')),
-      match: matchValor(a => String(a.lote ?? '')),
-    },
-    {
-      label: 'Variedad',
-      set: filtAn.variedad,
-      /* Opciones sobre los analisis (no sobre todos los lotes): asi el panel
-       * ofrece solo variedades que tienen al menos un analisis cargado. */
-      opciones: () => opcionesValores(DATOS().analisis || [], variedadDe(_buildLoteMap())),
-      /* Lee el mapa del render en curso en vez de rearmarlo: esto corre una vez
-       * por analisis. `opciones` de arriba si puede construirlo, porque corre
-       * una vez por reconstruccion del panel, no por fila. */
-      match: (a, set) => set.has(_ctxRender.loteMap.get(String(a.lote ?? '')) || ''),
-    },
-    {
-      label: 'Proyecto',
-      set: filtAn.proyecto,
-      opciones: () => opcionesValores(DATOS().lotes || [], l => (l.proyecto || '').trim()),
-      match: (a, set) => lotesDeProyectos(set).has(String(a.lote ?? '')),
-    },
-  ];
-  _instAn = initFiltrosMulti('fltAnBar', _descAn, renderAnalisis);
+  _descAn = COLS_FLT_AN.map(c => {
+    const leer = valorDe(c.k);
+    return {
+      label: c.label, col: c.k,
+      set: filtAn[c.k],
+      /* cmpValores ordena numerico cuando los valores son numeros, asi que los
+       * lotes salen en orden y no alfabeticamente. */
+      opciones: () => opcionesValores(DATOS().analisis || [], leer),
+      match: matchValor(leer),
+    };
+  });
+
+  /* Modo anclado: cada filtro se monta sin boton propio y con el panel colgado
+   * de <body>. El disparador es el embudo ▾ que renderAnalisis pinta dentro del
+   * <th> de su columna; el panel tiene que salir de la tabla porque .scroll.tall
+   * tiene overflow:auto y ahi adentro quedaria recortado.
+   *
+   * Se montan UNA sola vez aunque esta vista rehaga su seccion entera en cada
+   * render: los paneles viven fuera de #tab-analisis, asi que sobreviven al
+   * innerHTML, y el clic del embudo se atiende por delegacion. */
+  _instAn = _descAn.map(d => crearFiltroMulti({
+    label:d.label, opciones:d.opciones, set:d.set, onChange:renderAnalisis, anclado:true,
+  }));
+
+  fltPorColAn.clear();
+  const pintadas = new Set(COLS_ANALISIS.map(c => c.k));
+  _descAn.forEach((d, i) => {
+    /* Un filtro cuya columna no se pinta no tendria embudo: no habria como
+       abrirlo ni como darse cuenta de que esta escondiendo filas. */
+    if (!pintadas.has(d.col))
+      console.warn(`Análisis: el filtro "${d.label}" apunta a la columna "${d.col}", que no existe`);
+    fltPorColAn.set(d.col, { label:d.label, inst:_instAn[i] });
+  });
 }
+
+/** Le saca el verde y el naranja a una fila (y al separador de su lote): su
+ *  veredicto acaba de dejar de valer porque alguien edito una medicion. No
+ *  toca los datos ni pide un render — es solo la marca visual, y el proximo
+ *  repintado con veredictos frescos la repone. */
+function _descolorarFila(tr){
+  if (!tr) return;
+  tr.querySelectorAll('.dentro, .fuera').forEach(el => el.classList.remove('dentro', 'fuera'));
+  /* El separador esta ARRIBA en el DOM, como hermano: se camina hacia atras
+     hasta encontrarlo. Si no se lo descolorara, el lote seguiria diciendo
+     "todo en criterio" con una fila que ya no se sabe si lo cumple. */
+  for (let p = tr.previousElementSibling; p; p = p.previousElementSibling){
+    if (p.classList.contains('analisis-separador')){ p.classList.remove('ok', 'mal'); break; }
+  }
+}
+
+/* Cierra cualquier panel de filtro abierto, sea de la cabecera o de otra
+   pestaña. Es el mismo gesto que hace app.js al hacer clic afuera. */
+function cerrarPanelesAn(){
+  document.querySelectorAll('.mfilt-panel.open').forEach(p => p.classList.remove('open'));
+}
+
+/* El panel anclado es position:fixed, asi que al cambiar el tamaño de la
+ * ventana se queda donde estaba mientras su columna se mueve. Se cierra, que es
+ * lo que hace Excel.
+ *
+ * Va ACA, en el cuerpo del modulo, y no dentro de renderAnalisis: esta vista
+ * rehace su seccion entera con sec.innerHTML, asi que el guardrail t._wired
+ * nunca se cumple (la <table> es un nodo nuevo en cada pasada) y un
+ * addEventListener sobre window ahi adentro sumaria uno por repintado. El del
+ * scroll, en cambio, va sobre el .scroll que se acaba de crear: ese nodo muere
+ * con el render que lo creo y no acumula nada. */
+window.addEventListener('resize', cerrarPanelesAn);
 
 export function renderAnalisis(){
   const sec = $('tab-analisis'); if (!sec) return;
 
-  /* Contexto de ESTE render: lo leen los `match` de los filtros, que corren una
-   * vez por analisis. lotesDeProyectos arranca sin calcular y se llena la
-   * primera vez que el filtro de Proyecto lo pide. */
-  _ctxRender = { loteMap: _buildLoteMap(), lotesDeProyectos: null };
+  /* Contexto de ESTE render: lo leen _delLote y los `match` de los filtros, que
+   * corren una vez por analisis. */
+  _ctxRender = { loteObjMap: _buildLoteObjMap() };
 
-  const loteMap = _ctxRender.loteMap;
-  const loteObjMap = _buildLoteObjMap();
+  const loteObjMap = _ctxRender.loteObjMap;
+
+  /* Los filtros se montan ANTES de armar el HTML, y no despues como cuando
+   * vivian en la toolbar. Dos motivos: el <thead> necesita fltPorColAn para
+   * saber en que columnas pintar el embudo, y el filtrado de mas abajo llama a
+   * pasaMulti(_descAn) — con los descriptores todavia vacios, el primer render
+   * se dibujaba sin aplicar ningun filtro multi.
+   *
+   * Sus `opciones` leen _ctxRender, asi que tiene que ir despues de armarlo. */
+  if (_descAn.length === 0) initFiltrosAn();
 
   /* Un solo Map objeto->posicion por render, en lugar de un indexOf por fila.
    * Lo usan los dos lugares que necesitan la posicion del registro dentro de
@@ -287,8 +406,8 @@ export function renderAnalisis(){
        * _analisisFlags.get(...) da undefined y la fila no pasa, asi que el
        * resultado es el mismo. */
       const idx = idxDeAnalisis.get(fila.analisis);
-      const flags = _analisisFlags.get(idx);
-      return flags && flags.size > 0;
+      const v = _analisisFlags.get(idx);
+      return !!v && v.fuera.size > 0;
     };
   }
 
@@ -307,7 +426,6 @@ export function renderAnalisis(){
 <div class="toolbar" id="analisisToolbar">
   <input class="txt" id="buscaAnalisis" placeholder="🔎 Buscar por lote…" style="min-width:160px" value="${escA(_filtAnalisisBusca)}">
   <select id="fltAnMes"><option value="">Todos los meses</option>${meses.map(m=>`<option value="${escA(m)}"${m===_filtAnalisisMes?' selected':''}>${esc(m)}</option>`).join('')}</select>
-  <div class="mfilt-bar" id="fltAnBar"></div>
   <select id="fltAnTipo">
     <option value="todas"${_filtAnalisisTipo==='todas'?' selected':''}>Todas las filas</option>
     <option value="fuera"${_filtAnalisisTipo==='fuera'?' selected':''}>Solo fuera de criterio</option>
@@ -321,9 +439,18 @@ export function renderAnalisis(){
   <span class="tag" id="analisisCount"></span>
 </div>
 <div class="legend-inline">
-  <span class="sw" style="display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:2px;background:#fbeeeb;border-left:3px solid var(--nook)"></span> Valor fuera de criterio
+  <span class="sw dentro"></span> Valor dentro de criterio
+  &nbsp;·&nbsp;
+  <span class="sw fuera"></span> Valor fuera de criterio
+  &nbsp;·&nbsp;
+  <span class="sw sep-mal"></span> Lote con algún valor fuera de criterio
   &nbsp;·&nbsp;
   <span class="sw vacio"></span> Análisis de un lote sin litros (filas atenuadas)
+</div>
+<div class="legend-inline" style="margin-top:-8px">
+  Sólo se pintan las columnas que tienen criterio (pH, AV, Gluc+Fruc, Az. Reductor,
+  Málico, SO₂ libre y SO₂ molecular). Una celda sin color es una que no se puede
+  juzgar: sin medición, o sin el pH que hace falta para el molecular.
 </div>
 <div class="scroll tall"><table id="tAnalisis"></table></div>`;
 
@@ -351,18 +478,65 @@ export function renderAnalisis(){
    * este array es el mismo indice `f` que usa la grilla. */
   t._rows = filasDeDatos;
 
-  /* encabezados: sin cambios de logica. COLS_ANALISIS tiene 15 entradas
-   * (13 de quimica/comunes + 2 de correccion). */
+  /* Embudo de filtro de la columna, o '' si no tiene. Es un <button> a
+   * proposito, igual que en la pestaña Lotes: grilla.js no le roba el clic a un
+   * boton. Se repinta en cada render, asi que el contador y el resaltado salen
+   * siempre del tamaño actual del Set; el panel, en cambio, vive colgado de
+   * <body> y no se rehace. */
+  const embudo = k => {
+    const f = fltPorColAn.get(k);
+    if (!f) return '';
+    const n = filtAn[k].size;
+    const tit = n ? `${f.label}: ${n} valor${n > 1 ? 'es' : ''} elegido${n > 1 ? 's' : ''}`
+                  : `Filtrar por ${f.label}`;
+    return ` <button class="th-flt${n ? ' active' : ''}" data-flt="${escA(k)}"`
+         + ` title="${escA(tit)}">▾${n ? ' ' + n : ''}</button>`;
+  };
+
+  /* encabezados. COLS_ANALISIS tiene 18 entradas (16 de quimica/comunes + 2 de
+   * correccion); cuatro de ellas llevan embudo. */
   let h = '<thead><tr>';
   for (const c of COLS_ANALISIS){
     const ar = sortAnalisis.key===c.k ? `<span class="arrow">${sortAnalisis.dir>0?'▲':'▼'}</span>` : '';
-    h += `<th data-k="${escA(c.k)}" class="${c.num?'num':''}">${esc(c.label)}${ar}</th>`;
+    h += `<th data-k="${escA(c.k)}" class="${c.num?'num':''}">${esc(c.label)}${ar}${embudo(c.k)}</th>`;
   }
   h += '<th></th></tr></thead>';
 
   /* Numero total de columnas, para el colspan del separador: las de
    * COLS_ANALISIS (todas llevan data-k) mas la de acciones (no lleva). */
   const COLSPAN_TOTAL = COLS_ANALISIS.length + 1;
+
+  /* Veredicto de una fila. Solo la de quimica tiene: la de correccion no trae
+   * ninguna metrica que juzgar, y antes de que llegue /api/analisis no hay
+   * veredictos de ninguna. En los dos casos devuelve SIN_VEREDICTO, o sea los
+   * dos conjuntos vacios, y el pintado no necesita preguntar por null. */
+  const veredictoDe = (fila) => (fila.tipo === 'quimica' && _analisisFlags)
+    ? (_analisisFlags.get(idxDeAnalisis.get(fila.analisis)) || SIN_VEREDICTO)
+    : SIN_VEREDICTO;
+
+  /* Estado de cada lote, para pintar su separador. Se calcula sobre las filas
+   * que QUEDARON despues de filtrar y no sobre todo el lote: el separador
+   * describe lo que hay debajo de el, si no diria "este lote tiene un problema"
+   * senalando filas que el filtro escondio.
+   *
+   * Tres estados, por el mismo motivo que las celdas: 'mal' si alguna medicion
+   * visible esta fuera de criterio, 'ok' si ninguna lo esta Y al menos una se
+   * pudo juzgar, y sin color si no hay ningun veredicto. Un lote que solo tiene
+   * correcciones, o mediciones que no se pueden juzgar, no sale verde: el verde
+   * significa "lo mire y esta bien", no "no encontre nada". */
+  const estadoDeLote = new Map();
+  for (const fila of filasDeDatos){
+    const v = veredictoDe(fila);
+    if (!v.fuera.size && !v.dentro.size) continue;
+    const lote = String(fila.analisis.lote ?? '');
+    if (v.fuera.size) estadoDeLote.set(lote, 'mal');
+    else if (!estadoDeLote.has(lote)) estadoDeLote.set(lote, 'ok');
+  }
+
+  /* El molecular se muestra con 3 decimales porque el criterio se juega en la
+   * segunda (0,38): con menos, un 0,375 y un 0,384 se verian iguales y uno sale
+   * naranja y el otro verde. */
+  const fmtMolec = v => (v != null && isFinite(v)) ? Number(v).toFixed(3) : '';
 
   /* filas: se recorre filasVirtuales COMPLETO (con separadores), pero el
    * contador `ri` de data-row solo avanza en las filas de dato — tiene que
@@ -371,12 +545,15 @@ export function renderAnalisis(){
   let ri = -1;
   for (const fila of filasVirtuales){
     if (fila.tipo === 'separador'){
-      const variedadDelLote = loteMap.get(String(fila.lote)) || '';
+      const lote = loteObjMap.get(String(fila.lote));
+      const variedadDelLote = lote ? (lote.variedad ?? '') : '';
       /* El atenuado va en el separador Y en cada fila del grupo: son <tr>
          hermanas, no anidadas, asi que una sola clase no alcanza para las dos.
          La regla tr.vacio de index.html no esta acotada a #tLotes, por eso
          sirve tal cual aca. */
-      const clsSep = 'analisis-separador' + (esVacio(fila.lote) ? ' vacio' : '');
+      const clsSep = 'analisis-separador'
+        + (esVacio(fila.lote) ? ' vacio' : '')
+        + (estadoDeLote.has(fila.lote) ? ' ' + estadoDeLote.get(fila.lote) : '');
       tb += `<tr class="${clsSep}"><td colspan="${COLSPAN_TOTAL}">` +
             `<button class="alarm-lote-link" data-iralote="${escA(fila.lote)}">${esc(fila.lote)}</button>` +
             (variedadDelLote ? ` — ${esc(variedadDelLote)}` : '') +
@@ -386,12 +563,7 @@ export function renderAnalisis(){
 
     ri++;
     const o = fila.analisis;
-    // los flags de "fuera de criterio" solo tienen sentido en la fila de
-    // quimica: la de correccion no tiene metricas quimicas que marcar.
-    const realIdx = idxDeAnalisis.get(o);
-    const flags = (fila.tipo === 'quimica' && _analisisFlags)
-      ? (_analisisFlags.get(realIdx) || new Set())
-      : new Set();
+    const ver = veredictoDe(fila);
 
     tb += esVacio(o.lote) ? '<tr class="vacio">' : '<tr>';
     for (const c of COLS_ANALISIS){
@@ -405,23 +577,34 @@ export function renderAnalisis(){
         continue;
       }
 
-      const isFuera = flags.has(metric);
+      /* '', 'dentro' o 'fuera'. El '' no es solo "no hay criterio": tambien es
+       * "hay criterio pero esta fila no se puede juzgar" (sin medicion, o SO2
+       * por encima del piso sin pH). Esas celdas quedan sin pintar, que es
+       * distinto de pintarlas de verde. */
+      const marca = METRICAS_CON_CRITERIO.has(metric)
+        ? (ver.fuera.has(metric) ? ' fuera' : ver.dentro.has(metric) ? ' dentro' : '')
+        : '';
+
       // el valor sale del registro raiz para columnas comunes/quimica, y de
-      // analisis.correccion para las 4 columnas de correccion.
+      // analisis.correccion para las 2 columnas de correccion.
       const contenedor = CAMPOS_CORRECCION.has(metric) ? (o.correccion || {}) : o;
 
-      if (metric === 'variedad'){
-        const vari = loteMap.get(String(o.lote ?? '')) || '';
-        tb += `<td class="ro" ${attrs}>${esc(vari)}</td>`;
+      if (CAMPOS_DEL_LOTE.has(metric)){
+        tb += `<td class="ro" ${attrs}>${esc(_delLote(o, metric))}</td>`;
+      } else if (metric === 'so2_molecular'){
+        /* Calculada, no guardada: sale del veredicto que manda la API, igual
+         * que el color de al lado. Mientras /api/analisis no haya llegado la
+         * celda queda vacia, como los colores. */
+        tb += `<td class="ro num${marca}" ${attrs}>${esc(fmtMolec(ver.molec))}</td>`;
       } else if (c.ro){
         const v = contenedor[metric] ?? '';
-        const cls = 'ro' + (isFuera ? ' fuera' : '') + (c.num ? ' num' : '');
+        const cls = 'ro' + marca + (c.num ? ' num' : '');
         tb += `<td class="${cls}" ${attrs}>${esc(v)}</td>`;
       } else {
         const v = contenedor[metric] == null ? '' : contenedor[metric];
-        const cls = (isFuera ? 'fuera ' : '') + (c.num ? 'num' : '');
+        const cls = [marca.trim(), c.num ? 'num' : ''].filter(Boolean).join(' ');
         tb += `<td class="${cls}" ${attrs}>` +
-              `<input class="cell${c.num?' num':''}${isFuera?' fuera':''}" type="text" ` +
+              `<input class="cell${c.num?' num':''}${marca}" type="text" ` +
               `${attrs} value="${escA(v)}"></td>`;
       }
     }
@@ -448,10 +631,41 @@ export function renderAnalisis(){
    * comportamiento en los dos caminos de edicion de esta pestana. */
   if (!t._wired){
     t._wired = true;
+
+    /* --- embudo de filtro de la cabecera ---
+     * En CAPTURA y cortando la propagacion, que resuelve tres cosas de un saque:
+     * el onclick de ordenar del th es de burbuja y nunca llega; el listener de
+     * document de app.js que cierra los paneles al hacer clic afuera tampoco, asi
+     * que el panel recien abierto no se cierra solo; y la grilla no llega a
+     * interpretar el clic. */
+    t.addEventListener('click', e => {
+      const b = e.target.closest('[data-flt]');
+      if (!b) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const f = fltPorColAn.get(b.dataset.flt);
+      if (f) f.inst.abrir(b);
+    }, true);
+
+    /* El panel es position:fixed: se queda quieto mientras la tabla se mueve por
+     * debajo, asi que al scrollear quedaria flotando lejos de su columna. */
+    const cont = t.closest('.scroll');
+    if (cont) cont.addEventListener('scroll', cerrarPanelesAn);
+
     t.addEventListener('input', e => {
       const el = e.target.closest('input.cell'); if (!el) return;
       const fila = t._rows[+el.dataset.row]; if (!fila) return;
       _escribirColumnaAnalisis(fila.analisis, el.dataset.k, el.value, fila.tipo);
+      /* El veredicto que pinta esta fila lo calculo el servidor sobre el valor
+       * ANTERIOR, asi que en cuanto se toca deja de describir lo que se ve: un
+       * pH que se acaba de subir a 3,9 seguiria en verde. Se le saca el color a
+       * la fila entera y no solo a la celda tocada porque las metricas se
+       * cruzan — el pH decide el SO2 molecular, y ese el del SO2 libre.
+       *
+       * Vuelve al guardar: ahi sube la version del documento y la pestaña
+       * repide los veredictos (ver registrarVista al final del archivo). Se
+       * prefiere una celda sin color a una celda con el color equivocado. */
+      if (METRICAS_CON_CRITERIO.has(el.dataset.k)) _descolorarFila(el.closest('tr'));
       markDirty();
     });
     t.addEventListener('click', e => {
@@ -508,22 +722,18 @@ export function renderAnalisis(){
   const fltMes = $('fltAnMes');
   if (fltMes) fltMes.addEventListener('change', () => { _filtAnalisisMes = fltMes.value; renderAnalisis(); });
 
-  /* --- filtros multi (re-montados en cada render porque sec.innerHTML se recreo) --- */
-  if (_descAn.length === 0){
-    initFiltrosAn();
-  } else {
-    const bar = $('fltAnBar');
-    if (bar){
-      bar.innerHTML = '';
-      /* rebuildSiCambio y no rebuild: las opciones de estos tres paneles casi
-       * nunca cambian entre un render y el siguiente (cambian al cargar datos o
-       * al editar un lote, no al tipear en el buscador), y rehacerlas significa
-       * crear un checkbox por lote con analisis — 720 nodos solo el de Lote con
-       * los ~240 de produccion. Si la lista es la misma, solo se resincronizan
-       * los tildes, que no crea ni un nodo. */
-      _instAn.forEach(f => { bar.appendChild(f.el); f.rebuildSiCambio(); });
-    }
-  }
+  /* --- filtros multi ---
+   * Ya no hay que re-montar nada: en modo anclado los paneles cuelgan de <body>,
+   * fuera de #tab-analisis, asi que el sec.innerHTML de arriba no se los lleva.
+   * Lo unico que se rehace en cada render es el embudo del <th>, que es HTML.
+   *
+   * rebuildSiCambio y no rebuild: las opciones de estos cuatro paneles casi
+   * nunca cambian entre un render y el siguiente (cambian al cargar datos o al
+   * editar un lote, no al tipear en el buscador), y rehacerlas significa crear
+   * un checkbox por lote con analisis — 720 nodos solo el de Lote con los ~240
+   * de produccion. Si la lista es la misma, solo se resincronizan los tildes,
+   * que no crea ni un nodo. */
+  _instAn.forEach(f => f.rebuildSiCambio());
 
   /* Se vuelve a colgar el MISMO nodo (no uno nuevo): sec.innerHTML lo
      desprendio del documento, pero conserva su modo y su listener. */
@@ -617,5 +827,11 @@ export function renderAnalisis(){
 
 registrarVista('analisis', () => {
   renderAnalisis();
-  if (!_analisisFlags && !_analisisFlagsLoading) cargarAnalisisFlags();
+  /* Se vuelven a pedir tambien cuando la version del documento avanzo: los
+   * veredictos los calcula el servidor sobre lo guardado, asi que despues de un
+   * Guardar los que estan en memoria son de la version anterior y pintarian una
+   * celda con el criterio de un valor que ya se cambio. */
+  const vDoc = (DATOS().meta || {}).version ?? null;
+  const vencidos = !_analisisFlags || _flagsVersion !== vDoc;
+  if (vencidos && !_analisisFlagsLoading) cargarAnalisisFlags();
 });

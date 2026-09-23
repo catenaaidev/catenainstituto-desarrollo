@@ -284,35 +284,82 @@ export function calcularCorreccionSo2(
   };
 }
 
-/** Métricas de una fila de análisis fuera de criterio (para pintar en rojo). */
-export function flagsAnalisis(analisisRow: Fila | null, eff: Criterios): string[] {
+/**
+ * Veredicto de cada métrica de UNA fila de análisis, para pintar sus celdas.
+ *
+ * Tres estados, no dos, y esa es toda la razón de ser de esta función: una
+ * métrica puede estar `'dentro'`, `'fuera'`, o no tener veredicto — y "no hay
+ * veredicto" NO es "está bien". La celda vacía, el -999 del FOSS, el proyecto
+ * que no lleva SO2 y el SO2 por encima del piso sin pH con qué calcular el
+ * molecular caen todos ahí, y ninguno merece verde. Una métrica sin veredicto
+ * simplemente no aparece en el mapa.
+ *
+ * Las dos listas que consume la pantalla (fuera y dentro) se derivan de acá y
+ * no se calculan por separado a propósito: con dos funciones espejo, invertir
+ * mal un `>` en una de ellas daría una celda verde y roja a la vez, y nadie se
+ * enteraría hasta verla.
+ */
+export type VeredictoMetrica = 'dentro' | 'fuera';
+
+export function veredictosAnalisis(
+  analisisRow: Fila | null,
+  eff: Criterios,
+): Record<string, VeredictoMetrica> {
   const a = analisisRow ?? {};
-  const fuera: string[] = [];
+  const v: Record<string, VeredictoMetrica> = {};
 
   const ph = valido(a.ph);
-  if (ph !== null && phFueraDeCriterio(ph, eff)) fuera.push('ph');
+  if (ph !== null) v.ph = phFueraDeCriterio(ph, eff) ? 'fuera' : 'dentro';
 
+  /* La AV tiene un caso propio: el -999 es el FOSS diciendo "corrí y la lectura
+   * salió fuera de rango". Es fuera de criterio (hubo medición y no sirve), pero
+   * valido() lo convierte en null, así que hay que mirar el crudo antes. */
   const avRaw = num(a.av);
   const avVal = valido(a.av);
-  if (avRaw === INVALIDO || (avVal !== null && avVal > eff.av_max)) fuera.push('av');
+  if (avRaw === INVALIDO) v.av = 'fuera';
+  else if (avVal !== null) v.av = avVal > eff.av_max ? 'fuera' : 'dentro';
 
   const mal = valido(a.malico);
-  if (mal !== null && mal > eff.fml_malico_2ultimas) fuera.push('malico');
+  if (mal !== null) v.malico = mal > eff.fml_malico_2ultimas ? 'fuera' : 'dentro';
 
   const gf = valido(a.gluc_fruc);
-  if (gf !== null && gf > 3.0) fuera.push('gluc_fruc');
+  if (gf !== null) v.gluc_fruc = gf > 3.0 ? 'fuera' : 'dentro';
 
   const az = valido(a.azucar_reductor);
-  if (az !== null && az > eff.fa_azucar_reductor_max) fuera.push('azucar_reductor');
+  if (az !== null) v.azucar_reductor = az > eff.fa_azucar_reductor_max ? 'fuera' : 'dentro';
 
   // El SO2 sale del MISMO veredicto que usa el lote (estadoSo2): dos tramos,
   // so2LibreDe (que descarta el placeholder 0 y mira so2_libre_actual y
   // correccion) y so2_aplica. Aca se juzga una fila sola, sin historial, asi que
   // no hay pH de respaldo: por encima del piso y sin pH propio no hay veredicto
   // y la celda no se pinta, igual que el lote queda 'sin_datos'.
-  if (veredictoSo2(a, eff).fuera === true) fuera.push('so2_libre');
+  //
+  // so2_molecular lleva el MISMO veredicto que so2_libre y no uno propio contra
+  // so2_molecular_objetivo. Parecen lo mismo pero no lo son en el tramo del
+  // piso: con libre 15 y pH 3,2 el molecular da 0,44 (por encima del objetivo)
+  // y un veredicto propio pintaría esa celda de verde mientras la de al lado
+  // sale naranja. La regla de la bodega es de dos tramos y el piso manda, así
+  // que las dos celdas dicen lo mismo.
+  const so2 = veredictoSo2(a, eff).fuera;
+  if (so2 !== null) {
+    const veredicto: VeredictoMetrica = so2 ? 'fuera' : 'dentro';
+    v.so2_libre = veredicto;
+    v.so2_molecular = veredicto;
+  }
 
-  return fuera;
+  return v;
+}
+
+/** Métricas de una fila de análisis fuera de criterio (para pintarlas en naranja). */
+export function flagsAnalisis(analisisRow: Fila | null, eff: Criterios): string[] {
+  const v = veredictosAnalisis(analisisRow, eff);
+  return Object.keys(v).filter((k) => v[k] === 'fuera');
+}
+
+/** Métricas de una fila de análisis DENTRO de criterio (para pintarlas en verde). */
+export function dentroAnalisis(analisisRow: Fila | null, eff: Criterios): string[] {
+  const v = veredictosAnalisis(analisisRow, eff);
+  return Object.keys(v).filter((k) => v[k] === 'dentro');
 }
 
 // ------------------------------------------------------------------ por lote

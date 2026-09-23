@@ -10,7 +10,7 @@ import {
   evaluar,
   normalizarConfig,
   criteriosEfectivos,
-  flagsAnalisis,
+  veredictosAnalisis,
   so2Molecular,
   type Fila,
 } from './motores/fml';
@@ -124,7 +124,13 @@ export function datosFicha(
 }
 
 /**
- * Métricas fuera de criterio de cada fila de análisis, para pintarlas en rojo.
+ * Veredicto de cada fila de análisis, para pintar sus celdas: `fuera` las
+ * métricas que incumplen su criterio y `dentro` las que lo cumplen.
+ *
+ * Las dos listas salen de la MISMA pasada de veredictosAnalisis, así que una
+ * métrica no puede aparecer en las dos. Las que no están en ninguna son las que
+ * no tienen veredicto (sin medición, o sin con qué juzgarla): la pantalla las
+ * deja sin pintar, que no es lo mismo que pintarlas de verde.
  *
  * criteriosEfectivos espera la config APLANADA: pasarle la externa haría que
  * los flags se calcularan con los criterios de fábrica e ignoraran toda la
@@ -137,11 +143,13 @@ export function analisisConFlags(datos: Record<string, unknown>) {
   return ((datos.analisis as Fila[]) ?? []).map((a, i) => {
     const info = lotesPorNum.get(String(a.lote)) ?? {};
     const eff = criteriosEfectivos(config, info.variedad, info.proyecto);
+    const v = veredictosAnalisis(a, eff);
     return {
       idx: i,
       lote: a.lote,
       fecha_analisis: a.fecha_analisis,
-      fuera: flagsAnalisis(a, eff),
+      fuera: Object.keys(v).filter((k) => v[k] === 'fuera'),
+      dentro: Object.keys(v).filter((k) => v[k] === 'dentro'),
       so2_molec_calc: so2Molecular(a.so2_libre, a.ph),
     };
   });

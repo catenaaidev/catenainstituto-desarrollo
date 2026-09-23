@@ -18,6 +18,7 @@ import {
   objetivoSo2Libre,
   calcularCorreccionSo2,
   flagsAnalisis,
+  dentroAnalisis,
   detectarInoculado,
   type Criterios,
 } from '../src/lotes/motores/fml';
@@ -541,6 +542,68 @@ describe('flags de una fila de análisis', () => {
     // 30 > piso 20 y no hay pH: no se puede calcular el molecular, no hay
     // veredicto. El lote tambien queda 'sin_datos' (ver estadoSo2).
     expect(flagsAnalisis({ so2_libre: 30.0 }, eff())).not.toContain('so2_libre');
+  });
+});
+
+// La pantalla de Analisis pinta VERDE lo que esta dentro de criterio, asi que
+// ya no alcanza con saber que esta fuera: hace falta distinguir "cumple" de "no
+// hay con que juzgarlo". Una metrica sin veredicto no puede salir verde.
+describe('métricas dentro de criterio', () => {
+  const eff = () => criteriosEfectivos(cfg(), 'Malbec');
+
+  it('una métrica está en dentro o en fuera, nunca en las dos', () => {
+    const fila = {
+      ph: 3.9, av: 0.9, malico: 0.1, gluc_fruc: 1.0,
+      azucar_reductor: 1.0, so2_libre: 50,
+    };
+    const dentro = dentroAnalisis(fila, eff());
+    const fuera = flagsAnalisis(fila, eff());
+    expect(dentro.filter((k) => fuera.includes(k))).toEqual([]);
+    // pH y AV altos; málico, gluc+fruc, azúcar y SO2 en criterio.
+    expect(fuera.sort()).toEqual(['av', 'ph']);
+    expect(dentro.sort()).toEqual([
+      'azucar_reductor', 'gluc_fruc', 'malico', 'so2_libre', 'so2_molecular',
+    ]);
+  });
+
+  it('sin medición no hay veredicto: ni dentro ni fuera', () => {
+    expect(dentroAnalisis({}, eff())).toEqual([]);
+    expect(dentroAnalisis({ ph: null, av: null, malico: null }, eff())).toEqual([]);
+  });
+
+  it('la AV inválida (-999) es fuera, no dentro', () => {
+    expect(dentroAnalisis({ av: -999 }, eff())).not.toContain('av');
+    expect(flagsAnalisis({ av: -999 }, eff())).toContain('av');
+  });
+
+  it('el SO2 sin pH por encima del piso no sale verde', () => {
+    // El caso que hace falta el tercer estado: 30 > piso, pero sin pH no hay
+    // molecular. No esta fuera, y tampoco se puede afirmar que este bien.
+    const fila = { so2_libre: 30.0 };
+    expect(flagsAnalisis(fila, eff())).not.toContain('so2_libre');
+    expect(dentroAnalisis(fila, eff())).not.toContain('so2_libre');
+  });
+
+  it('el proyecto que no lleva SO2 no pinta esa celda de ningún color', () => {
+    const sinSo2 = criteriosEfectivos(
+      { default: { ...CRITERIOS_DEFAULT }, por_proyecto: { Base: { so2_aplica: 'no' } } },
+      'Malbec',
+      'Base',
+    );
+    expect(flagsAnalisis({ so2_libre: 5, ph: 3.5 }, sinSo2)).not.toContain('so2_libre');
+    expect(dentroAnalisis({ so2_libre: 5, ph: 3.5 }, sinSo2)).not.toContain('so2_libre');
+  });
+
+  it('so2_molecular acompaña a so2_libre incluso en el tramo del piso', () => {
+    // libre 15 <= piso 20 => fuera. El molecular a pH 3,2 da 0,44, POR ENCIMA
+    // del objetivo 0,38: un veredicto propio lo pintaria verde al lado de un
+    // so2_libre naranja. Las dos celdas tienen que decir lo mismo.
+    const fila = { so2_libre: 15.0, ph: 3.2 };
+    expect(so2Molecular(15.0, 3.2)!).toBeGreaterThan(0.38);
+    expect(flagsAnalisis(fila, eff()).sort()).toEqual(['so2_libre', 'so2_molecular']);
+    // El pH 3,2 de la fila sí está en criterio y sale verde; lo que importa es
+    // que ninguna de las dos celdas de SO2 lo esté.
+    expect(dentroAnalisis(fila, eff())).toEqual(['ph']);
   });
 });
 
