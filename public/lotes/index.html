@@ -559,6 +559,27 @@
   .orden-hoja .oh-mapa-pie{display:block;margin:8px auto 0;max-width:90%;text-align:center;font-style:italic;font:inherit;color:#111;border:none;border-bottom:1px dashed #bbb;background:transparent;padding:2px 3px}
   .orden-hoja .oh-mapa-pie:focus{border-bottom-color:#e08a2b;outline:none}
   .orden-hoja.oh-mapa .oh-banda{margin-bottom:12px}
+  /* OT de trasiego (formato RCI 08 con pasos) */
+  .orden-hoja .ot-paso{display:flex;gap:8px;align-items:baseline;font-size:13px;padding:3px 0;border-bottom:1px dotted #ccc}
+  .orden-hoja .ot-paso .ot-ok{margin-left:auto;font-weight:700;white-space:nowrap}
+  .orden-hoja .ot-caja{font-size:15px;line-height:1}
+  .orden-hoja .ot-destaca{background:#e3f4e3;font-weight:700}
+  .orden-hoja .ot-dato{font-size:13px;padding:6px 0}
+  .orden-hoja .ot-linea{display:inline-block;min-width:180px;border-bottom:1px solid #111}
+  .orden-hoja .ot-subt{font-weight:700;font-size:13px;margin-top:8px}
+  .orden-hoja .ot-ids{font-size:13px;margin:8px 0 4px}
+  .orden-hoja .ot-tabla{margin:4px 0 10px}
+  .orden-hoja .ot-tabla th,.orden-hoja .ot-tabla td{border:1px solid #999;padding:3px 6px}
+  .orden-hoja .ot-tabla .ot-check{width:36px;text-align:center}
+  .orden-hoja .ot-total td{font-weight:700}
+  .orden-hoja .ot-chica{font-size:11px}
+  .orden-hoja.ot-rotulos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .ot-rotulo{border:2px solid #111;padding:14px;position:relative;min-height:120px;page-break-inside:avoid}
+  .ot-rot-lote{font-size:40px;font-weight:700}
+  .ot-rot-id{font-size:16px}
+  .ot-rot-n{position:absolute;top:8px;right:12px;font-size:22px;font-weight:700}
+  .ote-lote{margin-bottom:8px}
+  .ote-barriles{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0;font-size:13px}
 
   /* Movimiento pendiente: un plan, no un hecho. Se marca la fila entera
      porque el operario y quien carga tienen que distinguirlo de un vistazo. */
@@ -607,6 +628,8 @@
     body.printing-ot-mov #tab-movimientos > *:not(#otMovHoja){display:none!important}
     body.printing-ot-mov #otMovHoja{display:block!important}
     body.printing-ot-mov .orden-hoja{box-shadow:none;border-radius:0;max-width:none;padding:0}
+    /* OT de trasiego: varias hojas (OT, planilla, rotulos) en #otMovHoja. */
+    #otMovHoja .orden-hoja + .orden-hoja{page-break-before:always;margin-top:0}
 
     /* ---- @media print: hoja de chequeo fisico (subsistema J) ---- */
     body.printing-cruce header,

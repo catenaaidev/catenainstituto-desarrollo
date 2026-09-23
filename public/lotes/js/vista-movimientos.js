@@ -8,6 +8,7 @@ import { toggleSort, sortRows, opcionesValores, matchValor,
 import { activarGrilla, adaptadorCols } from './grilla.js';
 import { esEjecutado, PENDIENTE, EJECUTADO, proximoNumeroOT } from './ot-movimientos.js';
 import { fmtFecha } from './fechas.js';
+import { abrirEmitirOT } from './vista-ot-emitir.js';
 
 /* --- tipos validos --- */
 const TIPOS_MOV = ['descube', 'trasiego', 'relleno', 'traspaso', 'renombre', 'salida'];
@@ -411,7 +412,10 @@ export function renderMovimientos(){
     renderMovimientos();
   });
 
-  $('btnEmitirOT').addEventListener('click', () => _abrirModalOT(null));
+  // Emitir usa el formato RCI 08 con plantillas y barriles del Mapa. El modal
+  // viejo (_abrirModalOT) queda solo para CONFIRMAR movimientos sueltos que no
+  // tienen una OT de trasiego detrás.
+  $('btnEmitirOT').addEventListener('click', () => abrirEmitirOT(renderMovimientos));
 
   /* Grilla tipo planilla, con TRES reglas que solo la vista puede aplicar:
    *
