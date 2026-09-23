@@ -32,11 +32,13 @@ export const num  = v => { if (v===''||v==null) return null; const n=parseFloat(
 /* ---------- estado guardar ---------- */
 export function markDirty(){
   dirty = true;
+  invalidarVistas();
   $('btnGuardar').disabled = false;
   const s = $('statusBar'); s.textContent = '● Cambios sin guardar'; s.className = 'status dirty';
 }
 export function markSaved(){
   dirty = false;
+  invalidarVistas();
   $('btnGuardar').disabled = true;
   const s = $('statusBar');
   s.textContent = '✓ Guardado (v' + DATOS().meta.version + ')';
@@ -116,6 +118,40 @@ const _vistas = {};
 export function registrarVista(nombre, fn){ _vistas[nombre] = fn; }
 export function vistaDe(nombre){ return _vistas[nombre]; }
 
+/* ---------- cache de render por pestaña ----------
+ * Rearmar una pestaña cuesta caro con los datos reales: Analisis arma ~3.500
+ * filas con un <input> por celda (2,8 s), Lotes y Movimientos ~1,5 s cada una.
+ * Antes eso se pagaba en CADA clic de pestaña aunque nada hubiera cambiado.
+ *
+ * Ahora cada pestaña recuerda la "generacion" de datos con la que se dibujo, y
+ * volver a ella sin cambios de por medio no la rearma: el DOM que quedo sigue
+ * siendo correcto. La generacion avanza con todo lo que puede cambiar lo que
+ * se ve: markDirty (cualquier edicion), markSaved (sube la version), la carga
+ * de DATOS y la llegada de /api/dashboard.
+ *
+ * Las que dependen de algo que no pasa por aca se dibujan siempre: la ficha
+ * (depende del lote elegido), el cruce y la orden de correccion (leen el Mapa
+ * de Barriles del servidor), y cargar/config (baratas y con estado propio).
+ * Los repintados que una vista hace sola (filtros, orden, buscador) no pasan
+ * por este cache: siguen igual que antes. */
+const _SIEMPRE = new Set(['ficha', 'cruce', 'ordencorr', 'cargar', 'config']);
+let _gen = 1;
+const _genDibujada = {};
+export function invalidarVistas(){ _gen++; }
+/** Obliga a rearmar UNA pestaña la proxima vez que se muestre. */
+export function invalidarVista(nombre){ delete _genDibujada[nombre]; }
+export function vistaActiva(){
+  const b = document.querySelector('.tabs button.active');
+  return b ? b.dataset.v : 'dashboard';
+}
+function _dibujar(nombre, forzar){
+  const fn = _vistas[nombre];
+  if (!fn || !DATOS()) return;
+  if (!forzar && !_SIEMPRE.has(nombre) && _genDibujada[nombre] === _gen) return;
+  _genDibujada[nombre] = _gen;
+  fn();
+}
+
 /* Igual que vistaDe pero falla fuerte. Para los llamadores que dan por hecho
  * que la vista existe: si un nombre esta mal escrito o falta el import en
  * app.js, vistaDe() devuelve undefined y el undefined() se lo come el catch
@@ -149,7 +185,7 @@ export async function cargarDatos(){
     // este evento para limpiarse; no se importa directamente para evitar el
     // ciclo grilla->tabla->nucleo->grilla.
     document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
-    markSaved();
+    markSaved();   // tambien invalida el cache de pestañas
     _inits.forEach(fn => fn());
     renderActivo();
   } catch(e) {
@@ -215,15 +251,11 @@ export function mostrarTab(nombre){
   document.querySelectorAll('.view').forEach(s => s.classList.remove('active'));
   const sec = $('tab-' + nombre);
   if (sec) sec.classList.add('active');
-  const fn = vistaDe(nombre);
-  if (fn && DATOS()) fn();
+  _dibujar(nombre, false);
 }
 
 export function renderActivo(){
-  const activo = document.querySelector('.tabs button.active');
-  const nombre = activo ? activo.dataset.v : 'dashboard';
-  const fn = vistaDe(nombre);
-  if (fn && DATOS()) fn();
+  _dibujar(vistaActiva(), true);
 }
 
 /* ---------- cache del dashboard (compartida por lotes, dashboard, fml y orden) ---------- */
@@ -248,12 +280,15 @@ export async function cargarDashboard(){
     for (const e of (j.lotes||[])){
       _dashMap.set(String(e.lote), { alarmas: e.alarmas||[], vencido: e.vencido||false });
     }
-    _vistaObligatoria('lotes')();      // repintar con colores
-    _vistaObligatoria('dashboard')();  // rellenar dashboard si está activo (o prepararlo)
-    // si la pestaña Orden de muestras está activa, repintarla
-    if (document.querySelector('.tabs button[data-v="orden"].active')) _vistaObligatoria('orden')();
-    // si la pestaña Tablero FML está activa, repintarla
-    if (document.querySelector('.tabs button[data-v="tablero"].active')) _vistaObligatoria('tablero')();
+    /* Solo se repinta la pestaña que se esta viendo. Antes se rearmaban
+     * siempre Lotes y Dashboard aunque estuvieran ocultas (Lotes sola son
+     * ~18.000 nodos): ahora las demas quedan marcadas como viejas y se
+     * dibujan, ya con los colores del motor, cuando alguien las abre. */
+    _vistaObligatoria('lotes');
+    _vistaObligatoria('dashboard');
+    invalidarVistas();
+    const activa = vistaActiva();
+    if (['lotes', 'dashboard', 'orden', 'tablero'].includes(activa)) _dibujar(activa, true);
   } catch(e) {
     // Sin dashboard la app sigue andando, solo se omiten los colores. Pero se
     // deja rastro: si lo que fallo fue una vista y no la red, el silencio

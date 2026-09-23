@@ -79,11 +79,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const u = usuarioActual();
   $('usuario').textContent = '👤 ' + (u || '(sin nombre)');
 
-  /* cargar todo */
+  /* cargar todo. /datos y /dashboard salen juntos: antes el dashboard recien
+   * se pedia cuando terminaba /datos, y la pantalla de inicio esperaba las dos
+   * idas y vueltas en fila. Si el dashboard llega primero no pasa nada:
+   * cargarDashboard no dibuja sin DATOS(), y cargarDatos lo dibuja al llegar. */
+  const dash = cargarDashboard();
   await cargarDatos();
   refrescarAvisos();
   refrescarInfo();
-  cargarDashboard();
+  await dash;
 
   /* refrescar avisos cada 60 s */
   setInterval(refrescarAvisos, 60000);

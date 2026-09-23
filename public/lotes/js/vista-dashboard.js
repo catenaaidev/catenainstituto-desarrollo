@@ -170,7 +170,6 @@ export function renderDashboard(){
     $('kpiActivos').textContent = '—';
     $('kpiVencidos').textContent = '—';
     $('kpiIdeal').textContent = '—';
-    $('kpiAnTotal').textContent  = '—';
     $('kpiAnHechos').textContent = '—';
     $('kpiAnFaltan').textContent = '—';
     $('tAlarmasBody').innerHTML = '<tr><td colspan="4" style="color:var(--muted)">Cargando datos…</td></tr>';
@@ -196,8 +195,9 @@ export function renderDashboard(){
   $('kpiAv').textContent       = res ? res.avAlta     : '—';
 
   /* Analisis segun la frecuencia. Se cuenta por LOTE y sobre el estado de hoy:
-   * cada lote activo debe un analisis, y o esta al dia o no. Los tres numeros
-   * cierran (hechos + faltan = total), que es justo lo que se pidio. Sale todo
+   * cada lote activo debe un analisis, y o esta al dia o no. Los numeros
+   * cierran (hechos + faltan = lotes activos): por eso ya no hay tarjeta de
+   * "Análisis totales", repetia la de lotes activos. Sale todo
    * de d.lotes, que ya trae las alarmas del motor FML: sin llamadas nuevas al
    * servidor y sin reglas inventadas aca. */
   const lotesAn   = d.lotes || [];
@@ -205,12 +205,10 @@ export function renderDashboard(){
   const anFaltan  = lotesAn.filter(faltaAnalizar).length;
   const anHechos  = anTotal - anFaltan;
 
-  $('kpiAnTotal').textContent  = anTotal;
   $('kpiAnHechos').textContent = anHechos;
   $('kpiAnFaltan').textContent = anFaltan;
 
   const pctAn = n => (anTotal ? Math.round(n * 100 / anTotal) : 0) + ' % de los lotes';
-  $('kpiAnTotalSub').textContent  = 'Un análisis por lote activo';
   $('kpiAnHechosSub').textContent = anTotal ? pctAn(anHechos) : '';
   $('kpiAnFaltanSub').textContent = anFaltan
     ? pctAn(anFaltan) + ' — vencidos o sin análisis'

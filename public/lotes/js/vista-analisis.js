@@ -1,7 +1,8 @@
 /* ===== Lotes CIW — pestana Analisis ===== */
 'use strict';
 
-import { $, esc, escA, DATOS, markDirty, registrarVista, irALote } from './nucleo.js';
+import { $, esc, escA, DATOS, markDirty, registrarVista, registrarInit, irALote,
+         vistaActiva, invalidarVista } from './nucleo.js';
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla } from './grilla.js';
@@ -162,7 +163,12 @@ async function cargarAnalisisFlags(){
       });
     }
     _flagsVersion = (DATOS().meta || {}).version ?? null;
-    renderAnalisis();  // repintar con colores una vez que lleguen los flags
+    /* Repintar con colores una vez que lleguen los flags, pero solo si la
+     * pestaña se esta viendo: con los datos reales cada render de esta tabla
+     * son ~3 s. Si esta oculta (el prefetch del arranque), queda marcada como
+     * vieja y se dibuja UNA vez, ya con colores, cuando alguien la abre. */
+    if (vistaActiva() === 'analisis') renderAnalisis();
+    else invalidarVista('analisis');
   } catch(e) { /* sin flags: los colores se omiten */ }
   finally { _analisisFlagsLoading = false; }
 }
@@ -901,6 +907,17 @@ export function renderAnalisis(){
     }
   }
 }
+
+/* Prefetch de los veredictos al arrancar. Sin esto la primera visita a la
+ * pestaña dibujaba la tabla DOS veces: una sin colores y otra cuando llegaba
+ * /api/analisis. Se pide con el navegador ocioso para no competir con /datos y
+ * /dashboard, que son los que pinta la pantalla de inicio. */
+registrarInit(() => {
+  if (_analisisFlags && _flagsVersion === ((DATOS().meta || {}).version ?? null)) return;
+  const pedir = () => { if (!_analisisFlagsLoading) cargarAnalisisFlags(); };
+  if (window.requestIdleCallback) requestIdleCallback(pedir, { timeout: 3000 });
+  else setTimeout(pedir, 1500);
+});
 
 registrarVista('analisis', () => {
   renderAnalisis();
