@@ -143,7 +143,12 @@ export function analisisConFlags(datos: Record<string, unknown>) {
   return ((datos.analisis as Fila[]) ?? []).map((a, i) => {
     const info = lotesPorNum.get(String(a.lote)) ?? {};
     const eff = criteriosEfectivos(config, info.variedad, info.proyecto);
-    const v = veredictosAnalisis(a, eff);
+    /* El lote va entero y no solo su variedad: la decision de FML puede venir
+     * de su propia ficha (hace_fml / fml_excluida) y pisar a la de config, y de
+     * eso depende si el málico de esta fila se juzga o no. Un analisis cuyo
+     * lote ya no existe queda con {}, que fmlExcluida trata como "sin decision
+     * propia" y resuelve por la variedad. */
+    const v = veredictosAnalisis(a, eff, info);
     return {
       idx: i,
       lote: a.lote,

@@ -32,6 +32,9 @@ import {
   tieneAnalisisValido,
   decisionFmlPresente,
   veredictoSo2,
+  fmlExcluida,
+  so2Aplica,
+  so2LibreDe,
   type Fila,
   type ResultadoCaida,
 } from './fml-condiciones';
@@ -289,10 +292,20 @@ export function calcularCorreccionSo2(
  *
  * Tres estados, no dos, y esa es toda la razón de ser de esta función: una
  * métrica puede estar `'dentro'`, `'fuera'`, o no tener veredicto — y "no hay
- * veredicto" NO es "está bien". La celda vacía, el -999 del FOSS, el proyecto
- * que no lleva SO2 y el SO2 por encima del piso sin pH con qué calcular el
- * molecular caen todos ahí, y ninguno merece verde. Una métrica sin veredicto
- * simplemente no aparece en el mapa.
+ * veredicto" NO es "está bien". La celda vacía, el -999 del FOSS y el SO2 por
+ * encima del piso sin pH con qué calcular el molecular caen todos ahí, y
+ * ninguno merece verde. Una métrica sin veredicto no aparece en el mapa.
+ *
+ * OJO con la diferencia entre "no se puede juzgar" y "no hay nada que
+ * corregir". Un málico alto en una variedad que no hace FML, o un SO2 bajo en
+ * un proyecto que no lleva sulfitado, NO son casos sin veredicto: son casos
+ * donde el criterio no aplica y por lo tanto está todo bien. Esos van 'dentro'
+ * (verde). Pintarlos de naranja mandaba a corregir algo que es correcto, y
+ * dejarlos sin color hacía dudar de si faltaba el dato.
+ *
+ * `lote` hace falta justamente para eso: la decisión de FML y la de SO2 son
+ * propiedades del lote y del proyecto, no de la fila de análisis. Sin él, el
+ * málico se juzga como si todas las variedades hicieran FML.
  *
  * Las dos listas que consume la pantalla (fuera y dentro) se derivan de acá y
  * no se calculan por separado a propósito: con dos funciones espejo, invertir
@@ -304,6 +317,7 @@ export type VeredictoMetrica = 'dentro' | 'fuera';
 export function veredictosAnalisis(
   analisisRow: Fila | null,
   eff: Criterios,
+  lote: Fila | null = null,
 ): Record<string, VeredictoMetrica> {
   const a = analisisRow ?? {};
   const v: Record<string, VeredictoMetrica> = {};
@@ -319,8 +333,21 @@ export function veredictosAnalisis(
   if (avRaw === INVALIDO) v.av = 'fuera';
   else if (avVal !== null) v.av = avVal > eff.av_max ? 'fuera' : 'dentro';
 
+  /* El malico solo se juzga si el lote hace FML. En una variedad blanca el
+   * malico alto es lo ESPERADO — no hay malolactica que lo baje — asi que
+   * marcarlo fuera de criterio mandaba a corregir algo que esta bien.
+   *
+   * La decision sale de fmlExcluida(), la misma que usa estadoFml para el
+   * tablero, y por eso hace falta el lote: no alcanza con eff.hace_fml de la
+   * config, porque la ficha del lote la pisa en las dos direcciones (un
+   * Chardonnay con hace_fml 'si' SI se sigue). Con el criterio copiado, esta
+   * celda y el tablero podian decir cosas distintas del mismo lote. */
   const mal = valido(a.malico);
-  if (mal !== null) v.malico = mal > eff.fml_malico_2ultimas ? 'fuera' : 'dentro';
+  if (mal !== null) {
+    v.malico = fmlExcluida(lote ?? {}, eff).excluida
+      ? 'dentro'
+      : mal > eff.fml_malico_2ultimas ? 'fuera' : 'dentro';
+  }
 
   const gf = valido(a.gluc_fruc);
   if (gf !== null) v.gluc_fruc = gf > 3.0 ? 'fuera' : 'dentro';
@@ -340,25 +367,46 @@ export function veredictosAnalisis(
   // y un veredicto propio pintaría esa celda de verde mientras la de al lado
   // sale naranja. La regla de la bodega es de dos tramos y el piso manda, así
   // que las dos celdas dicen lo mismo.
-  const so2 = veredictoSo2(a, eff).fuera;
-  if (so2 !== null) {
-    const veredicto: VeredictoMetrica = so2 ? 'fuera' : 'dentro';
-    v.so2_libre = veredicto;
-    v.so2_molecular = veredicto;
+  const libre = so2LibreDe(a);
+  let vSo2: VeredictoMetrica | null = null;
+  if (!so2Aplica(eff)) {
+    // El proyecto no lleva sulfitado: no hay nivel de SO2 que haya que
+    // corregir, asi que lo medido esta bien. Sin medicion no se pinta nada:
+    // "no hay criterio" no vuelve verde a una celda vacia.
+    vSo2 = libre !== null ? 'dentro' : null;
+  } else {
+    const fuera = veredictoSo2(a, eff).fuera;
+    vSo2 = fuera === null ? null : fuera ? 'fuera' : 'dentro';
+  }
+  if (vSo2 !== null) {
+    v.so2_libre = vSo2;
+    /* El molecular acompaña al libre, pero solo si hay un numero que mostrar.
+     * Sin pH no se puede calcular y la celda sale vacia: pintarla (de cualquier
+     * color) seria dar un veredicto sobre un casillero en blanco. Pasaba en el
+     * tramo del piso, donde veredictoSo2 dice 'fuera' sin necesitar el pH. */
+    if (so2Molecular(a.so2_libre, a.ph) !== null) v.so2_molecular = vSo2;
   }
 
   return v;
 }
 
 /** Métricas de una fila de análisis fuera de criterio (para pintarlas en naranja). */
-export function flagsAnalisis(analisisRow: Fila | null, eff: Criterios): string[] {
-  const v = veredictosAnalisis(analisisRow, eff);
+export function flagsAnalisis(
+  analisisRow: Fila | null,
+  eff: Criterios,
+  lote: Fila | null = null,
+): string[] {
+  const v = veredictosAnalisis(analisisRow, eff, lote);
   return Object.keys(v).filter((k) => v[k] === 'fuera');
 }
 
 /** Métricas de una fila de análisis DENTRO de criterio (para pintarlas en verde). */
-export function dentroAnalisis(analisisRow: Fila | null, eff: Criterios): string[] {
-  const v = veredictosAnalisis(analisisRow, eff);
+export function dentroAnalisis(
+  analisisRow: Fila | null,
+  eff: Criterios,
+  lote: Fila | null = null,
+): string[] {
+  const v = veredictosAnalisis(analisisRow, eff, lote);
   return Object.keys(v).filter((k) => v[k] === 'dentro');
 }
 

@@ -584,14 +584,66 @@ describe('métricas dentro de criterio', () => {
     expect(dentroAnalisis(fila, eff())).not.toContain('so2_libre');
   });
 
-  it('el proyecto que no lleva SO2 no pinta esa celda de ningún color', () => {
+  it('el málico de una variedad que no hace FML sale verde, no naranja', () => {
+    // Chardonnay tiene hace_fml 'no' en cfg(). Un málico de 2,0 es cuatro veces
+    // el umbral, pero en una blanca sin malolactica es lo ESPERADO: no hay nada
+    // que corregir, asi que va 'dentro'.
+    const blanca = criteriosEfectivos(cfg(), 'Chardonnay');
+    const fila = { malico: 2.0 };
+    expect(flagsAnalisis(fila, blanca, { variedad: 'Chardonnay' })).not.toContain('malico');
+    expect(dentroAnalisis(fila, blanca, { variedad: 'Chardonnay' })).toContain('malico');
+    // La misma medicion en una tinta que si hace FML sigue saliendo naranja.
+    expect(flagsAnalisis(fila, eff(), { variedad: 'Malbec' })).toContain('malico');
+  });
+
+  it('la ficha del lote pisa a la config en las dos direcciones', () => {
+    const blanca = criteriosEfectivos(cfg(), 'Chardonnay');
+    const fila = { malico: 2.0 };
+    // Chardonnay que SI hace FML por decision del lote: vuelve a juzgarse.
+    expect(flagsAnalisis(fila, blanca, { hace_fml: 'si' })).toContain('malico');
+    // Malbec excluido a mano: deja de juzgarse aunque la variedad haga FML.
+    expect(dentroAnalisis(fila, eff(), { hace_fml: 'no' })).toContain('malico');
+    expect(dentroAnalisis(fila, eff(), { fml_excluida: 'si' })).toContain('malico');
+  });
+
+  it('sin lote, el málico se juzga por la variedad', () => {
+    // El caso de un analisis cuyo lote se borro: no hay decision propia, manda
+    // la config. Y la firma vieja (sin lote) sigue compilando.
+    const blanca = criteriosEfectivos(cfg(), 'Chardonnay');
+    expect(dentroAnalisis({ malico: 2.0 }, blanca)).toContain('malico');
+    expect(flagsAnalisis({ malico: 2.0 }, eff())).toContain('malico');
+  });
+
+  it('el SO2 de un proyecto sin sulfitado sale verde', () => {
     const sinSo2 = criteriosEfectivos(
       { default: { ...CRITERIOS_DEFAULT }, por_proyecto: { Base: { so2_aplica: 'no' } } },
       'Malbec',
       'Base',
     );
-    expect(flagsAnalisis({ so2_libre: 5, ph: 3.5 }, sinSo2)).not.toContain('so2_libre');
-    expect(dentroAnalisis({ so2_libre: 5, ph: 3.5 }, sinSo2)).not.toContain('so2_libre');
+    // 5 ppm esta muy por debajo del piso, pero el proyecto no lleva SO2.
+    const dentro = dentroAnalisis({ so2_libre: 5, ph: 3.5 }, sinSo2);
+    expect(dentro).toContain('so2_libre');
+    expect(dentro).toContain('so2_molecular');
+    expect(flagsAnalisis({ so2_libre: 5, ph: 3.5 }, sinSo2)).toEqual([]);
+  });
+
+  it('sin medición, el proyecto sin sulfitado no pinta la celda', () => {
+    // "No hay criterio" no vuelve verde a un casillero vacio.
+    const sinSo2 = criteriosEfectivos(
+      { default: { ...CRITERIOS_DEFAULT }, por_proyecto: { Base: { so2_aplica: 'no' } } },
+      'Malbec',
+      'Base',
+    );
+    expect(dentroAnalisis({ ph: 3.5 }, sinSo2)).not.toContain('so2_libre');
+  });
+
+  it('el molecular no se pinta si no se puede calcular', () => {
+    // libre 15 <= piso => so2_libre fuera. Pero sin pH no hay molecular que
+    // mostrar, y una celda vacia no merece color.
+    const fila = { so2_libre: 15.0 };
+    expect(flagsAnalisis(fila, eff())).toContain('so2_libre');
+    expect(flagsAnalisis(fila, eff())).not.toContain('so2_molecular');
+    expect(dentroAnalisis(fila, eff())).not.toContain('so2_molecular');
   });
 
   it('so2_molecular acompaña a so2_libre incluso en el tramo del piso', () => {

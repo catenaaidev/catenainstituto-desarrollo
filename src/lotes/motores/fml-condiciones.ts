@@ -238,7 +238,10 @@ function ultimoPh(analisis: Fila[]): [number | null, string | null] {
   return [null, null];
 }
 
-function so2Aplica(eff: Criterios): boolean {
+/** Si a este proyecto se le agrega SO2. Lo usan veredictoSo2 y, para pintar la
+ *  celda, veredictosAnalisis: en un proyecto sin sulfitado no hay nivel de SO2
+ *  que este "mal". */
+export function so2Aplica(eff: Criterios): boolean {
   return String(eff.so2_aplica ?? 'si').trim().toLowerCase() !== 'no';
 }
 
@@ -481,23 +484,36 @@ function textoDe(v: unknown): string {
 }
 
 /**
+ * Si este lote queda FUERA del seguimiento de FML, y por que.
+ *
  * La variedad define el caso general y el lote es la excepcion puntual, asi que
- * lo que diga la fila del lote pisa a lo que diga config.
+ * lo que diga la fila del lote pisa a lo que diga config — en las DOS
+ * direcciones: un Chardonnay (variedad configurada con hace_fml 'no') que trae
+ * hace_fml 'si' en su ficha SI se sigue.
+ *
+ * Vive aparte de estadoFml porque tiene un segundo consumidor que no tiene el
+ * historial de analisis a mano: veredictosAnalisis, que necesita saber si la
+ * celda de malico se puede juzgar. Con la regla copiada en los dos lados, una
+ * pantalla terminaria marcando fuera de criterio un malico que el tablero
+ * considera excluido.
+ *
+ * Los nombres de origen son los del tablero (columna fml_excluida_origen).
  */
-export function estadoFml(analisis: Fila[], eff: Criterios, lote: Fila) {
-  const decisionLote = textoDe(lote.hace_fml);
-  const excluidaLote = textoDe(lote.fml_excluida);
+export function fmlExcluida(lote: Fila, eff: Criterios): {
+  excluida: boolean;
+  origen: 'lote' | 'variedad_blanca' | 'sin_dato';
+} {
+  const decisionLote = textoDe((lote ?? {}).hace_fml);
+  const excluidaLote = textoDe((lote ?? {}).fml_excluida);
 
-  // Los nombres de origen son los del tablero (columna fml_excluida_origen).
-  let excluida = false;
-  let origen: 'lote' | 'variedad_blanca' | 'sin_dato' = 'sin_dato';
-  if (excluidaLote === 'si' || decisionLote === 'no') {
-    excluida = true; origen = 'lote';
-  } else if (decisionLote === 'si' || excluidaLote === 'no') {
-    origen = 'lote';
-  } else if (textoDe(eff.hace_fml) === 'no') {
-    excluida = true; origen = 'variedad_blanca';
-  }
+  if (excluidaLote === 'si' || decisionLote === 'no') return { excluida: true, origen: 'lote' };
+  if (decisionLote === 'si' || excluidaLote === 'no') return { excluida: false, origen: 'lote' };
+  if (textoDe(eff.hace_fml) === 'no') return { excluida: true, origen: 'variedad_blanca' };
+  return { excluida: false, origen: 'sin_dato' };
+}
+
+export function estadoFml(analisis: Fila[], eff: Criterios, lote: Fila) {
+  const { excluida, origen } = fmlExcluida(lote, eff);
   if (excluida) return { estado: 'excluida', origen, desde: null };
 
   const malicos = ordenarPorFecha(analisis)
