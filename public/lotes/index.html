@@ -100,6 +100,26 @@
    * que es media docena de columnas mas a la vista. */
   #tab-lotes,#tab-analisis{max-width:none;margin-left:-10px;margin-right:-10px}
   .view.active{display:block;animation:fadeUp .3s ease}
+  /* En pantalla las pestañas ocultas NO van con display:none: display:none tira
+   * el layout calculado, y al volver a mostrarla el navegador rehace la tabla
+   * entera. Con los datos reales eso era 1,9 s en Analisis (28.000 inputs) y
+   * ~0,7 s en Lotes y Movimientos, en cada clic de pestaña aunque no hubiera
+   * cambiado nada. content-visibility:hidden la saca de la pantalla igual (no
+   * se pinta, no se enfoca, no ocupa lugar) pero conserva ese layout, y
+   * volver a ella pasa a costar un par de cientos de ms.
+   *
+   * Solo en las cuatro pestañas pesadas, no en todas: lo oculto con
+   * content-visibility no es gratis, cada cambio de layout de la pagina paga un
+   * poco por cada nodo guardado. Medido: con las trece asi, pasar entre dos
+   * pestañas livianas costaba ~100 ms; con estas cuatro, ~20 ms, igual que con
+   * display:none.
+   *
+   * Solo en screen: las reglas body.printing-* de abajo cuentan con que las
+   * pestañas que no se imprimen esten en display:none. */
+  @media screen{
+    #tab-analisis,#tab-lotes,#tab-movimientos,#tab-so2{display:block;content-visibility:hidden}
+    #tab-analisis.active,#tab-lotes.active,#tab-movimientos.active,#tab-so2.active{content-visibility:visible}
+  }
   @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   /* ---- controles ---- */
   .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
@@ -837,7 +857,9 @@ tbody tr{transition:background .12s var(--ease)}
    ===================================================================== */
 
 /* ---- KPIs ---- */
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:14px}
+/* Siete tarjetas en una sola fila en un monitor normal; en pantallas angostas
+   bajan solas a dos o tres filas. */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .kpi-card{position:relative;overflow:hidden;border-radius:var(--r-lg);padding:18px 20px 17px;
   border-color:var(--line-soft);box-shadow:var(--sh-sm);min-width:0;
   transition:box-shadow .2s var(--ease),transform .2s var(--ease)}
@@ -984,6 +1006,16 @@ table.hm td.hm-c{padding:0}
         <div class="kpi-lbl">Lotes activos</div>
         <div class="kpi-sub" id="kpiActivosSub"></div>
       </div>
+      <div class="kpi-card kpi-ok">
+        <div class="kpi-val" id="kpiAnHechos">—</div>
+        <div class="kpi-lbl">Análisis completados</div>
+        <div class="kpi-sub" id="kpiAnHechosSub"></div>
+      </div>
+      <div class="kpi-card kpi-bad">
+        <div class="kpi-val" id="kpiAnFaltan">—</div>
+        <div class="kpi-lbl">Análisis faltantes</div>
+        <div class="kpi-sub" id="kpiAnFaltanSub"></div>
+      </div>
       <div class="kpi-card kpi-bad">
         <div class="kpi-val" id="kpiVencidos">—</div>
         <div class="kpi-lbl">Frecuencia vencida</div>
@@ -1003,21 +1035,6 @@ table.hm td.hm-c{padding:0}
         <div class="kpi-val" id="kpiAv">—</div>
         <div class="kpi-lbl">AV cerca del límite</div>
         <div class="kpi-sub" id="kpiAvSub"></div>
-      </div>
-      <div class="kpi-card kpi-neutral">
-        <div class="kpi-val" id="kpiAnTotal">—</div>
-        <div class="kpi-lbl">Análisis totales</div>
-        <div class="kpi-sub" id="kpiAnTotalSub"></div>
-      </div>
-      <div class="kpi-card kpi-ok">
-        <div class="kpi-val" id="kpiAnHechos">—</div>
-        <div class="kpi-lbl">Análisis completados</div>
-        <div class="kpi-sub" id="kpiAnHechosSub"></div>
-      </div>
-      <div class="kpi-card kpi-bad">
-        <div class="kpi-val" id="kpiAnFaltan">—</div>
-        <div class="kpi-lbl">Análisis faltantes</div>
-        <div class="kpi-sub" id="kpiAnFaltanSub"></div>
       </div>
     </div>
 
@@ -1055,10 +1072,10 @@ table.hm td.hm-c{padding:0}
         <div class="ch-foot" id="chSo2Pie"></div>
       </div>
 
-      <!-- Dispersión pH / SO2 -->
+      <!-- Dispersión pH / SO2 molecular -->
       <div class="chart-card tall">
-        <h3>Dispersión pH · SO₂ libre</h3>
-        <p class="ch-sub">Cada punto es un lote. La curva punteada es el objetivo: lo que cae debajo necesita corrección.</p>
+        <h3>Dispersión pH · SO₂ molecular</h3>
+        <p class="ch-sub">Cada punto es un lote. La línea punteada es el molecular objetivo: lo que cae debajo necesita corrección.</p>
         <div class="ch-body"><div class="ch-canvas" data-canvas="chNube"><canvas id="chNube"></canvas></div></div>
         <div class="ch-foot" id="chNubePie"></div>
       </div>

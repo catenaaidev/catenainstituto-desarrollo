@@ -191,7 +191,7 @@ function bandaSo2(delta){
  * @param dash  respuesta de /api/dashboard (trae solo los activos)
  * @param datos DATOS() completo (trae los valores medidos y la config)
  * @returns [{lote, variedad, proyecto, litros, av, avLimite, avRatio, avBanda,
- *            ph, phLimite, so2, so2Objetivo, so2Delta, so2Banda, so2Molec,
+ *            ph, phLimite, so2, so2Objetivo, so2Delta, so2Banda, so2Molec, phSo2,
  *            fecha, alarmas}]
  */
 export function metricasPorLote(dash, datos){
@@ -249,6 +249,10 @@ export function metricasPorLote(dash, datos){
       so2Delta:    so2Delta,
       so2Banda:    so2Delta === null ? null : bandaSo2(so2Delta),
       so2Molec:    so2Molecular(so2.valor, phParaObjetivo),
+      /* El pH con el que se calculo ese molecular (el de la muestra del SO2).
+       * La nube pH·molecular se ubica con este y no con `ph`: si no, un punto
+       * mezclaria el molecular de una muestra con el pH de otra. */
+      phSo2:       phParaObjetivo,
       fecha:    fila.ultima_fecha || null,
       alarmas:  fila.alarmas || [],
     });

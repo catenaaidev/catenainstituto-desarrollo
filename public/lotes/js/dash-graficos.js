@@ -321,19 +321,31 @@ export function graficoSO2(filas){
   }
 }
 
-/* ================================================= 3. DISPERSION pH / SO2 */
+/* ======================================= 3. DISPERSION pH / SO2 MOLECULAR */
+
+/* Factor de Henderson-Hasselbalch: libre = molecular * (1 + 10^(pH - pKa)).
+ * El 1.8 es el mismo pKa de so2Molecular() en dash-metricas.js (espejo del
+ * motor): si alguna vez cambia alla, cambia aca o la linea y los puntos
+ * dejarian de hablar del mismo molecular. */
+const factorHH = ph => 1 + Math.pow(10, ph - 1.8);
 
 /**
- * Nube de lotes en el plano (pH, SO2 libre) con la curva de objetivo encima.
+ * Nube de lotes en el plano (pH, SO2 molecular) con el objetivo encima.
  *
- * Es el unico panel donde se ve POR QUE un lote esta en deficit: la curva sube
- * de forma exponencial con el pH (Henderson-Hasselbalch), asi que un lote de pH
- * 3,7 necesita casi el doble de SO2 libre que uno de 3,3 para el mismo
- * molecular. La curva se dibuja con los criterios por defecto; los lotes con
- * override caen igual en su banda de color, que se calcula lote por lote.
+ * El molecular es la fraccion que protege al vino, y es lo que el criterio
+ * fija de verdad: el SO2 libre objetivo sale de el. Mirado en molecular el
+ * objetivo es una linea casi plana (so2_molecular_objetivo) y se lee de un
+ * vistazo quien esta abajo, sin tener que seguir una exponencial. La linea
+ * solo sube a pH bajo, donde manda el piso de SO2 libre: ahi el objetivo en
+ * molecular es piso / factor, mas alto que el molecular nominal.
+ *
+ * La linea se dibuja con los criterios por defecto; los lotes con override
+ * caen igual en su banda de color, que se calcula lote por lote contra SU
+ * objetivo. Por eso el color, y no la posicion contra la linea, es la verdad
+ * de cada punto.
  */
 export function graficoDispersion(filas, eff){
-  const pts = filas.filter(f => f.ph !== null && f.so2 !== null);
+  const pts = filas.filter(f => f.phSo2 !== null && f.so2Molec !== null);
   const pie = document.getElementById('chNubePie');
 
   if (pts.length < 2){
@@ -342,17 +354,17 @@ export function graficoDispersion(filas, eff){
     return;
   }
 
-  const phs = pts.map(p => p.ph);
+  const phs = pts.map(p => p.phSo2);
   const phMin = Math.max(2.8, Math.min(...phs) - .06);
   const phMax = Math.min(4.4, Math.max(...phs) + .06);
 
-  /* 40 puntos alcanzan para que la exponencial se vea como una curva y no como
-   * una poligonal en el ancho que tiene el panel. */
+  /* 40 puntos: donde el piso manda la linea es una curva, y tiene que verse
+   * como curva y no como poligonal en el ancho que tiene el panel. */
   const curva = [];
   for (let i = 0; i <= 40; i++){
     const ph = phMin + (phMax - phMin) * i / 40;
-    const y = objetivoSo2Libre(ph, eff);
-    if (y !== null) curva.push({ x: ph, y });
+    const libre = objetivoSo2Libre(ph, eff);
+    if (libre !== null) curva.push({ x: ph, y: libre / factorHH(ph) });
   }
 
   /* Un dataset por banda: asi la leyenda de colores del panel de SO2 y la de
@@ -362,12 +374,14 @@ export function graficoDispersion(filas, eff){
     puntos: pts.filter(p => p.so2Banda === i),
   })).filter(g => g.puntos.length);
 
+  const dec = (v, d) => Number(v).toLocaleString('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
+
   pintar('chNube', {
     data: {
       datasets: [
         {
           type: 'line',
-          label: 'SO2 libre objetivo',
+          label: 'SO2 molecular objetivo',
           data: curva,
           parsing: false,
           borderColor: tok('--accent', '#8a3340'),
@@ -380,7 +394,7 @@ export function graficoDispersion(filas, eff){
         ...porBanda.map(g => ({
           type: 'scatter',
           label: g.banda.etiqueta,
-          data: g.puntos.map(p => ({ x: p.ph, y: p.so2, lote: p })),
+          data: g.puntos.map(p => ({ x: p.phSo2, y: p.so2Molec, lote: p })),
           parsing: false,
           backgroundColor: conAlpha(colorRiesgo(g.banda.riesgo), .72),
           borderColor: colorRiesgo(g.banda.riesgo),
@@ -409,10 +423,13 @@ export function graficoDispersion(filas, eff){
           type: 'linear', min: phMin, max: phMax,
           grid:   { color: tok('--line-soft', '#efece4'), drawTicks: false },
           border: { color: tok('--line', '#e7e3da') },
-          ticks:  { padding: 4, callback: v => Number(v).toFixed(2).replace('.', ',') },
+          ticks:  { padding: 4, callback: v => dec(v, 2) },
           title:  { display: true, text: 'pH', color: tok('--muted', '#8c857b'), font: { size: 10.5 } },
         },
-        y: { ...ejeY('SO2 libre (mg/L)'), beginAtZero: true },
+        /* El molecular se mueve entre 0 y 2 mg/L: el precision:0 del eje comun
+         * dejaria tres rayas enteras y todos los puntos aplastados abajo. */
+        y: { ...ejeY('SO2 molecular (mg/L)'), beginAtZero: true,
+             ticks: { padding: 6, callback: v => dec(v, 1) } },
       },
       plugins: {
         legend: {
@@ -425,13 +442,12 @@ export function graficoDispersion(filas, eff){
             title: it => it[0].raw.lote ? 'Lote ' + it[0].raw.lote.lote : 'Objetivo',
             label: it => {
               const p = it.raw.lote;
-              if (!p) return `pH ${it.raw.x.toFixed(2)} → objetivo ${it.raw.y.toFixed(1)} mg/L`;
-              const n = v => v === null ? '—' : Number(v).toLocaleString('es-AR', { maximumFractionDigits: 1 });
+              if (!p) return `pH ${dec(it.raw.x, 2)} → molecular objetivo ${dec(it.raw.y, 2)} mg/L`;
+              const n = (v, d = 1) => v === null ? '—' : dec(v, d);
               return [
                 p.variedad,
-                `pH ${n(p.ph)} · SO2 libre ${n(p.so2)} mg/L`,
-                `objetivo ${n(p.so2Objetivo)} mg/L (${p.so2Delta >= 0 ? '+' : ''}${n(p.so2Delta)})`,
-                `molecular ${n(p.so2Molec)} mg/L`,
+                `pH ${n(p.phSo2, 2)} · SO2 molecular ${n(p.so2Molec, 2)} mg/L`,
+                `SO2 libre ${n(p.so2)} mg/L · objetivo ${n(p.so2Objetivo)} mg/L (${p.so2Delta >= 0 ? '+' : ''}${n(p.so2Delta)})`,
                 'Clic para abrir la ficha',
               ];
             },
@@ -443,8 +459,8 @@ export function graficoDispersion(filas, eff){
 
   if (pie){
     const bajo = pts.filter(p => p.so2Delta !== null && p.so2Delta < 0).length;
-    pie.innerHTML = `Cada punto es un lote; la linea punteada es el SO2 libre que hace falta a ese pH. ` +
-      `<b>${bajo}</b> de ${pts.length} caen por debajo.`;
+    pie.innerHTML = `Cada punto es un lote; la linea punteada es el SO2 molecular objetivo a ese pH ` +
+      `(sube a pH bajo, donde manda el piso de SO2 libre). <b>${bajo}</b> de ${pts.length} caen por debajo.`;
   }
 }
 
