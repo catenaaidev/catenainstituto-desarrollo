@@ -32,10 +32,12 @@ export const SECCIONES_PRENSAS: ConfigSecciones = {
 
 /**
  * En Lotes, `movimientos` NO es obligatoria: el datos.json migrado desde el
- * Excel no la trae y tiene que poder guardarse igual.
+ * Excel no la trae y tiene que poder guardarse igual. Lo mismo `ordenes_trabajo`
+ * (las OT de trasiego, 2026-09-23): va en `secciones` y no en `requeridas` para
+ * que tenga el control de lista y el freno anti-borrado sin exigirla.
  */
 export const SECCIONES_LOTES: ConfigSecciones = {
-  secciones: ['lotes', 'analisis', 'movimientos'],
+  secciones: ['lotes', 'analisis', 'movimientos', 'ordenes_trabajo'],
   requeridas: ['lotes', 'analisis'],
 };
 
