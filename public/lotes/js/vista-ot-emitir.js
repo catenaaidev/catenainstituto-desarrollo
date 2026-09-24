@@ -9,13 +9,13 @@
 import { $, esc, escA, num, DATOS, markDirty, guardar, usuarioActual,
          mostrarOverlay, cerrarOverlay } from './nucleo.js';
 import { armarOT, movimientosDeOT, litrosPrevistos } from './ot-armado.js';
-import { PLANTILLAS_OT } from './ot-plantillas.js';
+import { PLANTILLAS_OT, origenTanque, barricasEstimadas } from './ot-plantillas.js';
 import { hojasOT } from './ot-hojas.js';
 import { proximoNumeroOT } from './ot-movimientos.js';
 import { esOrganico } from './envases.js';
 
 /* Estado del modal abierto: una entrada por lote agregado. */
-let _lotes = [];      // [{lote, id_texto, organico, barriles:[...], tildados:Set<num>, vasijas_manual, litros, litrosManual}]
+let _lotes = [];      // [{lote, id_texto, organico, barriles:[...], tildados:Set<num>, vasijas_manual, litros, litrosManual, barricas, barricasManual}]
 let _mapaVersion = null;
 let _mapaCaido = false;
 // Se incrementa cada vez que se abre el modal: si un fetch de _agregarLote
@@ -40,9 +40,27 @@ async function _traerBarriles(lote){
   }
 }
 
+// La plantilla elegida: desde tanque no se usan los barriles del Mapa.
+const _desdeTanque = () => origenTanque(($('otePlantilla') || {}).value);
+
+/* Desde tanque (0912) el lote sale de un tanque: se pide el tanque, los litros
+ * y cuántas barricas se llenan, que da los rótulos y las filas de la planilla. */
+function _loteDesdeTanque(l, i){
+  const aviso = l.enLotes ? '' : '<div class="msg err">⚠ No está en la lista de lotes.</div>';
+  return `<div class="card ote-lote">
+  <div><b>${esc(l.lote)}</b> ${esc(l.id_texto)} ${l.organico ? '🟢 orgánico' : ''}
+    <button class="rowbtn" data-quitar="${i}" title="Quitar lote">✕</button></div>
+  ${aviso}
+  <label>Tanque origen</label> <input class="txt" data-manual="${i}" value="${escA(l.vasijas_manual)}" placeholder="p. ej. E 175">
+  <label>Litros previstos</label> <input class="txt" type="number" step="any" data-litros="${i}" value="${escA(l.litros ?? '')}">
+  <label>Barricas a llenar</label> <input class="txt" type="number" step="1" min="1" data-barricas="${i}" value="${escA(l.barricas ?? '')}" title="Se calcula con los litros (225 L por barrica); se puede corregir">
+</div>`;
+}
+
 function _pintarLotes(){
   const cont = $('otePorLote');
   if (!cont) return;
+  if (_desdeTanque()){ cont.innerHTML = _lotes.map(_loteDesdeTanque).join(''); return; }
   cont.innerHTML = _lotes.map((l, i) => {
     const avisos = [];
     if (!l.enLotes) avisos.push('⚠ No está en la lista de lotes.');
@@ -97,6 +115,7 @@ async function _agregarLote(){
     barriles, tildados, vasijas_manual: '',
     litros: litrosPrevistos(barriles) || null,
     litrosManual: false,
+    barricas: null, barricasManual: false,
   });
   _pintarLotes();
 }
@@ -120,7 +139,7 @@ export function abrirEmitirOT(onListo){
   <label>Plantilla</label><select class="txt" id="otePlantilla">${opts}</select>
   <label>N° de OT</label><input class="txt" id="oteNumero" value="${escA(numero)}">
   <label>Fecha</label><input class="txt" type="date" id="oteFecha" value="${escA(hoy)}">
-  <label>Tanque destino</label><input class="txt" id="oteDestino" placeholder="vacío = 'Tanque pulmón: ____'">
+  <label id="oteDestinoLbl">Tanque destino</label><input class="txt" id="oteDestino" placeholder="vacío = 'Tanque pulmón: ____'">
   <label>Emitió</label><input class="txt" id="oteEmitio" value="${escA(usuarioActual())}">
   <label>Agregar lote</label><input class="txt" id="oteLote" placeholder="Número de lote y Enter">
 </div>
@@ -130,6 +149,12 @@ export function abrirEmitirOT(onListo){
   <button class="btn primary" id="oteEmitir">Emitir OT</button>
 </div>`);
 
+  const ajustarDestino = () => {
+    const t = _desdeTanque();
+    $('oteDestinoLbl').textContent = t ? 'Destino' : 'Tanque destino';
+    $('oteDestino').placeholder = t ? 'p. ej. Barricas Pinot (no 2026-2025)' : "vacío = 'Tanque pulmón: ____'";
+  };
+  $('otePlantilla').addEventListener('change', () => { ajustarDestino(); _pintarLotes(); });
   $('oteLote').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); _agregarLote(); } });
   $('otePorLote').addEventListener('change', e => {
     const t = e.target;
@@ -144,6 +169,15 @@ export function abrirEmitirOT(onListo){
       const l = _lotes[+t.dataset.litros];
       l.litros = num(t.value);
       l.litrosManual = true;
+      if (_desdeTanque() && !l.barricasManual){
+        l.barricas = barricasEstimadas(l.litros);
+        _pintarLotes();
+      }
+    } else if (t.dataset.barricas !== undefined){
+      const l = _lotes[+t.dataset.barricas];
+      l.barricas = num(t.value);
+      l.barricasManual = l.barricas !== null; // borrarlo vuelve al cálculo
+      if (!l.barricasManual){ l.barricas = barricasEstimadas(l.litros); _pintarLotes(); }
     }
   });
   $('otePorLote').addEventListener('click', e => {
@@ -164,7 +198,12 @@ async function _emitir(onListo){
   const yaExiste = (d0.movimientos || []).some(m => m.ot === numero) ||
     (d0.ordenes_trabajo || []).some(o => o.ot === numero);
   if (yaExiste && !confirm('El número ' + numero + ' ya existe. ¿Continuar igual?')) return;
-  const sinVasijas = _lotes.filter(l => !l.tildados.size && !l.vasijas_manual);
+  const tanque = _desdeTanque();
+  if (tanque){
+    const sinTanque = _lotes.find(l => !l.vasijas_manual);
+    if (sinTanque){ alert('Falta el tanque origen del lote ' + sinTanque.lote + '.'); return; }
+  }
+  const sinVasijas = tanque ? [] : _lotes.filter(l => !l.tildados.size && !l.vasijas_manual);
   if (sinVasijas.length){
     alert('El lote ' + sinVasijas[0].lote + ' no tiene barriles tildados ni vasijas cargadas.');
     return;
@@ -180,9 +219,12 @@ async function _emitir(onListo){
     emitio: $('oteEmitio').value,
     lotes: _lotes.map(l => ({
       lote: l.lote, id_texto: l.id_texto, organico: l.organico,
-      barriles: l.barriles.filter(b => l.tildados.has(b.num)),
+      // Desde tanque no se vacía ningún barril: los del Mapa (si los hay) son
+      // de otra partida del lote y no van en la hoja.
+      barriles: tanque ? [] : l.barriles.filter(b => l.tildados.has(b.num)),
       vasijas_manual: l.vasijas_manual,
       litros_previstos: l.litros,
+      barricas_previstas: tanque ? (l.barricas ?? barricasEstimadas(l.litros)) : null,
     })),
     mapaVersion: _mapaVersion, usuario, hoy,
   });

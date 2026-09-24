@@ -123,3 +123,49 @@ describe('hojasOT', () => {
     expect(todas).toContain('ot-rotulo');
   });
 });
+
+describe('TQ a barricas (modelo 0912)', () => {
+  const tq = () => ot([{ lote: '26295', id_texto: 'PN VSC Gualtallary', barriles: [],
+    vasijas_manual: 'E 175', litros_previstos: 1500, barricas_previstas: 7 }],
+    'tq-barricas', 'Barricas Pinot (no 2026-2025)');
+
+  it('sin tabla de vaciado: el ID va solo y no hay rotulo de vasija', () => {
+    const h = H.hojaOT(tq());
+    expect(h).toContain('ID 26295:');
+    expect(h).not.toContain('Rotular vasija ID');
+    expect(h).not.toContain('Tanque pulmón');
+  });
+
+  it('la correccion y el llenado llevan el tanque de origen', () => {
+    const h = H.hojaOT(tq());
+    expect(cuenta(h, '<td>E 175</td>')).toBe(3); // TH2, SO2 y llenado
+    expect(h).not.toContain('T_______');
+    expect(h).toContain('Cantidad de barriles llenos');
+    expect(h).toContain('Barricas Pinot (no 2026-2025)');
+    expect(h).toMatch(/<td>E 175<\/td><td>1500<\/td>/);
+    expect(h).not.toContain('Dar lleno con');
+  });
+
+  it('barricas a barricas no cambio: sigue con Dar lleno con y T_______', () => {
+    const h = H.hojaOT(ot([{ lote: '1', barriles: [barril('a')] }]));
+    expect(h).toContain('Dar lleno con');
+    expect(h).toContain('T_______');
+    expect(h).toContain('Rotular vasija ID');
+  });
+
+  it('planilla: vaciado en blanco y el lote precargado en una fila de llenado por barrica', () => {
+    const h = H.hojasPlanilla(tq());
+    const [vac, lle] = h.split('Condición: Llenado');
+    expect(vac).not.toContain('<td>26295</td>');
+    expect(cuenta(lle, '<td>26295</td>')).toBe(7);
+  });
+
+  it('un rotulo por barrica a llenar', () => {
+    expect(cuenta(H.hojaRotulos(tq()), 'class="ot-rotulo"')).toBe(7);
+  });
+
+  it('mas de 19 barricas pasa a otra hoja de planilla', () => {
+    const o = ot([{ lote: '9', barriles: [], vasijas_manual: 'E 1', barricas_previstas: 25 }], 'tq-barricas');
+    expect(cuenta(H.hojasPlanilla(o), 'class="orden-hoja')).toBe(2);
+  });
+});
