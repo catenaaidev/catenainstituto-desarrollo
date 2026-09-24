@@ -11,7 +11,7 @@
 
 import { esc } from './nucleo.js';
 import { hojaTop, hojaMeta, hojaBanda, hojaPie } from './orden-hoja.js';
-import { plantillaPorId, COLS_VACIADO } from './ot-plantillas.js';
+import { plantillaPorId, origenTanque, COLS_VACIADO } from './ot-plantillas.js';
 import { resumenVasijas } from './ot-armado.js';
 import { fmtFecha } from './fechas.js';
 
@@ -41,6 +41,11 @@ function celdaVasijas(l){
   return `${resumen}<div class="ot-nums">${bs.map(b => esc(b.num)).join(' · ')}</div>`;
 }
 
+function bloqueIds(ot){
+  const ids = ot.lotes.filter(l => l.id_texto).map(l => `<div><b>ID ${esc(l.lote)}:</b> ${esc(l.id_texto)}</div>`).join('');
+  return `<div class="ot-ids">${ids}</div>`;
+}
+
 function tablaVaciado(ot, columnas){
   const celda = (l, c) => {
     switch (c){
@@ -60,19 +65,34 @@ function tablaVaciado(ot, columnas){
     ? '<tr class="ot-total"><td></td>' + columnas.map((c, i) =>
         `<td>${i === 0 ? 'Total' : i === iLitros ? total : ''}</td>`).join('') + '</tr>'
     : '';
-  const ids = ot.lotes.filter(l => l.id_texto).map(l => `<div><b>ID ${esc(l.lote)}:</b> ${esc(l.id_texto)}</div>`).join('');
-  return `<div class="ot-ids">${ids}</div><table class="ot-tabla"><thead><tr>${head}</tr></thead><tbody>${filas}${pie}</tbody></table>`;
+  return `${bloqueIds(ot)}<table class="ot-tabla"><thead><tr>${head}</tr></thead><tbody>${filas}${pie}</tbody></table>`;
 }
 
-function tablaCorreccion(ot){
+/* vasija 'origen': el vino se corrige en el tanque de donde sale (OT desde
+ * tanque), así que la hoja ya lo trae en vez de la línea para completar. */
+function tablaCorreccion(ot, vasija){
+  const cual = l => (vasija === 'origen' && resumenVasijas(l)) ? esc(resumenVasijas(l)) : 'T_______';
   const filas = ot.lotes.flatMap(l => ['TH2', 'SO2'].map(prod =>
-    `<tr>${CHECK}<td>${esc(l.lote)}</td><td>1</td><td>T_______</td><td>${prod}</td><td></td><td></td></tr>`)).join('');
+    `<tr>${CHECK}<td>${esc(l.lote)}</td><td>1</td><td>${cual(l)}</td><td>${prod}</td><td></td><td></td></tr>`)).join('');
   return '<div class="ot-subt">Corrección</div><table class="ot-tabla"><thead><tr><th>Check</th><th>CIW lote</th>' +
     '<th>Cantidad de vasijas</th><th>Vasijas</th><th>Producto</th><th>Cantidad</th><th>Tipo</th></tr></thead>' +
     `<tbody>${filas}</tbody></table>`;
 }
 
-function tablaLlenado(ot){
+/* 'desde-tanque' (0912): la vasija es el tanque de origen, los litros son los
+ * previstos, el destino es el texto de la OT ("Barricas Pinot ...") y el
+ * operario anota la cantidad de barriles llenos. */
+function tablaLlenadoDesdeTanque(ot){
+  const destino = ot.destino ? esc(ot.destino) : 'Barricas: ________';
+  const filas = ot.lotes.map(l =>
+    `<tr>${CHECK}<td>${esc(l.lote)}</td><td>${esc(resumenVasijas(l))}</td><td>${esc(fmtL(l.litros_previstos))}</td>` +
+    `<td>${destino}</td><td></td></tr>`).join('');
+  return '<table class="ot-tabla"><thead><tr><th>Check</th><th>CIW lote</th><th>Vasija</th><th>Litros</th>' +
+    `<th>Destino</th><th>Cantidad de barriles llenos</th></tr></thead><tbody>${filas}</tbody></table>`;
+}
+
+function tablaLlenado(ot, modelo){
+  if (modelo === 'desde-tanque') return tablaLlenadoDesdeTanque(ot);
   const filas = ot.lotes.map(l =>
     `<tr>${CHECK}<td>${esc(l.lote)}</td><td>${lineaDestino(ot)}</td><td></td><td>Barricas</td><td></td></tr>`).join('');
   return '<table class="ot-tabla"><thead><tr><th>Check</th><th>CIW lote</th><th>Vasija</th><th>Litros</th>' +
@@ -95,10 +115,11 @@ export function hojaOT(ot){
         return `<div class="ot-paso${dest}"><span class="ot-caja">☐</span>${esc(b.texto)}${ok}</div>`;
       }
       case 'dato':             return `<div class="ot-dato">${esc(b.texto)} <span class="ot-linea"></span></div>`;
+      case 'ids':              return bloqueIds(ot);
       case 'tabla-vaciado':    return tablaVaciado(ot, b.columnas);
       case 'rotular':          return rotular(ot);
-      case 'tabla-correccion': return tablaCorreccion(ot);
-      case 'tabla-llenado':    return tablaLlenado(ot);
+      case 'tabla-correccion': return tablaCorreccion(ot, b.vasija);
+      case 'tabla-llenado':    return tablaLlenado(ot, b.modelo);
       default:                 return '';
     }
   }).join('');
@@ -118,11 +139,44 @@ function trozos(arr, n){
   return out.length ? out : [[]];
 }
 
-export function hojasPlanilla(ot){
-  const filas = ot.lotes.flatMap(l => l.barriles.map(b => ({ lote: l.lote, ...b })));
+function planillaHoja(ot, vac, lle, loteVac, loteLle){
   const top = `<div class="oh-top"><span class="oh-empresa">BODEGAS ESMERALDA S.A.</span>` +
     `<span>PLANILLA DE MOVIMIENTO DE BARRILES - PCI 00 RCI 00 - Rev00 &nbsp;·&nbsp; Aprobado por: Roy Urvieta &nbsp;·&nbsp; Emisión: 1/7/2020</span></div>`;
   const head = '<tr><th>N°</th><th>Lote</th><th>N° barril</th><th>Capac</th><th>Año</th><th>Proveedor</th><th>Origen</th><th>Tratamiento</th></tr>';
+  return `<div class="orden-hoja ot-planilla">${top}
+  ${meta(ot)}
+  <div class="oh-banda"><span>Lote ID: ${esc(loteVac)}</span><span>Condición: Vaciado</span></div>
+  <table class="ot-tabla ot-chica"><thead>${head}</thead><tbody>${vac}</tbody></table>
+  <div class="oh-banda"><span>Lote ID: ${esc(loteLle)}</span><span>Condición: Llenado</span></div>
+  <table class="ot-tabla ot-chica"><thead>${head}</thead><tbody>${lle}</tbody></table>
+  <div class="oh-pie"><div class="firma"><b>Responsable:</b> Firma:</div></div>
+</div>`;
+}
+
+const filaBlanca = n => `<tr><td>${n}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+
+// Barricas a llenar de un lote desde tanque; sin dato, una (igual que el rótulo).
+const aLlenar = l => Math.max(Number(l.barricas_previstas) || 0, 1);
+
+/* Desde tanque no se vacía ningún barril: el bloque Vaciado sale en blanco y
+ * el de Llenado trae el lote precargado en una fila por barrica prevista, como
+ * la hoja "Barriles" de la 0912. */
+function hojasPlanillaDesdeTanque(ot){
+  const filas = ot.lotes.flatMap(l => Array.from({ length: aLlenar(l) }, () => l.lote));
+  const lotesTxt = ot.lotes.map(l => l.lote).join(' · ');
+  return trozos(filas, FILAS_PLANILLA).map((pag, ip) => {
+    const base = ip * FILAS_PLANILLA;
+    const vac = Array.from({ length: FILAS_PLANILLA }, (_, i) => filaBlanca(base + i + 1)).join('');
+    const lle = Array.from({ length: FILAS_PLANILLA }, (_, i) => pag[i] === undefined
+      ? filaBlanca(base + i + 1)
+      : `<tr><td>${base + i + 1}</td><td>${esc(pag[i])}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('');
+    return planillaHoja(ot, vac, lle, '', lotesTxt);
+  }).join('');
+}
+
+export function hojasPlanilla(ot){
+  if (origenTanque(ot.plantilla)) return hojasPlanillaDesdeTanque(ot);
+  const filas = ot.lotes.flatMap(l => l.barriles.map(b => ({ lote: l.lote, ...b })));
   const lotesTxt = ot.lotes.map(l => l.lote).join(' · ');
   return trozos(filas, FILAS_PLANILLA).map((pag, ip) => {
     const base = ip * FILAS_PLANILLA;
@@ -131,24 +185,18 @@ export function hojasPlanilla(ot){
       return b
         ? `<tr><td>${base + i + 1}</td><td>${esc(b.lote)}</td><td>${esc(b.num)}</td><td>${esc(fmtL(b.cap))}</td>` +
           `<td>${esc(b.anio)}</td><td>${esc(b.marca)}</td><td>${esc(b.origen)}</td><td>${esc(b.trat)}</td></tr>`
-        : `<tr><td>${base + i + 1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+        : filaBlanca(base + i + 1);
     }).join('');
-    const lle = Array.from({ length: FILAS_PLANILLA }, (_, i) =>
-      `<tr><td>${base + i + 1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`).join('');
-    return `<div class="orden-hoja ot-planilla">${top}
-  ${meta(ot)}
-  <div class="oh-banda"><span>Lote ID: ${esc(lotesTxt)}</span><span>Condición: Vaciado</span></div>
-  <table class="ot-tabla ot-chica"><thead>${head}</thead><tbody>${vac}</tbody></table>
-  <div class="oh-banda"><span>Lote ID:</span><span>Condición: Llenado</span></div>
-  <table class="ot-tabla ot-chica"><thead>${head}</thead><tbody>${lle}</tbody></table>
-  <div class="oh-pie"><div class="firma"><b>Responsable:</b> Firma:</div></div>
-</div>`;
+    const lle = Array.from({ length: FILAS_PLANILLA }, (_, i) => filaBlanca(base + i + 1)).join('');
+    return planillaHoja(ot, vac, lle, lotesTxt, '');
   }).join('');
 }
 
 export function hojaRotulos(ot){
+  // Desde tanque no hay barriles del Mapa: un rótulo por barrica a llenar.
+  const tanque = origenTanque(ot.plantilla);
   const rotulos = ot.lotes.flatMap(l => {
-    const n = Math.max(l.barriles.length, 1);
+    const n = tanque ? aLlenar(l) : Math.max(l.barriles.length, 1);
     return Array.from({ length: n }, (_, i) =>
       `<div class="ot-rotulo"><div class="ot-rot-lote">${esc(l.lote)}</div>` +
       `<div class="ot-rot-id">${esc(l.id_texto || '')}</div><div class="ot-rot-n">${i + 1}</div></div>`);

@@ -45,6 +45,9 @@ export function armarOT({ id, numero, plantilla, fecha, destino, emitio, lotes, 
         // Sin barriles no hay de donde sacar litros: litrosPrevistos([]) da 0 y
         // un lote manual sin litros cargados quedaria mintiendo "0 L" en la hoja.
         litros_previstos: l.litros_previstos ?? (barriles.length ? litrosPrevistos(barriles) : null),
+        // Solo en las OT desde tanque: cuantas barricas se van a llenar (rotulos y
+        // filas de la planilla de llenado). Con barriles del Mapa no hace falta.
+        barricas_previstas: numOk(l.barricas_previstas),
         destino_real: '', litros_reales: null, merma: null,
         mov_id: `${id}-${i}`,
       };
