@@ -13,7 +13,10 @@
  * todos los tipos de bloque de TIPOS_BLOQUE.
  *
  * `origen: 'tanque'` = el vino sale de un tanque, no de barriles del Mapa: el
- * formulario pide el tanque y la cantidad de barricas a llenar por lote. */
+ * formulario pide el tanque y la cantidad de barricas a llenar por lote.
+ *
+ * `loteCorte: true` = el formulario pide el lote que se forma en el destino.
+ * `hojas` = las hojas que se ofrecen al imprimir (sin él, las tres). */
 'use strict';
 
 export const TIPOS_BLOQUE = ['paso', 'dato', 'ids', 'tabla-vaciado', 'rotular', 'tabla-correccion', 'tabla-llenado'];
@@ -30,8 +33,11 @@ export const COLS_VACIADO = {
 // Modelos de la tabla de llenado (ver tablaLlenado en ot-hojas.js).
 export const MODELOS_LLENADO = ['a-barricas', 'desde-tanque'];
 
+// Modelos de la tabla de corrección (ver tablaCorreccion en ot-hojas.js).
+export const MODELOS_CORRECCION = ['agregado-corte'];
+
 const p = (texto, extra) => ({ tipo: 'paso', texto, ...(extra || {}) });
-const dato = (texto) => ({ tipo: 'dato', texto });
+const dato = (texto, extra) => ({ tipo: 'dato', texto, ...(extra || {}) });
 
 export const PLANTILLAS_OT = [
   {
@@ -108,36 +114,34 @@ export const PLANTILLAS_OT = [
     ],
   },
   {
-    // Referencia: 0885 / 0898 (corte de barricas a tanque).
+    // Referencia: 0867 Corte Base HOFB. Varios lotes van a UN tanque y forman
+    // un lote nuevo (el "lote del corte"): la banda, el ID, el rótulo y el
+    // agregado son de ese lote, no de los de origen. La tabla va con una fila
+    // por barril, y la orden es una sola hoja (sin planilla ni rótulos).
     id: 'barricas-tanque',
     nombre: 'Trasiego de barricas a tanque (corte)',
-    banda: ['TRASIEGO', 'CORTE A TANQUE'],
+    banda: ['TRASIEGO'],
     origen: 'barriles',
+    loteCorte: true,
+    hojas: ['ot'],
     bloques: [
-      p('Buscar barriles seleccionados, estirar para que técnico los deguste'),
       p('Santizar bomba, cañerías, picos de llenado, visor T y cápsula de gas.'),
       p('Sanitizar vasija a utilizar. (técnico tiene que revisar)', { ok: true }),
       p('Sanitizar clapets antes de comenzar trasiego.'),
       p('Revisar apertura de tapas de vasija.'),
-      p('USAR CAUDALÍMETRO Y REGISTRAR LITROS'),
       p('Inertizar tanque destino hasta obtener menos de 20% de O2, técnico tiene que revisar'),
-      dato('% final de O2:'),
-      p('Trasegar SEPARANDO DE BORRAS a tanque con nitrógeno o Argón en vena. Abrir antes para inertizar cañería.'),
-      { tipo: 'tabla-vaciado', columnas: ['lote', 'vasijas', 'litros', 'destino', 'caudalimetro', 'merma'] },
-      { tipo: 'rotular' },
+      dato('% final de O2:', { ok: true }),
+      p('Trasegar CON BORRAS  a tanque con nitrógeno o Argón en vena. Abrir antes para inertizar cañería.'),
+      { tipo: 'ids', de: 'corte' },
+      { tipo: 'tabla-vaciado', columnas: ['lote', 'vasijas', 'litros', 'destino', 'merma'], porBarril: true },
+      { tipo: 'rotular', de: 'corte' },
       p('Inertizar espacio de cabeza con Argón'),
       p('Tomar muestra en tubo falcon y llevar a laboratorio CIW.'),
-      { tipo: 'tabla-correccion' },
+      { tipo: 'tabla-correccion', modelo: 'agregado-corte' },
       p('Homogeneizar.'),
-      dato('Registrar SO2 final:'),
-      dato('En caso de que quede mermo, rellenar con:'),
-      dato('Chequear O2 final y registrar:'),
-      p('Lavar y vaporizar barriles vaciados'),
-      p('Lavar por fuera con agua oxigenada'),
-      p('Scanear barriles vaciados y llenados y completar planilla de Scaner barricas'),
-      dato('Anotar cantidad de barriles — Llenados: ______   Vaciados: ______   Mermos:'),
-      p('Lavar vasija utilizada.'),
-      p('Juntar borras y tirar en tanque de borras'),
+      p('Scanear barriles vaciados y llenados en Planilla Scaner Barricas'),
+      p('Lavar y vaporizar barriles según protocolo'),
+      p('Juntar borras'),
     ],
   },
   {
@@ -173,6 +177,21 @@ export function plantillaPorId(id){
 export function origenTanque(id){
   const pl = plantillaPorId(id);
   return !!(pl && pl.origen === 'tanque');
+}
+
+// El corte pide el lote que se forma en el tanque: sus movimientos son
+// traspasos a ese lote, y así el linaje sabe de qué lotes salió.
+export function pideLoteCorte(id){
+  const pl = plantillaPorId(id);
+  return !!(pl && pl.loteCorte);
+}
+
+// Qué hojas se ofrecen al imprimir; sin `hojas`, las tres.
+export const HOJAS_OT = ['ot', 'planilla', 'rotulos'];
+
+export function hojasDePlantilla(id){
+  const pl = plantillaPorId(id);
+  return (pl && pl.hojas) || HOJAS_OT;
 }
 
 // Barrica estándar de la bodega: con ella se estima cuántas se llenan desde un

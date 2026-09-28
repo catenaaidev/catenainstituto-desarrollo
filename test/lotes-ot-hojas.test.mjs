@@ -48,13 +48,11 @@ describe('hojaOT', () => {
     for (const n of ['1250083', '1250085', '1250356']) expect(tabla).toContain(n);
   });
 
-  it('un corte: una fila de vaciado por lote y el total de litros', () => {
+  it('tq a tq: una fila de vaciado por lote y el total de litros', () => {
     const h = H.hojaOT(ot([{ lote: '25315', barriles: [barril('a'), barril('b')] },
-                          { lote: '25324', barriles: [barril('c')] }], 'barricas-tanque', 'T 201'));
-    expect(h).toContain('25315');
-    expect(h).toContain('25324');
+                          { lote: '25324', barriles: [barril('c')] }], 'tq-tq', 'T 201'));
+    expect(h).toContain('<td>25315</td><td>2 barricas');
     expect(h).toMatch(/Total[\s\S]*675/);
-    expect(h).toContain('Litros caudalímetro');
   });
 
   it('un lote manual sin litros deja la celda de litros en blanco, no en 0', () => {
@@ -121,6 +119,68 @@ describe('hojasOT', () => {
     const todas = H.hojasOT(o);
     expect(todas).toContain('PLANILLA DE MOVIMIENTO');
     expect(todas).toContain('ot-rotulo');
+  });
+});
+
+describe('barricas a tanque, corte (modelo 0867)', () => {
+  const corte = (destino = 'Tq 75 HL', lc = { lote: '26300', id_texto: 'Base HOFB' }) => armarOT({
+    id: 'ot-x', numero: '867', plantilla: 'barricas-tanque', fecha: '2026-09-04', destino,
+    emitio: 'Oriana', mapaVersion: 1, usuario: 'ana', hoy: '2026-09-04', lote_corte: lc,
+    lotes: [
+      { lote: '26004', id_texto: 'MB Adrianna', barriles: [barril('1090351'), barril('2150244')] },
+      { lote: '26016', barriles: [{ ...barril('50077'), cap: 50 }] },
+      { lote: '26199', barriles: [], vasijas_manual: '1 x T50', litros_previstos: 50 },
+    ],
+  });
+
+  it('la banda, el ID y el rotulo son del lote del corte', () => {
+    const h = H.hojaOT(corte());
+    const banda = h.slice(h.indexOf('oh-banda'), h.indexOf('ot-paso'));
+    expect(banda).toContain('26300');
+    expect(banda).toContain('Base HOFB');
+    expect(banda).not.toContain('26004');
+    expect(h).toContain('ID 26300:</b> Base HOFB');
+    expect(h).toContain('Rotular vasija ID. <b>26300 Base HOFB</b>');
+    expect(h).not.toContain('ID 26004');
+  });
+
+  it('una fila por barril, el destino una sola vez y el total de litros', () => {
+    const h = H.hojaOT(corte());
+    expect(h).toContain('<td>26004</td><td>1090351</td><td>225</td>');
+    expect(h).toContain('<td>26004</td><td>2150244</td><td>225</td>');
+    expect(h).toContain('<td>26016</td><td>50077</td><td>50</td>');
+    expect(h).toContain('<td>26199</td><td>1 x T50</td><td>50</td>');
+    expect(cuenta(h, 'Tq 75 HL:')).toBe(1);
+    expect(h).toContain('rowspan="4"');
+    expect(h).toMatch(/Total<\/td><td><\/td><td>550</);
+    expect(h).not.toContain('Litros caudalímetro');
+  });
+
+  it('agregado: TH2 y Solucion SO2 del lote del corte en el tanque destino', () => {
+    const h = H.hojaOT(corte());
+    expect(h).toContain('Agregado');
+    expect(h).toContain('<td>26300</td><td>1</td><td>Tq 75 HL</td><td>TH2</td>');
+    expect(h).toContain('<td>26300</td><td>1</td><td>Tq 75 HL</td><td>Solución SO2</td>');
+    expect(cuenta(h, '>TH2<')).toBe(1);
+  });
+
+  it('el % final de O2 lleva su OK y el trasiego es con borras', () => {
+    const h = H.hojaOT(corte());
+    expect(h).toMatch(/% final de O2:[^<]*<span class="ot-linea"><\/span><span class="ot-ok">OK/);
+    expect(h).toContain('CON BORRAS');
+  });
+
+  it('sin destino deja la linea del tanque y T_______ en el agregado', () => {
+    const h = H.hojaOT(corte(''));
+    expect(h).toContain('Tanque: ________');
+    expect(cuenta(h, 'T_______')).toBe(2);
+  });
+
+  it('solo imprime la OT, aunque le pidan planilla y rotulos', () => {
+    const h = H.hojasOT(corte(), { ot: true, planilla: true, rotulos: true });
+    expect(h).toContain('Orden de Trabajo');
+    expect(h).not.toContain('PLANILLA DE MOVIMIENTO');
+    expect(h).not.toContain('ot-rotulo');
   });
 });
 
