@@ -1,7 +1,7 @@
 /**
  * La capa de altas a mano y su deshacer.
  *
- * Va en .mjs y no en .ts a propósito, igual que `barriles-pendientes.test.mjs`:
+ * Va en .mjs y no en .ts a propósito, igual que `barriles-inventario.test.mjs`:
  * `tsconfig.json` solo incluye `test/**\/*.ts`, y este archivo importa un .js sin
  * declaraciones de tipos. No lo pases a .ts.
  *

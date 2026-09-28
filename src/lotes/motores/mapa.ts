@@ -143,8 +143,17 @@ export function normalizarMapa(documento: { version?: unknown; estado?: Fila } |
     },
     unidades_por_lote: unidades(inventario),
     posiciones: posiciones((estado.boxes as Fila[]) ?? []),
+    // Desde el inventario simple de Barriles (2026-09-28) el lote de un tanque
+    // vive en su fila del inventario y `tanques` desaparece al migrar. Mientras
+    // no se migre, se siguen leyendo los dos.
     lotes_con_tanque: new Set(
-      tanques.map((t) => normalizarLote(t.lote)).filter((l): l is string => Boolean(l)),
+      [
+        ...tanques.map((t) => t.lote),
+        ...inventario
+          .filter((b) => /TANQUE/i.test(String(b.marca ?? '')) &&
+            String(b.estado ?? '').trim().toUpperCase() !== 'VACIO')
+          .map((b) => b.lote),
+      ].map((l) => normalizarLote(l)).filter((l): l is string => Boolean(l)),
     ),
     conflictos: conflictos(inventario, tanques, (estado.revisiones as Fila[]) ?? []),
   };
