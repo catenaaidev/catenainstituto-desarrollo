@@ -46,8 +46,9 @@ const ORDEN_PER_PAGE = HOJA_POR_PAGINA;
  * no sobre una copia local, asi que siempre leen y escriben el array VIGENTE
  * aunque haya sido reemplazado despues de que activarGrilla se llamo.
  *
- * lote/variedad/vasija/litros son de solo lectura EN LA GRILLA (paste, Ctrl+D,
- * Ctrl+Enter, Delete no los tocan): salen del lote, no de la muestra. Motivo,
+ * variedad/vasija/litros son de solo lectura EN LA GRILLA (paste, Ctrl+D,
+ * Ctrl+Enter, Delete no los tocan): salen del lote, no de la muestra. El lote
+ * si se escribe y arrastra a los otros tres (_otAutocompletar). Motivo,
  * recipiente y cantidad si se editan. Nunca markDirty: esta orden es efimera,
  * no vive en DATOS.
  */
@@ -61,7 +62,7 @@ const _otAdaptador = {
     /* El lote SI se escribe (pegar una columna de lotes en una hoja en
      * blanco): al cambiarlo se recalcula todo lo que sale de el. */
     if (k === 'lote'){
-      obj.lote = val;
+      obj.lote = val; obj.manual = true;
       _otAutocompletar(obj);
       return 'ok';
     }
@@ -101,12 +102,18 @@ function _otBuildRows(){
 
   let lotes = (dashData().lotes || []).filter(l => pasaMulti(l, _descOt));
 
-  if (fuente === 'hoja_en_blanco') return [];
-
-  /* El segundo argumento es el lote completo: la fila del dashboard no trae
-   * los envases y sin el no se puede resolver la ronda de tanques. */
-  lotes = lotes.filter(l => pasaFuente(
-    clasificarLote(l, loteMap.get(String(l.lote ?? ''))), fuente, _otAtencionTipo));
+  if (fuente === 'hoja_en_blanco'){
+    /* Hoja en blanco no trae nada POR SI SOLA, pero si se eligen lotes (o una
+     * variedad, un proyecto...) en los filtros, esos entran: es la forma de
+     * sumar lotes a la hoja sin tipearlos. Antes devolvia [] siempre y el
+     * filtro "Lote (4)" no hacia nada. */
+    if (!_descOt.some(d => d.set.size)) return [];
+  } else {
+    /* El segundo argumento es el lote completo: la fila del dashboard no trae
+     * los envases y sin el no se puede resolver la ronda de tanques. */
+    lotes = lotes.filter(l => pasaFuente(
+      clasificarLote(l, loteMap.get(String(l.lote ?? ''))), fuente, _otAtencionTipo));
+  }
 
   /* ordenar por número de lote */
   lotes = [...lotes].sort((a, b) => {
@@ -168,7 +175,7 @@ function _otRenderTabla(){
 </tr>`;
   });
 
-  tbody.innerHTML = tb || `<tr id="otAddRow"><td colspan="8" style="color:var(--muted)">Sin filas. Usá "Agregar fila" o cambiá la fuente.</td></tr>`;
+  tbody.innerHTML = tb || `<tr id="otAddRow"><td colspan="8" style="color:var(--muted)">Sin filas. Elegí lotes en el filtro "Lote", pegalos en "Pegar lotes", usá "Agregar fila" o cambiá la fuente.</td></tr>`;
 
   /* Fila de agregar (siempre al final) */
   const addRow = document.createElement('tr');
@@ -217,7 +224,7 @@ function _otRenderTabla(){
     if (lt){
       const r = _otRows[+lt.dataset.oti];
       if (!r) return;
-      r.lote = lt.value;
+      r.lote = lt.value; r.manual = true;
       _otAutocompletar(r);
       const tr = lt.closest('tr');
       lt.value = r.lote;
@@ -259,7 +266,7 @@ function _otRenderTabla(){
     /* agregar fila */
     const add = e.target.closest('#btnOtAgregar');
     if (add){
-      _otRows.push({ lote:'', variedad:'', vasija:'', litros:'', motivo:'', recipiente:_otRecipiente, cantidad:_otCantidad });
+      _otRows.push({ lote:'', variedad:'', vasija:'', litros:'', motivo:'', recipiente:_otRecipiente, cantidad:_otCantidad, manual:true });
       _otRenderTabla();
       _otPintarPaginas();
       return;
@@ -340,7 +347,13 @@ function _otPintarPaginas(){
  * importa no olvidar: sin el, la hoja de papel imprimible queda desincronizada
  * de la tabla en pantalla y no se nota hasta que alguien imprime. */
 function _otAplicarFiltros(){
-  _otRows = _otBuildRows();
+  /* Las filas cargadas A MANO (tipeadas, pegadas o "Agregar fila") no salen de
+   * la fuente, asi que rearmar desde la fuente las borraba: elegir un lote en
+   * el filtro de una hoja en blanco se llevaba puesto lo que ya estaba
+   * escrito. Se conservan y la fuente suma las que no estan. */
+  const manuales = _otRows.filter(r => r.manual);
+  const ya = new Set(manuales.map(r => claveLote(r.lote)).filter(k => k !== ''));
+  _otRows = manuales.concat(_otBuildRows().filter(r => !ya.has(claveLote(r.lote))));
   if (_otSort.key) _otRows = ordenarFilasOt(_otRows, _otSort.key, _otSort.dir);
   _otRefrescar();
 }
@@ -386,7 +399,7 @@ function _otCargarPegados(reemplazar){
   const nuevas = [];
   for (const lote of lotes){
     if (ya.has(lote)) continue;
-    const r = { lote, variedad:'', vasija:'', litros:'', motivo:'', recipiente:_otRecipiente, cantidad:_otCantidad };
+    const r = { lote, variedad:'', vasija:'', litros:'', motivo:'', recipiente:_otRecipiente, cantidad:_otCantidad, manual:true };
     _otAutocompletar(r);
     nuevas.push(r);
   }
