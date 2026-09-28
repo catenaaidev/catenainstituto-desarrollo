@@ -8,7 +8,7 @@ import { cargarDatos, mostrarTab, refrescarAvisos, refrescarInfo,
 import { limpiarFiltrosMulti } from './js/tabla.js';
 
 import './js/vista-dashboard.js';
-import { renderLotes, agregarLote, descLotes, instLotes, resetLlenado,
+import { renderLotes, agregarLote, ordenarLotes, descLotes, instLotes, resetLlenado,
          ajustarAnchosLotes, resetAnchosLotes } from './js/vista-lotes.js';
 import './js/vista-ficha.js';
 import { cargarPrevisualizar, cargarConfirmar, cargarLimpiar, cargarResetCols } from './js/vista-cargar.js';
@@ -83,8 +83,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   /* buscador Lotes */
   $('buscaLotes').addEventListener('input', () => renderLotes());
 
-  /* agregar lote */
+  /* nuevo lote (asistente) y ordenar los lotes nuevos que quedaron arriba */
   $('btnAddLote').addEventListener('click', () => agregarLote());
+  $('btnOrdenarLotes').addEventListener('click', () => ordenarLotes());
 
   /* configuración */
   $('btnAgregarVariedad').addEventListener('click', () => agregarVariedadConfig());
