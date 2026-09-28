@@ -2,7 +2,7 @@
 'use strict';
 
 import { $, esc, escA, num, DATOS, markDirty, registrarVista,
-         registrarInit, dashMap, dashData, invalidarDashMap, cargarDashboard, irALote,
+         registrarInit, dashMap, invalidarDashMap, cargarDashboard, irALote,
          mostrarOverlay, cerrarOverlay } from './nucleo.js';
 import { toggleSort, sortRows, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti } from './tabla.js';
@@ -13,6 +13,7 @@ import { CAPACIDADES, resumenEnvases, contarEnvases,
          litrosDeEnvases, tiposDeEnvase, estaVacio, esOrganico } from './envases.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { fmtFecha } from './fechas.js';
+import { PASOS, armarHijo, validarNumeroLote, ordenarConFijos } from './lote-nuevo.js';
 
 /* La clave de storage es la de siempre (lotes_cols_ancho): respeta los anchos
  * que la gente ya tiene guardados. El encabezado de Lotes son DOS filas
@@ -297,7 +298,7 @@ function initFiltrosLotes(){
      _instLotes por indice: los descriptores ya llevan campo y col, asi que hay
      un array paralelo menos del que depender. */
   fltPorCol.clear();
-  const pintadas = new Set([...COLS_LOTES.map(c => c.k), 'etapa', 'pct']);
+  const pintadas = new Set([...COLS_LOTES.map(c => c.k), 'etapa']);
   _descLotes.forEach((d, i) => {
     if (fltPorCol.has(d.col))
       console.warn(`Lotes: los filtros "${d.label}" y "${fltPorCol.get(d.col).label}" se pelean la columna "${d.col}"`);
@@ -490,48 +491,35 @@ function celdaDeCol(c, o, ri){
   return `<td ${attrs} title="${escA(v)}"><input class="cell ${c.num?'num':''}" type="text" ${attrs} value="${escA(v)}"></td>`;
 }
 
-/* Etapa y Avance: las dos columnas de la banda 'estado'. No estan en COLS_LOTES
- * porque no son campos editables del lote, las calcula el dashboard. */
-function celdasEstado(o){
-  let out = o._etapa
+/* Etapa y Hijo: las dos columnas de la banda 'estado'. No estan en COLS_LOTES
+ * porque no son campos editables del lote. Hijo ocupa el lugar de la barra de
+ * Avance, que se quito a pedido (2026-09-28): es el boton que saca un lote
+ * hijo copiando los datos de este. Sin data-k, asi que la grilla no lo toma
+ * como celda de datos. */
+function celdasEstado(o, ri){
+  const etapa = o._etapa
     ? `<td><span class="chip-etapa">${esc(o._etapa)}</span></td>`
     : '<td class="ro">—</td>';
-  if (o._pct != null){
-    const pct = o._pct;
-    const esCerrado = o._etapa === 'cerrado';
-    const cls = esCerrado ? ' cerrado' : pct >= 80 ? '' : pct >= 40 ? ' media' : ' baja';
-    out += `<td><span class="barra${cls}" title="${escA(String(pct) + '%')} de avance">`
-         + `<span style="width:${escA(String(pct))}%"></span></span> <small>${esc(String(pct))}%</small></td>`;
-  } else {
-    out += '<td class="ro">—</td>';
-  }
-  return out;
+  return etapa + `<td><button class="btn-hijo" data-hijo="${ri}" `
+       + `title="Sacar un lote hijo de ${escA(String(o.lote ?? ''))}">⎘ Hijo</button></td>`;
 }
 
 /* --- renderLotes --- */
 export function renderLotes(){
   const q = ($('buscaLotes').value||'').toLowerCase().trim();
-  const dd = dashData();
 
-  // Enriquecer con datos del dashboard (etapa, pct) y campo _etapa_ord para sort.
+  // Enriquecer con la etapa y el campo _etapa_ord para sort.
   // Guardamos el indice original en DATOS().lotes para que la edicion inline funcione.
   //
   // Etapa: se lee del propio lote en DATOS() — es la fuente de verdad y cubre
   // los 291 lotes (activos e inactivos) sin necesidad de que el dashboard haya
   // cargado. dd.lotes solo trae los activos, por eso dejamos de usarlo para la
   // etapa y lo ignoramos aqui.
-  //
-  // Pct: se lee de dd.etapas (mapa nuevo que cubre todos los lotes); si aun no
-  // cargo el dashboard, queda null y la celda muestra "—" hasta que llegue.
   const lotesArr = DATOS().lotes;
-  const etapasMap = dd ? (dd.etapas || null) : null;
   let rows = lotesArr.map((l, origIdx) => {
-    const clave  = String(l.lote ?? '');
     const etapa  = l.etapa || '';
-    const eMap   = etapasMap ? etapasMap[clave] : null;
-    const pct    = eMap != null ? (eMap.pct != null ? eMap.pct : null) : null;
     const ord    = ETAPAS_ORDEN.indexOf(etapa);
-    return { ...l, _etapa: etapa, _pct: pct, _etapa_ord: ord >= 0 ? ord : 99,
+    return { ...l, _etapa: etapa, _etapa_ord: ord >= 0 ? ord : 99,
              _envases_n: contarEnvases(l), _origIdx: origIdx };
   });
 
@@ -539,17 +527,23 @@ export function renderLotes(){
   rows = rows.filter(l => pasaMulti(l, _descLotes));
   if (fltLlenado) rows = rows.filter(l => fltLlenado.pasa(l));
 
-  // Sort: etapa usa _etapa_ord, pct usa _pct, y envases ordena por CANTIDAD de
-  // envases (no por litros: para eso ya esta la columna Litros Actuales)
+  // Sort: etapa usa _etapa_ord y envases ordena por CANTIDAD de envases (no
+  // por litros: para eso ya esta la columna Litros Actuales)
   const sortKey = sortLotes.key === 'etapa'   ? '_etapa_ord'
-                : sortLotes.key === 'pct'     ? '_pct'
                 : sortLotes.key === 'envases' ? '_envases_n'
                 : sortLotes.key;
   rows = sortRows(rows, { key: sortKey, dir: sortLotes.dir });
 
   const t = $('tLotes');
-  // _rows apunta a los objetos originales en DATOS().lotes para que la edicion inline funcione
-  t._rows = rows.map(r => lotesArr[r._origIdx] || r);
+  // _rows apunta a los objetos originales en DATOS().lotes para que la edicion inline funcione.
+  // Los lotes recien creados van arriba, pasen o no los filtros, hasta que se
+  // aprieta Ordenar (ver "lotes fijados arriba" mas abajo).
+  const enriquecido = new Map(rows.map(r => [lotesArr[r._origIdx], r]));
+  const fijos = fijosVivos();
+  t._rows = ordenarConFijos(rows.map(r => lotesArr[r._origIdx]), fijos);
+  const esFijo = new Set(fijos);
+  rows = t._rows.map(o => enriquecido.get(o)
+    || { ...o, _etapa: o.etapa || '' });   // fijo que el filtro habia dejado afuera
 
   /* encabezados: fila de bandas (fila 1 del Excel) + fila de columnas.
    * Las th de banda NO llevan data-k, y por eso geo() en grilla.js las ignora
@@ -574,7 +568,7 @@ export function renderLotes(){
     return ` <button class="th-flt${n ? ' active' : ''}" data-flt="${escA(k)}"`
          + ` title="${escA(tit)}">▾${n ? ' ' + n : ''}</button>`;
   };
-  // Marca de columna ordenada que ya usaban Etapa y Avance, se conserva igual.
+  // Marca de columna ordenada que ya usaba Etapa, se conserva igual.
   const activa = k => sortLotes.key === k ? ' style="color:var(--txt)"' : '';
 
   /* Chip de colapsar/expandir, en el titulo de la banda. Es un <button> a
@@ -621,7 +615,7 @@ export function renderLotes(){
     }
     if (b.id === 'estado'){
       h += `<th data-k="etapa"${activa('etapa')}>Etapa${flecha('etapa')}${embudo('etapa')}</th>`;
-      h += `<th data-k="pct"${activa('pct')}>Avance${flecha('pct')}${embudo('pct')}</th>`;
+      h += '<th title="Sacar un lote hijo copiando los datos del lote">Hijo</th>';
       continue;
     }
     for (const c of colsDe(b))
@@ -633,10 +627,10 @@ export function renderLotes(){
   /* filas */
   let tb = '<tbody>';
   rows.forEach((o, ri)=>{
-    tb += `<tr class="${rowClass(o)}">`;
+    tb += `<tr class="${rowClass(o)}${esFijo.has(t._rows[ri]) ? ' nuevo' : ''}">`;
     for (const b of bandas){
       if (b.testigo){ tb += '<td class="colstub"></td>'; continue; }
-      if (b.id === 'estado'){ tb += celdasEstado(o); continue; }
+      if (b.id === 'estado'){ tb += celdasEstado(o, ri); continue; }
       for (const c of colsDe(b)) tb += celdaDeCol(c, o, ri);
     }
     tb += `<td><button class="alarm-lote-link" data-iralote="${escA(o.lote ?? '')}" title="Ver ficha">${esc(o.lote ?? '')}</button> <button class="rowbtn" data-del="${ri}" title="Eliminar lote">✕</button></td></tr>`;
@@ -689,6 +683,7 @@ export function renderLotes(){
       if (c.ro) return;          // solo lectura: no se escribe nunca
       o[el.dataset.k] = c.num ? num(el.value) : (el.value===''?null:el.value);
       markDirty();
+      if (el.dataset.k === 'lote') guardarFijos();   // un fijo renombrado sigue fijo
     });
     t.addEventListener('change', e => {
       const el = e.target.closest('select.cell'); if(!el) return;
@@ -715,6 +710,12 @@ export function renderLotes(){
         if (o) abrirOverlayEnvases(o);
         return;
       }
+      const bh = e.target.closest('[data-hijo]');
+      if (bh){
+        const o = t._rows[+bh.dataset.hijo];
+        if (o) abrirAsistente(o);
+        return;
+      }
       const a = e.target.closest('[data-iralote]');
       if (a){ if (a.dataset.iralote) irALote(a.dataset.iralote); return; }
       const b = e.target.closest('[data-del]'); if(!b) return;
@@ -722,6 +723,8 @@ export function renderLotes(){
       if (!o) return;
       if (confirm('¿Eliminar el lote ' + o.lote + '?')){
         DATOS().lotes.splice(DATOS().lotes.indexOf(o), 1);
+        _fijos = _fijos.filter(x => x !== o);
+        guardarFijos();
         markDirty();
         refrescarOpcionesFiltros();   // el lote borrado sale de las casillas
         invalidarDashMap();
@@ -732,6 +735,7 @@ export function renderLotes(){
   }
 
   $('lotesCount').textContent = rows.length + ' / ' + DATOS().lotes.length + ' lotes';
+  pintarBotonOrdenar(fijos.length);
   /* Grilla tipo planilla. El adaptador se arma en cada render porque t._rows
      cambia; activarGrilla es idempotente y restaura la seleccion por identidad. */
   activarGrilla(t, adaptadorCols(t, COLS_LOTES, markDirty));
@@ -750,31 +754,181 @@ export function renderLotes(){
 export function ajustarAnchosLotes(){ anchosLotes.autoajustarTodas(); }
 export function resetAnchosLotes(){ anchosLotes.restablecer(); }
 
-/* --- agregar lote nuevo --- */
-export function agregarLote(){
-  /* Una clave por cada columna, para que la fila nueva no arranque con celdas
-   * que el render pinta vacias y el objeto guardado no quede a medias. Numeros
-   * y fechas en null, textos y listas en ''. Las ro son derivadas y no se
-   * tocan: litros_actuales arranca en 0 (nunca null: motor_etapas compara
-   * litros_actuales <= 0) y envases sale del desglose. */
+/* --- lotes fijados arriba ---
+ * Un lote recien creado (desde el asistente o como hijo) queda arriba de la
+ * tabla, aunque se ordene por otra columna o se filtre, hasta que se aprieta
+ * "Ordenar". Asi se lo puede ir completando sin que salte de lugar.
+ *
+ * Es una preferencia de pantalla de cada persona, como el colapsado de
+ * columnas: vive en localStorage y no en los datos, asi que los demas usuarios
+ * ven la tabla ordenada normal. En memoria se guardan los OBJETOS (sobreviven a
+ * un cambio del numero de lote); en el storage, los numeros, que es lo unico
+ * que sobrevive a recargar la pagina. fijosVivos() los vuelve a enlazar. */
+const CLAVE_FIJOS = 'lotes_fijos_arriba';
+let _fijos = [];   // objetos de DATOS().lotes, en orden de creacion
+
+function leerClavesFijas(){
+  try {
+    const arr = JSON.parse(localStorage.getItem(CLAVE_FIJOS) || '[]');
+    return Array.isArray(arr) ? arr.map(String) : [];
+  } catch(e){ return []; }
+}
+
+function guardarFijos(){
+  try {
+    if (_fijos.length)
+      localStorage.setItem(CLAVE_FIJOS, JSON.stringify(_fijos.map(o => String(o.lote ?? ''))));
+    else localStorage.removeItem(CLAVE_FIJOS);
+  } catch(e){}
+}
+
+/* Los fijos que siguen existiendo en DATOS().lotes. Si los datos se recargaron
+ * (se recargo la pagina, o llego una version nueva del servidor) los objetos
+ * son otros y se vuelven a buscar por numero de lote. */
+function fijosVivos(){
+  const lotes = DATOS().lotes;
+  const vivos = new Set(lotes);
+  if (_fijos.length && _fijos.every(o => vivos.has(o))) return _fijos;
+  const claves = _fijos.length ? _fijos.map(o => String(o.lote ?? '')) : leerClavesFijas();
+  _fijos = claves.map(k => lotes.find(l => String(l.lote ?? '') === k)).filter(Boolean);
+  return _fijos;
+}
+
+function fijar(o){
+  _fijos = fijosVivos().filter(x => x !== o).concat([o]);
+  guardarFijos();
+}
+
+function pintarBotonOrdenar(n){
+  const b = $('btnOrdenarLotes');
+  if (!b) return;
+  b.style.display = n ? '' : 'none';
+  b.textContent = `↕ Ordenar (${n} nuevo${n > 1 ? 's' : ''})`;
+}
+
+/* Suelta los fijos: la tabla vuelve a su orden normal. */
+export function ordenarLotes(){
+  _fijos = [];
+  guardarFijos();
+  renderLotes();
+}
+
+/* --- asistente de lote nuevo / lote hijo ---
+ * Pregunta los datos minimos de a uno (PASOS en lote-nuevo.js). Sin `padre`
+ * arranca en blanco; con `padre` arranca con una copia del padre (armarHijo) y
+ * solo el numero de lote viene vacio. La ✕, Escape o un clic afuera lo cierran
+ * sin crear nada (Escape y el clic afuera ya los maneja app.js). */
+function abrirAsistente(padre){
+  /* Soltar la seleccion ANTES de abrir: si no, grilla.js se come el Escape. */
+  limpiarSeleccion($('tLotes'));
+
+  const base = padre ? armarHijo(padre) : loteEnBlanco();
+  const vals = {};
+  for (const p of PASOS) vals[p.k] = p.k === 'lote' ? '' : String(base[p.k] ?? '');
+  let paso = 0;
+
+  const titulo = padre ? `Lote hijo de ${esc(String(padre.lote ?? ''))}` : 'Nuevo lote';
+
+  function pintar(){
+    const p = PASOS[paso];
+    const ultimo = paso === PASOS.length - 1;
+    let campo;
+    if (p.opciones){
+      campo = '<select class="txt" id="asisCampo">'
+            + p.opciones.map(o => `<option value="${escA(o)}" ${o === vals[p.k] ? 'selected' : ''}>${esc(o || '—')}</option>`).join('')
+            + '</select>';
+    } else {
+      const sug = p.sugerir
+        ? opcionesValores(DATOS().lotes, l => l[p.k]).filter(v => v !== '')
+        : [];
+      campo = `<input class="txt" id="asisCampo" autocomplete="off" value="${escA(vals[p.k])}"`
+            + (p.k === 'lote' ? ' inputmode="numeric"' : '')
+            + (sug.length ? ' list="asisSug"' : '') + '>'
+            + (sug.length ? `<datalist id="asisSug">${sug.map(v => `<option value="${escA(v)}">`).join('')}</datalist>` : '');
+    }
+    mostrarOverlay(`
+<button class="overlay-cerrar" id="asisCerrar" title="Cerrar sin crear el lote" aria-label="Cerrar">✕</button>
+<h3 style="margin:0 0 4px">${titulo}</h3>
+<div style="color:var(--muted);font-size:12px;margin-bottom:14px">Paso ${paso + 1} de ${PASOS.length}${p.obligatorio ? '' : ' · se puede dejar en blanco'}</div>
+<div style="text-align:left">
+  <label for="asisCampo" style="display:block;margin-bottom:6px;font-weight:600">${esc(p.label)}</label>
+  ${campo}
+</div>
+<div class="msg err" id="asisError" style="display:none;margin-top:10px;text-align:left"></div>
+<div style="margin-top:18px;display:flex;gap:8px;justify-content:space-between">
+  <button class="btn" id="asisAtras" ${paso === 0 ? 'disabled' : ''}>← Atrás</button>
+  <button class="btn primary" id="asisSig">${ultimo ? (padre ? '✓ Crear lote hijo' : '✓ Crear lote') : 'Siguiente →'}</button>
+</div>`);
+    const inp = $('asisCampo');
+    inp.style.width = '100%';
+    inp.style.boxSizing = 'border-box';
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter'){ e.preventDefault(); avanzar(); }
+    });
+    $('asisCerrar').addEventListener('click', () => cerrarOverlay());
+    $('asisAtras').addEventListener('click', () => { leer(); paso--; pintar(); });
+    $('asisSig').addEventListener('click', avanzar);
+    inp.focus();
+    if (inp.select) inp.select();
+  }
+
+  function leer(){ vals[PASOS[paso].k] = $('asisCampo').value.trim(); }
+
+  function avanzar(){
+    leer();
+    if (PASOS[paso].k === 'lote'){
+      const v = validarNumeroLote(vals.lote, DATOS().lotes);
+      if (!v.ok){
+        const err = $('asisError');
+        err.textContent = v.error;
+        err.style.display = '';
+        $('asisCampo').focus();
+        return;
+      }
+    }
+    if (paso < PASOS.length - 1){ paso++; pintar(); return; }
+    crear();
+  }
+
+  function crear(){
+    /* Se vuelve a validar: entre el paso 1 y el ultimo pudo llegar una version
+     * nueva de los datos con ese mismo numero de lote. */
+    const v = validarNumeroLote(vals.lote, DATOS().lotes);
+    if (!v.ok){ paso = 0; pintar(); return; }
+    for (const p of PASOS) base[p.k] = vals[p.k];
+    base.lote = v.valor;
+    DATOS().lotes.unshift(base);
+    fijar(base);
+    markDirty();
+    cerrarOverlay();
+    refrescarOpcionesFiltros();   // para que el lote nuevo se pueda tildar
+    renderLotes();
+    // foco en la primera celda del nuevo lote: los fijos van arriba de todo
+    const inp = $('tLotes').querySelector('input.cell[data-row="0"]');
+    if (inp) inp.focus();
+  }
+
+  pintar();
+}
+
+/* Un lote vacio con una clave por cada columna, para que la fila nueva no
+ * arranque con celdas que el render pinta vacias y el objeto guardado no quede
+ * a medias. Numeros y fechas en null, textos y listas en ''. Las ro son
+ * derivadas y no se tocan: litros_actuales arranca en 0 (nunca null:
+ * motor_etapas compara litros_actuales <= 0) y envases sale del desglose. */
+function loteEnBlanco(){
   const nuevo = { litros_actuales: 0, cap50:null, cap200:null, cap225:null,
                   cap500:null, vasija_grande:null };
   for (const c of COLS_LOTES){
     if (c.ro) continue;
     nuevo[c.k] = (c.num || c.fecha) ? null : '';
   }
-  /* lote va en '' y no en null aunque sea columna num: se tipea a mano y todo el
-   * resto del codigo lo lee como String(lote ?? ''). Es como estaba antes. */
   nuevo.lote = '';
-
-  DATOS().lotes.unshift(nuevo);
-  markDirty();
-  refrescarOpcionesFiltros();   // para que el lote nuevo se pueda tildar
-  renderLotes();
-  // foco en la primera celda del nuevo lote
-  const inp = $('tLotes').querySelector('input.cell[data-row="0"]');
-  if (inp) inp.focus();
+  return nuevo;
 }
+
+/* --- boton "Nuevo lote" de la toolbar --- */
+export function agregarLote(){ abrirAsistente(null); }
 
 registrarVista('lotes', () => renderLotes());
 registrarInit(initFiltrosLotes);

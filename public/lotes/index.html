@@ -215,6 +215,15 @@
    * Vuelve a opacidad plena al pasar por encima o al editar una celda
    * (focus-within): la fila esta atenuada, no deshabilitada. */
   tr.vacio{opacity:.45}
+  /* ---- lote recien creado, fijo arriba hasta apretar Ordenar ----
+   * Borde arriba y abajo y no fondo: el fondo ya lo usan orgánico, alarma y
+   * vencido. Un lote nuevo arranca en 0 litros y quedaria atenuado por
+   * tr.vacio justo cuando se lo esta completando: se lo deja opaco. */
+  #tLotes tr.nuevo{opacity:1}
+  #tLotes tr.nuevo td{border-top:2px solid var(--info);border-bottom:2px solid var(--info)}
+  .btn-hijo{background:none;border:1px solid var(--line);border-radius:6px;color:var(--info);
+    cursor:pointer;font-size:12px;padding:1px 8px;white-space:nowrap}
+  .btn-hijo:hover{border-color:var(--accent);color:var(--accent)}
   tr.vacio:hover,tr.vacio:focus-within{opacity:1}
   /* ---- separador de lote (Analisis agrupado) ----
    * Sin veredicto queda gris, como siempre. Con veredicto se pinta entero para
@@ -285,7 +294,10 @@
   /* ---- overlay ---- */
   .overlay{position:fixed;inset:0;background:rgba(42,38,34,.5);display:none;align-items:center;justify-content:center;z-index:50}
   .overlay.show{display:flex}
-  .overlay .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px 28px;max-width:460px;width:90%;text-align:center}
+  .overlay .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px 28px;max-width:460px;width:90%;text-align:center;position:relative}
+  .overlay-cerrar{position:absolute;top:8px;right:10px;background:none;border:none;color:var(--muted);
+    cursor:pointer;font-size:18px;line-height:1;padding:4px 6px}
+  .overlay-cerrar:hover{color:var(--txt)}
   /* ---- historial tabla ---- */
   #overlayBox table.hist{width:100%;border-collapse:collapse;font-size:13px}
   #overlayBox table.hist th,#overlayBox table.hist td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
@@ -1179,7 +1191,11 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
         title="Volver al ancho automático de las columnas">↩ Anchos originales</button>
       <span class="tag" id="lotesCount"></span>
       <div class="spacer"></div>
-      <button class="btn" id="btnAddLote">➕ Agregar lote</button>
+      <!-- Ordenar: suelta los lotes recien creados, que quedan fijos arriba de
+           la tabla hasta apretarlo. Lo muestra vista-lotes.js solo cuando hay. -->
+      <button class="btn" id="btnOrdenarLotes" style="display:none"
+        title="Los lotes nuevos quedan arriba de todo hasta que ordenás la tabla">↕ Ordenar</button>
+      <button class="btn" id="btnAddLote">➕ Nuevo lote</button>
     </div>
     <div class="legend-inline">
       <span class="sw org"></span> Lote orgánico
