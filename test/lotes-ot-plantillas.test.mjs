@@ -2,8 +2,8 @@
  * tabla de vasijas (y el operario no sabe qué trasegar) o revienta el render
  * con un tipo de bloque que nadie dibuja. Estos tests fijan esa estructura. */
 import { describe, it, expect } from 'vitest';
-import { PLANTILLAS_OT, plantillaPorId, TIPOS_BLOQUE, COLS_VACIADO, MODELOS_LLENADO,
-  origenTanque, barricasEstimadas } from '../public/lotes/js/ot-plantillas.js';
+import { PLANTILLAS_OT, plantillaPorId, TIPOS_BLOQUE, COLS_VACIADO, MODELOS_LLENADO, MODELOS_CORRECCION,
+  origenTanque, pideLoteCorte, hojasDePlantilla, HOJAS_OT, barricasEstimadas } from '../public/lotes/js/ot-plantillas.js';
 
 describe('PLANTILLAS_OT', () => {
   it('trae las cuatro plantillas acordadas', () => {
@@ -38,9 +38,35 @@ describe('PLANTILLAS_OT', () => {
     });
   }
 
-  it('el corte a tanque registra caudalimetro', () => {
-    const t = plantillaPorId('barricas-tanque').bloques.find((b) => b.tipo === 'tabla-vaciado');
-    expect(t.columnas).toContain('caudalimetro');
+  it('el corte a tanque sigue la 0867: lote del corte, fila por barril, agregado y una sola hoja', () => {
+    const pl = plantillaPorId('barricas-tanque');
+    expect(pideLoteCorte('barricas-tanque')).toBe(true);
+    expect(pideLoteCorte('tq-tq')).toBe(false);
+    expect(hojasDePlantilla('barricas-tanque')).toEqual(['ot']);
+    expect(hojasDePlantilla('barricas-barricas')).toEqual(HOJAS_OT);
+    const t = pl.bloques.find((b) => b.tipo === 'tabla-vaciado');
+    expect(t.porBarril).toBe(true);
+    expect(t.columnas).not.toContain('caudalimetro');
+    expect(pl.bloques.find((b) => b.tipo === 'ids').de).toBe('corte');
+    expect(pl.bloques.find((b) => b.tipo === 'rotular').de).toBe('corte');
+    expect(pl.bloques.find((b) => b.tipo === 'tabla-correccion').modelo).toBe('agregado-corte');
+    const textos = pl.bloques.map((b) => b.texto || '').join(' | ');
+    expect(textos).toContain('CON BORRAS');
+    expect(textos).not.toContain('CAUDALÍMETRO');
+  });
+
+  it('los modelos de correccion son conocidos', () => {
+    for (const p of PLANTILLAS_OT) for (const b of p.bloques.filter((b) => b.tipo === 'tabla-correccion' && b.modelo)) {
+      expect(MODELOS_CORRECCION).toContain(b.modelo);
+    }
+  });
+
+  it('las hojas de cada plantilla son conocidas e incluyen la OT', () => {
+    for (const p of PLANTILLAS_OT) {
+      const hs = hojasDePlantilla(p.id);
+      expect(hs).toContain('ot');
+      for (const h of hs) expect(HOJAS_OT).toContain(h);
+    }
   });
 
   it('las de barricas marcan la cinta de organicos', () => {

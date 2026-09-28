@@ -9,7 +9,7 @@
 import { $, esc, escA, num, DATOS, markDirty, guardar, usuarioActual,
          mostrarOverlay, cerrarOverlay } from './nucleo.js';
 import { armarOT, movimientosDeOT, litrosPrevistos } from './ot-armado.js';
-import { PLANTILLAS_OT, origenTanque, barricasEstimadas } from './ot-plantillas.js';
+import { PLANTILLAS_OT, origenTanque, pideLoteCorte, hojasDePlantilla, barricasEstimadas } from './ot-plantillas.js';
 import { hojasOT } from './ot-hojas.js';
 import { proximoNumeroOT } from './ot-movimientos.js';
 import { esOrganico } from './envases.js';
@@ -42,6 +42,20 @@ async function _traerBarriles(lote){
 
 // La plantilla elegida: desde tanque no se usan los barriles del Mapa.
 const _desdeTanque = () => origenTanque(($('otePlantilla') || {}).value);
+const _esCorte = () => pideLoteCorte(($('otePlantilla') || {}).value);
+
+// El lote del corte tal como está en la lista de Lotes (null si no está).
+function _fichaLote(lote){
+  return (DATOS().lotes || []).find(l => String(l.lote) === lote) || null;
+}
+
+function _pintarCorte(){
+  const lote = $('oteCorte').value.trim();
+  const ficha = lote ? _fichaLote(lote) : null;
+  $('oteCorteInfo').innerHTML = !lote ? ''
+    : ficha ? esc(ficha.id_texto || '(sin descripción)')
+    : '<span class="msg err">⚠ No está en la lista de lotes: la hoja sale sin ID.</span>';
+}
 
 /* Desde tanque (0912) el lote sale de un tanque: se pide el tanque, los litros
  * y cuántas barricas se llenan, que da los rótulos y las filas de la planilla. */
@@ -139,6 +153,7 @@ export function abrirEmitirOT(onListo){
   <label>Plantilla</label><select class="txt" id="otePlantilla">${opts}</select>
   <label>N° de OT</label><input class="txt" id="oteNumero" value="${escA(numero)}">
   <label>Fecha</label><input class="txt" type="date" id="oteFecha" value="${escA(hoy)}">
+  <label class="ote-corte">Lote del corte</label><div class="ote-corte"><input class="txt" id="oteCorte" placeholder="Lote que se forma en el tanque, p. ej. 26300" style="width:100%"> <span id="oteCorteInfo" style="color:var(--muted)"></span></div>
   <label id="oteDestinoLbl">Tanque destino</label><input class="txt" id="oteDestino" placeholder="vacío = 'Tanque pulmón: ____'">
   <label>Emitió</label><input class="txt" id="oteEmitio" value="${escA(usuarioActual())}">
   <label>Agregar lote</label><input class="txt" id="oteLote" placeholder="Número de lote y Enter">
@@ -154,7 +169,12 @@ export function abrirEmitirOT(onListo){
     $('oteDestinoLbl').textContent = t ? 'Destino' : 'Tanque destino';
     $('oteDestino').placeholder = t ? 'p. ej. Barricas Pinot (no 2026-2025)' : "vacío = 'Tanque pulmón: ____'";
   };
-  $('otePlantilla').addEventListener('change', () => { ajustarDestino(); _pintarLotes(); });
+  const ajustarCorte = () => {
+    for (const el of document.querySelectorAll('.ote-corte')) el.style.display = _esCorte() ? '' : 'none';
+  };
+  ajustarCorte();
+  $('otePlantilla').addEventListener('change', () => { ajustarDestino(); ajustarCorte(); _pintarLotes(); });
+  $('oteCorte').addEventListener('input', _pintarCorte);
   $('oteLote').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); _agregarLote(); } });
   $('otePorLote').addEventListener('change', e => {
     const t = e.target;
@@ -199,6 +219,17 @@ async function _emitir(onListo){
     (d0.ordenes_trabajo || []).some(o => o.ot === numero);
   if (yaExiste && !confirm('El número ' + numero + ' ya existe. ¿Continuar igual?')) return;
   const tanque = _desdeTanque();
+  let loteCorte = null;
+  if (_esCorte()){
+    const lote = $('oteCorte').value.trim();
+    if (!lote){ alert('Falta el lote del corte: es el lote que se forma en el tanque.'); return; }
+    if (_lotes.some(l => l.lote === lote)){
+      alert('El lote del corte (' + lote + ') no puede ser también un lote de origen.');
+      return;
+    }
+    const ficha = _fichaLote(lote);
+    loteCorte = { lote, id_texto: (ficha && ficha.id_texto) || '' };
+  }
   if (tanque){
     const sinTanque = _lotes.find(l => !l.vasijas_manual);
     if (sinTanque){ alert('Falta el tanque origen del lote ' + sinTanque.lote + '.'); return; }
@@ -226,6 +257,7 @@ async function _emitir(onListo){
       litros_previstos: l.litros,
       barricas_previstas: tanque ? (l.barricas ?? barricasEstimadas(l.litros)) : null,
     })),
+    lote_corte: loteCorte,
     mapaVersion: _mapaVersion, usuario, hoy,
   });
 
@@ -247,19 +279,24 @@ async function _emitir(onListo){
   abrirImprimirOT(ot);
 }
 
+const NOMBRES_HOJA = { ot: 'Orden de trabajo', planilla: 'Planilla de movimiento de barriles', rotulos: 'Rótulos' };
+
 export function abrirImprimirOT(ot){
+  // Solo las hojas que tiene la plantilla: el corte (0867) es una sola hoja.
+  const hojas = hojasDePlantilla(ot.plantilla);
+  const checks = hojas.map(k =>
+    `<label><input type="checkbox" data-hoja="${escA(k)}" checked> ${esc(NOMBRES_HOJA[k])}</label>`).join('<br>');
   mostrarOverlay(`
 <h3 style="margin:0 0 14px">🖨 Imprimir ${esc(ot.ot)}</h3>
-<label><input type="checkbox" id="otiOT" checked> Orden de trabajo</label><br>
-<label><input type="checkbox" id="otiPlanilla" checked> Planilla de movimiento de barriles</label><br>
-<label><input type="checkbox" id="otiRotulos" checked> Rótulos</label>
+${checks}
 <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
   <button class="btn" id="otiCancelar">Cerrar</button>
   <button class="btn primary" id="otiImprimir">Imprimir</button>
 </div>`);
   $('otiCancelar').addEventListener('click', () => cerrarOverlay());
   $('otiImprimir').addEventListener('click', () => {
-    const op = { ot: $('otiOT').checked, planilla: $('otiPlanilla').checked, rotulos: $('otiRotulos').checked };
+    const op = { ot: false, planilla: false, rotulos: false };
+    for (const c of document.querySelectorAll('[data-hoja]')) op[c.dataset.hoja] = c.checked;
     cerrarOverlay();
     imprimirOT(ot, op);
   });

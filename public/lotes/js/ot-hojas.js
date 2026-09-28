@@ -11,7 +11,7 @@
 
 import { esc } from './nucleo.js';
 import { hojaTop, hojaMeta, hojaBanda, hojaPie } from './orden-hoja.js';
-import { plantillaPorId, origenTanque, COLS_VACIADO } from './ot-plantillas.js';
+import { plantillaPorId, origenTanque, hojasDePlantilla, COLS_VACIADO } from './ot-plantillas.js';
 import { resumenVasijas } from './ot-armado.js';
 import { fmtFecha } from './fechas.js';
 
@@ -46,6 +46,31 @@ function bloqueIds(ot){
   return `<div class="ot-ids">${ids}</div>`;
 }
 
+// El ID de un corte es el del lote que se forma en el tanque (0867).
+function bloqueIdCorte(ot){
+  const c = ot.lote_corte;
+  if (!c) return '<div class="ot-ids"><b>ID:</b> <span class="ot-linea"></span></div>';
+  return `<div class="ot-ids"><b>ID ${esc(c.lote)}:</b> ${esc(c.id_texto)}</div>`;
+}
+
+/* Corte (0867): una fila por barril con su lote y su capacidad, y el tanque
+ * destino UNA vez, en una celda que abarca todas las filas. Un lote sin
+ * barriles del Mapa ocupa una fila con la vasija cargada a mano. */
+function tablaVaciadoPorBarril(ot){
+  const filas = ot.lotes.flatMap(l => l.barriles.length
+    ? l.barriles.map(b => ({ lote: l.lote, vasija: b.num, litros: b.cap }))
+    : [{ lote: l.lote, vasija: resumenVasijas(l), litros: l.litros_previstos }]);
+  const destino = ot.destino ? `${esc(ot.destino)}:<br><br>________` : 'Tanque: ________';
+  const cuerpo = filas.map((f, i) =>
+    `<tr>${CHECK}<td>${esc(f.lote)}</td><td>${esc(f.vasija)}</td><td>${esc(fmtL(f.litros))}</td>` +
+    (i === 0 ? `<td rowspan="${filas.length}" class="ot-destino">${destino}</td>` : '') + '<td></td></tr>').join('');
+  const total = filas.reduce((s, f) => s + (Number(f.litros) || 0), 0);
+  const pie = filas.length > 1
+    ? `<tr class="ot-total"><td></td><td>Total</td><td></td><td>${total}</td><td></td><td></td></tr>` : '';
+  return '<table class="ot-tabla"><thead><tr><th>Check</th><th>CIW lote</th><th>Vasija</th><th>Litros</th>' +
+    `<th>Destino</th><th>Merma</th></tr></thead><tbody>${cuerpo}${pie}</tbody></table>`;
+}
+
 function tablaVaciado(ot, columnas){
   const celda = (l, c) => {
     switch (c){
@@ -70,7 +95,20 @@ function tablaVaciado(ot, columnas){
 
 /* vasija 'origen': el vino se corrige en el tanque de donde sale (OT desde
  * tanque), así que la hoja ya lo trae en vez de la línea para completar. */
-function tablaCorreccion(ot, vasija){
+/* 'agregado-corte' (0867): se corrige el lote del corte, ya en el tanque
+ * destino: una fila de TH2 y una de Solución SO2. */
+function tablaAgregadoCorte(ot){
+  const lote = ot.lote_corte ? esc(ot.lote_corte.lote) : '';
+  const vasija = ot.destino ? esc(ot.destino) : 'T_______';
+  const filas = ['TH2', 'Solución SO2'].map(prod =>
+    `<tr>${CHECK}<td>${lote}</td><td>1</td><td>${vasija}</td><td>${prod}</td><td></td><td></td></tr>`).join('');
+  return '<div class="ot-subt">Agregado</div><table class="ot-tabla"><thead><tr><th>Check</th><th>CIW lote</th>' +
+    '<th>Cantidad de vasijas</th><th>Vasijas</th><th>Producto</th><th>Cantidad</th><th>Tipo</th></tr></thead>' +
+    `<tbody>${filas}</tbody></table>`;
+}
+
+function tablaCorreccion(ot, vasija, modelo){
+  if (modelo === 'agregado-corte') return tablaAgregadoCorte(ot);
   const cual = l => (vasija === 'origen' && resumenVasijas(l)) ? esc(resumenVasijas(l)) : 'T_______';
   const filas = ot.lotes.flatMap(l => ['TH2', 'SO2'].map(prod =>
     `<tr>${CHECK}<td>${esc(l.lote)}</td><td>1</td><td>${cual(l)}</td><td>${prod}</td><td></td><td></td></tr>`)).join('');
@@ -99,7 +137,12 @@ function tablaLlenado(ot, modelo){
     `<th>Destino</th><th>Dar lleno con</th></tr></thead><tbody>${filas}</tbody></table>`;
 }
 
-function rotular(ot){
+function rotular(ot, de){
+  if (de === 'corte'){
+    const c = ot.lote_corte;
+    const txt = c ? `${esc(c.lote)} ${esc(c.id_texto)}` : '';
+    return `<div class="ot-paso"><span class="ot-caja">☐</span>Rotular vasija ID. <b>${txt}</b></div>`;
+  }
   const txt = ot.lotes.map(l => `${esc(l.lote)} ${esc(l.id_texto || '')}`).join(' · ');
   return `<div class="ot-paso"><span class="ot-caja">☐</span>Rotular vasija ID. <b>${txt}</b></div>`;
 }
@@ -114,20 +157,28 @@ export function hojaOT(ot){
         const ok = b.ok ? '<span class="ot-ok">OK ☐</span>' : '';
         return `<div class="ot-paso${dest}"><span class="ot-caja">☐</span>${esc(b.texto)}${ok}</div>`;
       }
-      case 'dato':             return `<div class="ot-dato">${esc(b.texto)} <span class="ot-linea"></span></div>`;
-      case 'ids':              return bloqueIds(ot);
-      case 'tabla-vaciado':    return tablaVaciado(ot, b.columnas);
-      case 'rotular':          return rotular(ot);
-      case 'tabla-correccion': return tablaCorreccion(ot, b.vasija);
+      case 'dato': {
+        const ok = b.ok ? '<span class="ot-ok">OK ☐</span>' : '';
+        return `<div class="ot-dato">${esc(b.texto)} <span class="ot-linea"></span>${ok}</div>`;
+      }
+      case 'ids':              return b.de === 'corte' ? bloqueIdCorte(ot) : bloqueIds(ot);
+      case 'tabla-vaciado':    return b.porBarril ? tablaVaciadoPorBarril(ot) : tablaVaciado(ot, b.columnas);
+      case 'rotular':          return rotular(ot, b.de);
+      case 'tabla-correccion': return tablaCorreccion(ot, b.vasija, b.modelo);
       case 'tabla-llenado':    return tablaLlenado(ot, b.modelo);
       default:                 return '';
     }
   }).join('');
   const lotesTxt = ot.lotes.map(l => l.lote).join(' · ');
+  // Un corte se nombra por el lote que forma ("Trasiego 26300 <ID>"), no por
+  // la lista de lotes de origen, que en la 0867 son treinta.
+  const banda = ot.lote_corte
+    ? [(pl ? pl.banda[0] : 'TRASIEGO'), ot.lote_corte.lote, ot.lote_corte.id_texto]
+    : [...(pl ? pl.banda : ['TRASIEGO', '']), lotesTxt];
   return `<div class="orden-hoja ot-trasiego">${hojaTop()}
   <div class="oh-titulo">Orden de Trabajo</div>
   ${meta(ot)}
-  ${hojaBanda([...(pl ? pl.banda : ['TRASIEGO', '']), lotesTxt])}
+  ${hojaBanda(banda)}
   ${cuerpo}
   ${hojaPie(ot.emitio, '')}
 </div>`;
@@ -205,6 +256,10 @@ export function hojaRotulos(ot){
 }
 
 export function hojasOT(ot, opciones){
+  // Una plantilla de una sola hoja (el corte) nunca imprime las otras, aunque
+  // se las pidan.
+  const deja = new Set(hojasDePlantilla(ot.plantilla));
   const o = { ot: true, planilla: true, rotulos: true, ...(opciones || {}) };
+  for (const k of ['ot', 'planilla', 'rotulos']) if (!deja.has(k)) o[k] = false;
   return (o.ot ? hojaOT(ot) : '') + (o.planilla ? hojasPlanilla(ot) : '') + (o.rotulos ? hojaRotulos(ot) : '');
 }

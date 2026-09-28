@@ -92,6 +92,23 @@ describe('movimientosDeOT', () => {
   });
 });
 
+describe('corte a un lote nuevo (0867)', () => {
+  it('guarda el lote del corte y cada lote de origen se traspasa a el', () => {
+    const ot = otDe([{ lote: '26004', barriles: CINCO }, { lote: '26016', barriles: [barril('9', 50)] }],
+      { lote_corte: { lote: ' 26300 ', id_texto: 'Base HOFB' } });
+    expect(ot.lote_corte).toEqual({ lote: '26300', id_texto: 'Base HOFB' });
+    const movs = movimientosDeOT(ot, 'ana', '2026-09-23');
+    for (const m of movs) expect(m).toMatchObject({ tipo: 'traspaso', lote_destino: '26300', vasija_destino: 'T 201' });
+    expect(movs.map((m) => m.litros)).toEqual([1125, 50]);
+  });
+
+  it('sin lote del corte queda null y los movimientos siguen siendo trasiegos', () => {
+    const ot = otDe([{ lote: '1', barriles: CINCO }], { lote_corte: { lote: '  ' } });
+    expect(ot.lote_corte).toBeNull();
+    expect(movimientosDeOT(ot, 'ana', 'x')[0]).toMatchObject({ tipo: 'trasiego', lote_destino: '' });
+  });
+});
+
 describe('confirmarOT', () => {
   it('pisa previstos con reales y pasa todo a ejecutado', () => {
     const ot = otDe([{ lote: '26217', barriles: CINCO }, { lote: '26218', barriles: [barril('7')] }]);

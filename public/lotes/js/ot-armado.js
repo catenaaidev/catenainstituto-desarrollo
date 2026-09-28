@@ -28,12 +28,20 @@ export function resumenVasijas(l){
   return `${bs.length} ${todasBarricas ? 'barricas' : 'vasijas'}`;
 }
 
-export function armarOT({ id, numero, plantilla, fecha, destino, emitio, lotes, mapaVersion, usuario, hoy }){
+/* Lote del corte (OT de barricas a tanque): el lote nuevo que se forma en el
+ * tanque. null en las demás OT. */
+function loteCorte(lc){
+  const lote = String((lc && lc.lote) || '').trim();
+  return lote ? { lote, id_texto: String(lc.id_texto || '') } : null;
+}
+
+export function armarOT({ id, numero, plantilla, fecha, destino, emitio, lotes, lote_corte, mapaVersion, usuario, hoy }){
   return {
     id, ot: numero, plantilla, fecha,
     estado: PENDIENTE,
     destino: String(destino || '').trim(),
     emitio: String(emitio || '').trim(),
+    lote_corte: loteCorte(lote_corte),
     lotes: (lotes || []).map((l, i) => {
       const barriles = (l.barriles || []).map(b => ({ ...b }));
       return {
@@ -60,16 +68,20 @@ export function armarOT({ id, numero, plantilla, fecha, destino, emitio, lotes, 
   };
 }
 
+/* En un corte cada lote de origen se TRASPASA al lote del corte: el linaje
+ * solo arma padre -> hijo con traspasos, y el traspaso es además el egreso que
+ * explica por qué el lote de origen se quedó sin vino. */
 export function movimientosDeOT(ot, usuario, hoy){
+  const corte = ot.lote_corte && ot.lote_corte.lote;
   return ot.lotes.map(l => ({
     id: l.mov_id,
     lote: l.lote,
-    tipo: 'trasiego',
+    tipo: corte ? 'traspaso' : 'trasiego',
     fecha: ot.fecha,
     vasija_origen: resumenVasijas(l),
     vasija_destino: ot.destino,
     litros: l.litros_previstos,
-    lote_destino: '', destino_externo: '',
+    lote_destino: corte || '', destino_externo: '',
     estado: PENDIENTE,
     ot: ot.ot,
     operario: '', comentario: '',
