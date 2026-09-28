@@ -96,8 +96,27 @@ export function esRO(td){
 
 /* ---------- columna de gutter ---------- */
 export function inyectarGutter(tabla){
-  if (tabla.querySelector('th.ggutter')) return;   // ya inyectada en este DOM
+  /* El thead y el tbody se miran POR SEPARADO. En la Orden de muestras la vista
+   * repinta solo el tbody (innerHTML) y el thead queda con su gutter: cortar
+   * aca por "el thead ya la tiene" dejaba las filas nuevas sin su celda, y
+   * todas las columnas se veian corridas un lugar (el recipiente bajo MOTIVO,
+   * el lote en la columna del numero de fila). */
+  if (!tabla.querySelector('th.ggutter')) _gutterThead(tabla);
+  let n = 0;
+  for (const tr of tabla.querySelectorAll('tbody tr')){
+    const esDato = !tr.querySelector('td[colspan]');
+    if (esDato) n++;
+    if (tr.cells[0] && tr.cells[0].classList.contains('ggutter')) continue;
+    const td = document.createElement('td');
+    td.className = 'ggutter';
+    // Las filas placeholder tambien reciben la celda, para no desalinear el
+    // colspan; pero no llevan numero porque no son datos.
+    if (esDato) td.textContent = String(n);
+    tr.insertBefore(td, tr.firstChild);
+  }
+}
 
+function _gutterThead(tabla){
   /* Una celda por CADA fila del thead. La pestana Lotes tiene dos (bandas y
    * columnas): meterla solo en la primera dejaria la fila de columnas con una
    * celda menos y todos los cellIndex corridos uno, y celdaDe ubica cada <td>
@@ -111,15 +130,6 @@ export function inyectarGutter(tabla){
     th.className = 'ggutter gcorner';
     th.title = 'Seleccionar toda la tabla';
     trHead.insertBefore(th, trHead.firstChild);
-  }
-  let n = 0;
-  for (const tr of tabla.querySelectorAll('tbody tr')){
-    const td = document.createElement('td');
-    td.className = 'ggutter';
-    // Las filas placeholder tambien reciben la celda, para no desalinear el
-    // colspan; pero no llevan numero porque no son datos.
-    if (!tr.querySelector('td[colspan]')) td.textContent = String(++n);
-    tr.insertBefore(td, tr.firstChild);
   }
 }
 
