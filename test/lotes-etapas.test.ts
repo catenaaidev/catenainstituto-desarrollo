@@ -14,9 +14,11 @@ import {
   hitos,
   avance,
   evaluarEtapa,
+  esLoteDeVino,
   type Hito,
 } from '../src/lotes/motores/etapas';
 import { criteriosEfectivos, evaluarLote, type Fila } from '../src/lotes/motores/fml';
+import { lotesConPadre } from '../src/lotes/motores/linaje';
 
 const d = (iso: string) => Date.parse(iso + 'T00:00:00Z');
 const HOY = d('2026-07-27');
@@ -396,5 +398,100 @@ describe('movimientos pendientes', () => {
     const rEj = evaluarEtapa(lote, analisis, ejecutado, cfg, d('2026-03-10'));
     const rSin = evaluarEtapa(lote, analisis, [], cfg, d('2026-03-10'));
     expect(rEj.etapa_sugerida).not.toBe(rSin.etapa_sugerida);
+  });
+});
+
+describe('lote que arranca de vino ya hecho (corte o traspaso)', () => {
+  // El 26310 real: creado con Nuevo lote, sin datos de uva, con litros.
+  const vino = { lote: '26310', variedad: 'Malbec', proyecto: 'El Amiguito', litros_actuales: 2000, origen: 'Vino' };
+
+  it('esLoteDeVino: marcado a mano, deducido del linaje, o uva', () => {
+    expect(esLoteDeVino(vino, false)).toBe(true);
+    expect(esLoteDeVino({ ...vino, origen: 'vino ' }, false)).toBe(true);
+    const sinMarca = { ...vino, origen: '' };
+    expect(esLoteDeVino(sinMarca, false)).toBe(false);
+    expect(esLoteDeVino(sinMarca, true)).toBe(true);
+    // Con fecha de ingreso tiene datos de uva: el padre no alcanza para deducirlo.
+    expect(esLoteDeVino({ ...sinMarca, fecha_ingreso: '2026-02-01' }, true)).toBe(false);
+    // 'Uva' puesto a mano le gana a la deducción.
+    expect(esLoteDeVino({ ...vino, origen: 'Uva' }, true)).toBe(false);
+  });
+
+  it('no pide fecha de ingreso, kilos ni vasija de FA', () => {
+    const r = evaluarEtapa(vino, [], [], CONFIG, HOY);
+    const h = porClave(r.hitos, 'datos_ingreso');
+    expect(h.aplica).toBe(true);
+    expect(h.cumplido).toBe(true);
+  });
+
+  it('sí pide variedad y proyecto', () => {
+    const r = evaluarEtapa({ ...vino, proyecto: '' }, [], [], CONFIG, HOY);
+    const h = porClave(r.hitos, 'datos_ingreso');
+    expect(h.cumplido).toBe(false);
+    expect(h.detalle).toBe('faltan: proyecto');
+  });
+
+  it('no se queda en ingreso: sin análisis de málico va a crianza', () => {
+    expect(evaluarEtapa(vino, [], [], CONFIG, HOY).etapa_sugerida).toBe('crianza');
+  });
+
+  it('con la FML abierta según el análisis va a fml', () => {
+    const an = [{ lote: '26310', fecha_analisis: '2026-07-20', malico: 2.5 }];
+    expect(evaluarEtapa(vino, an, [], CONFIG, HOY).etapa_sugerida).toBe('fml');
+  });
+
+  it('FA finalizada y Descube no aplican; análisis, pH, SO2 y llenado sí', () => {
+    const r = evaluarEtapa(vino, [], [], CONFIG, HOY);
+    const ap = clavesAplicables(r.hitos);
+    expect(ap.has('fa_finalizada')).toBe(false);
+    expect(ap.has('descube_cargado')).toBe(false);
+    for (const k of ['datos_ingreso', 'analisis_al_dia', 'ph_ok', 'so2_ok', 'lleno']) expect(ap.has(k)).toBe(true);
+  });
+
+  it('FML finalizada solo aplica si hay málico: sin dato, la FML pasó en el origen', () => {
+    const sinDato = evaluarEtapa(vino, [], [], CONFIG, HOY);
+    expect(clavesAplicables(sinDato.hitos).has('fml_finalizada')).toBe(false);
+    const an = [{ lote: '26310', fecha_analisis: '2026-07-20', malico: 2.5 }];
+    expect(clavesAplicables(evaluarEtapa(vino, an, [], CONFIG, HOY).hitos).has('fml_finalizada')).toBe(true);
+  });
+
+  it('recién creado, en 0 litros y sin salidas, NO se da por cerrado', () => {
+    // El ⎘ Hijo copia la fecha de ingreso del padre y arranca en 0 litros.
+    const hijo = { ...vino, litros_actuales: 0, fecha_ingreso: '2026-02-01' };
+    expect(evaluarEtapa(hijo, [], [], CONFIG, HOY).etapa_sugerida).toBe('crianza');
+  });
+
+  it('en 0 litros y con una salida ejecutada, sí se cierra', () => {
+    const vacio = { ...vino, litros_actuales: 0 };
+    const salida = [{ lote: '26310', tipo: 'traspaso', fecha: '2026-07-01', lote_destino: '26400' }];
+    expect(evaluarEtapa(vacio, [], salida, CONFIG, HOY).etapa_sugerida).toBe('cerrado');
+    const pendiente = [{ ...salida[0], estado: 'pendiente' }];
+    expect(evaluarEtapa(vacio, [], pendiente, CONFIG, HOY).etapa_sugerida).toBe('crianza');
+  });
+
+  it('deducido del linaje: sin marca pero con padre se trata como vino', () => {
+    const sinMarca = { ...vino, origen: '' };
+    expect(evaluarEtapa(sinMarca, [], [], CONFIG, HOY).etapa_sugerida).toBe('ingreso');
+    expect(evaluarEtapa(sinMarca, [], [], CONFIG, HOY, null, { tienePadre: true }).etapa_sugerida).toBe('crianza');
+  });
+
+  it('un lote de uva sigue igual que siempre', () => {
+    const uva = { lote: '26900', variedad: 'Malbec', litros_actuales: 100 };
+    const r = evaluarEtapa(uva, [], [], CONFIG, HOY);
+    expect(r.etapa_sugerida).toBe('ingreso');
+    expect(porClave(r.hitos, 'datos_ingreso').detalle).toBe('faltan: proyecto, fecha_ingreso, kilos, vasija_fa');
+  });
+});
+
+describe('lotesConPadre', () => {
+  it('junta los destinos de traspasos y renombres ejecutados', () => {
+    const movs = [
+      { lote: '100', tipo: 'traspaso', lote_destino: ' 200 ' },
+      { lote: '101', tipo: 'renombre', lote_destino: '201' },
+      { lote: '102', tipo: 'traspaso', lote_destino: '202', estado: 'pendiente' },
+      { lote: '103', tipo: 'trasiego', lote_destino: '203' },
+      { lote: '104', tipo: 'salida', destino_externo: 'X' },
+    ];
+    expect([...lotesConPadre(movs)].sort()).toEqual(['200', '201']);
   });
 });

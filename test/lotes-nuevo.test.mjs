@@ -6,7 +6,7 @@
  * lotes-vacios.test.mjs.
  */
 import { describe, it, expect } from 'vitest';
-import { armarHijo, validarNumeroLote, ordenarConFijos, movimientoHijo, CAMPOS_ENVASE }
+import { armarHijo, validarNumeroLote, ordenarConFijos, movimientoHijo, CAMPOS_ENVASE, PASOS }
   from '../public/lotes/js/lote-nuevo.js';
 
 describe('armarHijo', () => {
@@ -36,6 +36,10 @@ describe('armarHijo', () => {
     h.variedad = 'Cabernet';
     expect(padre.variedad).toBe('Malbec');
     expect(padre.litros_actuales).toBe(2250);
+  });
+
+  it('queda marcado como lote de vino: no le faltan datos de uva', () => {
+    expect(armarHijo({ ...padre, origen: 'Uva' }).origen).toBe('Vino');
   });
 
   it('no arrastra los campos internos de la vista (los que empiezan con _)', () => {
@@ -102,5 +106,12 @@ describe('movimientoHijo', () => {
     expect(m.cargado_por).toBe('Marcelo');
     expect(m.litros).toBeNull();
     expect(m.id).toMatch(/^mov-/);
+  });
+});
+
+describe('PASOS del asistente', () => {
+  it('pregunta el origen: uva o vino ya hecho', () => {
+    const p = PASOS.find(x => x.k === 'origen');
+    expect(p.opciones).toEqual(['', 'Uva', 'Vino']);
   });
 });
