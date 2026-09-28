@@ -179,7 +179,7 @@ export function parsearListaLotes(texto){
 
 /* Columnas que se ordenan como numero. Litros viene como '2600 de 3050': manda
  * el primer numero, que es el del tanque. */
-const COLS_NUMERICAS = new Set(['lote', 'litros', 'cantidad']);
+const COLS_NUMERICAS = new Set(['lote', 'barril', 'litros', 'cantidad']);
 
 function _valorOrden(fila, key){
   const v = String((fila || {})[key] ?? '').trim();
@@ -213,10 +213,10 @@ export function ordenarFilasOt(filas, key, dir){
     .map(x => x.f);
 }
 
-/* Campos que mira el buscador de texto libre: los mismos cuatro que el usuario
+/* Campos que mira el buscador de texto libre: los mismos que el usuario
  * ve en la grilla. Litros queda afuera a proposito: es numerico y buscar '100'
  * traeria 100, 1000 y 2100 juntos, que no es lo que nadie espera al tipear. */
-const CAMPOS_BUSCABLES = ['lote', 'variedad', 'vasija', 'motivo'];
+const CAMPOS_BUSCABLES = ['lote', 'variedad', 'vasija', 'barril', 'motivo'];
 
 export function pasaBusqueda(fila, consulta){
   const q = String(consulta ?? '').trim().toLowerCase();

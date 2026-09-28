@@ -10,9 +10,11 @@ import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
 import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
 import { fmtFecha } from './fechas.js';
+import { sortearOrden } from './sorteo-barriles.js';
 
 /*
- * _otRows: array de objetos { lote, variedad, vasija, litros, motivo, recipiente, cantidad }
+ * _otRows: array de objetos { lote, variedad, vasija, barril, litros, motivo, recipiente, cantidad }
+ * barril = el que sorteo el dado (o se tipeo a mano); '' si no hay.
  * Vive solo en memoria: NO se persiste en DATOS, NO se llama markDirty.
  */
 let _otRows       = [];
@@ -66,10 +68,10 @@ const _otAdaptador = {
       _otAutocompletar(obj);
       return 'ok';
     }
-    if (k !== 'motivo' && k !== 'recipiente' && k !== 'cantidad') return 'ro';
+    if (k !== 'motivo' && k !== 'barril' && k !== 'recipiente' && k !== 'cantidad') return 'ro';
 
-    if (k === 'motivo'){
-      obj.motivo = val;   // texto libre, sin normalizar a null (igual que el listener manual)
+    if (k === 'motivo' || k === 'barril'){
+      obj[k] = val;   // texto libre, sin normalizar a null (igual que el listener manual)
       return 'ok';
     }
     if (k === 'recipiente'){
@@ -141,6 +143,7 @@ function _otAutocompletar(r){
   const k = claveLote(r.lote);
   r.lote = k;
   r.noEncontrado = false;
+  r.barril = '';   // el barril sorteado era del lote anterior
   if (k === ''){ r.variedad = r.vasija = r.litros = r.motivo = ''; return; }
   const info = (DATOS().lotes || []).find(l => claveLote(l.lote) === k);
   const dash = ((dashData() && dashData().lotes) || []).find(l => claveLote(l.lote) === k);
@@ -163,6 +166,7 @@ function _otRenderTabla(){
   <td><input class="cell${r.noEncontrado ? ' ot-noexiste' : ''}" type="text" data-oti="${i}" data-otk="lote" value="${escA(r.lote)}"${r.noEncontrado ? ' title="No hay ningún lote con ese número"' : ''}></td>
   <td><input class="cell" type="text" data-oti="${i}" data-otk="variedad"  value="${escA(r.variedad)}"></td>
   <td><input class="cell" type="text" data-oti="${i}" data-otk="vasija"    value="${escA(r.vasija)}"></td>
+  <td><input class="cell num" type="text" data-oti="${i}" data-otk="barril" value="${escA(r.barril || '')}" style="width:70px"></td>
   <td><input class="cell num" type="text" data-oti="${i}" data-otk="litros" value="${escA(r.litros)}"></td>
   <td><input class="cell" type="text" data-oti="${i}" data-otk="motivo"   value="${escA(r.motivo)}"></td>
   <td><select class="cell" data-oti="${i}" data-otk="recipiente">${recOpts}</select></td>
@@ -175,12 +179,12 @@ function _otRenderTabla(){
 </tr>`;
   });
 
-  tbody.innerHTML = tb || `<tr id="otAddRow"><td colspan="8" style="color:var(--muted)">Sin filas. Elegí lotes en el filtro "Lote", pegalos en "Pegar lotes", usá "Agregar fila" o cambiá la fuente.</td></tr>`;
+  tbody.innerHTML = tb || `<tr id="otAddRow"><td colspan="9" style="color:var(--muted)">Sin filas. Elegí lotes en el filtro "Lote", pegalos en "Pegar lotes", usá "Agregar fila" o cambiá la fuente.</td></tr>`;
 
   /* Fila de agregar (siempre al final) */
   const addRow = document.createElement('tr');
   addRow.id = 'otAddRow';
-  addRow.innerHTML = `<td colspan="8" style="padding:6px 8px">
+  addRow.innerHTML = `<td colspan="9" style="padding:6px 8px">
     <button class="btn" id="btnOtAgregar">➕ Agregar fila</button>
   </td>`;
   tbody.appendChild(addRow);
@@ -230,7 +234,7 @@ function _otRenderTabla(){
       lt.value = r.lote;
       lt.classList.toggle('ot-noexiste', !!r.noEncontrado);
       lt.title = r.noEncontrado ? 'No hay ningún lote con ese número' : '';
-      for (const k of ['variedad', 'vasija', 'litros', 'motivo']){
+      for (const k of ['variedad', 'vasija', 'barril', 'litros', 'motivo']){
         const c = tr && tr.querySelector(`input.cell[data-otk="${k}"]`);
         if (c) c.value = r[k] ?? '';
       }
@@ -304,6 +308,11 @@ function _otPintarPaginas(){
     `</div>`;
   });
 
+  /* La columna BARRIL entra al papel solo si el dado (o alguien a mano) puso
+   * algun barril: una columna vacia en todas las hojas es ruido. Entra en el
+   * ancho: con 8 columnas el requerimiento sube de ~559px a ~619px de 688. */
+  const conBarril = _otRows.some(r => String(r.barril || '').trim() !== '');
+
   cont.innerHTML = pintarHojas({
     filas: _otRows,
     porPagina: ORDEN_PER_PAGE,
@@ -321,9 +330,9 @@ function _otPintarPaginas(){
      * y 9 de cada 10 hojas se derramaban a una pagina fisica extra, dejando las
      * firmas sueltas al final. Con 7 columnas el requerimiento baja a ~559px y
      * sobran ~130px, asi que nada envuelve y la hoja entra entera. */
-    colgroup: `<colgroup><col style="width:34px"><col style="width:60px"><col><col style="width:140px"><col style="width:50px"><col style="width:110px"><col style="width:56px"></colgroup>`,
-    thead: `<tr><th class="c oh-num">#</th><th class="c">LOTE</th><th>VARIEDAD</th><th>VASIJA</th><th class="c">Cant.</th><th>Recipiente</th><th class="oh-check">Check</th></tr>`,
-    columnas: 7,
+    colgroup: `<colgroup><col style="width:34px"><col style="width:60px"><col><col style="width:140px">${conBarril ? '<col style="width:60px">' : ''}<col style="width:50px"><col style="width:110px"><col style="width:56px"></colgroup>`,
+    thead: `<tr><th class="c oh-num">#</th><th class="c">LOTE</th><th>VARIEDAD</th><th>VASIJA</th>${conBarril ? '<th class="c">BARRIL</th>' : ''}<th class="c">Cant.</th><th>Recipiente</th><th class="oh-check">Check</th></tr>`,
+    columnas: conBarril ? 8 : 7,
     textoVacio: 'No hay lotes para los criterios elegidos.',
     /* Recipiente va como TEXTO, no como <select disabled>. El papel es un espejo
      * de solo lectura: el select no se podia usar, sumaba alto a cada fila y
@@ -334,6 +343,7 @@ function _otPintarPaginas(){
         `<td class="c">${esc(r.lote)}</td>` +
         `<td>${esc(r.variedad)}</td>` +
         `<td>${esc(r.vasija)}</td>` +
+        (conBarril ? `<td class="c">${esc(r.barril || '')}</td>` : '') +
         `<td class="c">${esc(String(r.cantidad))}</td>` +
         `<td>${esc(r.recipiente || '')}</td>` +
         `<td class="oh-check"></td>` +
@@ -353,7 +363,11 @@ function _otAplicarFiltros(){
    * escrito. Se conservan y la fuente suma las que no estan. */
   const manuales = _otRows.filter(r => r.manual);
   const ya = new Set(manuales.map(r => claveLote(r.lote)).filter(k => k !== ''));
+  /* El barril que sorteo el dado tampoco sale de la fuente: se recuerda por
+   * lote para que tocar un filtro no obligue a tirar el dado de nuevo. */
+  const barrilDe = new Map(_otRows.filter(r => r.barril).map(r => [claveLote(r.lote), r.barril]));
   _otRows = manuales.concat(_otBuildRows().filter(r => !ya.has(claveLote(r.lote))));
+  for (const r of _otRows) if (!r.barril && barrilDe.has(claveLote(r.lote))) r.barril = barrilDe.get(claveLote(r.lote));
   if (_otSort.key) _otRows = ordenarFilasOt(_otRows, _otSort.key, _otSort.dir);
   _otRefrescar();
 }
@@ -419,6 +433,40 @@ function _otCargarPegados(reemplazar){
     if (repetidos) t += ` ${repetidos} ya estaba${repetidos !== 1 ? 'n' : ''} en la orden.`;
     if (malos.length) t += ` No existe${malos.length !== 1 ? 'n' : ''}: ${malos.join(', ')} (marcado${malos.length !== 1 ? 's' : ''} en rojo).`;
     msg.textContent = t;
+  }
+}
+
+/* Dado: un barril LLENO al azar por cada lote de la orden, sacado del
+ * inventario del Mapa de Barriles (solo se lee, nunca se escribe). Volver a
+ * tirar cambia el barril si el lote tiene otro. Los lotes en tanque no tienen
+ * barriles en el Mapa: quedan sin barril y se avisan. */
+async function _otTirarDado(){
+  const msg = $('otDadoMsg');
+  const btn = $('btnOtDado');
+  const lotes = [...new Set(_otRows.map(r => claveLote(r.lote)).filter(k => k !== ''))];
+  if (!lotes.length){ if (msg) msg.textContent = 'No hay lotes en la orden.'; return; }
+  if (btn) btn.disabled = true;
+  if (msg) msg.textContent = 'Sorteando…';
+  try {
+    const r = await fetch(API + '/barriles?lotes=' + encodeURIComponent(lotes.join(',')));
+    if (!r.ok){
+      const e = await r.json().catch(() => ({}));
+      if (msg) msg.textContent = 'No pude leer el Mapa de Barriles' + (e.error ? ': ' + e.error : '.');
+      return;
+    }
+    const { sinBarril } = sortearOrden(_otRows, (await r.json()).por_lote);
+    _otRenderTabla();
+    _otPintarPaginas();
+    if (msg){
+      const con = lotes.length - sinBarril.length;
+      let t = `🎲 ${con} barril${con !== 1 ? 'es' : ''} sorteado${con !== 1 ? 's' : ''}.`;
+      if (sinBarril.length) t += ` Sin barriles llenos en el Mapa: ${sinBarril.join(', ')}.`;
+      msg.textContent = t;
+    }
+  } catch (e){
+    if (msg) msg.textContent = 'No pude leer el Mapa de Barriles (¿sin conexión?).';
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -554,6 +602,8 @@ export function renderOrden(){
            value="${escA(_otBusqueda)}" style="width:210px">
     <button class="btn" id="btnOtLimpiarFlt" title="Limpiar el buscador y todos los filtros">🧹 Limpiar filtros</button>
     <button class="btn" id="btnOtRecargar">🔄 Recargar filas</button>
+    <button class="btn" id="btnOtDado" title="Sortear un barril lleno al azar de cada lote de la orden (del inventario del Mapa de Barriles). Volver a apretar cambia el barril." style="font-size:16px;padding:4px 10px">🎲</button>
+    <span id="otDadoMsg" style="font-size:12px;color:var(--muted)"></span>
     <span class="tag" id="otCount"></span>
     <div class="spacer"></div>
     <button class="btn primary" id="btnOtImprimir">🖨️ Imprimir</button>
@@ -627,6 +677,7 @@ export function renderOrden(){
     <th data-k="lote">Lote</th>
     <th data-k="variedad">Variedad</th>
     <th data-k="vasija">Vasija</th>
+    <th data-k="barril" class="num" title="Barril sorteado con el 🎲 (se puede escribir a mano)">Barril</th>
     <th data-k="litros" class="num">Litros</th>
     <th data-k="motivo">Motivo</th>
     <th data-k="recipiente">Recipiente</th>
@@ -702,6 +753,9 @@ export function renderOrden(){
   $('btnOtRecargar').addEventListener('click', () => {
     _otAplicarFiltros();
   });
+
+  /* dado: sortear un barril por lote */
+  $('btnOtDado').addEventListener('click', _otTirarDado);
 
   /* recipiente / cantidad por defecto */
   $('otDefRecipiente').addEventListener('change', e => { _otRecipiente = e.target.value; });
