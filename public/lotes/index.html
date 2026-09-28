@@ -999,6 +999,17 @@ table.hm td.hm-c{padding:0}
 .hm-cell.v5{background:#8e2f24}
 .hm-leyenda{display:flex;align-items:center;gap:7px;margin-top:11px;font-size:11px;color:var(--muted)}
 .hm-leyenda .sw{width:20px;height:11px;border-radius:3px;display:inline-block}
+
+/* ---- cuadricula completa (boton "▦ Cuadrícula" del encabezado) ----
+ * Por defecto las tablas solo tienen el divisor de abajo de cada fila. Con la
+ * clase body.cuadricula cada celda lleva su recuadro, como en Excel. Es una
+ * preferencia de pantalla de cada persona (localStorage, igual que los anchos
+ * de columna), no un dato del documento.
+ * Quedan afuera el heatmap del dashboard (sus celdas son botones de color con
+ * separacion propia) y las hojas de papel .orden-hoja, que ya tienen su
+ * recuadro de formulario RCI 08 y tienen que salir impresas igual que siempre. */
+body.cuadricula table:not(.hm):not(.orden-hoja table) :is(th,td){border:1px solid #d9d3c7}
+button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 </style>
 </head>
 <body>
@@ -1009,6 +1020,7 @@ table.hm td.hm-c{padding:0}
     <span class="status" id="redInfo" style="color:var(--muted);font-size:12px"></span>
     <span class="status" id="usuario" style="cursor:pointer" title="Quién está usando la app. Clic para cambiar.">👤 —</span>
     <span class="status" id="statusBar">Cargando…</span>
+    <button class="btn" id="btnCuadricula" aria-pressed="false" title="Mostrar u ocultar el recuadro de todas las celdas de las tablas. Se recuerda en esta computadora.">▦ Cuadrícula</button>
     <button class="btn" id="btnHistorial" title="Quién guardó qué y cuándo">🕘 Historial</button>
     <button class="btn primary" id="btnGuardar" disabled>💾 Guardar</button>
   </div>

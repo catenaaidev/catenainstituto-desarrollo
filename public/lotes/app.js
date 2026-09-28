@@ -52,6 +52,22 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('btnHistorial').addEventListener('click', verHistorial);
   $('usuario').addEventListener('click', () => pedirUsuario(true));
 
+  /* cuadricula completa en todas las tablas: preferencia de pantalla de cada
+     persona, guardada en su navegador como los anchos de columna */
+  let cuadricula = false;
+  try { cuadricula = localStorage.getItem('lotes_cuadricula') === '1'; } catch(e) {}
+  const aplicarCuadricula = () => {
+    document.body.classList.toggle('cuadricula', cuadricula);
+    $('btnCuadricula').classList.toggle('on', cuadricula);
+    $('btnCuadricula').setAttribute('aria-pressed', String(cuadricula));
+  };
+  aplicarCuadricula();
+  $('btnCuadricula').addEventListener('click', () => {
+    cuadricula = !cuadricula;
+    aplicarCuadricula();
+    try { localStorage.setItem('lotes_cuadricula', cuadricula ? '1' : '0'); } catch(e) {}
+  });
+
   /* botón limpiar filtros Lotes */
   $('btnLimpiarFltLotes').addEventListener('click', () => {
     /* resetLlenado antes de limpiar: limpiarFiltrosMulti es la que repinta, y
