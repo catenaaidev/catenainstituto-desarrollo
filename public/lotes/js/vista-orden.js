@@ -2,7 +2,7 @@
 'use strict';
 
 import { $, esc, escA, num, DATOS, dashData, dashLoading, cargarDashboard,
-         registrarVista } from './nucleo.js';
+         registrarVista, markDirty, guardar } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
 import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija,
          datosDeLote, claveLote, parsearListaLotes, ordenarFilasOt } from './orden-filas.js';
@@ -10,7 +10,7 @@ import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
 import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
 import { fmtFecha } from './fechas.js';
-import { sortearOrden } from './sorteo-barriles.js';
+import { sortearOrden, registrosDeImpresion } from './sorteo-barriles.js';
 
 /*
  * _otRows: array de objetos { lote, variedad, vasija, barril, litros, motivo, recipiente, cantidad }
@@ -437,9 +437,12 @@ function _otCargarPegados(reemplazar){
 }
 
 /* Dado: un barril LLENO al azar por cada lote de la orden, sacado del
- * inventario del Mapa de Barriles (solo se lee, nunca se escribe). Volver a
- * tirar cambia el barril si el lote tiene otro. Los lotes en tanque no tienen
- * barriles en el Mapa: quedan sin barril y se avisan. */
+ * inventario del Mapa de Barriles (solo se lee, nunca se escribe). Rota: sortea
+ * entre los barriles que MENOS veces se muestrearon segun
+ * DATOS().muestreos_barriles, que se anota al imprimir (_otRegistrarMuestreo).
+ * Tirar el dado no gasta barriles. Volver a tirar cambia el barril si el lote
+ * tiene otro. Los lotes en tanque no tienen barriles en el Mapa: quedan sin
+ * barril y se avisan. */
 async function _otTirarDado(){
   const msg = $('otDadoMsg');
   const btn = $('btnOtDado');
@@ -454,7 +457,8 @@ async function _otTirarDado(){
       if (msg) msg.textContent = 'No pude leer el Mapa de Barriles' + (e.error ? ': ' + e.error : '.');
       return;
     }
-    const { sinBarril } = sortearOrden(_otRows, (await r.json()).por_lote);
+    const { sinBarril } = sortearOrden(_otRows, (await r.json()).por_lote, Math.random,
+                                       DATOS().muestreos_barriles || []);
     _otRenderTabla();
     _otPintarPaginas();
     if (msg){
@@ -468,6 +472,23 @@ async function _otTirarDado(){
   } finally {
     if (btn) btn.disabled = false;
   }
+}
+
+/* Al imprimir, los barriles de la orden pasan a contar como muestreados: se
+ * anotan en DATOS().muestreos_barriles y se guarda solo, para que la proxima
+ * orden (en esta PC o en otra) no los repita. Reimprimir no cuenta doble. */
+async function _otRegistrarMuestreo(){
+  const hist = DATOS().muestreos_barriles || [];
+  const fecha = ($('otFecha') && $('otFecha').value) || new Date().toISOString().slice(0, 10);
+  const nuevos = registrosDeImpresion(_otRows, hist, fecha, $('otNumOrden') ? $('otNumOrden').value : '');
+  if (!nuevos.length) return;
+  DATOS().muestreos_barriles = hist.concat(nuevos);
+  markDirty();
+  const msg = $('otDadoMsg');
+  const ok = await guardar();
+  if (msg) msg.textContent = ok
+    ? `✓ ${nuevos.length} barril${nuevos.length !== 1 ? 'es' : ''} anotado${nuevos.length !== 1 ? 's' : ''} como muestreado${nuevos.length !== 1 ? 's' : ''}: la próxima orden no los repite.`
+    : 'Los barriles quedaron anotados pero NO se guardaron: apretá Guardar.';
 }
 
 function initFiltrosOt(){
@@ -818,6 +839,7 @@ export function renderOrden(){
     document.body.classList.add('printing-orden');
     window.print();
     document.body.classList.remove('printing-orden');
+    _otRegistrarMuestreo();
   });
 }
 
