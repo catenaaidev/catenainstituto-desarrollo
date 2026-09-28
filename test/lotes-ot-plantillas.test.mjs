@@ -3,12 +3,32 @@
  * con un tipo de bloque que nadie dibuja. Estos tests fijan esa estructura. */
 import { describe, it, expect } from 'vitest';
 import { PLANTILLAS_OT, plantillaPorId, TIPOS_BLOQUE, COLS_VACIADO, MODELOS_LLENADO, MODELOS_CORRECCION,
-  origenTanque, pideLoteCorte, hojasDePlantilla, HOJAS_OT, barricasEstimadas } from '../public/lotes/js/ot-plantillas.js';
+  origenTanque, pideLoteCorte, creaLote, hojasDePlantilla, HOJAS_OT, barricasEstimadas } from '../public/lotes/js/ot-plantillas.js';
 
 describe('PLANTILLAS_OT', () => {
-  it('trae las cuatro plantillas acordadas', () => {
+  it('trae las plantillas acordadas', () => {
     expect(PLANTILLAS_OT.map((p) => p.id)).toEqual(
-      ['barricas-barricas', 'tq-barricas', 'barricas-tanque', 'tq-tq']);
+      ['barricas-barricas', 'tq-barricas', 'barrica-tanque', 'tq-tq', 'barricas-tanque']);
+  });
+
+  // El corte conserva el id 'barricas-tanque': las OT ya emitidas lo tienen
+  // guardado y se tienen que seguir imprimiendo igual.
+  it('el corte se llama Corte y crea el lote nuevo; el trasiego a tanque no', () => {
+    expect(plantillaPorId('barricas-tanque').nombre).toBe('Corte');
+    expect(creaLote('barricas-tanque')).toBe(true);
+    expect(plantillaPorId('barrica-tanque').nombre).toBe('Trasiego de barrica a tanque');
+    expect(creaLote('barrica-tanque')).toBe(false);
+    expect(pideLoteCorte('barrica-tanque')).toBe(false);
+    for (const p of PLANTILLAS_OT) expect(p.nombre).not.toMatch(/\(corte\)/);
+  });
+
+  it('el trasiego de barrica a tanque usa la 0867 pero con los lotes de origen', () => {
+    const pl = plantillaPorId('barrica-tanque');
+    expect(hojasDePlantilla('barrica-tanque')).toEqual(['ot']);
+    expect(pl.bloques.find((b) => b.tipo === 'tabla-vaciado').porBarril).toBe(true);
+    expect(pl.bloques.find((b) => b.tipo === 'ids').de).toBeUndefined();
+    expect(pl.bloques.find((b) => b.tipo === 'rotular').de).toBeUndefined();
+    expect(pl.bloques.find((b) => b.tipo === 'tabla-correccion').modelo).toBeUndefined();
   });
 
   it('los ids son unicos', () => {

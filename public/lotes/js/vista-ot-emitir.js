@@ -9,10 +9,11 @@
 import { $, esc, escA, num, DATOS, markDirty, guardar, usuarioActual,
          mostrarOverlay, cerrarOverlay } from './nucleo.js';
 import { armarOT, movimientosDeOT, litrosPrevistos } from './ot-armado.js';
-import { PLANTILLAS_OT, origenTanque, pideLoteCorte, hojasDePlantilla, barricasEstimadas } from './ot-plantillas.js';
+import { PLANTILLAS_OT, origenTanque, creaLote, hojasDePlantilla, barricasEstimadas } from './ot-plantillas.js';
 import { hojasOT } from './ot-hojas.js';
 import { proximoNumeroOT } from './ot-movimientos.js';
 import { esOrganico } from './envases.js';
+import { abrirCorteOT } from './vista-ot-corte.js';
 
 /* Estado del modal abierto: una entrada por lote agregado. */
 let _lotes = [];      // [{lote, id_texto, organico, barriles:[...], tildados:Set<num>, vasijas_manual, litros, litrosManual, barricas, barricasManual}]
@@ -25,6 +26,12 @@ let _sesion = 0;
 // Lotes con un fetch de barriles en vuelo: bloquea el doble Enter en red lenta
 // (que sumaria el mismo lote dos veces y duplicaria el movimiento).
 let _pendientes = new Set();
+// Las promesas de _agregarLote en vuelo: antes de emitir (o de pasar de paso en
+// el asistente del Corte) se esperan, para no validar una lista a medio llegar.
+let _enVuelo = new Set();
+// La plantilla elegida. Es estado y no se lee del <select> porque el asistente
+// del Corte arma su propia pantalla y el select ya no existe.
+let _plantilla = PLANTILLAS_OT[0].id;
 
 async function _traerBarriles(lote){
   try {
@@ -40,22 +47,8 @@ async function _traerBarriles(lote){
   }
 }
 
-// La plantilla elegida: desde tanque no se usan los barriles del Mapa.
-const _desdeTanque = () => origenTanque(($('otePlantilla') || {}).value);
-const _esCorte = () => pideLoteCorte(($('otePlantilla') || {}).value);
-
-// El lote del corte tal como está en la lista de Lotes (null si no está).
-function _fichaLote(lote){
-  return (DATOS().lotes || []).find(l => String(l.lote) === lote) || null;
-}
-
-function _pintarCorte(){
-  const lote = $('oteCorte').value.trim();
-  const ficha = lote ? _fichaLote(lote) : null;
-  $('oteCorteInfo').innerHTML = !lote ? ''
-    : ficha ? esc(ficha.id_texto || '(sin descripción)')
-    : '<span class="msg err">⚠ No está en la lista de lotes: la hoja sale sin ID.</span>';
-}
+// Desde tanque no se usan los barriles del Mapa.
+const _desdeTanque = () => origenTanque(_plantilla);
 
 /* Desde tanque (0912) el lote sale de un tanque: se pide el tanque, los litros
  * y cuántas barricas se llenan, que da los rótulos y las filas de la planilla. */
@@ -71,7 +64,7 @@ function _loteDesdeTanque(l, i){
 </div>`;
 }
 
-function _pintarLotes(){
+export function pintarLotes(){
   const cont = $('otePorLote');
   if (!cont) return;
   if (_desdeTanque()){ cont.innerHTML = _lotes.map(_loteDesdeTanque).join(''); return; }
@@ -103,7 +96,22 @@ function _pintarLotes(){
     ? '<div class="msg err">El Mapa de Barriles no respondió: cargá las vasijas a mano.</div>' : '');
 }
 
-async function _agregarLote(){
+function _agregarLote(){
+  const p = _agregarLoteAhora();
+  _enVuelo.add(p);
+  p.finally(() => _enVuelo.delete(p));
+  return p;
+}
+
+/* El lote que quedó escrito sin apretar Enter también cuenta: se agrega, y se
+ * esperan los que siguen trayendo sus barriles del Mapa. */
+export async function asegurarLotes(){
+  const inp = $('oteLote');
+  if (inp && inp.value.trim()) _agregarLote();
+  await Promise.all([..._enVuelo]);
+}
+
+async function _agregarLoteAhora(){
   const inp = $('oteLote');
   const lote = inp.value.trim();
   if (!lote) return;
@@ -131,7 +139,7 @@ async function _agregarLote(){
     litrosManual: false,
     barricas: null, barricasManual: false,
   });
-  _pintarLotes();
+  pintarLotes();
 }
 
 function _recalcularLitros(i){
@@ -140,9 +148,16 @@ function _recalcularLitros(i){
   l.litros = litrosPrevistos(l.barriles.filter(b => l.tildados.has(b.num))) || null;
 }
 
-export function abrirEmitirOT(onListo){
+/* Arranca una sesión de lotes vacía: la usan el formulario y el asistente del
+ * Corte cuando se abren de cero. */
+export function iniciarSesionLotes(plantilla){
   _lotes = []; _mapaVersion = null; _mapaCaido = false;
-  _sesion++; _pendientes = new Set();
+  _sesion++; _pendientes = new Set(); _enVuelo = new Set();
+  _plantilla = plantilla || PLANTILLAS_OT[0].id;
+}
+
+export function abrirEmitirOT(onListo){
+  iniciarSesionLotes();
   const hoy = new Date().toISOString().slice(0, 10);
   const numero = proximoNumeroOT(DATOS().movimientos || [], Number(hoy.slice(0, 4)), DATOS().ordenes_trabajo || []);
   const opts = PLANTILLAS_OT.map(p => `<option value="${escA(p.id)}">${esc(p.nombre)}</option>`).join('');
@@ -153,7 +168,6 @@ export function abrirEmitirOT(onListo){
   <label>Plantilla</label><select class="txt" id="otePlantilla">${opts}</select>
   <label>N° de OT</label><input class="txt" id="oteNumero" value="${escA(numero)}">
   <label>Fecha</label><input class="txt" type="date" id="oteFecha" value="${escA(hoy)}">
-  <label class="ote-corte">Lote del corte</label><div class="ote-corte"><input class="txt" id="oteCorte" placeholder="Lote que se forma en el tanque, p. ej. 26300" style="width:100%"> <span id="oteCorteInfo" style="color:var(--muted)"></span></div>
   <label id="oteDestinoLbl">Tanque destino</label><input class="txt" id="oteDestino" placeholder="vacío = 'Tanque pulmón: ____'">
   <label>Emitió</label><input class="txt" id="oteEmitio" value="${escA(usuarioActual())}">
   <label>Agregar lote</label><input class="txt" id="oteLote" placeholder="Número de lote y Enter">
@@ -169,20 +183,33 @@ export function abrirEmitirOT(onListo){
     $('oteDestinoLbl').textContent = t ? 'Destino' : 'Tanque destino';
     $('oteDestino').placeholder = t ? 'p. ej. Barricas Pinot (no 2026-2025)' : "vacío = 'Tanque pulmón: ____'";
   };
-  const ajustarCorte = () => {
-    for (const el of document.querySelectorAll('.ote-corte')) el.style.display = _esCorte() ? '' : 'none';
-  };
-  ajustarCorte();
-  $('otePlantilla').addEventListener('change', () => { ajustarDestino(); ajustarCorte(); _pintarLotes(); });
-  $('oteCorte').addEventListener('input', _pintarCorte);
+  $('otePlantilla').addEventListener('change', () => {
+    _plantilla = $('otePlantilla').value;
+    // El Corte crea un lote: se sigue en el asistente, con lo ya cargado.
+    if (creaLote(_plantilla)){
+      abrirCorteOT(onListo, { numero: $('oteNumero').value, fecha: $('oteFecha').value,
+                              emitio: $('oteEmitio').value, destino: $('oteDestino').value });
+      return;
+    }
+    ajustarDestino(); pintarLotes();
+  });
+  conectarLotes();
+  $('oteCancelar').addEventListener('click', () => cerrarOverlay());
+  $('oteEmitir').addEventListener('click', () => _emitir(onListo));
+}
+
+/* Los eventos del campo "Agregar lote" y de la lista de lotes (#oteLote y
+ * #otePorLote). Se llama cada vez que esos elementos se vuelven a dibujar. */
+export function conectarLotes(){
   $('oteLote').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); _agregarLote(); } });
+  $('oteLote').addEventListener('change', () => _agregarLote());
   $('otePorLote').addEventListener('change', e => {
     const t = e.target;
     if (t.dataset.num !== undefined){
       const l = _lotes[+t.dataset.lote];
       if (t.checked) l.tildados.add(t.dataset.num); else l.tildados.delete(t.dataset.num);
       _recalcularLitros(+t.dataset.lote);
-      _pintarLotes();
+      pintarLotes();
     } else if (t.dataset.manual !== undefined){
       _lotes[+t.dataset.manual].vasijas_manual = t.value.trim();
     } else if (t.dataset.litros !== undefined){
@@ -191,63 +218,74 @@ export function abrirEmitirOT(onListo){
       l.litrosManual = true;
       if (_desdeTanque() && !l.barricasManual){
         l.barricas = barricasEstimadas(l.litros);
-        _pintarLotes();
+        pintarLotes();
       }
     } else if (t.dataset.barricas !== undefined){
       const l = _lotes[+t.dataset.barricas];
       l.barricas = num(t.value);
       l.barricasManual = l.barricas !== null; // borrarlo vuelve al cálculo
-      if (!l.barricasManual){ l.barricas = barricasEstimadas(l.litros); _pintarLotes(); }
+      if (!l.barricasManual){ l.barricas = barricasEstimadas(l.litros); pintarLotes(); }
     }
   });
   $('otePorLote').addEventListener('click', e => {
     const b = e.target.closest('[data-quitar]');
-    if (b){ _lotes.splice(+b.dataset.quitar, 1); _pintarLotes(); }
+    if (b){ _lotes.splice(+b.dataset.quitar, 1); pintarLotes(); }
   });
-  $('oteCancelar').addEventListener('click', () => cerrarOverlay());
-  $('oteEmitir').addEventListener('click', () => _emitir(onListo));
 }
 
 async function _emitir(onListo){
-  if (!_lotes.length){ alert('Agregá al menos un lote.'); return; }
+  await asegurarLotes();
   const fecha = $('oteFecha').value;
-  if (!fecha){ alert('Falta la fecha.'); return; }
   const numero = $('oteNumero').value.trim();
-  if (!numero){ alert('Falta el número de OT.'); return; }
+  const error = validarCabecera(numero, fecha) || validarLotesOrigen();
+  if (error){ alert(error); return; }
+  if (!confirmarNumeroRepetido(numero)) return;
+  const ot = armarOTDeSesion({ numero, fecha, plantilla: _plantilla,
+                               destino: $('oteDestino').value, emitio: $('oteEmitio').value });
+  await registrarOT(ot, onListo);
+}
+
+/* Las validaciones que comparten el formulario y el asistente del Corte.
+ * Devuelven el texto del error, o '' si está todo bien. */
+export function validarCabecera(numero, fecha){
+  if (!String(numero || '').trim()) return 'Falta el número de OT.';
+  if (!fecha) return 'Falta la fecha.';
+  return '';
+}
+
+export function validarLotesOrigen(){
+  if (!_lotes.length) return 'Agregá al menos un lote.';
+  if (_desdeTanque()){
+    const sinTanque = _lotes.find(l => !l.vasijas_manual);
+    if (sinTanque) return 'Falta el tanque origen del lote ' + sinTanque.lote + '.';
+    return '';
+  }
+  const sinVasijas = _lotes.find(l => !l.tildados.size && !l.vasijas_manual);
+  if (sinVasijas) return 'El lote ' + sinVasijas.lote + ' no tiene barriles tildados ni vasijas cargadas.';
+  return '';
+}
+
+export function confirmarNumeroRepetido(numero){
   const d0 = DATOS();
   const yaExiste = (d0.movimientos || []).some(m => m.ot === numero) ||
     (d0.ordenes_trabajo || []).some(o => o.ot === numero);
-  if (yaExiste && !confirm('El número ' + numero + ' ya existe. ¿Continuar igual?')) return;
-  const tanque = _desdeTanque();
-  let loteCorte = null;
-  if (_esCorte()){
-    const lote = $('oteCorte').value.trim();
-    if (!lote){ alert('Falta el lote del corte: es el lote que se forma en el tanque.'); return; }
-    if (_lotes.some(l => l.lote === lote)){
-      alert('El lote del corte (' + lote + ') no puede ser también un lote de origen.');
-      return;
-    }
-    const ficha = _fichaLote(lote);
-    loteCorte = { lote, id_texto: (ficha && ficha.id_texto) || '' };
-  }
-  if (tanque){
-    const sinTanque = _lotes.find(l => !l.vasijas_manual);
-    if (sinTanque){ alert('Falta el tanque origen del lote ' + sinTanque.lote + '.'); return; }
-  }
-  const sinVasijas = tanque ? [] : _lotes.filter(l => !l.tildados.size && !l.vasijas_manual);
-  if (sinVasijas.length){
-    alert('El lote ' + sinVasijas[0].lote + ' no tiene barriles tildados ni vasijas cargadas.');
-    return;
-  }
-  const hoy = new Date().toISOString().slice(0, 10);
-  const usuario = usuarioActual();
-  const ot = armarOT({
+  return !yaExiste || confirm('El número ' + numero + ' ya existe. ¿Continuar igual?');
+}
+
+/* Los lotes de origen cargados en esta sesión (el asistente del Corte los
+ * necesita para ofrecer "⎘ Hijo de …"). */
+export function lotesDeSesion(){ return _lotes; }
+
+/* La OT con los lotes de la sesión. `loteCorte` = {lote, id_texto} en el Corte. */
+export function armarOTDeSesion({ numero, fecha, plantilla, destino, emitio, loteCorte }){
+  const tanque = origenTanque(plantilla);
+  return armarOT({
     id: 'ot-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    numero,
-    plantilla: $('otePlantilla').value,
+    numero: String(numero).trim(),
+    plantilla,
     fecha,
-    destino: $('oteDestino').value,
-    emitio: $('oteEmitio').value,
+    destino,
+    emitio,
     lotes: _lotes.map(l => ({
       lote: l.lote, id_texto: l.id_texto, organico: l.organico,
       // Desde tanque no se vacía ningún barril: los del Mapa (si los hay) son
@@ -257,11 +295,19 @@ async function _emitir(onListo){
       litros_previstos: l.litros,
       barricas_previstas: tanque ? (l.barricas ?? barricasEstimadas(l.litros)) : null,
     })),
-    lote_corte: loteCorte,
-    mapaVersion: _mapaVersion, usuario, hoy,
+    lote_corte: loteCorte || null,
+    mapaVersion: _mapaVersion, usuario: usuarioActual(), hoy: new Date().toISOString().slice(0, 10),
   });
+}
 
+/* Suma la OT y sus movimientos a los datos, guarda, y recién con el guardado
+ * confirmado ofrece imprimir. `antes` corre justo antes de sumar la OT (el
+ * Corte crea ahí su lote): todo entra en el mismo guardado. */
+export async function registrarOT(ot, onListo, antes){
+  const hoy = new Date().toISOString().slice(0, 10);
+  const usuario = usuarioActual();
   const d = DATOS();
+  if (antes) antes(d);
   if (!d.ordenes_trabajo) d.ordenes_trabajo = [];
   if (!d.movimientos) d.movimientos = [];
   d.ordenes_trabajo.unshift(ot);

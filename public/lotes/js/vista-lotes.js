@@ -211,7 +211,7 @@ export function resetLlenado(){
  * forma de recuperarla salvo limpiando el filtro.
  *
  * rebuild() lee el estado desde el Set, asi que lo tildado se conserva. */
-function refrescarOpcionesFiltros(){
+export function refrescarOpcionesFiltros(){
   _instLotes.forEach(f => f.rebuild());
 }
 
@@ -800,7 +800,9 @@ function fijosVivos(){
   return _fijos;
 }
 
-function fijar(o){
+/* Exportada: el lote que crea la OT de Corte (vista-ot-corte.js) tambien
+ * queda fijo arriba. */
+export function fijar(o){
   _fijos = fijosVivos().filter(x => x !== o).concat([o]);
   guardarFijos();
 }
@@ -929,7 +931,7 @@ function abrirAsistente(padre){
  * a medias. Numeros y fechas en null, textos y listas en ''. Las ro son
  * derivadas y no se tocan: litros_actuales arranca en 0 (nunca null:
  * motor_etapas compara litros_actuales <= 0) y envases sale del desglose. */
-function loteEnBlanco(){
+export function loteEnBlanco(){
   const nuevo = { litros_actuales: 0, cap50:null, cap200:null, cap225:null,
                   cap500:null, vasija_grande:null };
   for (const c of COLS_LOTES){

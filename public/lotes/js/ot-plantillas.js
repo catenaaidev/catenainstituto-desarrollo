@@ -16,6 +16,8 @@
  * formulario pide el tanque y la cantidad de barricas a llenar por lote.
  *
  * `loteCorte: true` = el formulario pide el lote que se forma en el destino.
+ * `creaLote: true` = ese lote no existe todavía: la OT se arma con un asistente
+ * paso a paso que lo crea junto con la orden (vista-ot-corte.js).
  * `hojas` = las hojas que se ofrecen al imprimir (sin él, las tres). */
 'use strict';
 
@@ -114,15 +116,13 @@ export const PLANTILLAS_OT = [
     ],
   },
   {
-    // Referencia: 0867 Corte Base HOFB. Varios lotes van a UN tanque y forman
-    // un lote nuevo (el "lote del corte"): la banda, el ID, el rótulo y el
-    // agregado son de ese lote, no de los de origen. La tabla va con una fila
-    // por barril, y la orden es una sola hoja (sin planilla ni rótulos).
-    id: 'barricas-tanque',
-    nombre: 'Trasiego de barricas a tanque (corte)',
+    // Misma hoja que la 0867, pero el vino sigue siendo del mismo lote: el ID,
+    // el rótulo y la corrección son de los lotes de origen, y los movimientos
+    // son trasiegos comunes (no hay lote del corte).
+    id: 'barrica-tanque',
+    nombre: 'Trasiego de barrica a tanque',
     banda: ['TRASIEGO'],
     origen: 'barriles',
-    loteCorte: true,
     hojas: ['ot'],
     bloques: [
       p('Santizar bomba, cañerías, picos de llenado, visor T y cápsula de gas.'),
@@ -132,12 +132,12 @@ export const PLANTILLAS_OT = [
       p('Inertizar tanque destino hasta obtener menos de 20% de O2, técnico tiene que revisar'),
       dato('% final de O2:', { ok: true }),
       p('Trasegar CON BORRAS  a tanque con nitrógeno o Argón en vena. Abrir antes para inertizar cañería.'),
-      { tipo: 'ids', de: 'corte' },
+      { tipo: 'ids' },
       { tipo: 'tabla-vaciado', columnas: ['lote', 'vasijas', 'litros', 'destino', 'merma'], porBarril: true },
-      { tipo: 'rotular', de: 'corte' },
+      { tipo: 'rotular' },
       p('Inertizar espacio de cabeza con Argón'),
       p('Tomar muestra en tubo falcon y llevar a laboratorio CIW.'),
-      { tipo: 'tabla-correccion', modelo: 'agregado-corte' },
+      { tipo: 'tabla-correccion' },
       p('Homogeneizar.'),
       p('Scanear barriles vaciados y llenados en Planilla Scaner Barricas'),
       p('Lavar y vaporizar barriles según protocolo'),
@@ -168,6 +168,41 @@ export const PLANTILLAS_OT = [
       p('De ser necesario, dar lleno con: Técnico tiene que degustar', { ok: true }),
     ],
   },
+  {
+    // Referencia: 0867 Corte Base HOFB. Varios lotes van a UN tanque y forman
+    // un lote nuevo (el "lote del corte"): la banda, el ID, el rótulo y el
+    // agregado son de ese lote, no de los de origen. La tabla va con una fila
+    // por barril, y la orden es una sola hoja (sin planilla ni rótulos).
+    // El lote del corte se crea al emitir la OT (asistente de vista-ot-corte.js).
+    // Conserva el id 'barricas-tanque' de cuando se llamaba "Trasiego de
+    // barricas a tanque (corte)": las OT ya emitidas lo tienen guardado.
+    id: 'barricas-tanque',
+    nombre: 'Corte',
+    banda: ['TRASIEGO'],
+    origen: 'barriles',
+    loteCorte: true,
+    creaLote: true,
+    hojas: ['ot'],
+    bloques: [
+      p('Santizar bomba, cañerías, picos de llenado, visor T y cápsula de gas.'),
+      p('Sanitizar vasija a utilizar. (técnico tiene que revisar)', { ok: true }),
+      p('Sanitizar clapets antes de comenzar trasiego.'),
+      p('Revisar apertura de tapas de vasija.'),
+      p('Inertizar tanque destino hasta obtener menos de 20% de O2, técnico tiene que revisar'),
+      dato('% final de O2:', { ok: true }),
+      p('Trasegar CON BORRAS  a tanque con nitrógeno o Argón en vena. Abrir antes para inertizar cañería.'),
+      { tipo: 'ids', de: 'corte' },
+      { tipo: 'tabla-vaciado', columnas: ['lote', 'vasijas', 'litros', 'destino', 'merma'], porBarril: true },
+      { tipo: 'rotular', de: 'corte' },
+      p('Inertizar espacio de cabeza con Argón'),
+      p('Tomar muestra en tubo falcon y llevar a laboratorio CIW.'),
+      { tipo: 'tabla-correccion', modelo: 'agregado-corte' },
+      p('Homogeneizar.'),
+      p('Scanear barriles vaciados y llenados en Planilla Scaner Barricas'),
+      p('Lavar y vaporizar barriles según protocolo'),
+      p('Juntar borras'),
+    ],
+  },
 ];
 
 export function plantillaPorId(id){
@@ -184,6 +219,12 @@ export function origenTanque(id){
 export function pideLoteCorte(id){
   const pl = plantillaPorId(id);
   return !!(pl && pl.loteCorte);
+}
+
+// El Corte crea su lote al emitir: se arma con el asistente, no con el formulario.
+export function creaLote(id){
+  const pl = plantillaPorId(id);
+  return !!(pl && pl.creaLote);
 }
 
 // Qué hojas se ofrecen al imprimir; sin `hojas`, las tres.
