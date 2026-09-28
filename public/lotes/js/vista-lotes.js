@@ -3,7 +3,7 @@
 
 import { $, esc, escA, num, DATOS, markDirty, registrarVista,
          registrarInit, dashMap, invalidarDashMap, cargarDashboard, irALote,
-         mostrarOverlay, cerrarOverlay } from './nucleo.js';
+         mostrarOverlay, cerrarOverlay, usuarioActual } from './nucleo.js';
 import { toggleSort, sortRows, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti } from './tabla.js';
 import { activarGrilla, adaptadorCols, limpiarSeleccion } from './grilla.js';
@@ -13,7 +13,8 @@ import { CAPACIDADES, resumenEnvases, contarEnvases,
          litrosDeEnvases, tiposDeEnvase, estaVacio, esOrganico } from './envases.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { fmtFecha } from './fechas.js';
-import { PASOS, armarHijo, validarNumeroLote, ordenarConFijos } from './lote-nuevo.js';
+import { PASOS, armarHijo, validarNumeroLote, ordenarConFijos,
+         movimientoHijo } from './lote-nuevo.js';
 
 /* La clave de storage es la de siempre (lotes_cols_ancho): respeta los anchos
  * que la gente ya tiene guardados. El encabezado de Lotes son DOS filas
@@ -839,7 +840,7 @@ function abrirAsistente(padre){
             + '</select>';
     } else {
       const sug = p.sugerir
-        ? opcionesValores(DATOS().lotes, l => l[p.k]).filter(v => v !== '')
+        ? opcionesValores(DATOS().lotes, l => l[p.k]).map(o => o.val).filter(v => v !== '')
         : [];
       campo = `<input class="txt" id="asisCampo" autocomplete="off" value="${escA(vals[p.k])}"`
             + (p.k === 'lote' ? ' inputmode="numeric"' : '')
@@ -898,6 +899,13 @@ function abrirAsistente(padre){
     for (const p of PASOS) base[p.k] = vals[p.k];
     base.lote = v.valor;
     DATOS().lotes.unshift(base);
+    /* El hijo deja un traspaso padre→hijo en Movimientos: sin eso no aparece
+     * en el Linaje de la ficha. */
+    if (padre){
+      if (!Array.isArray(DATOS().movimientos)) DATOS().movimientos = [];
+      DATOS().movimientos.unshift(movimientoHijo(padre, base, usuarioActual(),
+                                                 new Date().toISOString().slice(0, 10)));
+    }
     fijar(base);
     markDirty();
     cerrarOverlay();

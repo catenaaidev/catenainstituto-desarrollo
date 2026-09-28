@@ -6,7 +6,7 @@
  * lotes-vacios.test.mjs.
  */
 import { describe, it, expect } from 'vitest';
-import { armarHijo, validarNumeroLote, ordenarConFijos, CAMPOS_ENVASE }
+import { armarHijo, validarNumeroLote, ordenarConFijos, movimientoHijo, CAMPOS_ENVASE }
   from '../public/lotes/js/lote-nuevo.js';
 
 describe('armarHijo', () => {
@@ -82,5 +82,25 @@ describe('ordenarConFijos', () => {
   it('muestra un fijo aunque el filtro lo haya dejado afuera', () => {
     // visibles = [b, d]; c es fijo pero no pasa el filtro
     expect(ordenarConFijos([b, d], [c])).toEqual([c, b, d]);
+  });
+});
+
+describe('movimientoHijo', () => {
+  const m = movimientoHijo({ lote: 26217 }, { lote: 26400 }, 'Marcelo', '2026-09-28');
+
+  it('es un traspaso EJECUTADO del padre al hijo: es lo que arma la arista del linaje', () => {
+    // linaje.ts solo arma padre→hijo con traspaso/renombre, y los pendientes no cuentan.
+    expect(m.tipo).toBe('traspaso');
+    expect(m.estado).toBe('ejecutado');
+    expect(m.lote).toBe('26217');
+    expect(m.lote_destino).toBe('26400');
+  });
+
+  it('lleva la fecha y quien lo cargo, y los litros vacios para completar en Movimientos', () => {
+    expect(m.fecha).toBe('2026-09-28');
+    expect(m.cargado_el).toBe('2026-09-28');
+    expect(m.cargado_por).toBe('Marcelo');
+    expect(m.litros).toBeNull();
+    expect(m.id).toMatch(/^mov-/);
   });
 });

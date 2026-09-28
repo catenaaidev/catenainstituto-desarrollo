@@ -61,3 +61,20 @@ export function ordenarConFijos(visibles, fijos){
   const set = new Set(fijos);
   return [...fijos].reverse().concat(visibles.filter(o => !set.has(o)));
 }
+
+/* El movimiento que deja registrado de donde salio un lote hijo. Tiene que ser
+ * un traspaso EJECUTADO: el linaje (src/lotes/motores/linaje.ts, TIPOS_A_LOTE)
+ * solo arma la arista padre→hijo con traspaso o renombre, y los pendientes no
+ * cuentan. Mismo criterio que la OT de corte. Los litros quedan vacios: se
+ * completan en la pestaña Movimientos. Misma forma que el ➕ de Movimientos. */
+export function movimientoHijo(padre, hijo, usuario, hoy){
+  return {
+    id: 'mov-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    lote: String(padre.lote ?? ''), tipo: 'traspaso', fecha: hoy,
+    vasija_origen: '', vasija_destino: '', litros: null,
+    lote_destino: String(hijo.lote ?? ''), destino_externo: '',
+    estado: 'ejecutado',
+    ot: '', operario: '', comentario: 'Lote hijo creado desde la pestaña Lotes',
+    cargado_por: usuario || '', cargado_el: hoy,
+  };
+}
