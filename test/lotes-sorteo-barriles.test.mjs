@@ -1,6 +1,7 @@
 /* Tests del dado de la Orden de muestras: un barril LLENO al azar por lote. */
 import { describe, it, expect } from 'vitest';
-import { barrilesLlenos, sortearBarril, sortearOrden } from '../public/lotes/js/sorteo-barriles.js';
+import { barrilesLlenos, sortearBarril, sortearOrden, vecesPorLote,
+         registrosDeImpresion } from '../public/lotes/js/sorteo-barriles.js';
 
 const B = (num, estado = 'LLENO') => ({ num, estado });
 
@@ -56,5 +57,66 @@ describe('sortearOrden', () => {
     const filas = [{ lote: '26999', barril: '555' }];
     expect(sortearOrden(filas, {}).sinBarril).toEqual(['26999']);
     expect(filas[0].barril).toBe('');
+  });
+});
+
+describe('rotacion sin repetir', () => {
+  const lote = { '26217': [B('101'), B('102'), B('103')] };
+  const H = (barril, fecha = '2026-09-01') => ({ lote: '26217', barril, fecha, orden: '' });
+
+  it('vecesPorLote cuenta por lote y barril', () => {
+    const v = vecesPorLote([H('101'), H('101', '2026-09-08'), H('102'), { lote: '26300', barril: '9' }]);
+    expect(v['26217'].get('101')).toBe(2);
+    expect(v['26217'].get('102')).toBe(1);
+    expect(v['26300'].get('9')).toBe(1);
+  });
+
+  it('sortea solo entre los que todavia no salieron', () => {
+    for (let i = 0; i < 30; i++){
+      const f = [{ lote: '26217' }];
+      sortearOrden(f, lote, Math.random, [H('101'), H('102')]);
+      expect(f[0].barril).toBe('103');
+    }
+  });
+
+  it('cuando todos salieron, arranca otra vuelta', () => {
+    const f = [{ lote: '26217' }];
+    sortearOrden(f, lote, () => 0, [H('101'), H('102'), H('103')]);
+    expect(f[0].barril).toBe('101');
+  });
+
+  it('un barril recien llenado entra antes que los ya muestreados', () => {
+    const f = [{ lote: '26217' }];
+    sortearOrden(f, { '26217': [B('101'), B('104')] }, () => 0, [H('101')]);
+    expect(f[0].barril).toBe('104');
+  });
+
+  it('el mismo lote dos veces en la orden recibe barriles distintos', () => {
+    const f = [{ lote: '26217' }, { lote: '26217' }];
+    sortearOrden(f, lote, () => 0, []);
+    expect(f[0].barril).not.toBe(f[1].barril);
+  });
+
+  it('recorre el lote entero en tantas ordenes como barriles tenga', () => {
+    const hist = [];
+    for (let d = 1; d <= 3; d++){
+      const f = [{ lote: '26217' }];
+      sortearOrden(f, lote, Math.random, hist);
+      hist.push(...registrosDeImpresion(f, hist, '2026-09-0' + d, 'OT-' + d));
+    }
+    expect(hist.map(h => h.barril).sort()).toEqual(['101', '102', '103']);
+  });
+});
+
+describe('registrosDeImpresion', () => {
+  it('anota las filas con barril, con fecha y orden', () => {
+    const r = registrosDeImpresion([{ lote: '26217', barril: '101' }, { lote: '26300', barril: '' }],
+      [], '2026-09-28', ' OT-7 ');
+    expect(r).toEqual([{ lote: '26217', barril: '101', fecha: '2026-09-28', orden: 'OT-7' }]);
+  });
+
+  it('reimprimir la misma orden no cuenta doble', () => {
+    const hist = [{ lote: '26217', barril: '101', fecha: '2026-09-28', orden: 'OT-7' }];
+    expect(registrosDeImpresion([{ lote: '26217', barril: '101' }], hist, '2026-09-28', 'OT-7')).toEqual([]);
   });
 });
