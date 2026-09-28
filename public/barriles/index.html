@@ -1927,10 +1927,16 @@ $('btnImportar').addEventListener('click', () => {
   for (let i = idxEnc + 1; i < filas.length; i++) {
     const f = filas[i];
     if (f[ci.num] === null || f[ci.num] === '') continue;
-    const g = k => ci[k] >= 0 ? (f[ci[k]] ?? '') : '';
-    inv.push({ num: String(f[ci.num]).trim(), estado: normEstado(g('estado')),
-               cap: g('cap'), litros: g('litros'), anio: g('anio'), marca: g('marca'), origen: g('origen'),
-               trat: g('trat'), uso: g('uso'), lote: String(g('lote')).trim(), cosecha: g('cosecha') });
+    // Una columna que la planilla no trae queda undefined, no '': si no, importar
+    // una planilla sin AÑO u ORIGEN borraría esos datos de toda la app.
+    const g = k => ci[k] >= 0 ? (f[ci[k]] ?? '') : undefined;
+    const fila = { num: String(f[ci.num]).trim() };
+    for (const k of ['estado', 'cap', 'litros', 'anio', 'marca', 'origen', 'trat', 'uso', 'lote', 'cosecha']) {
+      const v = g(k);
+      if (v === undefined) continue;
+      fila[k] = k === 'estado' ? normEstado(v) : k === 'lote' ? String(v).trim() : v;
+    }
+    inv.push(fila);
   }
   const plan = planImportacion(inv, estado.inventario);
   if (!confirm(`La planilla trae ${inv.length} vasijas:\n\n` +
@@ -1943,7 +1949,8 @@ $('btnImportar').addEventListener('click', () => {
 
   const hoy = hoyISO(), ts = Date.now();
   for (const n of plan.nuevas) {
-    const r = { ...n, fecha: hoy, ts, por: 'excel' };
+    const r = { estado: '', cap: '', litros: '', anio: '', marca: '', origen: '', trat: '', uso: '', lote: '', cosecha: '',
+                ...n, fecha: hoy, ts, por: 'excel' };
     if (normEstado(r.estado) === 'VACIO') { r.lote = ''; r.cosecha = ''; r.litros = 0; }
     estado.inventario.push(r);
   }
@@ -1977,13 +1984,17 @@ let visiblesInv = TANDA_INV;
 
 // ---------- la lista del inventario: una fila por vasija ----------
 // Desde el 2026-09-28 la fila es la única verdad (ver js/inventario.js): no hay
-// capa de escaneos, ni de correcciones, ni historial al costado. Lo último que
-// se tocó va arriba, así un escaneo o una orden recién aplicada se ve de una.
+// capa de escaneos, ni de correcciones, ni historial al costado. Arriba de todo
+// van las que tienen un cartel (esperan una decisión y, si no, quedarían
+// enterradas entre miles); después lo último que se tocó, así un escaneo o una
+// orden recién aplicada se ve de una; al final, el resto en el orden del Excel.
 function filasInvTodas() {
-  const tocadas = [], resto = [];
-  for (const r of estado.inventario) (r.ts ? tocadas : resto).push({ r });
-  tocadas.sort((a, b) => (b.r.ts || 0) - (a.r.ts || 0));
-  return tocadas.concat(resto);
+  const conCartel = [], tocadas = [], resto = [];
+  for (const r of estado.inventario)
+    (hayCartel(r.num) ? conCartel : r.ts ? tocadas : resto).push({ r });
+  const porTs = (a, b) => (b.r.ts || 0) - (a.r.ts || 0);
+  conCartel.sort(porTs); tocadas.sort(porTs);
+  return conCartel.concat(tocadas, resto);
 }
 
 // Una cajita de filtro por columna, arriba de los datos. Se suman con AND entre

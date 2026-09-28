@@ -177,6 +177,17 @@ describe('planImportacion (caso 9)', () => {
     expect(p.carteles[0].opciones).toEqual(opcionesDeLotes(['', 'A']));
     expect(p.faltan).toEqual(['3']);
   });
+  it('una columna que la planilla no trae no borra ese dato', () => {
+    const conFicha = [fila('1', { anio: '2019', origen: 'FRANCIA', estado: 'LLENO', lote: 'A', cosecha: '2026' })];
+    const p = planImportacion([{ num: '1', estado: 'LLENO', lote: 'A', cosecha: '2026', marca: 'NADALIE', cap: 225 }], conFicha);
+    expect(p.ficha).toEqual([]);
+    expect(p.carteles).toEqual([]);
+  });
+  it('sin columna ESTADO no abre carteles', () => {
+    const p = planImportacion([{ num: '1', marca: 'OTRA' }], inv);
+    expect(p.carteles).toEqual([]);
+    expect(p.ficha).toEqual([{ num: '1', campos: { marca: 'OTRA' } }]);
+  });
   it('una vasija dada de alta que la planilla trae pasa a ser de la planilla', () => {
     const p = planImportacion([{ num: '3', estado: 'VACIO', cap: 225, marca: 'NADALIE' }], inv);
     expect(p.ficha).toEqual([{ num: '3', campos: {} }]);
@@ -222,6 +233,12 @@ describe('migración', () => {
     expect(p.discrepancias).toEqual([{ num: '2', estadoFila: 'LLENO', loteFila: 'B', fechaFila: '',
       escaneo: 'Z', fechaEscaneo: '2026-07-16', recomendado: 'fila' }]);
     expect(p).toMatchObject({ ediciones: 1, cartelesViejos: 1, escaneos: 3, noFiguran: 1 });
+  });
+  it('una anotación del rótulo ("26730 ROJO") no es una discrepancia', () => {
+    const e = viejo();
+    e.inventario[1].lote = '26730';
+    e.tanques[1].lote = '26730 CHECK ROJO';
+    expect(planMigracion(e).discrepancias).toEqual([]);
   });
   it('un escaneo posterior al corte y a todo lo demás se recomienda', () => {
     const e = viejo();

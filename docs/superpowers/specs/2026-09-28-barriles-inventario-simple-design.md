@@ -125,11 +125,15 @@ la vez siguen existiendo: el push baja el estado fresco y le aplica lo propio.
 Para el inventario la fusión pasa a ser por barril, gana el `ts` más nuevo;
 los carteles se fusionan por `id`.
 
-Sin conexión (el POST falla por red):
-- La insignia pasa a rojo "⛔ SIN CONEXIÓN — no se guardan cambios".
-- Un velo bloquea las acciones de escritura hasta que vuelva la conexión.
-- Lo que no llegó al servidor se descarta al reconectar (se adopta el estado
-  del servidor) y **se avisa qué fue**: "No se guardó: vaciado OT 1234".
+Sin conexión (el POST o el sondeo fallan por red):
+- La insignia pasa a "⛔ sin conexión" y un velo a pantalla completa tapa la
+  app: no se pueden cargar cambios hasta que vuelva.
+- Si quedó un cambio sin confirmar, **vive solo en la memoria de la pestaña**:
+  el velo lo dice ("no cierres ni recargues esta página") y, al volver la
+  conexión, se sube solo por la misma fusión del 409. Se eligió esto en vez de
+  descartarlo porque el caso típico es un corte de segundos justo al guardar, y
+  tirar ese cambio sería perder la orden que el operario acaba de cargar. Lo que
+  no hay es copia en el dispositivo: recargar o cerrar la página lo pierde.
 - El borrador del escáner (`CLAVE_ESC_DRAFT`) se queda: el operario no tiene
   que retipear los números de una orden que no pudo subir.
 
@@ -152,14 +156,28 @@ Migrar hace: `fecha` de cada fila = la más nueva entre su corrección, su
 escaneo y la última orden aplicada que la tocó; borra las tres secciones; sube
 con `confirmarBorrado: true` (el freno 412 las contaría como pérdida).
 
+Agregado al implementar: la lista de discrepancias deja **elegir por vasija**
+entre la fila y el escaneo, con la más nueva marcada. Hace falta porque los
+escaneos del operario nunca llegaban a la fila (quedaban como cartel), así que
+a veces el escaneo es lo último que se sabe. El piso de la comparación es
+`inventarioCorte` (2026-08-18): el Excel unificado ya incorporaba todo lo
+anterior. Los lotes se comparan por su código de 5 dígitos, porque los
+escaneos traen anotaciones del rótulo ("26730 ROJO"). Con la foto del
+2026-09-09 quedan 2 discrepancias, las dos erratas de tipeo.
+
+Importar el Excel: una columna que la planilla no trae no se toca (antes se
+leía como vacía y borraba ese dato de toda la app).
+
 Operario: no ve el aviso y sigue trabajando; la app nueva lee las filas tal
 como están.
 
 ## Lo que tiene que cambiar afuera de la pantalla
 
-- `src/barriles/guardas.ts`: freno 412 para `carteles` (umbral 3, clave `id`);
-  `tanques`/`revisiones`/`ediciones` dejan de contar una vez migradas (si no
-  existen en ninguno de los dos lados no suman nada; ya es así).
+- `src/barriles/guardas.ts`: **sin cambios**. Los `carteles` NO llevan freno a
+  propósito: se cierran en tanda por diseño (un vaciado de 30 barriles con
+  cartel los cierra todos en un solo guardado) y un freno pediría confirmar
+  cada vez. `tanques`/`revisiones`/`ediciones` siguen protegidas hasta la
+  migración, que sube con `confirmarBorrado: true`.
 - `src/barriles/rutas.ts`: listas de secciones del resumen/borrados.
 - `src/lotes/motores/mapa.ts`: `lotes_con_tanque` sale de las filas del
   inventario con marca TANQUE y lote (más `tanques` si todavía existe);

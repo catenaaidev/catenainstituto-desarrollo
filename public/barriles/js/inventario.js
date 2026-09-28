@@ -277,11 +277,13 @@ function planImportacion(filasExcel, inventario) {
     enExcel.add(num);
     const r = ix.get(num);
     if (!r) { out.nuevas.push({ ...e, num, estado: normEstado(e.estado), lote: txt(e.lote) }); continue; }
+    // una columna que la planilla no trae viene undefined y no se toca
     const campos = {};
     for (const k of CAMPOS_FICHA) if (e[k] !== undefined && txt(e[k]) !== txt(r[k])) campos[k] = e[k];
     if (Object.keys(campos).length || r.alta) out.ficha.push({ num, campos });
+    if (e.estado === undefined) { out.iguales++; continue; }   // sin columna ESTADO no hay con qué comparar
     const eEst = normEstado(e.estado), rEst = normEstado(r.estado);
-    const eLote = eEst === 'VACIO' ? '' : txt(e.lote);
+    const eLote = eEst === 'VACIO' ? '' : e.lote === undefined ? txt(r.lote) : txt(e.lote);
     const eCos = eEst === 'VACIO' ? '' : txt(e.cosecha);
     const distinto = eEst !== rEst || eLote.toUpperCase() !== txt(r.lote).toUpperCase() ||
       (eEst !== 'VACIO' && eCos && eCos !== txt(r.cosecha));
@@ -351,6 +353,15 @@ function necesitaMigracion(estado) {
   return SECCIONES_VIEJAS.some(k => Array.isArray(estado && estado[k]));
 }
 
+// El código de un lote para compararlo: "26730 ROJO" y "26730 CHECK ROJO" son el
+// lote 26730 con una anotación del rótulo. Los lotes con nombre (VERMUT, JEREZ)
+// se comparan enteros.
+function codigoLote(l) {
+  const t = txt(l).toUpperCase();
+  const m = /^(\d{5})(?!\d)/.exec(t);
+  return m ? m[1] : t;
+}
+
 // La fecha más nueva que se sabe de cada fila SIN contar su escaneo: su
 // corrección a mano o la última orden aplicada que la tocó. num -> {fecha, ts}.
 function fechasSinEscaneo(e, ix) {
@@ -403,7 +414,7 @@ function planMigracion(estado) {
     const estFila = normEstado(valor(num, 'estado'));
     const loteEsc = t.vacia ? '' : txt(t.lote);
     const vaciaEsc = !!t.vacia || !loteEsc || ['VACIO', 'BORRA'].includes(loteEsc.toUpperCase());
-    const coincide = vaciaEsc ? estFila === 'VACIO' : loteFila.toUpperCase() === loteEsc.toUpperCase();
+    const coincide = vaciaEsc ? estFila === 'VACIO' : codigoLote(loteFila) === codigoLote(loteEsc);
     if (coincide) continue;
     const ff = fechas.get(num);
     const fechaFila = ff ? ff.fecha : '';
@@ -497,4 +508,5 @@ globalThis.fotoPorClave = fotoPorClave;
 globalThis.SECCIONES_VIEJAS = SECCIONES_VIEJAS;
 globalThis.necesitaMigracion = necesitaMigracion;
 globalThis.planMigracion = planMigracion;
+globalThis.codigoLote = codigoLote;
 globalThis.migrarEstado = migrarEstado;
