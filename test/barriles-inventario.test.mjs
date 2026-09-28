@@ -51,8 +51,8 @@ describe('camposCoherentes', () => {
 describe('escribirFila', () => {
   it('escribe y sella fecha, ts y origen', () => {
     const f = fila(1);
-    const r = escribirFila(f, { lote: '26134' }, { fecha: '2026-09-20', ts: 5, origen: 'escaneo' }, cosechaDe);
-    expect(r.despues).toMatchObject({ estado: 'LLENO', lote: '26134', fecha: '2026-09-20', ts: 5, origen: 'escaneo' });
+    const r = escribirFila(f, { lote: '26134' }, { fecha: '2026-09-20', ts: 5, por: 'escaneo' }, cosechaDe);
+    expect(r.despues).toMatchObject({ estado: 'LLENO', lote: '26134', fecha: '2026-09-20', ts: 5, por: 'escaneo' });
     expect(r.antes).toMatchObject({ estado: 'VACIO', fecha: '', ts: 0 });
     expect(f.fecha).toBe('2026-09-20');
   });
@@ -144,8 +144,8 @@ describe('planOrden', () => {
 
 describe('planDeshacer (caso 8)', () => {
   it('solo revierte los barriles donde la orden sigue siendo lo último', () => {
-    const inv = [fila('1', { estado: 'VACIO', origen: 'orden:e1', ts: 50 }),
-                 fila('2', { estado: 'LLENO', lote: 'Z', origen: 'escaneo', ts: 90, fecha: '2026-09-25' })];
+    const inv = [fila('1', { estado: 'VACIO', por: 'orden:e1', ts: 50 }),
+                 fila('2', { estado: 'LLENO', lote: 'Z', por: 'escaneo', ts: 90, fecha: '2026-09-25' })];
     const orden = { id: 'e1', aplicado: { cambios: [
       { num: '1', antes: {}, despues: { estado: 'VACIO', ts: 50 } },
       { num: '2', antes: {}, despues: { estado: 'VACIO', ts: 50 } }] } };
@@ -219,13 +219,30 @@ describe('migración', () => {
   });
   it('el plan lista dónde el escaneo contradice a la fila', () => {
     const p = planMigracion(viejo());
-    expect(p.discrepancias).toEqual([{ num: '2', estadoFila: 'LLENO', loteFila: 'B', escaneo: 'Z', fechaEscaneo: '2026-07-16' }]);
+    expect(p.discrepancias).toEqual([{ num: '2', estadoFila: 'LLENO', loteFila: 'B', fechaFila: '',
+      escaneo: 'Z', fechaEscaneo: '2026-07-16', recomendado: 'fila' }]);
     expect(p).toMatchObject({ ediciones: 1, cartelesViejos: 1, escaneos: 3, noFiguran: 1 });
+  });
+  it('un escaneo posterior al corte y a todo lo demás se recomienda', () => {
+    const e = viejo();
+    e.tanques[1].fecha = '2026-09-20';
+    expect(planMigracion(e).discrepancias[0]).toMatchObject({ num: '2', recomendado: 'escaneo' });
+  });
+  it('un escaneo más viejo que una corrección no se recomienda', () => {
+    const e = viejo();
+    e.tanques[1].fecha = '2026-09-20';
+    e.ediciones.push({ num: '2', campo: 'lote', valor: 'B', fecha: '2026-09-25', ts: 5 });
+    expect(planMigracion(e).discrepancias[0]).toMatchObject({ num: '2', fechaFila: '2026-09-25', recomendado: 'fila' });
+  });
+  it('en las vasijas elegidas escribe lo que dijo el escaneo', () => {
+    const e = viejo();
+    migrarEstado(e, { usarEscaneo: ['2'], cosechaDe });
+    expect(e.inventario[1]).toMatchObject({ estado: 'LLENO', lote: 'Z', fecha: '2026-07-16', por: 'escaneo' });
   });
   it('fija las correcciones, fecha las filas y borra las capas viejas', () => {
     const e = viejo();
     expect(migrarEstado(e)).toBe(3);
-    expect(e.inventario[0]).toMatchObject({ lote: 'A2', fecha: '2026-09-10', origen: 'migracion' });
+    expect(e.inventario[0]).toMatchObject({ lote: 'A2', fecha: '2026-09-10', por: 'migracion' });
     expect(e.inventario[1]).toMatchObject({ lote: 'B', fecha: '2026-07-16' });
     expect(e.inventario[2]).toMatchObject({ fecha: '2026-09-15' });
     expect(e.tanques).toBeUndefined();

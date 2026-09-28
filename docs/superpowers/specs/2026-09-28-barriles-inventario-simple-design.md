@@ -54,7 +54,8 @@ Fila de `estado.inventario`:
 { num, cap, marca, estado, lote, cosecha, litros,   // lo de siempre
   fecha,   // 'YYYY-MM-DD' del hecho que dejó la fila así ('' = sin dato)
   ts,      // Date.now() del momento en que se cargó (desempate del mismo día)
-  origen } // 'inventario' | 'escaneo' | 'orden:<id>' | 'excel' | 'cartel'
+  por }    // 'inventario' | 'escaneo' | 'orden:<id>' | 'excel' | 'cartel'
+           // (no `origen`: esa columna ya viene del Excel, es el de la barrica)
 ```
 
 Coherencia que se impone en toda escritura:
@@ -80,11 +81,11 @@ Se quedan: `altas`, `bajas`, `boxes`, `palets`, `escaneos` (órdenes),
 
 ## Una sola puerta de escritura
 
-`escribirFila(fila, cambio, { fecha, ts, origen })` en un módulo nuevo
+`escribirFila(fila, cambio, { fecha, ts, por })` en un módulo nuevo
 `public/barriles/js/inventario.js` (puro, sin DOM, testeable como `altas.js`):
 
 1. Si `fecha < fila.fecha` → no escribe, devuelve `{ viejo: true }`.
-2. Aplica `cambio`, impone la coherencia, pone `fecha`/`ts`/`origen`.
+2. Aplica `cambio`, impone la coherencia, pone `fecha`/`ts`/`por`.
 3. Cierra los carteles del barril con `fecha ≤` la nueva.
 
 La usan:
@@ -108,7 +109,7 @@ DD/MM", sin cartel.
 
 `orden.aplicado.cambios[]` ya guarda `antes`/`despues`. Se agrega el `ts` con
 que se escribió. Se revierte el barril solo si la fila sigue con
-`origen === 'orden:<id>'` y ese `ts`; si no, va a "no se deshizo: cambió
+`por === 'orden:<id>'` y ese `ts`; si no, va a "no se deshizo: cambió
 después". Se quita el bloqueo por orden posterior (`invConflictoDeUndo`),
 porque la comprobación por barril lo cubre con más precisión.
 

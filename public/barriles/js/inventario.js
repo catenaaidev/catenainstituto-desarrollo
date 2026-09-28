@@ -93,11 +93,12 @@ function camposCoherentes(fila, cambio, cosechaDe) {
  * acá: la edición en la lista, el escaneo, las órdenes del escáner, el botón de
  * un cartel y la importación del Excel.
  *
- * meta: { fecha: 'YYYY-MM-DD' del hecho, ts: momento de carga, origen }
+ * meta: { fecha: 'YYYY-MM-DD' del hecho, ts: momento de carga, por: quién lo escribió }
+ * (`por` y no `origen`: la planilla ya trae una columna ORIGEN, la de la barrica)
  *
  * Devuelve { viejo: true } sin tocar nada si el hecho es anterior a lo que ya
  * dice la fila; { error } si el cambio es incoherente; si no, escribe y devuelve
- * { antes, despues } con los campos de estado y el sello (fecha/ts/origen).
+ * { antes, despues } con los campos de estado y el sello (fecha/ts/por).
  */
 function escribirFila(fila, cambio, meta, cosechaDe) {
   const m = meta || {};
@@ -108,14 +109,14 @@ function escribirFila(fila, cambio, meta, cosechaDe) {
   Object.assign(fila, r.campos);
   if (m.fecha) fila.fecha = txt(m.fecha);
   fila.ts = m.ts == null ? Date.now() : m.ts;
-  if (m.origen) fila.origen = m.origen;
+  if (m.por) fila.por = m.por;
   return { antes, despues: selloDe(fila) };
 }
 
 // Lo que hace falta guardar de una fila para poder volverla atrás exactamente.
 function selloDe(f) {
   return { estado: f.estado, lote: f.lote, cosecha: f.cosecha, litros: f.litros,
-           fecha: f.fecha || '', ts: f.ts || 0, origen: f.origen || '' };
+           fecha: f.fecha || '', ts: f.ts || 0, por: f.por || '' };
 }
 
 // ---------------- carteles ----------------
@@ -237,13 +238,13 @@ function planDeshacer(orden, inventario) {
   if (!ap) return out;
   const ix = new Map();
   for (const r of (inventario || [])) ix.set(String(r.num), r);
-  const origen = 'orden:' + orden.id;
+  const por = 'orden:' + orden.id;
   for (const c of (ap.cambios || [])) {
     const r = ix.get(String(c.num));
     if (!r) { out.quedan.push({ num: c.num, motivo: 'ya no figura en el inventario' }); continue; }
     const d = c.despues || {};
     const sigue = d.ts
-      ? (r.origen === origen && Number(r.ts) === Number(d.ts))
+      ? (r.por === por && Number(r.ts) === Number(d.ts))
       : (normEstado(r.estado) === normEstado(d.estado) && txt(r.lote) === txt(d.lote) &&
          txt(r.cosecha) === txt(d.cosecha));
     if (sigue) out.revertir.push(c);
@@ -350,11 +351,37 @@ function necesitaMigracion(estado) {
   return SECCIONES_VIEJAS.some(k => Array.isArray(estado && estado[k]));
 }
 
+// La fecha más nueva que se sabe de cada fila SIN contar su escaneo: su
+// corrección a mano o la última orden aplicada que la tocó. num -> {fecha, ts}.
+function fechasSinEscaneo(e, ix) {
+  const fechas = new Map();
+  const ver = (num, fecha, ts) => {
+    const f = txt(fecha);
+    if (!f || !ix.has(num)) return;
+    const prev = fechas.get(num);
+    if (!prev || f > prev.fecha || (f === prev.fecha && (ts || 0) > prev.ts)) fechas.set(num, { fecha: f, ts: ts || 0 });
+  };
+  for (const ed of (e.ediciones || [])) ver(String(ed.num), ed.fecha, ed.ts);
+  for (const o of (e.escaneos || [])) {
+    if (!o || !o.aplicado) continue;
+    for (const c of (o.aplicado.cambios || [])) ver(String(c.num), o.fecha, 0);
+  }
+  return fechas;
+}
+
 /**
  * Qué haría migrar, sin tocar nada: cuántas correcciones quedan fijas, la lista
- * de vasijas donde el último escaneo dice otro lote que la fila (para mirarla
+ * de vasijas donde el último escaneo dice otra cosa que la fila (para mirarla
  * antes), y cuántos carteles viejos se descartan.
+ *
+ * Cada discrepancia trae `recomendado`: 'escaneo' si el escaneo es más nuevo que
+ * todo lo demás que se sabe de la fila (pasa con los escaneos del operario, que
+ * nunca llegaban a la fila), 'fila' si no. El piso es la fecha de corte del
+ * inventario (`inventarioCorte`, por defecto el 2026-08-18 de la unificación):
+ * el Excel de ese día ya incorporaba todo lo anterior, así que un escaneo de
+ * julio es más viejo que la fila aunque la fila no tenga fecha propia.
  */
+const CORTE_INVENTARIO_DEFECTO = '2026-08-18';
 function planMigracion(estado) {
   const e = estado || {};
   const ix = new Map();
@@ -366,6 +393,8 @@ function planMigracion(estado) {
     const r = ix.get(num);
     return txt(ed ? ed.valor : r && r[campo]);
   };
+  const fechas = fechasSinEscaneo(e, ix);
+  const corte = txt(e.inventarioCorte) || CORTE_INVENTARIO_DEFECTO;
   const discrepancias = [];
   for (const t of (e.tanques || [])) {
     const num = String(t.num);
@@ -373,10 +402,15 @@ function planMigracion(estado) {
     const loteFila = valor(num, 'lote');
     const estFila = normEstado(valor(num, 'estado'));
     const loteEsc = t.vacia ? '' : txt(t.lote);
-    const vaciaEsc = !!t.vacia || !loteEsc;
+    const vaciaEsc = !!t.vacia || !loteEsc || ['VACIO', 'BORRA'].includes(loteEsc.toUpperCase());
     const coincide = vaciaEsc ? estFila === 'VACIO' : loteFila.toUpperCase() === loteEsc.toUpperCase();
-    if (!coincide) discrepancias.push({ num, estadoFila: estFila, loteFila,
-      escaneo: vaciaEsc ? 'VACIA' : loteEsc, fechaEscaneo: txt(t.fecha) });
+    if (coincide) continue;
+    const ff = fechas.get(num);
+    const fechaFila = ff ? ff.fecha : '';
+    const fe = txt(t.fecha);
+    discrepancias.push({ num, estadoFila: estFila, loteFila, fechaFila,
+      escaneo: vaciaEsc ? 'VACIA' : loteEsc, fechaEscaneo: fe,
+      recomendado: fe && fe > (fechaFila > corte ? fechaFila : corte) ? 'escaneo' : 'fila' });
   }
   const abiertos = (e.revisiones || []).filter(r => !r.revisado).length;
   const noFiguran = (e.tanques || []).filter(t => !ix.has(String(t.num))).length;
@@ -387,39 +421,48 @@ function planMigracion(estado) {
 /**
  * Migra el estado al modelo nuevo (muta `estado`):
  *   1. deja fijas en la fila las correcciones a mano (la capa desaparece);
- *   2. le pone a cada fila la fecha más nueva que se sabe de ella: su corrección,
+ *   2. en las vasijas de `usarEscaneo` (números), escribe lo que dijo el escaneo;
+ *   3. le pone a cada fila la fecha más nueva que se sabe de ella: su corrección,
  *      su escaneo, o la última orden aplicada que la tocó;
- *   3. borra tanques, ediciones y revisiones, y arranca carteles vacío.
+ *   4. borra tanques, ediciones y revisiones, y arranca carteles vacío.
+ * opciones: { usarEscaneo: Set|Array de números, cosechaDe: lote -> cosecha|null }
  * Devuelve cuántas filas quedaron con fecha.
  */
-function migrarEstado(estado) {
+function migrarEstado(estado, opciones) {
   const e = estado;
+  const op = opciones || {};
+  const usar = new Set([...(op.usarEscaneo || [])].map(String));
   const ix = new Map();
   for (const r of (e.inventario || [])) ix.set(String(r.num), r);
-  const fechas = new Map();   // num -> { fecha, ts }
-  const ver = (num, fecha, ts) => {
-    const f = txt(fecha);
-    if (!f) return;
-    const prev = fechas.get(num);
-    if (!prev || f > prev.fecha || (f === prev.fecha && (ts || 0) > prev.ts)) fechas.set(num, { fecha: f, ts: ts || 0 });
-  };
+  const fechas = fechasSinEscaneo(e, ix);
   const EDITABLES = ['lote', 'estado', 'marca', 'cosecha', 'litros'];
   for (const ed of (e.ediciones || [])) {
     const r = ix.get(String(ed.num));
-    if (!r || !EDITABLES.includes(ed.campo)) continue;
-    r[ed.campo] = ed.valor;
-    ver(String(ed.num), ed.fecha, ed.ts);
+    if (r && EDITABLES.includes(ed.campo)) r[ed.campo] = ed.valor;
   }
-  for (const t of (e.tanques || [])) if (ix.has(String(t.num))) ver(String(t.num), t.fecha, t.ts);
-  for (const o of (e.escaneos || [])) {
-    if (!o || !o.aplicado) continue;
-    for (const c of (o.aplicado.cambios || [])) ver(String(c.num), o.fecha, 0);
-  }
-  let n = 0;
-  for (const [num, f] of fechas) {
+  const porNum = new Map();
+  for (const [num, f] of fechas) porNum.set(num, { ...f, por: 'migracion' });
+  for (const t of (e.tanques || [])) {
+    const num = String(t.num);
     const r = ix.get(num);
     if (!r) continue;
-    r.fecha = f.fecha; r.ts = f.ts; r.origen = 'migracion';
+    const f = txt(t.fecha);
+    if (usar.has(num)) {
+      const lote = t.vacia ? '' : txt(t.lote).toUpperCase();
+      const vaciar = !lote || ['VACIO', 'BORRA'].includes(lote);
+      const c = camposCoherentes(r, vaciar ? { estado: 'VACIO' } : { lote }, op.cosechaDe);
+      if (c.campos) Object.assign(r, c.campos);
+      porNum.set(num, { fecha: f, ts: t.ts || 0, por: 'escaneo' });
+      continue;
+    }
+    const prev = porNum.get(num);
+    if (f && (!prev || f > prev.fecha)) porNum.set(num, { fecha: f, ts: t.ts || 0, por: 'migracion' });
+  }
+  let n = 0;
+  for (const [num, f] of porNum) {
+    const r = ix.get(num);
+    if (!r || !f.fecha) continue;
+    r.fecha = f.fecha; r.ts = f.ts; r.por = f.por;
     n++;
   }
   for (const r of (e.inventario || [])) {
