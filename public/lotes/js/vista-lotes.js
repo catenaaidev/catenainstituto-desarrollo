@@ -60,6 +60,10 @@ const COLS_LOTES = [
   { k:'id_texto',              label:'ID',                      banda:'id', grupo:'id_detalle' },
   { k:'organico_convencional', label:'Orgánico / Convencional', banda:'id',
     sel:['','Orgánico','Convencional'] },
+  /* Uva o Vino (sale de un corte o un traspaso de vino ya hecho). Vacio cuenta
+   * como uva, salvo que el linaje diga que recibio vino de otro lote: ver
+   * esLoteDeVino en src/lotes/motores/etapas.ts. */
+  { k:'origen',                label:'Origen',                  banda:'id', sel:['','Uva','Vino'] },
   /* --- Informacion Inicial y fermentacion (K:T) --- */
   { k:'fecha_ingreso',   label:'Fecha de ingreso',   banda:'ferm', grupo:'fermentacion', fecha:true },
   { k:'n_pesada',        label:'Nº Pesada',          banda:'ferm', grupo:'fermentacion' },
@@ -148,6 +152,7 @@ const CAMPOS_FLT_LOTES = [
   { campo:'proyecto', label:'Proyecto', col:'proyecto' },
   { campo:'vinedo',   label:'Viñedo',   col:'vinedo'   },
   { campo:'organico_convencional', label:'Orgánico/Conv.', col:'organico_convencional' },
+  { campo:'origen',       label:'Origen',       col:'origen'       },
   { campo:'lote_sistema', label:'Lote Sistema', col:'lote_sistema' },
   { campo:'ct',           label:'Ct',           col:'ct'           },
   { campo:'clon',         label:'Clon',         col:'clon'         },

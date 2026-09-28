@@ -22,11 +22,17 @@ export const PASOS = [
   { k: 'proyecto',              label: 'Proyecto',       sugerir: true },
   { k: 'organico_convencional', label: 'Orgánico / Convencional',
     opciones: ['', 'Orgánico', 'Convencional'] },
+  /* Uva = arranca de cosecha. Vino = sale de un corte o de un traspaso de vino
+   * ya hecho: el motor de etapas no le pide fecha de ingreso, kilos ni vasija
+   * de FA, ni los hitos de la FA (ver esLoteDeVino en motores/etapas.ts). */
+  { k: 'origen',                label: 'Origen: ¿sale de uva o de vino ya hecho (corte, traspaso)?',
+    opciones: ['', 'Uva', 'Vino'] },
 ];
 
 /* Copia exacta del padre, salvo el numero de lote (lo pone el usuario), los
- * litros (0 y nunca null: motor_etapas compara litros_actuales <= 0) y los
- * envases. Los campos que empiezan con _ son de la vista, no del lote. */
+ * litros (0 y nunca null: motor_etapas compara litros_actuales <= 0), los
+ * envases y el origen, que siempre es Vino: el hijo sale del vino del padre.
+ * Los campos que empiezan con _ son de la vista, no del lote. */
 export function armarHijo(padre){
   const h = {};
   for (const [k, v] of Object.entries(padre)){
@@ -35,6 +41,7 @@ export function armarHijo(padre){
   }
   h.lote = '';
   h.litros_actuales = 0;
+  h.origen = 'Vino';
   for (const k of CAMPOS_ENVASE) h[k] = null;
   return h;
 }

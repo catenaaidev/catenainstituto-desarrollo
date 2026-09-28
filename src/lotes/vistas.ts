@@ -15,7 +15,14 @@ import {
   type Fila,
 } from './motores/fml';
 import { evaluarEtapa } from './motores/etapas';
-import { grafo, lineaTiempo, recorridoVasijas, cadenaIdentidad, normalizarLote } from './motores/linaje';
+import {
+  grafo,
+  lineaTiempo,
+  recorridoVasijas,
+  cadenaIdentidad,
+  normalizarLote,
+  lotesConPadre,
+} from './motores/linaje';
 
 /** Agrupa filas por número de lote (texto limpio). */
 function porLote(filas: Fila[] | undefined, campo = 'lote'): Map<string, Fila[]> {
@@ -46,10 +53,13 @@ export function datosDashboard(datos: Record<string, unknown>, hoy: number) {
   // justamente el que hay que confirmar.
   const etapas = new Map<string, ReturnType<typeof evaluarEtapa>>();
   const bandeja: Record<string, unknown>[] = [];
+  const conPadre = lotesConPadre(d.movimientos as Fila[]);
 
   for (const l of (d.lotes as Fila[]) ?? []) {
     const clave = normalizarLote((l ?? {}).lote);
-    const r = evaluarEtapa(l, ans.get(clave) ?? [], movs.get(clave) ?? [], config, hoy);
+    const r = evaluarEtapa(l, ans.get(clave) ?? [], movs.get(clave) ?? [], config, hoy, null, {
+      tienePadre: conPadre.has(clave),
+    });
     etapas.set(clave, r);
 
     // Entra a la bandeja si la etapa confirmada difiere de la sugerida, o si el
@@ -107,7 +117,9 @@ export function datosFicha(
   const movsTodos = (d.movimientos as Fila[]) ?? [];
   const movsLote = movsTodos.filter((m) => normalizarLote((m ?? {}).lote) === clave);
 
-  const r = evaluarEtapa(fila, ans, movsLote, config, hoy, etapaForzada);
+  const r = evaluarEtapa(fila, ans, movsLote, config, hoy, etapaForzada, {
+    tienePadre: lotesConPadre(movsTodos).has(clave),
+  });
   const g = grafo(d);
 
   return {

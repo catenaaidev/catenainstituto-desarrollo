@@ -114,6 +114,22 @@ export function grafo(datos: Record<string, unknown> | null | undefined): Grafo 
 }
 
 /**
+ * Lotes que recibieron vino de otro lote: los destinos de los traspasos y
+ * renombres ejecutados. Es la misma arista padre→hijo que arma grafo(), sin
+ * armar el grafo entero.
+ */
+export function lotesConPadre(movimientos: Fila[] | null | undefined): Set<string> {
+  const out = new Set<string>();
+  for (const raw of movimientosEjecutados(movimientos ?? [])) {
+    const m = raw ?? {};
+    if (!TIPOS_A_LOTE.includes(String(m.tipo)) || !sl(m.lote)) continue;
+    const destino = sl(m.lote_destino);
+    if (destino) out.add(destino);
+  }
+  return out;
+}
+
+/**
  * Lotes que son el MISMO vino, siguiendo solo aristas de tipo renombre.
  *
  * Devuelve la cadena completa ordenada, incluyendo el lote consultado. Un

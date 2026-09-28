@@ -27,6 +27,27 @@ const ORDEN: Record<string, number> = Object.fromEntries(ETAPAS.map((e, i) => [e
 
 const CAMPOS_INGRESO = ['variedad', 'proyecto', 'fecha_ingreso', 'kilos', 'vasija_fa'];
 
+/** Un lote que arranca de vino ya hecho no tiene datos de uva que pedirle. */
+const CAMPOS_INGRESO_VINO = ['variedad', 'proyecto'];
+
+/** Hitos de la fermentación alcohólica: pasaron en el lote de origen. */
+const HITOS_SOLO_UVA = ['fa_finalizada', 'descube_cargado'];
+
+/**
+ * ¿El lote arranca de vino ya hecho (un corte, un traspaso) y no de uva?
+ *
+ * Lo dice la columna Origen. Si está vacía, se deduce del linaje: un lote sin
+ * fecha de ingreso que recibió vino de otro lote es un lote de vino. Poner
+ * 'Uva' a mano le gana a la deducción.
+ */
+export function esLoteDeVino(lote: Fila, tienePadre = false): boolean {
+  const l = lote ?? {};
+  const origen = String(l.origen ?? '').trim().toLowerCase();
+  if (origen === 'vino') return true;
+  if (origen === 'uva') return false;
+  return tienePadre && !String(l.fecha_ingreso ?? '').trim();
+}
+
 /**
  * (clave, título, etapa desde la que aplica). "Desde" es inclusivo y hacia
  * adelante: un hito que aplica desde 'fa' también aplica en fml/crianza/cerrado.
@@ -55,11 +76,24 @@ function tieneDescube(lote: Fila, movimientos: Fila[]): boolean {
  * descube. Una blanca tiene fml_estado='excluida' desde el alta, así que sin
  * esa condición un lote recién ingresado caería en crianza.
  */
-export function etapaSugerida(lote: Fila, ev: Partial<ResultadoLote>, movimientos: Fila[]): Etapa {
+export function etapaSugerida(
+  lote: Fila,
+  ev: Partial<ResultadoLote>,
+  movimientos: Fila[],
+  vino = false,
+): Etapa {
   // Los pendientes son planes, no hechos: se filtra en el borde.
   const movs = movimientosEjecutados(movimientos ?? []);
   const l = lote ?? {};
   const litros = (ev ?? {}).litros ?? 0;
+
+  // Un lote de vino no pasa por ingreso ni FA. Recién creado está en 0 litros
+  // hasta que le entra el vino, así que solo se cierra si además hubo una
+  // salida. Sin málico que diga lo contrario, la FML ya pasó en el origen.
+  if (vino) {
+    if (litros <= 0 && movs.some((m) => TIPOS_EGRESO.includes(String((m ?? {}).tipo)))) return 'cerrado';
+    return (ev ?? {}).fml_estado === 'no_finalizada' ? 'fml' : 'crianza';
+  }
 
   // litros<=0 es señal confiable de vaciado de verdad; fecha_ingreso descarta
   // los placeholders que nunca arrancaron, donde litros=0 es el estado inicial
@@ -92,8 +126,9 @@ export function finFml(analisis: Fila[], eff: Criterios): string | null {
   return null;
 }
 
-function faltantesIngreso(lote: Fila): string[] {
-  return CAMPOS_INGRESO.filter((c) => !String((lote ?? {})[c] ?? '').trim());
+function faltantesIngreso(lote: Fila, vino: boolean): string[] {
+  const campos = vino ? CAMPOS_INGRESO_VINO : CAMPOS_INGRESO;
+  return campos.filter((c) => !String((lote ?? {})[c] ?? '').trim());
 }
 
 /** Movimiento de descube CON vasija destino cargada, o null. */
@@ -134,13 +169,14 @@ export function hitos(
   ev: Partial<ResultadoLote>,
   eff: Criterios,
   etapa: string,
+  vino = false,
 ): Hito[] {
   const movs = movimientosEjecutados(movimientos ?? []);
   const l = lote ?? {};
   const e = ev ?? {};
   const idx = ORDEN[etapa] ?? 0;
 
-  const faltan = faltantesIngreso(l);
+  const faltan = faltantesIngreso(l, vino);
   const descube = movimientoDescube(movs);
   const excluida = e.fml_estado === 'excluida';
 
@@ -173,7 +209,13 @@ export function hitos(
       `${e.dias_desde_analisis} dias desde el ultimo analisis (maximo ${e.frecuencia_max})`,
       true,
     ],
-    fml_finalizada: [e.fml_estado === 'finalizada', `FML ${e.fml_estado}`, !excluida],
+    // En un lote de vino, sin málico cargado se asume que la FML pasó en el
+    // origen (la misma regla que lo manda a crianza en etapaSugerida).
+    fml_finalizada: [
+      e.fml_estado === 'finalizada',
+      `FML ${e.fml_estado}`,
+      !excluida && !(vino && e.fml_estado === 'sin_dato'),
+    ],
     ph_ok: [e.ph_ok === true, `limite pH ${eff.ph_max}`, true],
     so2_ok: [
       e.so2_ok === true,
@@ -194,7 +236,8 @@ export function hitos(
 
   return DEFINICION_HITOS.map(([clave, titulo, desde]) => {
     const [cumplido, detalle, aplicaExtra] = calc[clave];
-    const aplica = idx >= ORDEN[desde] && Boolean(aplicaExtra);
+    const aplica =
+      idx >= ORDEN[desde] && Boolean(aplicaExtra) && !(vino && HITOS_SOLO_UVA.includes(clave));
     return { clave, titulo, desde, aplica, cumplido: aplica ? Boolean(cumplido) : false, detalle };
   });
 }
@@ -249,6 +292,10 @@ export interface ResultadoEtapa {
  * `etapaForzada` calcula hitos y avance con el contexto de otra etapa, sin
  * mutar nada. Se usa para obtener el avance a congelar ANTES de confirmar el
  * cierre.
+ *
+ * `opciones.tienePadre` dice si el lote recibió vino de otro lote (ver
+ * lotesConPadre en linaje.ts); con eso se deduce el origen cuando la columna
+ * Origen está vacía (ver esLoteDeVino).
  */
 export function evaluarEtapa(
   lote: Fila,
@@ -257,20 +304,22 @@ export function evaluarEtapa(
   config: Record<string, unknown>,
   hoy: number,
   etapaForzada: string | null = null,
+  opciones: { tienePadre?: boolean } = {},
 ): ResultadoEtapa {
   const movs = movimientosEjecutados(movimientos ?? []);
   const cfg = ((config ?? {}).criterios_fml as Record<string, unknown>) ?? {};
   const l = lote ?? {};
   const eff = criteriosEfectivos(cfg, l.variedad, l.proyecto);
   const ev = evaluarLote(l, analisis ?? [], cfg, hoy);
-  const sug = etapaSugerida(l, ev, movs);
+  const vino = esLoteDeVino(l, Boolean(opciones.tienePadre));
+  const sug = etapaSugerida(l, ev, movs, vino);
 
   let etapa = String(l.etapa ?? '') || sug;
   if (!(ETAPAS as readonly string[]).includes(etapa)) etapa = sug;
 
   const etapaParaHitos =
     etapaForzada && (ETAPAS as readonly string[]).includes(etapaForzada) ? etapaForzada : etapa;
-  const hs = hitos(l, analisis, movs, ev, eff, etapaParaHitos);
+  const hs = hitos(l, analisis, movs, ev, eff, etapaParaHitos, vino);
 
   let av: Avance;
   if (etapa === 'cerrado' && etapaForzada === null) {
