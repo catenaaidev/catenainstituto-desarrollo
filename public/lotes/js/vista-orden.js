@@ -5,7 +5,7 @@ import { $, esc, escA, num, DATOS, dashData, dashLoading, cargarDashboard,
          registrarVista } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
 import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija,
-         motivoDeFila, vasijaDeFila, litrosDeFila } from './orden-filas.js';
+         datosDeLote, claveLote } from './orden-filas.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
 import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
@@ -51,9 +51,16 @@ const _otAdaptador = {
   leer(obj, k){ return obj ? obj[k] : undefined; },
   escribir(obj, k, texto){
     if (!obj) return 'ro';
-    if (k !== 'motivo' && k !== 'recipiente' && k !== 'cantidad') return 'ro';
-
     const val = String(texto ?? '').trim();
+
+    /* El lote SI se escribe (pegar una columna de lotes en una hoja en
+     * blanco): al cambiarlo se recalcula todo lo que sale de el. */
+    if (k === 'lote'){
+      obj.lote = val;
+      _otAutocompletar(obj);
+      return 'ok';
+    }
+    if (k !== 'motivo' && k !== 'recipiente' && k !== 'cantidad') return 'ro';
 
     if (k === 'motivo'){
       obj.motivo = val;   // texto libre, sin normalizar a null (igual que el listener manual)
@@ -106,19 +113,27 @@ function _otBuildRows(){
 
   /* El buscador se aplica DESPUES del map, no antes: mira vasija y motivo, que
    * no existen en la fila del dashboard -- recien aparecen al armar la fila. */
-  return lotes.map(l => {
-    const info = loteMap.get(String(l.lote ?? ''));
-    const cls  = clasificarLote(l, info);
-    return {
-      lote:       String(l.lote ?? ''),
-      variedad:   l.variedad || '',
-      vasija:     vasijaDeFila(info),
-      litros:     litrosDeFila(info),
-      motivo:     motivoDeFila(cls, fuente),
-      recipiente: _otRecipiente,
-      cantidad:   _otCantidad,
-    };
-  }).filter(r => pasaBusqueda(r, _otBusqueda));
+  return lotes.map(l => ({
+    lote:       String(l.lote ?? ''),
+    ...datosDeLote(l, loteMap.get(String(l.lote ?? '')), fuente),
+    recipiente: _otRecipiente,
+    cantidad:   _otCantidad,
+  })).filter(r => pasaBusqueda(r, _otBusqueda));
+}
+
+/* Completa variedad/vasija/litros/motivo de una fila a partir de su numero de
+ * lote. Se llama cuando el lote se tipea o se pega a mano (tipicamente en
+ * "Hoja en blanco"). Si el lote no existe, la fila conserva lo que tenia y la
+ * celda se marca en rojo. */
+function _otAutocompletar(r){
+  const k = claveLote(r.lote);
+  r.lote = k;
+  r.noEncontrado = false;
+  if (k === ''){ r.variedad = r.vasija = r.litros = r.motivo = ''; return; }
+  const info = (DATOS().lotes || []).find(l => claveLote(l.lote) === k);
+  const dash = ((dashData() && dashData().lotes) || []).find(l => claveLote(l.lote) === k);
+  if (!info && !dash){ r.noEncontrado = true; return; }
+  Object.assign(r, datosDeLote(dash, info, _otFuente));
 }
 
 /* Renderiza la tabla editable de la OT (sin re-construir el shell) */
@@ -133,7 +148,7 @@ function _otRenderTabla(){
     ).join('');
 
     tb += `<tr data-oti="${i}">
-  <td><input class="cell" type="text" data-oti="${i}" data-otk="lote"      value="${escA(r.lote)}"></td>
+  <td><input class="cell${r.noEncontrado ? ' ot-noexiste' : ''}" type="text" data-oti="${i}" data-otk="lote" value="${escA(r.lote)}"${r.noEncontrado ? ' title="No hay ningún lote con ese número"' : ''}></td>
   <td><input class="cell" type="text" data-oti="${i}" data-otk="variedad"  value="${escA(r.variedad)}"></td>
   <td><input class="cell" type="text" data-oti="${i}" data-otk="vasija"    value="${escA(r.vasija)}"></td>
   <td><input class="cell num" type="text" data-oti="${i}" data-otk="litros" value="${escA(r.litros)}"></td>
@@ -188,6 +203,28 @@ function _otRenderTabla(){
   });
 
   tbody.addEventListener('change', e => {
+    /* Lote tipeado a mano: al confirmarlo (Enter, Tab o clic afuera) se
+     * autocompleta el resto de la fila. Se actualizan las celdas EN SU LUGAR,
+     * sin repintar el tbody: la grilla, al apretar Enter, hace blur (que
+     * dispara este change) y enseguida mueve la seleccion sobre los <tr> que
+     * ya tenia medidos; un repintado aca se los dejaria sueltos del DOM. */
+    const lt = e.target.closest('input.cell[data-otk="lote"]');
+    if (lt){
+      const r = _otRows[+lt.dataset.oti];
+      if (!r) return;
+      r.lote = lt.value;
+      _otAutocompletar(r);
+      const tr = lt.closest('tr');
+      lt.value = r.lote;
+      lt.classList.toggle('ot-noexiste', !!r.noEncontrado);
+      lt.title = r.noEncontrado ? 'No hay ningún lote con ese número' : '';
+      for (const k of ['variedad', 'vasija', 'litros', 'motivo']){
+        const c = tr && tr.querySelector(`input.cell[data-otk="${k}"]`);
+        if (c) c.value = r[k] ?? '';
+      }
+      _otPintarPaginas();
+      return;
+    }
     const el = e.target.closest('select.cell[data-otk]');
     if (!el) return;
     const i = +el.dataset.oti;

@@ -141,6 +141,27 @@ export function litrosDeFila(info){
   return String(total);
 }
 
+/* Los datos que salen del LOTE (no de la muestra) para una fila de la orden.
+ * Es el unico lugar que arma variedad/vasija/litros/motivo, asi que la fila
+ * que trae el filtro y la que se tipea a mano en "Hoja en blanco" salen
+ * iguales. `dash` es la fila de dashData().lotes e `info` el lote de
+ * DATOS().lotes; cualquiera de los dos puede faltar. */
+export function datosDeLote(dash, info, fuente){
+  const variedad = (dash && dash.variedad) || (info && info.variedad) || '';
+  return {
+    variedad,
+    vasija: vasijaDeFila(info),
+    litros: litrosDeFila(info),
+    motivo: dash ? motivoDeFila(clasificarLote(dash, info), fuente) : '',
+  };
+}
+
+/* Clave de busqueda de un numero de lote: '26264', ' 26264 ' y 26264 son el
+ * mismo lote. */
+export function claveLote(v){
+  return String(v ?? '').trim();
+}
+
 /* Campos que mira el buscador de texto libre: los mismos cuatro que el usuario
  * ve en la grilla. Litros queda afuera a proposito: es numerico y buscar '100'
  * traeria 100, 1000 y 2100 juntos, que no es lo que nadie espera al tipear. */
