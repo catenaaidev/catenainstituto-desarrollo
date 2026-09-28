@@ -162,6 +162,57 @@ export function claveLote(v){
   return String(v ?? '').trim();
 }
 
+/* Lista de lotes pegada en el recuadro "Pegar lotes". Acepta una columna o una
+ * fila copiada del Excel (saltos de linea o tabs) y tambien comas, punto y coma
+ * o espacios. Devuelve los numeros en el orden en que vinieron, sin repetir. */
+export function parsearListaLotes(texto){
+  const vistos = new Set();
+  const out = [];
+  for (const t of String(texto ?? '').split(/[\s,;|]+/)){
+    const k = claveLote(t);
+    if (k === '' || vistos.has(k)) continue;
+    vistos.add(k);
+    out.push(k);
+  }
+  return out;
+}
+
+/* Columnas que se ordenan como numero. Litros viene como '2600 de 3050': manda
+ * el primer numero, que es el del tanque. */
+const COLS_NUMERICAS = new Set(['lote', 'litros', 'cantidad']);
+
+function _valorOrden(fila, key){
+  const v = String((fila || {})[key] ?? '').trim();
+  if (v === '' || v === '—') return null;
+  if (COLS_NUMERICAS.has(key)){
+    const n = parseFloat(v.replace(',', '.'));
+    return isNaN(n) ? v : n;
+  }
+  return v;
+}
+
+/* Ordena las filas de la orden por una columna. dir = 1 (menor a mayor) o -1.
+ * Las celdas vacias van SIEMPRE al final, en las dos direcciones: una fila en
+ * blanco arriba de todo parece que la orden no trae nada. Estable: a igual
+ * valor se respeta el orden anterior. */
+export function ordenarFilasOt(filas, key, dir){
+  return filas
+    .map((f, i) => ({ f, i, v: _valorOrden(f, key) }))
+    .sort((a, b) => {
+      if (a.v === null || b.v === null){
+        if (a.v === b.v) return a.i - b.i;
+        return a.v === null ? 1 : -1;
+      }
+      let c;
+      if (typeof a.v === 'number' && typeof b.v === 'number') c = a.v - b.v;
+      else if (typeof a.v === 'number') c = -1;
+      else if (typeof b.v === 'number') c = 1;
+      else c = a.v.localeCompare(b.v, 'es', { sensitivity: 'base' });
+      return c !== 0 ? dir * c : a.i - b.i;
+    })
+    .map(x => x.f);
+}
+
 /* Campos que mira el buscador de texto libre: los mismos cuatro que el usuario
  * ve en la grilla. Litros queda afuera a proposito: es numerico y buscar '100'
  * traeria 100, 1000 y 2100 juntos, que no es lo que nadie espera al tipear. */

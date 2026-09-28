@@ -5,7 +5,7 @@ import { $, esc, escA, num, DATOS, dashData, dashLoading, cargarDashboard,
          registrarVista } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
 import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija,
-         datosDeLote, claveLote } from './orden-filas.js';
+         datosDeLote, claveLote, parsearListaLotes, ordenarFilasOt } from './orden-filas.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
 import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
@@ -28,6 +28,11 @@ let _otRecipiente = 'Tubo falcon';
 let _otCantidad   = 1;
 let _otTitulo     = 'Orden de Trabajo';   // titulo editable de la hoja, sincronizado entre paginas
 let _otMapas      = [];                   // {src,nombre,pie} -- imagenes de sesion, nunca se guardan
+/* Orden elegido con clic en el encabezado. key null = el de siempre (por lote,
+ * lo arma _otBuildRows). Reordena _otRows DE VERDAD, no solo la vista: la hoja
+ * de papel sale en el mismo orden que la pantalla. */
+const _otSort     = { key: null, dir: 1 };
+let _otPegado     = '';                   // texto del recuadro "Pegar lotes", sobrevive al re-render
 
 /* Lista de recipientes validos. Unico lugar: antes vivia repetida como
  * literal en dos puntos del archivo (la fila y el select por defecto). */
@@ -336,10 +341,72 @@ function _otPintarPaginas(){
  * de la tabla en pantalla y no se nota hasta que alguien imprime. */
 function _otAplicarFiltros(){
   _otRows = _otBuildRows();
+  if (_otSort.key) _otRows = ordenarFilasOt(_otRows, _otSort.key, _otSort.dir);
+  _otRefrescar();
+}
+
+/* Repinta tabla, papel, contador y flechas despues de reemplazar _otRows. */
+function _otRefrescar(){
   _otRenderTabla();
   _otPintarPaginas();
+  _otPintarFlechas();
   const c = $('otCount');
   if (c) c.textContent = _otRows.length + ' fila' + (_otRows.length !== 1 ? 's' : '');
+}
+
+function _otPintarFlechas(){
+  const t = $('otTable'); if (!t) return;
+  t.querySelectorAll('thead th[data-k]').forEach(th => {
+    const a = th.querySelector('.arrow');
+    if (a) a.remove();
+    if (th.dataset.k === _otSort.key)
+      th.insertAdjacentHTML('beforeend', `<span class="arrow">${_otSort.dir > 0 ? '▲' : '▼'}</span>`);
+  });
+}
+
+/* Clic en un encabezado: primero de menor a mayor, el segundo clic invierte. */
+function _otOrdenarPor(k){
+  if (_otSort.key === k) _otSort.dir *= -1;
+  else { _otSort.key = k; _otSort.dir = 1; }
+  _otRows = ordenarFilasOt(_otRows, _otSort.key, _otSort.dir);
+  _otRefrescar();
+}
+
+/* Recuadro "Pegar lotes": cada numero se vuelve una fila autocompletada.
+ * reemplazar=true arma la orden desde cero (y pasa la fuente a "Hoja en
+ * blanco", para que el select no diga "Vencidos" sobre una lista pegada);
+ * false los suma al final sin repetir los que ya estan. */
+function _otCargarPegados(reemplazar){
+  const lotes = parsearListaLotes(_otPegado);
+  const msg = $('otPegarMsg');
+  if (!lotes.length){ if (msg) msg.textContent = 'No encontré números de lote en el recuadro.'; return; }
+
+  let base = reemplazar ? [] : _otRows.filter(r => claveLote(r.lote) !== '');
+  const ya = new Set(base.map(r => claveLote(r.lote)));
+  const nuevas = [];
+  for (const lote of lotes){
+    if (ya.has(lote)) continue;
+    const r = { lote, variedad:'', vasija:'', litros:'', motivo:'', recipiente:_otRecipiente, cantidad:_otCantidad };
+    _otAutocompletar(r);
+    nuevas.push(r);
+  }
+  _otRows = base.concat(nuevas);
+  if (reemplazar){
+    _otFuente = 'hoja_en_blanco';
+    const s = $('otFuente'); if (s) s.value = _otFuente;
+    const w = $('otWrapAtencion'); if (w) w.style.display = 'none';
+  }
+  if (_otSort.key) _otRows = ordenarFilasOt(_otRows, _otSort.key, _otSort.dir);
+  _otRefrescar();
+
+  if (msg){
+    const malos = nuevas.filter(r => r.noEncontrado).map(r => r.lote);
+    const repetidos = lotes.length - nuevas.length;
+    let t = `${nuevas.length} lote${nuevas.length !== 1 ? 's' : ''} cargado${nuevas.length !== 1 ? 's' : ''}.`;
+    if (repetidos) t += ` ${repetidos} ya estaba${repetidos !== 1 ? 'n' : ''} en la orden.`;
+    if (malos.length) t += ` No existe${malos.length !== 1 ? 'n' : ''}: ${malos.join(', ')} (marcado${malos.length !== 1 ? 's' : ''} en rojo).`;
+    msg.textContent = t;
+  }
 }
 
 function initFiltrosOt(){
@@ -498,6 +565,20 @@ export function renderOrden(){
     <span id="otMapaChips"></span>
     <span class="tag" style="font-size:11px">Cada imagen se agrega como hoja final al imprimir.</span>
   </div>
+
+  <!-- pegar lotes: una columna o fila copiada del Excel se vuelve la orden -->
+  <div class="controls" style="gap:12px;align-items:flex-start;margin-top:14px">
+    <label for="otPegar" style="font-size:12px;color:var(--muted);white-space:nowrap;padding-top:4px">Pegar lotes:</label>
+    <textarea id="otPegar" class="txt" rows="3" placeholder="Pegá una columna o fila de lotes (26264, 26015, 26064…)"
+              style="width:320px;min-height:58px;resize:vertical;font-family:inherit">${esc(_otPegado)}</textarea>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;gap:8px">
+        <button class="btn primary" id="btnOtPegarArmar" title="Reemplaza las filas de la orden por los lotes pegados">Armar orden</button>
+        <button class="btn" id="btnOtPegarSumar" title="Agrega los lotes pegados al final, sin repetir los que ya están">Sumar a la orden</button>
+      </div>
+      <span id="otPegarMsg" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+  </div>
 </div>
 
 <!-- encabezado imprimible de la OT -->
@@ -550,6 +631,17 @@ export function renderOrden(){
   _otAplicarFiltros();
 
   /* --- listeners de controles (re-wired en cada render porque sec.innerHTML cambia) --- */
+
+  /* ordenar por columna: clic en el encabezado (la grilla deja pasar el clic
+   * salvo en los primeros 8px, que seleccionan la columna) */
+  $('otTable').querySelectorAll('thead th[data-k]').forEach(th => {
+    th.onclick = () => _otOrdenarPor(th.dataset.k);
+  });
+
+  /* pegar lotes */
+  $('otPegar').addEventListener('input', e => { _otPegado = e.target.value; });
+  $('btnOtPegarArmar').addEventListener('click', () => _otCargarPegados(true));
+  $('btnOtPegarSumar').addEventListener('click', () => _otCargarPegados(false));
 
   /* fuente */
   $('otFuente').addEventListener('change', e => {

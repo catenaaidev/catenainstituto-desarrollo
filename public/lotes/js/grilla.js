@@ -994,6 +994,13 @@ function cablearPegado(){
       /* Si se esta editando una celda, el pegado es del input: no se toca. */
       if (st.editando) continue;
       if (!st.sel) continue;
+      /* Mismo criterio que el keydown: pegar en un control de AFUERA de la
+       * tabla (el recuadro "Pegar lotes", el buscador) es de ese control. Sin
+       * esto, con una celda seleccionada, el texto iba a parar a la grilla. */
+      const dest = e.target;
+      const esControl = dest && (dest.tagName === 'INPUT' || dest.tagName === 'SELECT'
+                     || dest.tagName === 'TEXTAREA' || dest.isContentEditable);
+      if (esControl && !st.tabla.contains(dest)) return;
       const texto = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
       if (!texto) return;
       e.preventDefault();

@@ -36,3 +36,46 @@ describe('claveLote', () => {
     expect(claveLote(null)).toBe('');
   });
 });
+
+import { parsearListaLotes, ordenarFilasOt } from '../public/lotes/js/orden-filas.js';
+
+describe('parsearListaLotes', () => {
+  it('acepta una columna del Excel', () => {
+    expect(parsearListaLotes('26264\r\n26015\r\n26064\r\n')).toEqual(['26264', '26015', '26064']);
+  });
+  it('acepta una fila del Excel (tabs), comas y espacios', () => {
+    expect(parsearListaLotes('26264\t26015\t26064')).toEqual(['26264', '26015', '26064']);
+    expect(parsearListaLotes('26264, 26015; 26064  26126')).toEqual(['26264', '26015', '26064', '26126']);
+  });
+  it('saca repetidos y conserva el orden', () => {
+    expect(parsearListaLotes('26015\n26264\n26015')).toEqual(['26015', '26264']);
+  });
+  it('texto vacio da lista vacia', () => {
+    expect(parsearListaLotes('  \n\t ')).toEqual([]);
+  });
+});
+
+describe('ordenarFilasOt', () => {
+  const F = [
+    { lote: '26264', variedad: 'Cabernet Sauvignon', litros: '1850' },
+    { lote: '',      variedad: '',                   litros: '' },
+    { lote: '26015', variedad: 'chardonnay',         litros: '150' },
+    { lote: '26140', variedad: 'Sangiovese',         litros: '2600 de 3050' },
+  ];
+  const lotes = fs => fs.map(f => f.lote);
+
+  it('lote de menor a mayor y al reves, con las vacias al final', () => {
+    expect(lotes(ordenarFilasOt(F, 'lote', 1))).toEqual(['26015', '26140', '26264', '']);
+    expect(lotes(ordenarFilasOt(F, 'lote', -1))).toEqual(['26264', '26140', '26015', '']);
+  });
+  it('litros ordena por numero, no por texto', () => {
+    expect(lotes(ordenarFilasOt(F, 'litros', -1))).toEqual(['26140', '26264', '26015', '']);
+  });
+  it('texto sin importar mayusculas', () => {
+    expect(lotes(ordenarFilasOt(F, 'variedad', 1))).toEqual(['26264', '26015', '26140', '']);
+  });
+  it('no modifica el array original', () => {
+    ordenarFilasOt(F, 'lote', 1);
+    expect(lotes(F)).toEqual(['26264', '', '26015', '26140']);
+  });
+});
