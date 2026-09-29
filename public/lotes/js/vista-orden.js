@@ -739,18 +739,20 @@ export function renderOrden(){
   const gridMicro = () => `
     ${secPegar()}
     <!-- textos de la hoja de microbiologia -->
-    <section class="oc-sec oc-panel" aria-labelledby="ocTMicro">
-      <h3 class="oc-sec-t" id="ocTMicro"><span class="oc-n">${++nSec}</span>Textos de la orden</h3>
-      ${CAMPOS_ORDEN_MICRO.map(campoMicro).join('')}
-    </section>
-    <!-- cartel de la caja: hoja 2 al imprimir -->
-    <section class="oc-sec oc-panel" aria-labelledby="ocTCartel">
-      <h3 class="oc-sec-t" id="ocTCartel"><span class="oc-n">${++nSec}</span>Cartel de la caja</h3>
-      <p class="oc-hint">Sale como segunda hoja al imprimir. Queda recordado en esta PC.</p>
-      ${CAMPOS_CARTEL.map(campoMicro).join('')}
-      <div class="oc-row">
-        <button class="btn oc-ghost" id="btnOtMicroDef" title="Volver a los textos del Excel de microbiología (orden y cartel)">↺ Textos originales</button>
+    <section class="oc-sec oc-panel oc-micro-textos" aria-labelledby="ocTMicro">
+      <div class="oc-sec-cab">
+        <h3 class="oc-sec-t" id="ocTMicro"><span class="oc-n">${++nSec}</span>Textos de la orden</h3>
+        <button class="btn oc-ghost oc-mini" id="btnOtMicroDef" title="Volver a los textos del Excel de microbiología (orden y cartel)">↺ Textos originales</button>
       </div>
+      <div class="oc-campos oc-campos-2">${CAMPOS_ORDEN_MICRO.map(campoMicro).join('')}</div>
+    </section>
+    <!-- cartel de la caja: hoja 2 al imprimir. Franja a lo ancho, un renglon -->
+    <section class="oc-sec oc-panel oc-micro-cartel" aria-labelledby="ocTCartel">
+      <div class="oc-sec-cab">
+        <h3 class="oc-sec-t" id="ocTCartel"><span class="oc-n">${++nSec}</span>Cartel de la caja</h3>
+        <span class="oc-hint">Sale como segunda hoja al imprimir · queda recordado en esta PC</span>
+      </div>
+      <div class="oc-campos oc-campos-cartel">${CAMPOS_CARTEL.map(campoMicro).join('')}</div>
     </section>`;
 
   sec.innerHTML = `
