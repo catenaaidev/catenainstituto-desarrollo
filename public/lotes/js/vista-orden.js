@@ -3,12 +3,12 @@
 
 import { $, esc, escA, num, DATOS, dashData, dashLoading, cargarDashboard,
          registrarVista, markDirty, guardar } from './nucleo.js';
-import { activarGrilla } from './grilla.js';
 import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija,
-         datosDeLote, claveLote, parsearListaLotes, ordenarFilasOt } from './orden-filas.js';
+         datosDeLote, claveLote, parsearListaLotes } from './orden-filas.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
-import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMetaEditable, hojaBanda } from './orden-hoja.js';
+import { pintarHojas, hojaTop, hojaMetaEditable, hojaBanda } from './orden-hoja.js';
+import { cfgHojasAnalisis, pegarLotesDesde, cantidadValida } from './orden-hoja-filas.js';
 import { hoyLocalISO, diaDeSemana } from './hoja-campos.js';
 import { sortearOrden, registrosDeImpresion } from './sorteo-barriles.js';
 import { textosMicro, cfgHojasMicro } from './orden-micro.js';
@@ -34,10 +34,6 @@ let _otTitulo     = 'Orden de Trabajo';   // titulo editable de la hoja, sincron
  * editable, ver hoja-campos.js). En memoria, como el resto de la orden. */
 const _otHoja = { nro: '', fecha: hoyLocalISO(), dia: diaDeSemana(hoyLocalISO()), emitio: '', recibio: '' };
 let _otMapas      = [];                   // {src,nombre,pie} -- imagenes de sesion, nunca se guardan
-/* Orden elegido con clic en el encabezado. key null = el de siempre (por lote,
- * lo arma _otBuildRows). Reordena _otRows DE VERDAD, no solo la vista: la hoja
- * de papel sale en el mismo orden que la pantalla. */
-const _otSort     = { key: null, dir: 1 };
 let _otPegado     = '';                   // texto del recuadro "Pegar lotes", sobrevive al re-render
 
 /* Tipo de orden, elegido con el selector de la cabecera:
@@ -97,61 +93,6 @@ function _recOpciones(actual){
   return lista.map(v => `<option value="${escA(v)}"${v === actual ? ' selected' : ''}>${esc(v)}</option>`).join('') +
     `<option value="${OTRO_REC}">✎ Otro…</option>`;
 }
-const _recSelectFila = (i, actual) =>
-  `<select class="cell" data-oti="${i}" data-otk="recipiente">${_recOpciones(actual)}</select>`;
-const ORDEN_PER_PAGE = HOJA_POR_PAGINA;
-
-/* Adaptador de la grilla sobre _otRows.
- *
- * OJO: _otRows se REASIGNA enteros en _otBuildRows() (cambiar fuente, filtro,
- * o "Recargar filas"). Estas funciones cierran sobre la VARIABLE del modulo,
- * no sobre una copia local, asi que siempre leen y escriben el array VIGENTE
- * aunque haya sido reemplazado despues de que activarGrilla se llamo.
- *
- * variedad/vasija/litros son de solo lectura EN LA GRILLA (paste, Ctrl+D,
- * Ctrl+Enter, Delete no los tocan): salen del lote, no de la muestra. El lote
- * si se escribe y arrastra a los otros tres (_otAutocompletar). Motivo,
- * recipiente y cantidad si se editan. Nunca markDirty: esta orden es efimera,
- * no vive en DATOS.
- */
-const _otAdaptador = {
-  objetoDe(f){ return _otRows[f] != null ? _otRows[f] : null; },
-  leer(obj, k){ return obj ? obj[k] : undefined; },
-  escribir(obj, k, texto){
-    if (!obj) return 'ro';
-    const val = String(texto ?? '').trim();
-
-    /* El lote SI se escribe (pegar una columna de lotes en una hoja en
-     * blanco): al cambiarlo se recalcula todo lo que sale de el. */
-    if (k === 'lote'){
-      obj.lote = val; obj.manual = true;
-      _otAutocompletar(obj);
-      return 'ok';
-    }
-    if (k !== 'motivo' && k !== 'barril' && k !== 'recipiente' && k !== 'cantidad') return 'ro';
-
-    if (k === 'motivo' || k === 'barril'){
-      obj[k] = val;   // texto libre, sin normalizar a null (igual que el listener manual)
-      return 'ok';
-    }
-    if (k === 'recipiente'){
-      /* Cualquier texto vale: los conocidos se normalizan, uno nuevo se suma
-       * a la lista (pegar "Frasco 50 mL" desde el Excel tiene que andar). */
-      const m = _recSumar(val);
-      if (!m) return 'invalido';
-      obj.recipiente = m;
-      return 'ok';
-    }
-    // cantidad: entero >= 1
-    const n = num(val);
-    if (n == null || n < 1) return 'invalido';
-    obj.cantidad = Math.round(n);
-    return 'ok';
-  },
-  escribirCrudo(obj, k, valor){ if (obj) obj[k] = valor; },
-  onCambio(){ _otRenderTabla(); _otPintarPaginas(); },   // no se persiste: sin markDirty
-};
-
 /* Construye _otRows a partir de la fuente elegida */
 function _otBuildRows(){
   if (!dashData()) return [];
@@ -213,169 +154,11 @@ function _otAutocompletar(r){
   Object.assign(r, datosDeLote(dash, info, _otFuente));
 }
 
-/* Renderiza la tabla editable de la OT (sin re-construir el shell) */
-function _otRenderTabla(){
-  const tbody = $('otTbody');
-  if (!tbody) return;
-
-  /* En micro la grilla lleva solo lote/variedad/vasija: tiene que coincidir
-   * con los <th data-k> que arma renderOrden, o la grilla desalinea columnas. */
-  const micro = _esMicro();
-  const nCols = micro ? 4 : 9;
-  let tb = '';
-  _otRows.forEach((r, i) => {
-    tb += `<tr data-oti="${i}">
-  <td><input class="cell${r.noEncontrado ? ' ot-noexiste' : ''}" type="text" data-oti="${i}" data-otk="lote" value="${escA(r.lote)}"${r.noEncontrado ? ' title="No hay ningún lote con ese número"' : ''}></td>
-  <td><input class="cell" type="text" data-oti="${i}" data-otk="variedad"  value="${escA(r.variedad)}"></td>
-  <td><input class="cell" type="text" data-oti="${i}" data-otk="vasija"    value="${escA(r.vasija)}"></td>` + (micro ? '' : `
-  <td><input class="cell num" type="text" data-oti="${i}" data-otk="barril" value="${escA(r.barril || '')}" style="width:70px"></td>
-  <td><input class="cell num" type="text" data-oti="${i}" data-otk="litros" value="${escA(r.litros)}"></td>
-  <td><input class="cell" type="text" data-oti="${i}" data-otk="motivo"   value="${escA(r.motivo)}"></td>
-  <td>${_recSelectFila(i, r.recipiente)}</td>
-  <td style="white-space:nowrap">
-    <button class="rowbtn" data-ot-minus="${i}" title="Menos" style="font-size:13px">−</button>
-    <input class="cell num" type="text" data-oti="${i}" data-otk="cantidad" value="${escA(String(r.cantidad))}" style="width:34px;text-align:center;display:inline-block">
-    <button class="rowbtn" data-ot-plus="${i}" title="Más" style="font-size:13px">+</button>
-  </td>`) + `
-  <td class="ot-del-col"><button class="rowbtn" data-ot-del="${i}" title="Quitar fila">✕</button></td>
-</tr>`;
-  });
-
-  tbody.innerHTML = tb || `<tr id="otAddRow"><td colspan="${nCols}" style="color:var(--muted)">Sin filas. Elegí lotes en el filtro "Lote", pegalos en "Pegar lotes", usá "Agregar fila" o cambiá la fuente.</td></tr>`;
-
-  /* Fila de agregar (siempre al final) */
-  const addRow = document.createElement('tr');
-  addRow.id = 'otAddRow';
-  addRow.innerHTML = `<td colspan="${nCols}" style="padding:6px 8px">
-    <button class="btn" id="btnOtAgregar">➕ Agregar fila</button>
-  </td>`;
-  tbody.appendChild(addRow);
-
-  /* Grilla tipo planilla: se re-activa en CADA llamada (antes del guard de
-   * cableado de abajo), porque el tbody se reconstruye entero en cada una
-   * (cambiar fuente/filtro, +/-, agregar, quitar fila) y activarGrilla es
-   * quien recalcula la geometria y restaura la seleccion por identidad. */
-  const otTable = $('otTable');
-  if (otTable) activarGrilla(otTable, _otAdaptador);
-
-  /* Listeners delegados en tbody: enganchar UNA sola vez. El nodo tbody persiste
-     entre renders (solo se reemplaza su innerHTML), así que sin este guard se
-     acumularían y los botones ±/✕/agregar dispararían múltiples veces. */
-  if (tbody._otWired) return;
-  tbody._otWired = true;
-
-  tbody.addEventListener('input', e => {
-    const el = e.target.closest('input.cell[data-otk]');
-    if (!el) return;
-    const i = +el.dataset.oti;
-    if (!_otRows[i]) return;
-    if (el.dataset.otk === 'cantidad'){
-      // entero >= 1; un valor invalido (todavia incompleto mientras se tipea)
-      // no pisa el numero vigente, igual que el resto de la grilla.
-      const n = num(el.value);
-      if (n != null && n >= 1) _otRows[i].cantidad = Math.round(n);
-    } else if (el.dataset.otk !== 'recipiente'){   // el recipiente nuevo se toma al confirmarlo (change)
-      _otRows[i][el.dataset.otk] = el.value;
-    }
-    _otPintarPaginas();
-  });
-
-  tbody.addEventListener('change', e => {
-    /* Lote tipeado a mano: al confirmarlo (Enter, Tab o clic afuera) se
-     * autocompleta el resto de la fila. Se actualizan las celdas EN SU LUGAR,
-     * sin repintar el tbody: la grilla, al apretar Enter, hace blur (que
-     * dispara este change) y enseguida mueve la seleccion sobre los <tr> que
-     * ya tenia medidos; un repintado aca se los dejaria sueltos del DOM. */
-    const lt = e.target.closest('input.cell[data-otk="lote"]');
-    if (lt){
-      const r = _otRows[+lt.dataset.oti];
-      if (!r) return;
-      r.lote = lt.value; r.manual = true;
-      _otAutocompletar(r);
-      const tr = lt.closest('tr');
-      lt.value = r.lote;
-      lt.classList.toggle('ot-noexiste', !!r.noEncontrado);
-      lt.title = r.noEncontrado ? 'No hay ningún lote con ese número' : '';
-      for (const k of ['variedad', 'vasija', 'barril', 'litros', 'motivo']){
-        const c = tr && tr.querySelector(`input.cell[data-otk="${k}"]`);
-        if (c) c.value = r[k] ?? '';
-      }
-      _otPintarPaginas();
-      return;
-    }
-    /* Recipiente escrito a mano (despues de elegir "✎ Otro…"): vuelve a ser
-     * selector con el nombre nuevo. Se reemplaza SOLO el contenido de la celda,
-     * no el tbody (mismo motivo que el lote, arriba). Vacio = se arrepintio. */
-    const otro = e.target.closest('input.cell[data-otk="recipiente"]');
-    if (otro){ _otConfirmarRecFila(otro); return; }
-    const el = e.target.closest('select.cell[data-otk]');
-    if (!el) return;
-    const i = +el.dataset.oti;
-    if (el.dataset.otk === 'recipiente' && el.value === OTRO_REC){
-      const antes = _otRows[i] ? _otRows[i].recipiente : '';
-      el.closest('td').innerHTML = `<input class="cell" type="text" data-oti="${i}" data-otk="recipiente" data-antes="${escA(antes)}" placeholder="Escribí el recipiente…">`;
-      const inp = tbody.querySelector(`input.cell[data-oti="${i}"][data-otk="recipiente"]`);
-      if (inp){
-        inp.focus();
-        inp.addEventListener('keydown', ev => { if (ev.key === 'Enter'){ ev.preventDefault(); inp.blur(); } });
-      }
-      return;
-    }
-    if (_otRows[i]) _otRows[i][el.dataset.otk] = el.value;
-    _otPintarPaginas();
-  });
-
-  /* Salir del campo sin tocar nada tambien lo cierra (el change no salta si
-   * el valor no cambio). */
-  tbody.addEventListener('focusout', e => {
-    const otro = e.target.closest('input.cell[data-otk="recipiente"]');
-    if (otro) _otConfirmarRecFila(otro);
-  });
-
-  tbody.addEventListener('click', e => {
-    /* borrar fila */
-    const del = e.target.closest('[data-ot-del]');
-    if (del){ _otRows.splice(+del.dataset.otDel, 1); _otRenderTabla(); _otPintarPaginas(); return; }
-
-    /* menos */
-    const minus = e.target.closest('[data-ot-minus]');
-    if (minus){
-      const i = +minus.dataset.otMinus;
-      if (_otRows[i] && _otRows[i].cantidad > 1){ _otRows[i].cantidad--; _otRenderTabla(); _otPintarPaginas(); } return;
-    }
-
-    /* más */
-    const plus = e.target.closest('[data-ot-plus]');
-    if (plus){
-      const i = +plus.dataset.otPlus;
-      if (_otRows[i]){ _otRows[i].cantidad++; _otRenderTabla(); _otPintarPaginas(); } return;
-    }
-
-    /* agregar fila */
-    const add = e.target.closest('#btnOtAgregar');
-    if (add){
-      _otRows.push({ lote:'', variedad:'', vasija:'', litros:'', motivo:'', recipiente:_otRecipiente, cantidad:_otCantidad, manual:true });
-      _otRenderTabla();
-      _otPintarPaginas();
-      return;
-    }
-  });
-}
-
-function _otConfirmarRecFila(otro){
-  const td = otro.closest('td');
-  if (!td || !otro.isConnected) return;   // ya confirmado (change + focusout)
-  const r = _otRows[+otro.dataset.oti];
-  if (!r) return;
-  const v = _recSumar(otro.value);
-  r.recipiente = v || otro.dataset.antes || _otRecipiente;
-  td.innerHTML = _recSelectFila(+otro.dataset.oti, r.recipiente);
-  _otPintarPaginas();
-}
-
-/* Pinta #otPaginas: la vista de PAPEL, paginada a 25 filas, mas una hoja
- * final por cada mapa de barriles adjunto. Separada de _otRenderTabla():
- * esta es la unica seccion visible al imprimir (ver CSS de printing-orden). */
+/* Pinta #otPaginas: la hoja de papel ES la pantalla (no hay grilla). 50
+ * filas por hoja, mas una hoja por cada mapa de barriles adjunto. Todo lo
+ * editable son campos sobre la hoja: los del encabezado (data-campo,
+ * hoja-campos.js) y las celdas de cada fila (data-fila/data-col,
+ * orden-hoja-filas.js). Es la unica seccion visible al imprimir. */
 function _otPintarPaginas(){
   const cont = $('otPaginas');
   if (!cont) return;
@@ -384,6 +167,19 @@ function _otPintarPaginas(){
   const meta = { fecha, anio: String(fecha || '').slice(0, 4), nro };
   const campoDia = { campo: 'dia', valor: dia, ph: 'día' };
   const banda = ['MUESTRAS', campoDia, 'Lab CIW + Degustación'];
+
+  /* sugerencias de recipiente para la celda (lista + los escritos a mano) */
+  const dl = $('otRecLista');
+  if (dl) dl.innerHTML = _recLista().map(v => `<option value="${escA(v)}"></option>`).join('');
+
+  if (_esMicro()){
+    /* Microbiologia: otro papel (orden-micro.js), mismo encabezado RCI 08.
+     * Los mapas no se ofrecen en este modo, asi que no se suman. */
+    cont.innerHTML = pintarHojas(cfgHojasMicro({
+      filas: _otRows, textos: _otMicro, titulo: _otTitulo, meta, dia, emitio, recibio,
+    }));
+    return;
+  }
 
   const hojasMapas = _otMapas.map((m, i) => {
     const sufijo = _otMapas.length > 1 ? ` (${i + 1} de ${_otMapas.length})` : '';
@@ -397,62 +193,82 @@ function _otPintarPaginas(){
     `</div>`;
   });
 
-  /* Microbiologia: otro papel (orden-micro.js), mismo encabezado RCI 08 y
-   * paginado. Los mapas no se ofrecen en este modo, asi que no se suman. */
-  if (_esMicro()){
-    cont.innerHTML = pintarHojas(cfgHojasMicro({
-      filas: _otRows, textos: _otMicro, titulo: _otTitulo, meta, dia,
-      emitio, recibio, porPagina: ORDEN_PER_PAGE,
-    }));
-    return;
-  }
-
-  /* La columna BARRIL entra al papel solo si el dado (o alguien a mano) puso
-   * algun barril: una columna vacia en todas las hojas es ruido. Entra en el
-   * ancho: con 8 columnas el requerimiento sube de ~559px a ~619px de 688. */
-  const conBarril = _otRows.some(r => String(r.barril || '').trim() !== '');
-  const sinSorteo = $('btnOtSinSorteo');
-  if (sinSorteo) sinSorteo.style.display = conBarril ? '' : 'none';
-
-  cont.innerHTML = pintarHojas({
-    filas: _otRows,
-    porPagina: ORDEN_PER_PAGE,
-    editable: true,
-    titulo: _otTitulo,
-    meta, banda, emitio, recibio,
-    nota: 'Tomar muestra en un tubo falcon y luego sanitizar jeringa para cada lote.',
-    /* El PAPEL lleva 7 columnas, no las 9 de la grilla: LITROS y MOTIVO quedan
-     * solo en pantalla. Son datos para DECIDIR a quien se le pide muestra, no
-     * para quien camina la bodega con la hoja.
-     *
-     * No es cosmetico. Medido sobre el papel real (688px utiles = A4 menos el
-     * margen de 14mm del @page), las 9 columnas necesitaban 763px para no
-     * envolver: no entraban. VARIEDAD ("Cabernet Sauvignon") y VASIJA
-     * ("Barrica + t50 + t200") caian a dos lineas, la fila pasaba de 30px a 41px
-     * y 9 de cada 10 hojas se derramaban a una pagina fisica extra, dejando las
-     * firmas sueltas al final. Con 7 columnas el requerimiento baja a ~559px y
-     * sobran ~130px, asi que nada envuelve y la hoja entra entera. */
-    colgroup: `<colgroup><col style="width:34px"><col style="width:60px"><col><col style="width:140px">${conBarril ? '<col style="width:60px">' : ''}<col style="width:50px"><col style="width:110px"><col style="width:56px"></colgroup>`,
-    thead: `<tr><th class="c oh-num">#</th><th class="c">LOTE</th><th>VARIEDAD</th><th>VASIJA</th>${conBarril ? '<th class="c">BARRIL</th>' : ''}<th class="c">Cant.</th><th>Recipiente</th><th class="oh-check">Check</th></tr>`,
-    columnas: conBarril ? 8 : 7,
-    textoVacio: 'No hay lotes para los criterios elegidos.',
-    /* Recipiente va como TEXTO, no como <select disabled>. El papel es un espejo
-     * de solo lectura: el select no se podia usar, sumaba alto a cada fila y
-     * obligaba a neutralizar su flechita con appearance:none en el CSS de print. */
-    renderFila: ({ numero, fila: r }) => {
-      return `<tr>` +
-        `<td class="c oh-num">${numero}</td>` +
-        `<td class="c">${esc(r.lote)}</td>` +
-        `<td>${esc(r.variedad)}</td>` +
-        `<td>${esc(r.vasija)}</td>` +
-        (conBarril ? `<td class="c">${esc(r.barril || '')}</td>` : '') +
-        `<td class="c">${esc(String(r.cantidad))}</td>` +
-        `<td>${esc(r.recipiente || '')}</td>` +
-        `<td class="oh-check"></td>` +
-      `</tr>`;
-    },
-    hojasExtra: hojasMapas,
+  const cfg = cfgHojasAnalisis({
+    filas: _otRows, titulo: _otTitulo, meta, banda, emitio, recibio,
+    hojasExtra: hojasMapas, listaRecipientes: 'otRecLista',
   });
+  const sinSorteo = $('btnOtSinSorteo');
+  if (sinSorteo) sinSorteo.style.display = cfg.columnas === 8 ? '' : 'none';
+  cont.innerHTML = pintarHojas(cfg);
+}
+
+/* Repinta la hoja SIN perder donde estaba el cursor: si el foco estaba en una
+ * celda o un campo de la hoja, lo devuelve al mismo lugar (o al que se pida). */
+function _otRepintar(foco){
+  const a = document.activeElement;
+  const antes = foco || (a && a.closest && a.closest('#otPaginas')
+    ? { fila: a.dataset.fila, col: a.dataset.col, campo: a.dataset.campo } : null);
+  _otRefrescar();
+  if (!antes) return;
+  const hoja = $('otPaginas');
+  const el = antes.campo
+    ? hoja.querySelector(`[data-campo="${antes.campo}"]`)
+    : hoja.querySelector(`[data-fila="${antes.fila}"][data-col="${antes.col}"]`);
+  if (el){ el.focus(); if (el.select && antes.seleccionar) el.select(); }
+}
+
+const _otFilaNueva = () => ({ lote:'', variedad:'', vasija:'', litros:'', motivo:'', barril:'',
+                              recipiente:_otRecipiente, cantidad:_otCantidad, manual:true });
+
+/* Una celda de fila cambio (evento input): se guarda el texto tal cual. El
+ * lote recien se resuelve al confirmarlo (change), la cantidad solo si vale. */
+function _otCeldaInput(el){
+  const r = _otRows[+el.dataset.fila];
+  if (!r) return;
+  const k = el.dataset.col;
+  if (k === 'cantidad'){ const n = cantidadValida(el.value); if (n != null) r.cantidad = n; return; }
+  r[k] = el.value;
+  if (k === 'lote') r.manual = true;
+}
+
+/* Confirmar una celda (Enter, Tab o salir): el lote se autocompleta (y la
+ * hoja se repinta: cambian variedad y vasija), la cantidad invalida vuelve a
+ * la vigente, el recipiente nuevo se suma a la lista. */
+function _otCeldaConfirmar(el){
+  const r = _otRows[+el.dataset.fila];
+  if (!r) return;
+  const k = el.dataset.col;
+  /* El repintado va un tick despues: el change salta ANTES de que el Tab mueva
+   * el foco, y repintar ahi mismo lo mandaria a cualquier lado. Despues, el
+   * foco ya esta en la celda de destino y _otRepintar lo devuelve alli. */
+  if (k === 'lote'){ r.manual = true; _otAutocompletar(r); setTimeout(() => _otRepintar(), 0); return; }
+  if (k === 'cantidad'){ el.value = String(r.cantidad); return; }
+  if (k === 'recipiente'){ const v = _recSumar(el.value); r.recipiente = v || _otRecipiente; el.value = r.recipiente; }
+}
+
+/* Pegar en una celda de lote una columna copiada del Excel: llena hacia
+ * abajo desde esa fila (creando las que falten). Un solo valor = pegado comun. */
+function _otPegarEnLote(el, e){
+  const texto = (e.clipboardData || window.clipboardData).getData('text');
+  const lotes = parsearListaLotes(texto);
+  if (lotes.length < 2) return;
+  e.preventDefault();
+  const { filas, tocadas } = pegarLotesDesde(_otRows, +el.dataset.fila, lotes, _otFilaNueva);
+  _otRows = filas;
+  for (const j of tocadas) _otAutocompletar(_otRows[j]);
+  _otRepintar({ fila: tocadas[tocadas.length - 1], col: 'lote' });
+}
+
+/* Enter en una celda: baja a la misma columna de la fila siguiente, como en
+ * una planilla. En la ultima fila con lote, agrega una fila nueva. */
+function _otCeldaEnter(el){
+  const i = +el.dataset.fila, k = el.dataset.col;
+  _otCeldaConfirmar(el);
+  if (i + 1 >= _otRows.length){
+    if (k !== 'lote' || !String(_otRows[i]?.lote || '').trim()) return;
+    _otRows.push(_otFilaNueva());
+  }
+  _otRepintar({ fila: i + 1, col: k, seleccionar: true });
 }
 
 /* Los tres pasos que dispara cualquier cambio de filtro. El tercero es el que
@@ -470,35 +286,14 @@ function _otAplicarFiltros(){
   const barrilDe = new Map(_otRows.filter(r => r.barril).map(r => [claveLote(r.lote), r.barril]));
   _otRows = manuales.concat(_otBuildRows().filter(r => !ya.has(claveLote(r.lote))));
   for (const r of _otRows) if (!r.barril && barrilDe.has(claveLote(r.lote))) r.barril = barrilDe.get(claveLote(r.lote));
-  if (_otSort.key) _otRows = ordenarFilasOt(_otRows, _otSort.key, _otSort.dir);
   _otRefrescar();
 }
 
-/* Repinta tabla, papel, contador y flechas despues de reemplazar _otRows. */
+/* Repinta la hoja y el contador despues de reemplazar _otRows. */
 function _otRefrescar(){
-  _otRenderTabla();
   _otPintarPaginas();
-  _otPintarFlechas();
   const c = $('otCount');
   if (c) c.textContent = _otRows.length + ' fila' + (_otRows.length !== 1 ? 's' : '');
-}
-
-function _otPintarFlechas(){
-  const t = $('otTable'); if (!t) return;
-  t.querySelectorAll('thead th[data-k]').forEach(th => {
-    const a = th.querySelector('.arrow');
-    if (a) a.remove();
-    if (th.dataset.k === _otSort.key)
-      th.insertAdjacentHTML('beforeend', `<span class="arrow">${_otSort.dir > 0 ? '▲' : '▼'}</span>`);
-  });
-}
-
-/* Clic en un encabezado: primero de menor a mayor, el segundo clic invierte. */
-function _otOrdenarPor(k){
-  if (_otSort.key === k) _otSort.dir *= -1;
-  else { _otSort.key = k; _otSort.dir = 1; }
-  _otRows = ordenarFilasOt(_otRows, _otSort.key, _otSort.dir);
-  _otRefrescar();
 }
 
 /* Recuadro "Pegar lotes": cada numero se vuelve una fila autocompletada.
@@ -525,7 +320,6 @@ function _otCargarPegados(reemplazar){
     const s = $('otFuente'); if (s) s.value = _otFuente;
     const w = $('otWrapAtencion'); if (w) w.style.display = 'none';
   }
-  if (_otSort.key) _otRows = ordenarFilasOt(_otRows, _otSort.key, _otSort.dir);
   _otRefrescar();
 
   if (msg){
@@ -561,8 +355,7 @@ async function _otTirarDado(){
     }
     const { sinBarril } = sortearOrden(_otRows, (await r.json()).por_lote, Math.random,
                                        DATOS().muestreos_barriles || []);
-    _otRenderTabla();
-    _otPintarPaginas();
+    _otRefrescar();
     if (msg){
       const con = lotes.length - sinBarril.length;
       let t = `🎲 ${con} barril${con !== 1 ? 'es' : ''} sorteado${con !== 1 ? 's' : ''}.`;
@@ -726,7 +519,6 @@ export function renderOrden(){
   const gridMicro = () => secPegar();
 
   sec.innerHTML = `
-<div class="ot-layout">
 <div class="ot-izq">
 <div id="ordenControls" class="card${micro ? ' oc-micro' : ''}">
   <!-- cabecera: titulo, contador y la unica accion principal de la tarjeta -->
@@ -825,47 +617,23 @@ export function renderOrden(){
   </div>
 </div>
 
-<!-- tabla editable de la OT -->
-<div class="scroll tall">
-<table id="otTable">
-  <thead><tr>
-    <th data-k="lote">Lote</th>
-    <th data-k="variedad">Variedad</th>
-    <th data-k="vasija">Vasija</th>${micro ? '' : `
-    <th data-k="barril" class="num" title="Barril sorteado con el 🎲 (se puede escribir a mano)">Barril</th>
-    <th data-k="litros" class="num">Litros</th>
-    <th data-k="motivo">Motivo</th>
-    <th data-k="recipiente">Recipiente</th>
-    <th data-k="cantidad" class="num">Cantidad</th>`}
-    <th class="ot-del-col"></th>
-  </tr></thead>
-  <tbody id="otTbody"></tbody>
-</table>
 </div>
 
-</div>
-
-<!-- vista previa: la hoja tal cual se imprime, editable encima. Es la unica
-     seccion visible al imprimir (CSS de printing-orden). -->
-<aside class="ot-der" aria-label="Vista previa de la hoja">
+<!-- la orden de trabajo: la hoja tal cual se imprime, editable encima (no hay
+     grilla aparte). Es la unica seccion visible al imprimir (printing-orden). -->
+<section class="ot-der" aria-label="Orden de trabajo">
   <div class="ot-prev-cab">
-    <span><b>Vista previa</b> · hacé clic en la hoja para escribir</span>
+    <span><b>La orden tal cual se imprime</b> · hacé clic para escribir · Enter baja de fila · pegá una columna de lotes en «Lote»</span>
     ${micro ? '<button class="btn oc-ghost oc-mini" id="btnOtMicroDef" title="Volver a los textos del Excel de microbiología (orden y cartel)">↺ Textos originales</button>' : ''}
   </div>
+  <datalist id="otRecLista"></datalist>
   <div id="otPaginas"></div>
-</aside>
-</div>`;
+</section>`;
 
   /* --- construir filas iniciales si la tabla está vacía o si se cambia la fuente --- */
   _otAplicarFiltros();
 
   /* --- listeners de controles (re-wired en cada render porque sec.innerHTML cambia) --- */
-
-  /* ordenar por columna: clic en el encabezado (la grilla deja pasar el clic
-   * salvo en los primeros 8px, que seleccionan la columna) */
-  $('otTable').querySelectorAll('thead th[data-k]').forEach(th => {
-    th.onclick = () => _otOrdenarPor(th.dataset.k);
-  });
 
   /* pegar lotes */
   $('otPegar').addEventListener('input', e => { _otPegado = e.target.value; });
@@ -955,8 +723,7 @@ export function renderOrden(){
      * imprimir despues no anota nada en muestreos_barriles. */
     $('btnOtSinSorteo').addEventListener('click', () => {
       _otRows.forEach(r => { r.barril = ''; });
-      _otRenderTabla();
-      _otPintarPaginas();
+      _otRefrescar();
       const msg = $('otDadoMsg');
       if (msg) msg.textContent = 'Sin sorteo: sacan la muestra de cualquier barril.';
     });
@@ -994,20 +761,23 @@ export function renderOrden(){
     });
     $('btnOtAplicarDef').addEventListener('click', () => {
       _otRows.forEach(r => { r.recipiente = _otRecipiente; r.cantidad = _otCantidad; });
-      _otRenderTabla();
-      _otPintarPaginas();
+      _otRefrescar();
     });
   }
 
   /* Vista previa editable: todo campo data-campo de la hoja (hoja-campos.js)
    * guarda su valor y lo copia a los campos iguales de las otras paginas. NO
    * repinta la hoja: asi el cursor se queda donde esta mientras se escribe. */
-  $('otPaginas').addEventListener('input', e => {
+  const hojaEl = $('otPaginas');
+  hojaEl.addEventListener('input', e => {
     const c = e.target.closest('[data-campo]');
     if (c){ _otCampoHoja(c); return; }
+    const celda = e.target.closest('input.oh-celda');
+    if (celda){ _otCeldaInput(celda); return; }
     const pie = e.target.closest('[data-mapapieot]');
     if (pie){ const m = _otMapas[+pie.dataset.mapapieot]; if (m) m.pie = pie.value; return; }
   });
+  _otCablearFilas(hojaEl);
 
   /* solo analisis: los mapas no se ofrecen en microbiologia */
   if (!micro){
@@ -1042,6 +812,32 @@ export function renderOrden(){
     document.body.classList.remove('printing-orden');
     /* microbiologia no usa el dado: no hay barriles que anotar */
     if (!_esMicro()) _otRegistrarMuestreo();
+  });
+}
+
+/* Filas editadas sobre la hoja: confirmar, Enter, pegar columna, quitar y
+ * agregar. El nodo #otPaginas se recrea en cada renderOrden, asi que estos
+ * listeners no se acumulan. */
+function _otCablearFilas(hoja){
+  hoja.addEventListener('change', e => {
+    const celda = e.target.closest('input.oh-celda');
+    if (celda) _otCeldaConfirmar(celda);
+  });
+  hoja.addEventListener('keydown', e => {
+    const celda = e.target.closest('input.oh-celda');
+    if (celda && e.key === 'Enter'){ e.preventDefault(); _otCeldaEnter(celda); }
+  });
+  hoja.addEventListener('paste', e => {
+    const celda = e.target.closest('input.oh-celda[data-col="lote"]');
+    if (celda) _otPegarEnLote(celda, e);
+  });
+  hoja.addEventListener('click', e => {
+    const q = e.target.closest('[data-quitar]');
+    if (q){ _otRows.splice(+q.dataset.quitar, 1); _otRepintar(); return; }
+    if (e.target.closest('.oh-agregar')){
+      _otRows.push(_otFilaNueva());
+      _otRepintar({ fila: _otRows.length - 1, col: 'lote' });
+    }
   });
 }
 

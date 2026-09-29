@@ -11,7 +11,11 @@
  *
  * cfg.editable = la hoja es la vista previa editable de la Orden de muestras:
  * titulo, fecha, N° de orden y firmas salen como campos (hoja-campos.js). La
- * Orden de correccion no lo usa y sale igual que siempre. */
+ * Orden de correccion no lo usa y sale igual que siempre.
+ *
+ * cfg.claseHoja = clase extra de cada hoja (p. ej. oh-compacta, 50 filas);
+ * cfg.despuesTablaUltima = HTML que va solo bajo la tabla de la ULTIMA hoja;
+ * cfg.alLadoTabla = HTML en una columna a la derecha de una tabla angosta. */
 'use strict';
 
 import { esc, escA } from './nucleo.js';
@@ -83,15 +87,19 @@ export function pintarHojas(cfg){
 
   paginas.forEach((pagina, pg) => {
     const filas = pagina.map(c.renderFila).join('');
-    html += `<div class="orden-hoja">` +
+    const ultima = pg === paginas.length - 1;
+    html += `<div class="orden-hoja${c.claseHoja ? ' ' + c.claseHoja : ''}">` +
       hojaTop() +
       (c.editable ? campoHoja('titulo', c.titulo, { cls: 'oh-titulo' }) : hojaTitulo(c.titulo)) +
       (c.editable ? hojaMetaEditable(c.meta) : hojaMeta(c.meta)) +
       (c.antesBanda || '') +
       hojaBanda(c.banda) +
       (c.nota ? `<div class="oh-nota">${c.nota}</div>` : '') +
+      (c.alLadoTabla ? '<div class="oh-tabla-lado"><div>' : '') +
       `<table${c.claseTabla ? ` class="${c.claseTabla}"` : ''}>${c.colgroup || ''}<thead>${c.thead || ''}</thead>` +
       `<tbody>${filas || `<tr><td colspan="${c.columnas || 1}" class="c" style="padding:18px">${esc(c.textoVacio || '')}</td></tr>`}</tbody></table>` +
+      (ultima && c.despuesTablaUltima ? c.despuesTablaUltima : '') +
+      (c.alLadoTabla ? `</div><div class="oh-lado">${c.alLadoTabla}</div></div>` : '') +
       (c.despuesTabla || '') +
       (c.editable ? hojaPieEditable(c.emitio, c.recibio) : hojaPie(c.emitio, c.recibio)) +
       `<div class="oh-hoja-num">Hoja ${pg + 1} de ${paginas.length}</div>` +
