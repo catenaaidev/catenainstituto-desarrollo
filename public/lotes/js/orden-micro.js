@@ -14,6 +14,7 @@
 'use strict';
 
 import { campoHoja } from './hoja-campos.js';
+import { FILAS_POR_HOJA_ORDEN, celdaHoja, celdaNumero, celdaLote, BOTON_AGREGAR } from './orden-hoja-filas.js';
 
 const esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -59,17 +60,20 @@ export function textosMicro(guardado){
  * textos. La hoja es la vista previa editable: instrucciones, banda, dia,
  * subtitulo, indicaciones y el cartel son campos data-campo (hoja-campos.js).
  * hojasExtra (mapas, etc.) se suman DESPUES del cartel. */
-export function cfgHojasMicro({ filas, textos, titulo, meta, dia, emitio, recibio, porPagina, hojasExtra }){
+export function cfgHojasMicro({ filas, textos, titulo, meta, dia, emitio, recibio, hojasExtra }){
   const t = textosMicro(textos);
   return {
     filas: filas || [],
-    porPagina,
+    porPagina: FILAS_POR_HOJA_ORDEN,
+    claseHoja: 'oh-compacta oh-micro',
     editable: true,
     titulo, meta, emitio, recibio,
     banda: [{ campo: 'banda', valor: t.banda, ph: 'Banda' }, { campo: 'dia', valor: dia || '', ph: 'día' }, ''],
     antesBanda: campoHoja('instrucciones', t.instrucciones, { tipo: 'area', cls: 'oh-instr', ph: 'Instrucciones (opcional)' }),
     nota: campoHoja('subtitulo', t.subtitulo, { cls: 'oh-campo-sub', ph: 'Recipiente (opcional)' }),
-    despuesTabla: campoHoja('cierre', t.cierre, { tipo: 'area', cls: 'oh-instr oh-instr-fin', ph: 'Indicaciones (opcional)' }),
+    /* Las indicaciones de cierre van AL LADO de la tabla (que es angosta), no
+     * debajo: debajo, 50 filas + instrucciones se pasaban de la A4. */
+    alLadoTabla: campoHoja('cierre', t.cierre, { tipo: 'area', cls: 'oh-instr oh-instr-fin', ph: 'Indicaciones (opcional)' }),
     /* Columnas justas, como en el Excel: la tabla no se estira a todo el
      * ancho de la hoja (la Vasija quedaba con medio renglon vacio). */
     claseTabla: 'oh-tabla-justa',
@@ -77,9 +81,12 @@ export function cfgHojasMicro({ filas, textos, titulo, meta, dia, emitio, recibi
     thead: '<tr><th class="c oh-num">#</th><th class="oh-check">Check</th><th class="c">Lote</th><th>Vasija</th></tr>',
     columnas: 4,
     textoVacio: 'Sin lotes. Cargalos con «Pegar lotes», el filtro Lote o «Agregar fila».',
+    despuesTablaUltima: BOTON_AGREGAR,
+    /* Lote y Vasija se editan sobre la hoja (orden-hoja-filas.js). */
     renderFila: ({ numero, fila: r }) =>
-      `<tr><td class="c oh-num">${numero}</td><td class="oh-check"></td>` +
-      `<td class="c">${esc(r.lote)}</td><td>${esc(r.vasija)}</td></tr>`,
+      `<tr>${celdaNumero(numero - 1, numero)}<td class="oh-check"></td>` +
+      `<td class="c">${celdaLote(numero - 1, r)}</td>` +
+      `<td>${celdaHoja(numero - 1, 'vasija', r.vasija)}</td></tr>`,
     hojasExtra: [hojaCartel(t), ...(hojasExtra || [])],
   };
 }

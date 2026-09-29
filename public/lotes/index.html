@@ -654,8 +654,11 @@
      * al imprimir ese margen corria la hoja 10px y la cortaba de los dos lados */
     body.printing-orden #tab-orden{display:block!important;margin:0}
     body.printing-orden #tab-orden .ot-izq,
-    body.printing-orden #tab-orden .ot-prev-cab{display:none!important}
-    body.printing-orden #tab-orden .ot-layout{display:block}
+    body.printing-orden #tab-orden .ot-prev-cab,
+    body.printing-orden .orden-hoja .oh-quitar,
+    body.printing-orden .orden-hoja .oh-agregar{display:none!important}
+    body.printing-orden .orden-hoja input.oh-celda::placeholder{color:transparent}
+    body.printing-orden .orden-hoja input.oh-celda.oh-noexiste{color:inherit;font-weight:inherit;text-decoration:none}
     body.printing-orden #tab-orden .ot-der{position:static;max-height:none;overflow:visible;padding:0}
     /* las demas pestanas siguen en el DOM (content-visibility) con margen
      * negativo: 10px mas anchas que la hoja, y Chrome achicaba todo */
@@ -1177,27 +1180,53 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 #ordenControls .oc-tipo button:hover{color:var(--accent)}
 #ordenControls .oc-tipo button.on{background:var(--panel);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 #ordenControls .oc-tipo button:focus-visible{outline:none;box-shadow:var(--ring)}
-/* ---- vista previa editable (#otPaginas en .ot-der) ----
- * La hoja se ve en pantalla a tamano A4 real (210 mm, margen de 14 mm = el
- * @page de impresion), asi que lo que se ve es lo que sale. Se edita encima:
- * cada dato es un .oh-campo (hoja-campos.js), con un borde punteado suave que
- * al imprimir desaparece. En pantalla ancha va a la derecha de la grilla. */
-#tab-orden .ot-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
-#tab-orden .ot-der{min-width:0;overflow-x:auto;padding:2px 2px 16px}
+/* ---- la orden de trabajo en pantalla (#otPaginas en .ot-der) ----
+ * No hay grilla aparte: la hoja se ve a tamano A4 real (210 mm, margen de
+ * 14 mm = el @page de impresion) debajo de los controles, y se edita encima.
+ * Lo que se ve es lo que sale. */
+#tab-orden .ot-der{min-width:0;overflow-x:auto;padding:4px 2px 24px}
 #tab-orden .ot-prev-cab{width:210mm;max-width:100%;margin:0 auto 8px;display:flex;align-items:center;gap:10px;
   font-size:12.5px;color:var(--muted)}
 #tab-orden .ot-prev-cab b{color:var(--txt)}
-#tab-orden .ot-prev-cab .oc-mini{margin-left:auto;height:28px;padding:0 10px;font-size:12px}
+#tab-orden .ot-prev-cab .oc-mini{margin-left:auto;flex:none;height:28px;padding:0 10px;font-size:12px}
 #otPaginas .orden-hoja{width:210mm;max-width:none;min-height:297mm;padding:14mm;box-sizing:border-box;margin:0 auto;
   border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,.10),0 10px 28px rgba(40,30,20,.10)}
 #otPaginas .orden-hoja + .orden-hoja{margin-top:22px}
-@media (min-width:1500px){
-  #tab-orden .ot-layout{grid-template-columns:minmax(0,1fr) calc(210mm + 8px)}
-  #tab-orden .ot-der{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
-  /* la columna izquierda queda mas angosta: los paneles de analisis de a dos */
-  #tab-orden #ordenControls .oc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
 #ordenControls.oc-micro .oc-grid{grid-template-columns:minmax(0,1fr)!important}
+
+/* ---- 50 filas por hoja (.oh-compacta) ----
+ * Filas de 15px: 50 filas + encabezado + firmas entran en los 269 mm utiles
+ * de la A4. Medido con Chrome printToPDF, no a ojo. */
+.orden-hoja.oh-compacta table{font-size:11.5px}
+.orden-hoja.oh-compacta th{padding:2px 6px;font-size:11.5px}
+.orden-hoja.oh-compacta td{padding:0 6px;height:15px;line-height:14px;font-size:11.5px}
+.orden-hoja.oh-compacta .oh-pie{margin-top:12px}
+.orden-hoja.oh-compacta .oh-pie .firma{margin-top:18px}
+
+/* micro: la tabla es angosta y lleva al lado las indicaciones de cierre;
+ * sus filas van 1px mas bajas porque ademas lleva instrucciones arriba */
+.orden-hoja .oh-tabla-lado{display:flex;align-items:flex-start;gap:18px}
+.orden-hoja .oh-tabla-lado > .oh-lado{flex:1 1 auto;min-width:0}
+.orden-hoja .oh-tabla-lado .oh-instr-fin{margin:0}
+.orden-hoja.oh-compacta.oh-micro td{height:14px;line-height:13px}
+.orden-hoja.oh-compacta.oh-micro input.oh-celda{height:13px;line-height:13px}
+
+/* celdas de fila editables sobre la hoja */
+.orden-hoja .oh-num{position:relative}
+.orden-hoja input.oh-celda{font:inherit;color:inherit;background:transparent;border:0;border-radius:2px;
+  padding:0 2px;margin:0;width:100%;height:14px;line-height:14px;box-sizing:border-box}
+.orden-hoja input.oh-celda.c{text-align:center}
+.orden-hoja input.oh-celda:hover{background:#f6f1e8}
+.orden-hoja input.oh-celda:focus{outline:1px solid #e08a2b;background:#fff}
+.orden-hoja input.oh-celda::placeholder{color:#c4bcb0;font-style:italic}
+.orden-hoja input.oh-celda.oh-noexiste{color:#b3261e;font-weight:700;text-decoration:underline wavy #b3261e}
+.orden-hoja .oh-quitar{position:absolute;left:-26px;top:50%;transform:translateY(-50%);width:20px;height:20px;padding:0;
+  border:none;border-radius:50%;background:transparent;color:#a39a8e;font-size:11px;line-height:20px;cursor:pointer;opacity:0}
+.orden-hoja tr:hover .oh-quitar,.orden-hoja .oh-quitar:focus-visible{opacity:1}
+.orden-hoja .oh-quitar:hover{background:#f3dcd9;color:#b3261e}
+.orden-hoja .oh-agregar{display:block;margin:6px 0 0;padding:3px 10px;border:1px dashed #cbbfae;border-radius:4px;
+  background:transparent;color:#8a3340;font:inherit;font-size:12px;cursor:pointer}
+.orden-hoja .oh-agregar:hover{background:#faf5ee;border-color:#8a3340}
 
 /* campos sobre la hoja */
 .orden-hoja .oh-campo{font:inherit;color:inherit;background:transparent;border:1px dashed #ddd4c6;border-radius:3px;

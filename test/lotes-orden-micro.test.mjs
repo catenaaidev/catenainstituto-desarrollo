@@ -43,7 +43,7 @@ describe('cfgHojasMicro', () => {
     expect(cfg.banda[1]).toMatchObject({ campo: 'dia', valor: 'lunes' });
     expect(cfg.antesBanda).toMatch(/<textarea[^>]*data-campo="instrucciones"[^>]*>Tomar muestras según protocolo adjunto\n/);
     expect(cfg.nota).toMatch(/data-campo="subtitulo".*Bolsas estériles 200 ml/);
-    expect(cfg.despuesTabla).toMatch(/data-campo="cierre"[^>]*>Colocarle cartel adjunto/);
+    expect(cfg.alLadoTabla).toMatch(/data-campo="cierre"[^>]*>Colocarle cartel adjunto/);
   });
   it('un texto borrado queda como campo vacio con placeholder (no se imprime)', () => {
     const c = cfgHojasMicro({ filas, textos: { instrucciones: '', subtitulo: '' } });
