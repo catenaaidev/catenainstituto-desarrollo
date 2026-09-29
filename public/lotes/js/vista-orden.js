@@ -312,6 +312,8 @@ function _otPintarPaginas(){
    * algun barril: una columna vacia en todas las hojas es ruido. Entra en el
    * ancho: con 8 columnas el requerimiento sube de ~559px a ~619px de 688. */
   const conBarril = _otRows.some(r => String(r.barril || '').trim() !== '');
+  const sinSorteo = $('btnOtSinSorteo');
+  if (sinSorteo) sinSorteo.style.display = conBarril ? '' : 'none';
 
   cont.innerHTML = pintarHojas({
     filas: _otRows,
@@ -624,6 +626,7 @@ export function renderOrden(){
     <button class="btn" id="btnOtLimpiarFlt" title="Limpiar el buscador y todos los filtros">🧹 Limpiar filtros</button>
     <button class="btn" id="btnOtRecargar">🔄 Recargar filas</button>
     <button class="btn" id="btnOtDado" title="Sortear un barril lleno al azar de cada lote de la orden (del inventario del Mapa de Barriles). Volver a apretar cambia el barril." style="font-size:16px;padding:4px 10px">🎲</button>
+    <button class="btn" id="btnOtSinSorteo" title="Quitar los barriles sorteados: la orden vuelve a salir sin columna Barril y en la bodega sacan la muestra de cualquier barril. No se anota nada como muestreado." style="display:none">✕ Sin sorteo</button>
     <span id="otDadoMsg" style="font-size:12px;color:var(--muted)"></span>
     <span class="tag" id="otCount"></span>
     <div class="spacer"></div>
@@ -777,6 +780,16 @@ export function renderOrden(){
 
   /* dado: sortear un barril por lote */
   $('btnOtDado').addEventListener('click', _otTirarDado);
+
+  /* sin sorteo: vaciar la columna Barril. Como el papel ya no lleva barriles,
+   * imprimir despues no anota nada en muestreos_barriles. */
+  $('btnOtSinSorteo').addEventListener('click', () => {
+    _otRows.forEach(r => { r.barril = ''; });
+    _otRenderTabla();
+    _otPintarPaginas();
+    const msg = $('otDadoMsg');
+    if (msg) msg.textContent = 'Sin sorteo: sacan la muestra de cualquier barril.';
+  });
 
   /* recipiente / cantidad por defecto */
   $('otDefRecipiente').addEventListener('change', e => { _otRecipiente = e.target.value; });
