@@ -1,7 +1,9 @@
 /* Tests de la orden de microbiologia (Orden de muestras, tipo 🦠): textos
- * editables con defaults del Excel 0868, columnas del papel y cartel. */
+ * editables con defaults del Excel 0868, columnas del papel y cartel. La hoja
+ * es la vista previa editable, asi que los textos salen como campos
+ * data-campo (hoja-campos.js). */
 import { describe, it, expect } from 'vitest';
-import { TEXTOS_MICRO_DEF, textosMicro, renglones, cfgHojasMicro, hojaCartel }
+import { TEXTOS_MICRO_DEF, textosMicro, cfgHojasMicro, hojaCartel }
   from '../public/lotes/js/orden-micro.js';
 
 describe('textosMicro', () => {
@@ -22,36 +24,31 @@ describe('textosMicro', () => {
   });
 });
 
-describe('renglones', () => {
-  it('un div por renglon, sin vacios, escapado', () => {
-    expect(renglones('a\r\n\n  b <i> ')).toBe('<div>a</div><div>b &lt;i&gt;</div>');
-    expect(renglones('')).toBe('');
-  });
-});
-
 describe('cfgHojasMicro', () => {
   const filas = [{ lote: '26141', vasija: 'Barricas', variedad: 'Malbec' }];
   const cfg = cfgHojasMicro({ filas, textos: null, dia: 'lunes' });
 
-  it('papel con # / Check / Lote / Vasija, sin variedad', () => {
+  it('papel con # / Check / Lote / Vasija, sin variedad, columnas justas', () => {
     expect(cfg.columnas).toBe(4);
     expect(cfg.thead).toMatch(/#.*Check.*Lote.*Vasija/);
+    expect(cfg.claseTabla).toBe('oh-tabla-justa');
     const tr = cfg.renderFila({ numero: 1, fila: filas[0] });
     expect(tr).toContain('26141');
     expect(tr).toContain('Barricas');
     expect(tr).not.toContain('Malbec');
   });
-  it('banda, instrucciones, subtitulo y cierre salen de los textos', () => {
-    expect(cfg.banda).toEqual(['Microbiología VF', 'lunes', '']);
-    expect(cfg.antesBanda).toContain('Tomar muestras según protocolo adjunto');
-    expect(cfg.nota).toContain('Bolsas estériles 200 ml');
-    expect(cfg.despuesTabla).toContain('Entregarlas a Pineda');
+  it('es la vista previa editable: textos como campos de la hoja', () => {
+    expect(cfg.editable).toBe(true);
+    expect(cfg.banda[0]).toEqual({ campo: 'banda', valor: 'Microbiología VF', ph: 'Banda' });
+    expect(cfg.banda[1]).toMatchObject({ campo: 'dia', valor: 'lunes' });
+    expect(cfg.antesBanda).toMatch(/<textarea[^>]*data-campo="instrucciones"[^>]*>Tomar muestras según protocolo adjunto\n/);
+    expect(cfg.nota).toMatch(/data-campo="subtitulo".*Bolsas estériles 200 ml/);
+    expect(cfg.despuesTabla).toMatch(/data-campo="cierre"[^>]*>Colocarle cartel adjunto/);
   });
-  it('un texto borrado no deja un bloque vacio', () => {
-    const c = cfgHojasMicro({ filas, textos: { instrucciones: '', subtitulo: ' ', cierre: '' } });
-    expect(c.antesBanda).toBe('');
-    expect(c.nota).toBe('');
-    expect(c.despuesTabla).toBe('');
+  it('un texto borrado queda como campo vacio con placeholder (no se imprime)', () => {
+    const c = cfgHojasMicro({ filas, textos: { instrucciones: '', subtitulo: '' } });
+    expect(c.antesBanda).toMatch(/placeholder="Instrucciones \(opcional\)"[^>]*><\/textarea>/);
+    expect(c.nota).toMatch(/value=""/);
   });
   it('el cartel va primero entre las hojas extra', () => {
     const c = cfgHojasMicro({ filas, textos: null, hojasExtra: ['<div>mapa</div>'] });
@@ -62,10 +59,11 @@ describe('cfgHojasMicro', () => {
 });
 
 describe('hojaCartel', () => {
-  it('lleva los cinco campos con lo editado, escapado', () => {
-    const h = hojaCartel({ nota: 'Entregar a <Julieta>' });
+  it('lleva los cinco campos editables con lo guardado, escapado', () => {
+    const h = hojaCartel({ nota: 'Entregar a "Julieta" <x>' });
     for (const l of ['De:', 'Retira en Agrelo:', 'Para:', 'Destino:', 'Nota:']) expect(h).toContain(l);
-    expect(h).toContain('Oriana - CIW');
-    expect(h).toContain('Entregar a &lt;Julieta&gt;');
+    for (const k of ['de', 'retira', 'para', 'destino', 'nota']) expect(h).toContain(`data-campo="${k}"`);
+    expect(h).toContain('value="Oriana - CIW"');
+    expect(h).toContain('value="Entregar a &quot;Julieta&quot; &lt;x>"');
   });
 });

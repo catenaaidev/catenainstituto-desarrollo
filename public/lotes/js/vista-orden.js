@@ -8,10 +8,10 @@ import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija,
          datosDeLote, claveLote, parsearListaLotes, ordenarFilasOt } from './orden-filas.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
-import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
-import { fmtFecha } from './fechas.js';
+import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMetaEditable, hojaBanda } from './orden-hoja.js';
+import { hoyLocalISO, diaDeSemana } from './hoja-campos.js';
 import { sortearOrden, registrosDeImpresion } from './sorteo-barriles.js';
-import { textosMicro, cfgHojasMicro, CAMPOS_ORDEN_MICRO, CAMPOS_CARTEL } from './orden-micro.js';
+import { textosMicro, cfgHojasMicro } from './orden-micro.js';
 
 /*
  * _otRows: array de objetos { lote, variedad, vasija, barril, litros, motivo, recipiente, cantidad }
@@ -30,6 +30,9 @@ let _descOt = [], _instOt = [];
 let _otRecipiente = 'Tubo falcon';
 let _otCantidad   = 1;
 let _otTitulo     = 'Orden de Trabajo';   // titulo editable de la hoja, sincronizado entre paginas
+/* Datos del encabezado y las firmas, editados SOBRE la hoja (vista previa
+ * editable, ver hoja-campos.js). En memoria, como el resto de la orden. */
+const _otHoja = { nro: '', fecha: hoyLocalISO(), dia: diaDeSemana(hoyLocalISO()), emitio: '', recibio: '' };
 let _otMapas      = [];                   // {src,nombre,pie} -- imagenes de sesion, nunca se guardan
 /* Orden elegido con clic en el encabezado. key null = el de siempre (por lote,
  * lo arma _otBuildRows). Reordena _otRows DE VERDAD, no solo la vista: la hoja
@@ -377,23 +380,17 @@ function _otPintarPaginas(){
   const cont = $('otPaginas');
   if (!cont) return;
 
-  const fechaISO = $('otFecha') ? $('otFecha').value : '';
-  const fechaTxt = fmtFecha(fechaISO);
-  const anio = fechaISO.slice(0, 4);
-  const nro = $('otNumOrden') ? $('otNumOrden').value : '';
-  const dia = $('otDia') ? $('otDia').value : '';
-  const recibio = $('otRecibio') ? $('otRecibio').value : '';
-  const emitio = $('otEmitio') ? $('otEmitio').value : '';
-
-  const meta = { fechaTxt, anio, nro };
-  const banda = ['MUESTRAS', dia, 'Lab CIW + Degustación'];
+  const { nro, fecha, dia, emitio, recibio } = _otHoja;
+  const meta = { fecha, anio: String(fecha || '').slice(0, 4), nro };
+  const campoDia = { campo: 'dia', valor: dia, ph: 'día' };
+  const banda = ['MUESTRAS', campoDia, 'Lab CIW + Degustación'];
 
   const hojasMapas = _otMapas.map((m, i) => {
     const sufijo = _otMapas.length > 1 ? ` (${i + 1} de ${_otMapas.length})` : '';
     return `<div class="orden-hoja oh-mapa">` +
       hojaTop() +
       `<div class="oh-titulo">Mapa de barriles${sufijo}</div>` +
-      hojaMeta(meta) +
+      hojaMetaEditable(meta) +
       hojaBanda(banda) +
       `<img class="oh-mapa-img" src="${m.src}" alt="Mapa de barriles">` +
       `<input class="oh-mapa-pie" data-mapapieot="${i}" value="${escA(m.pie || '')}" placeholder="Escribí una descripción de la imagen…">` +
@@ -420,6 +417,7 @@ function _otPintarPaginas(){
   cont.innerHTML = pintarHojas({
     filas: _otRows,
     porPagina: ORDEN_PER_PAGE,
+    editable: true,
     titulo: _otTitulo,
     meta, banda, emitio, recibio,
     nota: 'Tomar muestra en un tubo falcon y luego sanitizar jeringa para cada lote.',
@@ -583,8 +581,8 @@ async function _otTirarDado(){
  * orden (en esta PC o en otra) no los repita. Reimprimir no cuenta doble. */
 async function _otRegistrarMuestreo(){
   const hist = DATOS().muestreos_barriles || [];
-  const fecha = ($('otFecha') && $('otFecha').value) || new Date().toISOString().slice(0, 10);
-  const nuevos = registrosDeImpresion(_otRows, hist, fecha, $('otNumOrden') ? $('otNumOrden').value : '');
+  const fecha = _otHoja.fecha || hoyLocalISO();
+  const nuevos = registrosDeImpresion(_otRows, hist, fecha, _otHoja.nro);
   if (!nuevos.length) return;
   DATOS().muestreos_barriles = hist.concat(nuevos);
   markDirty();
@@ -678,11 +676,6 @@ export function renderOrden(){
     return;
   }
 
-  /* --- fecha de hoy --- */
-  const hoyISO  = new Date().toISOString().slice(0, 10);
-  const diasSem = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-  const hoyDia  = diasSem[new Date().getDay()];
-
   const fuenteOpts = [
     { v:'vencidos',          l:'Vencidos'              },
     { v:'proximos',          l:'Próximos a vencer (≤ 5 d)' },
@@ -712,14 +705,6 @@ export function renderOrden(){
     `<button type="button" role="radio" data-ottipo="${v}" aria-checked="${_otTipo === v}"` +
     `${_otTipo === v ? ' class="on"' : ''}>${l}</button>`;
 
-  /* Panel de textos editables (solo micro): un campo por clave de _otMicro. */
-  const campoMicro = c => `<div class="oc-field">
-        <label class="oc-lbl" for="otMicro_${c.k}">${esc(c.l)}</label>
-        ${c.largo
-          ? `<textarea class="txt oc-pegar" id="otMicro_${c.k}" data-micro="${c.k}" rows="3">${esc(_otMicro[c.k])}</textarea>`
-          : `<input class="txt" id="otMicro_${c.k}" data-micro="${c.k}" type="text" value="${escA(_otMicro[c.k])}">`}
-      </div>`;
-
   /* Secciones de ajustes segun el tipo. La numeracion se arma en orden, asi
    * no quedan huecos (1, 2, 3…) al ocultar las que no aplican. */
   let nSec = micro ? 1 : 3;   // analisis: 2 y 3 (barril, recipiente) van fijos antes de Pegar
@@ -736,26 +721,13 @@ export function renderOrden(){
       <div class="oc-note" id="otPegarMsg" aria-live="polite"></div>
     </section>`; };
 
-  const gridMicro = () => `
-    ${secPegar()}
-    <!-- textos de la hoja de microbiologia -->
-    <section class="oc-sec oc-panel oc-micro-textos" aria-labelledby="ocTMicro">
-      <div class="oc-sec-cab">
-        <h3 class="oc-sec-t" id="ocTMicro"><span class="oc-n">${++nSec}</span>Textos de la orden</h3>
-        <button class="btn oc-ghost oc-mini" id="btnOtMicroDef" title="Volver a los textos del Excel de microbiología (orden y cartel)">↺ Textos originales</button>
-      </div>
-      <div class="oc-campos oc-campos-2">${CAMPOS_ORDEN_MICRO.map(campoMicro).join('')}</div>
-    </section>
-    <!-- cartel de la caja: hoja 2 al imprimir. Franja a lo ancho, un renglon -->
-    <section class="oc-sec oc-panel oc-micro-cartel" aria-labelledby="ocTCartel">
-      <div class="oc-sec-cab">
-        <h3 class="oc-sec-t" id="ocTCartel"><span class="oc-n">${++nSec}</span>Cartel de la caja</h3>
-        <span class="oc-hint">Sale como segunda hoja al imprimir · queda recordado en esta PC</span>
-      </div>
-      <div class="oc-campos oc-campos-cartel">${CAMPOS_CARTEL.map(campoMicro).join('')}</div>
-    </section>`;
+  /* Microbiologia: solo Pegar lotes. Los textos de la orden y el cartel se
+   * editan directo sobre la hoja de la vista previa. */
+  const gridMicro = () => secPegar();
 
   sec.innerHTML = `
+<div class="ot-layout">
+<div class="ot-izq">
 <div id="ordenControls" class="card${micro ? ' oc-micro' : ''}">
   <!-- cabecera: titulo, contador y la unica accion principal de la tarjeta -->
   <div class="oc-head">
@@ -853,33 +825,6 @@ export function renderOrden(){
   </div>
 </div>
 
-<!-- encabezado imprimible de la OT -->
-<div id="otHeader" class="card">
-  <h3 class="oc-sec-t">Datos de la hoja</h3>
-  <div class="oh-campos">
-    <div class="oc-field oh-campo-num">
-      <label class="oc-lbl" for="otNumOrden">N° de orden</label>
-      <input class="txt" id="otNumOrden" type="text" placeholder="OT-2026-001">
-    </div>
-    <div class="oc-field">
-      <label class="oc-lbl" for="otFecha">Fecha</label>
-      <input class="txt" id="otFecha" type="date" value="${escA(hoyISO)}">
-    </div>
-    <div class="oc-field">
-      <label class="oc-lbl" for="otDia">Día</label>
-      <input class="txt" id="otDia" type="text" value="${escA(hoyDia)}">
-    </div>
-    <div class="oc-field">
-      <label class="oc-lbl" for="otEmitio">Emitió</label>
-      <input class="txt" id="otEmitio" type="text" placeholder="Nombre…">
-    </div>
-    <div class="oc-field">
-      <label class="oc-lbl" for="otRecibio">Recibió</label>
-      <input class="txt" id="otRecibio" type="text" placeholder="Nombre…">
-    </div>
-  </div>
-</div>
-
 <!-- tabla editable de la OT -->
 <div class="scroll tall">
 <table id="otTable">
@@ -898,8 +843,18 @@ export function renderOrden(){
 </table>
 </div>
 
-<!-- vista de papel: oculta en pantalla, unica seccion visible al imprimir -->
-<div id="otPaginas" style="display:none"></div>`;
+</div>
+
+<!-- vista previa: la hoja tal cual se imprime, editable encima. Es la unica
+     seccion visible al imprimir (CSS de printing-orden). -->
+<aside class="ot-der" aria-label="Vista previa de la hoja">
+  <div class="ot-prev-cab">
+    <span><b>Vista previa</b> · hacé clic en la hoja para escribir</span>
+    ${micro ? '<button class="btn oc-ghost oc-mini" id="btnOtMicroDef" title="Volver a los textos del Excel de microbiología (orden y cartel)">↺ Textos originales</button>' : ''}
+  </div>
+  <div id="otPaginas"></div>
+</aside>
+</div>`;
 
   /* --- construir filas iniciales si la tabla está vacía o si se cambia la fuente --- */
   _otAplicarFiltros();
@@ -932,15 +887,8 @@ export function renderOrden(){
     });
   });
 
-  /* textos editables de microbiologia y del cartel */
+  /* textos originales de microbiologia (orden y cartel) */
   if (micro){
-    $('ordenControls').addEventListener('input', e => {
-      const el = e.target.closest('[data-micro]');
-      if (!el) return;
-      _otMicro[el.dataset.micro] = el.value;
-      _microGuardar();
-      _otPintarPaginas();
-    });
     $('btnOtMicroDef').addEventListener('click', () => {
       _otMicro = textosMicro(null);
       _microGuardar();
@@ -1051,20 +999,12 @@ export function renderOrden(){
     });
   }
 
-  /* encabezado (N de orden/fecha/dia/emitio/recibio) -> solo repintan la hoja de papel */
-  ['otNumOrden', 'otFecha', 'otDia', 'otEmitio', 'otRecibio'].forEach(id => {
-    $(id).addEventListener('input', _otPintarPaginas);
-    $(id).addEventListener('change', _otPintarPaginas);
-  });
-
-  /* titulo editable de la hoja: se sincroniza en todas las paginas */
+  /* Vista previa editable: todo campo data-campo de la hoja (hoja-campos.js)
+   * guarda su valor y lo copia a los campos iguales de las otras paginas. NO
+   * repinta la hoja: asi el cursor se queda donde esta mientras se escribe. */
   $('otPaginas').addEventListener('input', e => {
-    const t = e.target.closest('[data-tituloot]');
-    if (t){
-      _otTitulo = t.value;
-      $('otPaginas').querySelectorAll('[data-tituloot]').forEach(o => { if (o !== t) o.value = t.value; });
-      return;
-    }
+    const c = e.target.closest('[data-campo]');
+    if (c){ _otCampoHoja(c); return; }
     const pie = e.target.closest('[data-mapapieot]');
     if (pie){ const m = _otMapas[+pie.dataset.mapapieot]; if (m) m.pie = pie.value; return; }
   });
@@ -1103,6 +1043,25 @@ export function renderOrden(){
     /* microbiologia no usa el dado: no hay barriles que anotar */
     if (!_esMicro()) _otRegistrarMuestreo();
   });
+}
+
+/* Un campo de la hoja cambio: al estado que corresponda y a sus copias. */
+function _otCampoHoja(el){
+  const k = el.dataset.campo, v = el.value;
+  if (k === 'titulo') _otTitulo = v;
+  else if (k in _otHoja) _otHoja[k] = v;
+  else if (k in _otMicro){ _otMicro[k] = v; _microGuardar(); }
+  else return;
+  const hoja = $('otPaginas');
+  const copiar = (clave, valor, salvo) => hoja.querySelectorAll(`[data-campo="${clave}"]`)
+    .forEach(o => { if (o !== salvo && o.value !== valor) o.value = valor; });
+  copiar(k, v, el);
+  /* la fecha arrastra el anio del encabezado y el dia de la banda */
+  if (k === 'fecha'){
+    hoja.querySelectorAll('[data-anio]').forEach(a => { a.textContent = v.slice(0, 4); });
+    const d = diaDeSemana(v);
+    if (d){ _otHoja.dia = d; copiar('dia', d, null); }
+  }
 }
 
 /* Chips de mapas adjuntos, con boton de quitar -- vive fuera de #otPaginas

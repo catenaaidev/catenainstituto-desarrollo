@@ -653,7 +653,13 @@
     /* margin:0 -- la pestana va a todo el ancho con margen negativo en pantalla;
      * al imprimir ese margen corria la hoja 10px y la cortaba de los dos lados */
     body.printing-orden #tab-orden{display:block!important;margin:0}
-    body.printing-orden #tab-orden > *:not(#otPaginas){display:none!important}
+    body.printing-orden #tab-orden .ot-izq,
+    body.printing-orden #tab-orden .ot-prev-cab{display:none!important}
+    body.printing-orden #tab-orden .ot-layout{display:block}
+    body.printing-orden #tab-orden .ot-der{position:static;max-height:none;overflow:visible;padding:0}
+    /* las demas pestanas siguen en el DOM (content-visibility) con margen
+     * negativo: 10px mas anchas que la hoja, y Chrome achicaba todo */
+    body.printing-orden main > .view:not(#tab-orden){display:none!important}
     /* Sin esta regla la orden de muestras imprime una hoja EN BLANCO: #otPaginas
      * nace con style="display:none" inline y la regla de arriba solo oculta a sus
      * hermanos, nunca lo revela. Es la misma que ya tenian printing-ordencorr
@@ -661,8 +667,14 @@
      * esta vista era la unica que la habia omitido. */
     body.printing-orden #otPaginas{display:block!important}
     body.printing-orden .orden-hoja{box-shadow:none;border-radius:0;max-width:none;padding:0}
+    body.printing-orden #otPaginas .orden-hoja{width:auto;min-height:0;padding:0;box-shadow:none;margin:0}
+    body.printing-orden .orden-hoja .oh-campo{border-color:transparent!important;background:transparent!important;
+      -webkit-appearance:none;appearance:none;box-shadow:none;outline:none;padding-left:0;padding-right:0}
+    body.printing-orden .orden-hoja .oh-campo:placeholder-shown{display:none}
+    body.printing-orden .orden-hoja .oh-campo::-webkit-calendar-picker-indicator{display:none}
     #otPaginas .orden-hoja + .orden-hoja{page-break-before:always;margin-top:0}
     body.printing-orden .orden-hoja input,
+    body.printing-orden .orden-hoja textarea,
     body.printing-orden .orden-hoja select{border:none!important;background:transparent!important}
     body.printing-orden .orden-hoja select{-webkit-appearance:none;appearance:none;padding-left:0}
     body.printing-orden .orden-hoja .oh-mapa-pie::placeholder{color:transparent}
@@ -1165,23 +1177,47 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 #ordenControls .oc-tipo button:hover{color:var(--accent)}
 #ordenControls .oc-tipo button.on{background:var(--panel);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 #ordenControls .oc-tipo button:focus-visible{outline:none;box-shadow:var(--ring)}
-/* ---- microbiologia: paneles compactos ----
- * Pegar lotes (angosto) + Textos de la orden (ancho) en una fila y el cartel
- * en una franja a lo ancho, con sus cinco campos en un renglon. */
-#ordenControls.oc-micro .oc-grid{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}
-#ordenControls.oc-micro .oc-micro-cartel{grid-column:1/-1}
-#ordenControls .oc-sec-cab{display:flex;align-items:center;gap:6px 14px;flex-wrap:wrap}
-#ordenControls .oc-sec-cab .oc-hint{margin:0}
-#ordenControls .oc-sec-cab .oc-mini{margin-left:auto;height:28px;padding:0 10px;font-size:12px}
-#ordenControls .oc-campos{display:grid;gap:10px 14px}
-#ordenControls .oc-campos-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-#ordenControls .oc-campos-cartel{grid-template-columns:repeat(5,minmax(0,1fr))}
-#ordenControls .oc-campos input.txt{width:100%}
-#ordenControls.oc-micro .oc-campos textarea.oc-pegar{min-height:74px;height:auto;max-height:180px;line-height:1.4;field-sizing:content}
+/* ---- vista previa editable (#otPaginas en .ot-der) ----
+ * La hoja se ve en pantalla a tamano A4 real (210 mm, margen de 14 mm = el
+ * @page de impresion), asi que lo que se ve es lo que sale. Se edita encima:
+ * cada dato es un .oh-campo (hoja-campos.js), con un borde punteado suave que
+ * al imprimir desaparece. En pantalla ancha va a la derecha de la grilla. */
+#tab-orden .ot-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}
+#tab-orden .ot-der{min-width:0;overflow-x:auto;padding:2px 2px 16px}
+#tab-orden .ot-prev-cab{width:210mm;max-width:100%;margin:0 auto 8px;display:flex;align-items:center;gap:10px;
+  font-size:12.5px;color:var(--muted)}
+#tab-orden .ot-prev-cab b{color:var(--txt)}
+#tab-orden .ot-prev-cab .oc-mini{margin-left:auto;height:28px;padding:0 10px;font-size:12px}
+#otPaginas .orden-hoja{width:210mm;max-width:none;min-height:297mm;padding:14mm;box-sizing:border-box;margin:0 auto;
+  border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,.10),0 10px 28px rgba(40,30,20,.10)}
+#otPaginas .orden-hoja + .orden-hoja{margin-top:22px}
+@media (min-width:1500px){
+  #tab-orden .ot-layout{grid-template-columns:minmax(0,1fr) calc(210mm + 8px)}
+  #tab-orden .ot-der{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+  /* la columna izquierda queda mas angosta: los paneles de analisis de a dos */
+  #tab-orden #ordenControls .oc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+#ordenControls.oc-micro .oc-grid{grid-template-columns:minmax(0,1fr)!important}
 
-/* ---- papel de microbiologia: instrucciones y cartel de la caja ---- */
+/* campos sobre la hoja */
+.orden-hoja .oh-campo{font:inherit;color:inherit;background:transparent;border:1px dashed #ddd4c6;border-radius:3px;
+  padding:1px 4px;margin:-2px 0;width:auto;max-width:100%;box-sizing:border-box;vertical-align:baseline}
+.orden-hoja .oh-campo:hover{border-color:#bfb4a4;background:#fcfaf6}
+.orden-hoja .oh-campo:focus{outline:none;border-style:solid;border-color:#e08a2b;background:#fff}
+.orden-hoja .oh-campo::placeholder{color:#b3aa9e;font-style:italic;font-weight:400}
+.orden-hoja input.oh-campo.oh-titulo{display:block;width:70%;margin:6px auto 10px;text-align:center;font-size:18px;font-weight:700}
+.orden-hoja .oh-campo-fecha{width:128px}
+.orden-hoja .oh-campo-nro{width:150px}
+.orden-hoja .oh-campo-banda{width:17ch;font-weight:600}
+.orden-hoja .oh-campo-firma{width:150px}
+.orden-hoja .oh-campo-sub{width:100%;font-weight:700}
+.orden-hoja .oh-campo-cartel{width:100%;font-size:22px}
+.orden-hoja textarea.oh-campo{display:block;width:100%;resize:none;overflow:hidden;field-sizing:content;min-height:1.6em}
+
+/* ---- papel de microbiologia: instrucciones, tabla justa y cartel ---- */
 .orden-hoja .oh-instr{font-size:13px;font-weight:600;line-height:1.45;margin:0 0 10px}
 .orden-hoja .oh-instr-fin{margin:12px 0 0}
+.orden-hoja table.oh-tabla-justa{width:auto}
 .orden-hoja.oh-cartel table{font-size:22px;margin-top:40px}
 .orden-hoja.oh-cartel th,.orden-hoja.oh-cartel td{border:none;padding:18px 10px;vertical-align:top;font-size:22px}
 .orden-hoja.oh-cartel th{background:transparent;width:230px;font-weight:700}
@@ -1204,8 +1240,6 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 /* ---- pantallas angostas ---- */
 @media (max-width:900px){
   #ordenControls .oc-grid{grid-template-columns:minmax(0,1fr)}
-  #ordenControls.oc-micro .oc-grid{grid-template-columns:minmax(0,1fr)}
-  #ordenControls .oc-campos-cartel{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:600px){
   #ordenControls,#otHeader{padding:16px 15px}
