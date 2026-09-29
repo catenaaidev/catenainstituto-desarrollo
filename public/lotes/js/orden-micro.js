@@ -30,13 +30,15 @@ export const TEXTOS_MICRO_DEF = Object.freeze({
   nota:          'Entregar a Julieta',
 });
 
-/* Campos del panel de edicion, en el orden en que se muestran. `largo` = se
- * edita en un textarea (una instruccion por renglon). */
+/* Campos del panel de edicion, en el orden en que se muestran: la pantalla los
+ * pone en una grilla de 2x2 (los dos textos largos arriba, las dos lineas
+ * cortas abajo). `largo` = se edita en un textarea (una instruccion por
+ * renglon). */
 export const CAMPOS_ORDEN_MICRO = [
-  { k: 'instrucciones', l: 'Instrucciones (arriba)', largo: true },
+  { k: 'instrucciones', l: 'Instrucciones (arriba de la tabla)', largo: true },
+  { k: 'cierre',        l: 'Indicaciones (abajo de la tabla)', largo: true },
   { k: 'banda',         l: 'Banda' },
   { k: 'subtitulo',     l: 'Recipiente / subtítulo' },
-  { k: 'cierre',        l: 'Indicaciones (abajo)', largo: true },
 ];
 export const CAMPOS_CARTEL = [
   { k: 'de',      l: 'De:' },
