@@ -11,6 +11,7 @@ import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
 import { HOJA_POR_PAGINA, pintarHojas, hojaTop, hojaMeta, hojaBanda } from './orden-hoja.js';
 import { fmtFecha } from './fechas.js';
 import { sortearOrden, registrosDeImpresion } from './sorteo-barriles.js';
+import { textosMicro, cfgHojasMicro, CAMPOS_ORDEN_MICRO, CAMPOS_CARTEL } from './orden-micro.js';
 
 /*
  * _otRows: array de objetos { lote, variedad, vasija, barril, litros, motivo, recipiente, cantidad }
@@ -35,6 +36,25 @@ let _otMapas      = [];                   // {src,nombre,pie} -- imagenes de ses
  * de papel sale en el mismo orden que la pantalla. */
 const _otSort     = { key: null, dir: 1 };
 let _otPegado     = '';                   // texto del recuadro "Pegar lotes", sobrevive al re-render
+
+/* Tipo de orden, elegido con el selector de la cabecera:
+ *   'analisis' = la orden de muestras de siempre (Lab CIW + Degustacion);
+ *   'micro'    = OT de microbiologia, formato del Excel 0868 (orden-micro.js):
+ *                papel # / Check / Lote / Vasija + hoja de cartel para la caja.
+ * Las filas son las mismas: cambiar de tipo no pierde los lotes cargados. */
+let _otTipo = 'analisis';
+const _esMicro = () => _otTipo === 'micro';
+
+/* Textos editables de la orden de micro y del cartel. Se recuerdan en ESTE
+ * navegador (quien emite suele ser siempre la misma persona en la misma PC). */
+const LS_MICRO = 'lotes_orden_micro_textos';
+let _otMicro = (() => {
+  try { return textosMicro(JSON.parse(localStorage.getItem(LS_MICRO) || 'null')); }
+  catch (e) { return textosMicro(null); }
+})();
+function _microGuardar(){
+  try { localStorage.setItem(LS_MICRO, JSON.stringify(_otMicro)); } catch (e) {}
+}
 
 /* Lista de recipientes validos. Unico lugar: antes vivia repetida como
  * literal en dos puntos del archivo (la fila y el select por defecto). */
@@ -195,12 +215,16 @@ function _otRenderTabla(){
   const tbody = $('otTbody');
   if (!tbody) return;
 
+  /* En micro la grilla lleva solo lote/variedad/vasija: tiene que coincidir
+   * con los <th data-k> que arma renderOrden, o la grilla desalinea columnas. */
+  const micro = _esMicro();
+  const nCols = micro ? 4 : 9;
   let tb = '';
   _otRows.forEach((r, i) => {
     tb += `<tr data-oti="${i}">
   <td><input class="cell${r.noEncontrado ? ' ot-noexiste' : ''}" type="text" data-oti="${i}" data-otk="lote" value="${escA(r.lote)}"${r.noEncontrado ? ' title="No hay ningún lote con ese número"' : ''}></td>
   <td><input class="cell" type="text" data-oti="${i}" data-otk="variedad"  value="${escA(r.variedad)}"></td>
-  <td><input class="cell" type="text" data-oti="${i}" data-otk="vasija"    value="${escA(r.vasija)}"></td>
+  <td><input class="cell" type="text" data-oti="${i}" data-otk="vasija"    value="${escA(r.vasija)}"></td>` + (micro ? '' : `
   <td><input class="cell num" type="text" data-oti="${i}" data-otk="barril" value="${escA(r.barril || '')}" style="width:70px"></td>
   <td><input class="cell num" type="text" data-oti="${i}" data-otk="litros" value="${escA(r.litros)}"></td>
   <td><input class="cell" type="text" data-oti="${i}" data-otk="motivo"   value="${escA(r.motivo)}"></td>
@@ -209,17 +233,17 @@ function _otRenderTabla(){
     <button class="rowbtn" data-ot-minus="${i}" title="Menos" style="font-size:13px">−</button>
     <input class="cell num" type="text" data-oti="${i}" data-otk="cantidad" value="${escA(String(r.cantidad))}" style="width:34px;text-align:center;display:inline-block">
     <button class="rowbtn" data-ot-plus="${i}" title="Más" style="font-size:13px">+</button>
-  </td>
+  </td>`) + `
   <td class="ot-del-col"><button class="rowbtn" data-ot-del="${i}" title="Quitar fila">✕</button></td>
 </tr>`;
   });
 
-  tbody.innerHTML = tb || `<tr id="otAddRow"><td colspan="9" style="color:var(--muted)">Sin filas. Elegí lotes en el filtro "Lote", pegalos en "Pegar lotes", usá "Agregar fila" o cambiá la fuente.</td></tr>`;
+  tbody.innerHTML = tb || `<tr id="otAddRow"><td colspan="${nCols}" style="color:var(--muted)">Sin filas. Elegí lotes en el filtro "Lote", pegalos en "Pegar lotes", usá "Agregar fila" o cambiá la fuente.</td></tr>`;
 
   /* Fila de agregar (siempre al final) */
   const addRow = document.createElement('tr');
   addRow.id = 'otAddRow';
-  addRow.innerHTML = `<td colspan="9" style="padding:6px 8px">
+  addRow.innerHTML = `<td colspan="${nCols}" style="padding:6px 8px">
     <button class="btn" id="btnOtAgregar">➕ Agregar fila</button>
   </td>`;
   tbody.appendChild(addRow);
@@ -375,6 +399,16 @@ function _otPintarPaginas(){
       `<input class="oh-mapa-pie" data-mapapieot="${i}" value="${escA(m.pie || '')}" placeholder="Escribí una descripción de la imagen…">` +
     `</div>`;
   });
+
+  /* Microbiologia: otro papel (orden-micro.js), mismo encabezado RCI 08 y
+   * paginado. Los mapas no se ofrecen en este modo, asi que no se suman. */
+  if (_esMicro()){
+    cont.innerHTML = pintarHojas(cfgHojasMicro({
+      filas: _otRows, textos: _otMicro, titulo: _otTitulo, meta, dia,
+      emitio, recibio, porPagina: ORDEN_PER_PAGE,
+    }));
+    return;
+  }
 
   /* La columna BARRIL entra al papel solo si el dado (o alguien a mano) puso
    * algun barril: una columna vacia en todas las hojas es ruido. Entra en el
@@ -673,12 +707,61 @@ export function renderOrden(){
   ].map(o => `<option value="${escA(o.v)}"${o.v === _otAtencionTipo ? ' selected' : ''}>${esc(o.l)}</option>`).join('');
 
 
+  const micro = _esMicro();
+  const tipoBtn = (v, l) =>
+    `<button type="button" role="radio" data-ottipo="${v}" aria-checked="${_otTipo === v}"` +
+    `${_otTipo === v ? ' class="on"' : ''}>${l}</button>`;
+
+  /* Panel de textos editables (solo micro): un campo por clave de _otMicro. */
+  const campoMicro = c => `<div class="oc-field">
+        <label class="oc-lbl" for="otMicro_${c.k}">${esc(c.l)}</label>
+        ${c.largo
+          ? `<textarea class="txt oc-pegar" id="otMicro_${c.k}" data-micro="${c.k}" rows="3">${esc(_otMicro[c.k])}</textarea>`
+          : `<input class="txt" id="otMicro_${c.k}" data-micro="${c.k}" type="text" value="${escA(_otMicro[c.k])}">`}
+      </div>`;
+
+  /* Secciones de ajustes segun el tipo. La numeracion se arma en orden, asi
+   * no quedan huecos (1, 2, 3…) al ocultar las que no aplican. */
+  let nSec = micro ? 1 : 3;   // analisis: 2 y 3 (barril, recipiente) van fijos antes de Pegar
+  const secPegar = () => { const n = ++nSec; return `
+    <!-- ${n}. pegar lotes: una columna o fila copiada del Excel se vuelve la orden -->
+    <section class="oc-sec oc-panel" aria-labelledby="ocTPegar">
+      <h3 class="oc-sec-t" id="ocTPegar"><span class="oc-n">${n}</span>Pegar lotes</h3>
+      <label class="oc-hint" for="otPegar">Una columna o fila copiada del Excel se vuelve la orden.</label>
+      <textarea id="otPegar" class="txt oc-pegar" rows="3" placeholder="26264, 26015, 26064…">${esc(_otPegado)}</textarea>
+      <div class="oc-row">
+        <button class="btn oc-strong" id="btnOtPegarArmar" title="Reemplaza las filas de la orden por los lotes pegados">Armar orden</button>
+        <button class="btn oc-ghost" id="btnOtPegarSumar" title="Agrega los lotes pegados al final, sin repetir los que ya están">Sumar a la orden</button>
+      </div>
+      <div class="oc-note" id="otPegarMsg" aria-live="polite"></div>
+    </section>`; };
+
+  const gridMicro = () => `
+    ${secPegar()}
+    <!-- textos de la hoja de microbiologia -->
+    <section class="oc-sec oc-panel" aria-labelledby="ocTMicro">
+      <h3 class="oc-sec-t" id="ocTMicro"><span class="oc-n">${++nSec}</span>Textos de la orden</h3>
+      ${CAMPOS_ORDEN_MICRO.map(campoMicro).join('')}
+    </section>
+    <!-- cartel de la caja: hoja 2 al imprimir -->
+    <section class="oc-sec oc-panel" aria-labelledby="ocTCartel">
+      <h3 class="oc-sec-t" id="ocTCartel"><span class="oc-n">${++nSec}</span>Cartel de la caja</h3>
+      <p class="oc-hint">Sale como segunda hoja al imprimir. Queda recordado en esta PC.</p>
+      ${CAMPOS_CARTEL.map(campoMicro).join('')}
+      <div class="oc-row">
+        <button class="btn oc-ghost" id="btnOtMicroDef" title="Volver a los textos del Excel de microbiología (orden y cartel)">↺ Textos originales</button>
+      </div>
+    </section>`;
+
   sec.innerHTML = `
-<div id="ordenControls" class="card">
+<div id="ordenControls" class="card${micro ? ' oc-micro' : ''}">
   <!-- cabecera: titulo, contador y la unica accion principal de la tarjeta -->
   <div class="oc-head">
-    <h2>Orden de trabajo — muestras</h2>
+    <h2>Orden de trabajo — ${micro ? 'microbiología' : 'muestras'}</h2>
     <span class="oc-count" id="otCount" aria-live="polite"></span>
+    <div class="oc-tipo" role="radiogroup" aria-label="Tipo de orden">
+      ${tipoBtn('analisis', '🧪 Análisis')}${tipoBtn('micro', '🦠 Microbiología')}
+    </div>
     <div class="oc-head-fin">
       <button class="btn primary oc-print" id="btnOtImprimir">🖨️ Imprimir</button>
     </div>
@@ -687,7 +770,7 @@ export function renderOrden(){
   <!-- 1. que lotes entran: fuente + filtros + buscador -->
   <section class="oc-sec oc-sec-lotes" aria-labelledby="ocT1">
     <h3 class="oc-sec-t" id="ocT1"><span class="oc-n">1</span>Qué lotes entran</h3>
-    <div class="oc-row" id="ordenToolbar">
+    <div class="oc-row" id="ordenToolbar">${micro ? '' : `
       <div class="oc-field">
         <label class="oc-lbl" for="otFuente">Incluir</label>
         <select id="otFuente">${fuenteOpts}</select>
@@ -695,7 +778,7 @@ export function renderOrden(){
       <div class="oc-field" id="otWrapAtencion" style="display:${_otFuente === 'atencion' ? '' : 'none'}">
         <label class="oc-lbl" for="otAtencionTipo">Criterio de atención</label>
         <select id="otAtencionTipo">${atencionOpts}</select>
-      </div>
+      </div>`}
       <div class="oc-field oc-field-buscar">
         <label class="oc-lbl" for="otBuscar">Buscar</label>
         <div class="oc-search">
@@ -715,7 +798,7 @@ export function renderOrden(){
   </section>
 
   <!-- ajustes secundarios: dos columnas en pantalla ancha, una en angosta -->
-  <div class="oc-grid">
+  <div class="oc-grid">${micro ? gridMicro() : `
     <!-- 2. muestreo por barril -->
     <section class="oc-sec oc-panel" aria-labelledby="ocT2">
       <h3 class="oc-sec-t" id="ocT2"><span class="oc-n">2</span>Muestreo por barril</h3>
@@ -753,17 +836,7 @@ export function renderOrden(){
       </div>
     </section>
 
-    <!-- 4. pegar lotes: una columna o fila copiada del Excel se vuelve la orden -->
-    <section class="oc-sec oc-panel" aria-labelledby="ocT4">
-      <h3 class="oc-sec-t" id="ocT4"><span class="oc-n">4</span>Pegar lotes</h3>
-      <label class="oc-hint" for="otPegar">Una columna o fila copiada del Excel se vuelve la orden.</label>
-      <textarea id="otPegar" class="txt oc-pegar" rows="3" placeholder="26264, 26015, 26064…">${esc(_otPegado)}</textarea>
-      <div class="oc-row">
-        <button class="btn oc-strong" id="btnOtPegarArmar" title="Reemplaza las filas de la orden por los lotes pegados">Armar orden</button>
-        <button class="btn oc-ghost" id="btnOtPegarSumar" title="Agrega los lotes pegados al final, sin repetir los que ya están">Sumar a la orden</button>
-      </div>
-      <div class="oc-note" id="otPegarMsg" aria-live="polite"></div>
-    </section>
+    ${secPegar()}
 
     <!-- 5. mapas de barriles -->
     <section class="oc-sec oc-panel" aria-labelledby="ocT5">
@@ -774,7 +847,7 @@ export function renderOrden(){
         <button class="btn oc-ghost" id="btnOtMapa">🗺️ Adjuntar mapa…</button>
       </div>
       <div class="oc-chips" id="otMapaChips"></div>
-    </section>
+    </section>`}
   </div>
 </div>
 
@@ -811,12 +884,12 @@ export function renderOrden(){
   <thead><tr>
     <th data-k="lote">Lote</th>
     <th data-k="variedad">Variedad</th>
-    <th data-k="vasija">Vasija</th>
+    <th data-k="vasija">Vasija</th>${micro ? '' : `
     <th data-k="barril" class="num" title="Barril sorteado con el 🎲 (se puede escribir a mano)">Barril</th>
     <th data-k="litros" class="num">Litros</th>
     <th data-k="motivo">Motivo</th>
     <th data-k="recipiente">Recipiente</th>
-    <th data-k="cantidad" class="num">Cantidad</th>
+    <th data-k="cantidad" class="num">Cantidad</th>`}
     <th class="ot-del-col"></th>
   </tr></thead>
   <tbody id="otTbody"></tbody>
@@ -842,18 +915,52 @@ export function renderOrden(){
   $('btnOtPegarArmar').addEventListener('click', () => _otCargarPegados(true));
   $('btnOtPegarSumar').addEventListener('click', () => _otCargarPegados(false));
 
-  /* fuente */
-  $('otFuente').addEventListener('change', e => {
-    _otFuente = e.target.value;
-    $('otWrapAtencion').style.display = (_otFuente === 'atencion') ? '' : 'none';
-    _otAplicarFiltros();
+  /* tipo de orden: analisis / microbiologia. Pasar a micro deja la fuente en
+   * "Hoja en blanco" y marca las filas actuales como manuales, asi no se
+   * pierden al rearmar (en hoja en blanco solo sobreviven las manuales). */
+  $('ordenControls').querySelectorAll('[data-ottipo]').forEach(b => {
+    b.addEventListener('click', () => {
+      if (b.dataset.ottipo === _otTipo) return;
+      _otTipo = b.dataset.ottipo;
+      if (_esMicro()){
+        _otRows.forEach(r => { r.manual = true; });
+        _otFuente = 'hoja_en_blanco';
+      }
+      renderOrden();
+    });
   });
 
-  /* criterio de atencion granular */
-  $('otAtencionTipo').addEventListener('change', e => {
-    _otAtencionTipo = e.target.value;
-    _otAplicarFiltros();
-  });
+  /* textos editables de microbiologia y del cartel */
+  if (micro){
+    $('ordenControls').addEventListener('input', e => {
+      const el = e.target.closest('[data-micro]');
+      if (!el) return;
+      _otMicro[el.dataset.micro] = el.value;
+      _microGuardar();
+      _otPintarPaginas();
+    });
+    $('btnOtMicroDef').addEventListener('click', () => {
+      _otMicro = textosMicro(null);
+      _microGuardar();
+      renderOrden();
+    });
+  }
+
+  /* solo analisis: microbiologia arranca en hoja en blanco y no muestra "Incluir" */
+  if (!micro){
+    /* fuente */
+    $('otFuente').addEventListener('change', e => {
+      _otFuente = e.target.value;
+      $('otWrapAtencion').style.display = (_otFuente === 'atencion') ? '' : 'none';
+      _otAplicarFiltros();
+    });
+
+    /* criterio de atencion granular */
+    $('otAtencionTipo').addEventListener('change', e => {
+      _otAtencionTipo = e.target.value;
+      _otAplicarFiltros();
+    });
+  }
 
   /* --- filtros multi (re-montados en cada render porque sec.innerHTML se recreo) --- */
   if (_descOt.length === 0){
@@ -889,55 +996,58 @@ export function renderOrden(){
     _otAplicarFiltros();
   });
 
-  /* dado: sortear un barril por lote */
-  $('btnOtDado').addEventListener('click', _otTirarDado);
+  /* solo analisis: sorteo de barriles y recipiente/cantidad */
+  if (!micro){
+    /* dado: sortear un barril por lote */
+    $('btnOtDado').addEventListener('click', _otTirarDado);
 
-  /* sin sorteo: vaciar la columna Barril. Como el papel ya no lleva barriles,
-   * imprimir despues no anota nada en muestreos_barriles. */
-  $('btnOtSinSorteo').addEventListener('click', () => {
-    _otRows.forEach(r => { r.barril = ''; });
-    _otRenderTabla();
-    _otPintarPaginas();
-    const msg = $('otDadoMsg');
-    if (msg) msg.textContent = 'Sin sorteo: sacan la muestra de cualquier barril.';
-  });
+    /* sin sorteo: vaciar la columna Barril. Como el papel ya no lleva barriles,
+     * imprimir despues no anota nada en muestreos_barriles. */
+    $('btnOtSinSorteo').addEventListener('click', () => {
+      _otRows.forEach(r => { r.barril = ''; });
+      _otRenderTabla();
+      _otPintarPaginas();
+      const msg = $('otDadoMsg');
+      if (msg) msg.textContent = 'Sin sorteo: sacan la muestra de cualquier barril.';
+    });
 
-  /* recipiente / cantidad por defecto */
-  /* "✎ Otro…" cambia el selector por un campo de texto; al confirmarlo
-   * (Enter o salir del campo) el nombre nuevo queda elegido y en la lista. */
-  const recSel = $('otDefRecipiente'), recOtro = $('otDefRecipienteOtro');
-  recSel.addEventListener('change', e => {
-    if (e.target.value === OTRO_REC){
-      recSel.hidden = true; recOtro.hidden = false; recOtro.value = ''; recOtro.focus();
-      return;
-    }
-    _otRecipiente = e.target.value;
-  });
-  const recConfirmar = () => {
-    if (recOtro.hidden) return;
-    const v = _recSumar(recOtro.value);
-    if (v) _otRecipiente = v;
-    recSel.innerHTML = _recOpciones(_otRecipiente);
-    recOtro.hidden = true; recSel.hidden = false;
-  };
-  recOtro.addEventListener('change', recConfirmar);
-  recOtro.addEventListener('blur', recConfirmar);
-  recOtro.addEventListener('keydown', e => {
-    if (e.key === 'Enter'){ e.preventDefault(); recConfirmar(); }
-    if (e.key === 'Escape'){ recOtro.value = ''; recConfirmar(); }
-  });
-  $('btnOtDefMinus').addEventListener('click', () => {
-    if (_otCantidad > 1){ _otCantidad--; $('otDefCantidad').textContent = _otCantidad; }
-  });
-  $('btnOtDefPlus').addEventListener('click', () => {
-    _otCantidad++;
-    $('otDefCantidad').textContent = _otCantidad;
-  });
-  $('btnOtAplicarDef').addEventListener('click', () => {
-    _otRows.forEach(r => { r.recipiente = _otRecipiente; r.cantidad = _otCantidad; });
-    _otRenderTabla();
-    _otPintarPaginas();
-  });
+    /* recipiente / cantidad por defecto */
+    /* "✎ Otro…" cambia el selector por un campo de texto; al confirmarlo
+     * (Enter o salir del campo) el nombre nuevo queda elegido y en la lista. */
+    const recSel = $('otDefRecipiente'), recOtro = $('otDefRecipienteOtro');
+    recSel.addEventListener('change', e => {
+      if (e.target.value === OTRO_REC){
+        recSel.hidden = true; recOtro.hidden = false; recOtro.value = ''; recOtro.focus();
+        return;
+      }
+      _otRecipiente = e.target.value;
+    });
+    const recConfirmar = () => {
+      if (recOtro.hidden) return;
+      const v = _recSumar(recOtro.value);
+      if (v) _otRecipiente = v;
+      recSel.innerHTML = _recOpciones(_otRecipiente);
+      recOtro.hidden = true; recSel.hidden = false;
+    };
+    recOtro.addEventListener('change', recConfirmar);
+    recOtro.addEventListener('blur', recConfirmar);
+    recOtro.addEventListener('keydown', e => {
+      if (e.key === 'Enter'){ e.preventDefault(); recConfirmar(); }
+      if (e.key === 'Escape'){ recOtro.value = ''; recConfirmar(); }
+    });
+    $('btnOtDefMinus').addEventListener('click', () => {
+      if (_otCantidad > 1){ _otCantidad--; $('otDefCantidad').textContent = _otCantidad; }
+    });
+    $('btnOtDefPlus').addEventListener('click', () => {
+      _otCantidad++;
+      $('otDefCantidad').textContent = _otCantidad;
+    });
+    $('btnOtAplicarDef').addEventListener('click', () => {
+      _otRows.forEach(r => { r.recipiente = _otRecipiente; r.cantidad = _otCantidad; });
+      _otRenderTabla();
+      _otPintarPaginas();
+    });
+  }
 
   /* encabezado (N de orden/fecha/dia/emitio/recibio) -> solo repintan la hoja de papel */
   ['otNumOrden', 'otFecha', 'otDia', 'otEmitio', 'otRecibio'].forEach(id => {
@@ -957,35 +1067,39 @@ export function renderOrden(){
     if (pie){ const m = _otMapas[+pie.dataset.mapapieot]; if (m) m.pie = pie.value; return; }
   });
 
-  /* mapas de barriles: adjuntar una o varias imagenes, cada una anexada como hoja final */
-  $('btnOtMapa').addEventListener('click', () => $('otMapaFile').click());
-  $('otMapaFile').addEventListener('change', e => {
-    const files = [...(e.target.files || [])]; if (!files.length) return;
-    const slots = new Array(files.length); let pend = files.length;
-    files.forEach((f, idx) => {
-      const rd = new FileReader();
-      rd.onload = () => {
-        slots[idx] = { src: rd.result, nombre: f.name, pie: '' };
-        if (--pend === 0){ _otMapas.push(...slots); _otPintarMapaChips(); _otPintarPaginas(); }
-      };
-      rd.readAsDataURL(f);
+  /* solo analisis: los mapas no se ofrecen en microbiologia */
+  if (!micro){
+    /* mapas de barriles: adjuntar una o varias imagenes, cada una anexada como hoja final */
+    $('btnOtMapa').addEventListener('click', () => $('otMapaFile').click());
+    $('otMapaFile').addEventListener('change', e => {
+      const files = [...(e.target.files || [])]; if (!files.length) return;
+      const slots = new Array(files.length); let pend = files.length;
+      files.forEach((f, idx) => {
+        const rd = new FileReader();
+        rd.onload = () => {
+          slots[idx] = { src: rd.result, nombre: f.name, pie: '' };
+          if (--pend === 0){ _otMapas.push(...slots); _otPintarMapaChips(); _otPintarPaginas(); }
+        };
+        rd.readAsDataURL(f);
+      });
+      e.target.value = '';
     });
-    e.target.value = '';
-  });
-  $('otMapaChips').addEventListener('click', e => {
-    const b = e.target.closest('[data-delmapaot]'); if (!b) return;
-    _otMapas.splice(+b.dataset.delmapaot, 1);
+    $('otMapaChips').addEventListener('click', e => {
+      const b = e.target.closest('[data-delmapaot]'); if (!b) return;
+      _otMapas.splice(+b.dataset.delmapaot, 1);
+      _otPintarMapaChips();
+      _otPintarPaginas();
+    });
     _otPintarMapaChips();
-    _otPintarPaginas();
-  });
-  _otPintarMapaChips();
+  }
 
   /* imprimir */
   $('btnOtImprimir').addEventListener('click', () => {
     document.body.classList.add('printing-orden');
     window.print();
     document.body.classList.remove('printing-orden');
-    _otRegistrarMuestreo();
+    /* microbiologia no usa el dado: no hay barriles que anotar */
+    if (!_esMicro()) _otRegistrarMuestreo();
   });
 }
 
