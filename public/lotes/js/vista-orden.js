@@ -609,87 +609,130 @@ export function renderOrden(){
   ).join('');
 
   sec.innerHTML = `
-<div id="ordenControls" class="card" style="margin-bottom:14px">
-  <h2>Orden de trabajo — muestras</h2>
-
-  <!-- fuente + filtros -->
-  <div class="toolbar" id="ordenToolbar" style="margin-bottom:14px">
-    <label style="font-size:12px;color:var(--muted);white-space:nowrap">Incluir:</label>
-    <select id="otFuente">${fuenteOpts}</select>
-    <span id="otWrapAtencion" style="display:${_otFuente === 'atencion' ? '' : 'none'}">
-      <label style="font-size:12px;color:var(--muted);white-space:nowrap">Criterio de atención:</label>
-      <select id="otAtencionTipo">${atencionOpts}</select>
-    </span>
-    <div class="mfilt-bar" id="otFltBar"></div>
-    <input class="txt" id="otBuscar" type="search" placeholder="Buscar lote, variedad, vasija…"
-           value="${escA(_otBusqueda)}" style="width:210px">
-    <button class="btn" id="btnOtLimpiarFlt" title="Limpiar el buscador y todos los filtros">🧹 Limpiar filtros</button>
-    <button class="btn" id="btnOtRecargar">🔄 Recargar filas</button>
-    <button class="btn" id="btnOtDado" title="Sortear un barril lleno al azar de cada lote de la orden (del inventario del Mapa de Barriles). Volver a apretar cambia el barril." style="font-size:16px;padding:4px 10px">🎲</button>
-    <button class="btn" id="btnOtSinSorteo" title="Quitar los barriles sorteados: la orden vuelve a salir sin columna Barril y en la bodega sacan la muestra de cualquier barril. No se anota nada como muestreado." style="display:none">✕ Sin sorteo</button>
-    <span id="otDadoMsg" style="font-size:12px;color:var(--muted)"></span>
-    <span class="tag" id="otCount"></span>
-    <div class="spacer"></div>
-    <button class="btn primary" id="btnOtImprimir">🖨️ Imprimir</button>
-  </div>
-
-  <!-- recipiente + cantidad globales -->
-  <div class="controls" style="margin-bottom:14px;gap:12px">
-    <label style="font-size:12px;color:var(--muted);white-space:nowrap">Recipiente por defecto:</label>
-    <select id="otDefRecipiente">${recOpts}</select>
-    <label style="font-size:12px;color:var(--muted);white-space:nowrap">Cantidad:</label>
-    <button class="btn" id="btnOtDefMinus" style="padding:6px 12px">−</button>
-    <span id="otDefCantidad" style="min-width:24px;display:inline-block;text-align:center;font-weight:600">${esc(String(_otCantidad))}</span>
-    <button class="btn" id="btnOtDefPlus" style="padding:6px 12px">+</button>
-    <button class="btn" id="btnOtAplicarDef" title="Aplica el recipiente y cantidad seleccionados a TODAS las filas">Aplicar a todas las filas</button>
-  </div>
-
-  <!-- mapas de barriles -->
-  <div class="controls" style="gap:12px;align-items:flex-start">
-    <label style="font-size:12px;color:var(--muted);white-space:nowrap;padding-top:4px">Mapas de barriles:</label>
-    <input type="file" id="otMapaFile" accept="image/*" multiple style="display:none">
-    <button class="btn" id="btnOtMapa">🗺️ Adjuntar mapa…</button>
-    <span id="otMapaChips"></span>
-    <span class="tag" style="font-size:11px">Cada imagen se agrega como hoja final al imprimir.</span>
-  </div>
-
-  <!-- pegar lotes: una columna o fila copiada del Excel se vuelve la orden -->
-  <div class="controls" style="gap:12px;align-items:flex-start;margin-top:14px">
-    <label for="otPegar" style="font-size:12px;color:var(--muted);white-space:nowrap;padding-top:4px">Pegar lotes:</label>
-    <textarea id="otPegar" class="txt" rows="3" placeholder="Pegá una columna o fila de lotes (26264, 26015, 26064…)"
-              style="width:320px;min-height:58px;resize:vertical;font-family:inherit">${esc(_otPegado)}</textarea>
-    <div style="display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;gap:8px">
-        <button class="btn primary" id="btnOtPegarArmar" title="Reemplaza las filas de la orden por los lotes pegados">Armar orden</button>
-        <button class="btn" id="btnOtPegarSumar" title="Agrega los lotes pegados al final, sin repetir los que ya están">Sumar a la orden</button>
-      </div>
-      <span id="otPegarMsg" style="font-size:12px;color:var(--muted)"></span>
+<div id="ordenControls" class="card">
+  <!-- cabecera: titulo, contador y la unica accion principal de la tarjeta -->
+  <div class="oc-head">
+    <h2>Orden de trabajo — muestras</h2>
+    <span class="oc-count" id="otCount" aria-live="polite"></span>
+    <div class="oc-head-fin">
+      <button class="btn primary oc-print" id="btnOtImprimir">🖨️ Imprimir</button>
     </div>
+  </div>
+
+  <!-- 1. que lotes entran: fuente + filtros + buscador -->
+  <section class="oc-sec oc-sec-lotes" aria-labelledby="ocT1">
+    <h3 class="oc-sec-t" id="ocT1"><span class="oc-n">1</span>Qué lotes entran</h3>
+    <div class="oc-row" id="ordenToolbar">
+      <div class="oc-field">
+        <label class="oc-lbl" for="otFuente">Incluir</label>
+        <select id="otFuente">${fuenteOpts}</select>
+      </div>
+      <div class="oc-field" id="otWrapAtencion" style="display:${_otFuente === 'atencion' ? '' : 'none'}">
+        <label class="oc-lbl" for="otAtencionTipo">Criterio de atención</label>
+        <select id="otAtencionTipo">${atencionOpts}</select>
+      </div>
+      <div class="oc-field oc-field-buscar">
+        <label class="oc-lbl" for="otBuscar">Buscar</label>
+        <div class="oc-search">
+          <input class="txt" id="otBuscar" type="search" placeholder="Lote, variedad, vasija…"
+                 value="${escA(_otBusqueda)}">
+        </div>
+      </div>
+    </div>
+    <div class="oc-row oc-row-filtros">
+      <span class="oc-lbl oc-lbl-inline">Filtrar por</span>
+      <div class="mfilt-bar" id="otFltBar"></div>
+      <div class="oc-row-fin">
+        <button class="btn oc-ghost" id="btnOtLimpiarFlt" title="Limpiar el buscador y todos los filtros">🧹 Limpiar filtros</button>
+        <button class="btn oc-ghost" id="btnOtRecargar" title="Volver a armar las filas desde la fuente elegida">🔄 Recargar filas</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ajustes secundarios: dos columnas en pantalla ancha, una en angosta -->
+  <div class="oc-grid">
+    <!-- 2. muestreo por barril -->
+    <section class="oc-sec oc-panel" aria-labelledby="ocT2">
+      <h3 class="oc-sec-t" id="ocT2"><span class="oc-n">2</span>Muestreo por barril</h3>
+      <p class="oc-hint">Sortea un barril lleno de cada lote, rotando entre los menos muestreados. Volver a sortear cambia el barril.</p>
+      <div class="oc-row">
+        <button class="btn oc-strong" id="btnOtDado" title="Sortear un barril lleno al azar de cada lote de la orden (del inventario del Mapa de Barriles). Volver a apretar cambia el barril.">🎲 Sortear barriles</button>
+        <button class="btn oc-ghost" id="btnOtSinSorteo" title="Quitar los barriles sorteados: la orden vuelve a salir sin columna Barril y en la bodega sacan la muestra de cualquier barril. No se anota nada como muestreado." style="display:none">✕ Sin sorteo</button>
+      </div>
+      <div class="oc-note" id="otDadoMsg" aria-live="polite"></div>
+    </section>
+
+    <!-- 3. recipiente + cantidad globales -->
+    <section class="oc-sec oc-panel" aria-labelledby="ocT3">
+      <h3 class="oc-sec-t" id="ocT3"><span class="oc-n">3</span>Recipiente y cantidad</h3>
+      <p class="oc-hint">Vale para las filas nuevas. «Aplicar a todas» lo pisa en las que ya están.</p>
+      <div class="oc-row">
+        <div class="oc-field">
+          <label class="oc-lbl" for="otDefRecipiente">Recipiente</label>
+          <select id="otDefRecipiente">${recOpts}</select>
+        </div>
+        <div class="oc-field">
+          <span class="oc-lbl">Cantidad</span>
+          <div class="oc-stepper" role="group" aria-label="Cantidad por defecto">
+            <button class="btn" id="btnOtDefMinus" aria-label="Uno menos">−</button>
+            <span id="otDefCantidad" aria-live="polite">${esc(String(_otCantidad))}</span>
+            <button class="btn" id="btnOtDefPlus" aria-label="Uno más">+</button>
+          </div>
+        </div>
+        <div class="oc-field oc-field-accion">
+          <button class="btn" id="btnOtAplicarDef" title="Aplica el recipiente y cantidad seleccionados a TODAS las filas">Aplicar a todas las filas</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. pegar lotes: una columna o fila copiada del Excel se vuelve la orden -->
+    <section class="oc-sec oc-panel" aria-labelledby="ocT4">
+      <h3 class="oc-sec-t" id="ocT4"><span class="oc-n">4</span>Pegar lotes</h3>
+      <label class="oc-hint" for="otPegar">Una columna o fila copiada del Excel se vuelve la orden.</label>
+      <textarea id="otPegar" class="txt oc-pegar" rows="3" placeholder="26264, 26015, 26064…">${esc(_otPegado)}</textarea>
+      <div class="oc-row">
+        <button class="btn oc-strong" id="btnOtPegarArmar" title="Reemplaza las filas de la orden por los lotes pegados">Armar orden</button>
+        <button class="btn oc-ghost" id="btnOtPegarSumar" title="Agrega los lotes pegados al final, sin repetir los que ya están">Sumar a la orden</button>
+      </div>
+      <div class="oc-note" id="otPegarMsg" aria-live="polite"></div>
+    </section>
+
+    <!-- 5. mapas de barriles -->
+    <section class="oc-sec oc-panel" aria-labelledby="ocT5">
+      <h3 class="oc-sec-t" id="ocT5"><span class="oc-n">5</span>Mapas de barriles</h3>
+      <p class="oc-hint">Cada imagen se agrega como hoja final al imprimir.</p>
+      <input type="file" id="otMapaFile" accept="image/*" multiple hidden>
+      <div class="oc-row">
+        <button class="btn oc-ghost" id="btnOtMapa">🗺️ Adjuntar mapa…</button>
+      </div>
+      <div class="oc-chips" id="otMapaChips"></div>
+    </section>
   </div>
 </div>
 
 <!-- encabezado imprimible de la OT -->
-<div id="otHeader" class="card" style="margin-bottom:14px">
-  <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
-    <div style="flex:1;min-width:200px">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:1.2px">N° de orden</div>
-      <input class="txt" id="otNumOrden" type="text" placeholder="OT-2026-001" style="width:100%">
+<div id="otHeader" class="card">
+  <h3 class="oc-sec-t">Datos de la hoja</h3>
+  <div class="oh-campos">
+    <div class="oc-field oh-campo-num">
+      <label class="oc-lbl" for="otNumOrden">N° de orden</label>
+      <input class="txt" id="otNumOrden" type="text" placeholder="OT-2026-001">
     </div>
-    <div style="flex:1;min-width:160px">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:1.2px">Fecha</div>
-      <input class="txt" id="otFecha" type="date" value="${escA(hoyISO)}" style="width:100%">
+    <div class="oc-field">
+      <label class="oc-lbl" for="otFecha">Fecha</label>
+      <input class="txt" id="otFecha" type="date" value="${escA(hoyISO)}">
     </div>
-    <div style="flex:1;min-width:160px">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:1.2px">Día</div>
-      <input class="txt" id="otDia" type="text" value="${escA(hoyDia)}" style="width:100%">
+    <div class="oc-field">
+      <label class="oc-lbl" for="otDia">Día</label>
+      <input class="txt" id="otDia" type="text" value="${escA(hoyDia)}">
     </div>
-    <div style="flex:1;min-width:160px">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:1.2px">Emitió</div>
-      <input class="txt" id="otEmitio" type="text" placeholder="Nombre…" style="width:100%">
+    <div class="oc-field">
+      <label class="oc-lbl" for="otEmitio">Emitió</label>
+      <input class="txt" id="otEmitio" type="text" placeholder="Nombre…">
     </div>
-    <div style="flex:1;min-width:160px">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:1.2px">Recibió</div>
-      <input class="txt" id="otRecibio" type="text" placeholder="Nombre…" style="width:100%">
+    <div class="oc-field">
+      <label class="oc-lbl" for="otRecibio">Recibió</label>
+      <input class="txt" id="otRecibio" type="text" placeholder="Nombre…">
     </div>
   </div>
 </div>
@@ -863,8 +906,8 @@ function _otPintarMapaChips(){
   const cont = $('otMapaChips');
   if (!cont) return;
   cont.innerHTML = _otMapas.length
-    ? _otMapas.map((m, i) => `<span class="tag">🗺️ ${esc(m.nombre)} <button data-delmapaot="${i}" title="Quitar imagen" style="border:none;background:none;color:#c0392b;cursor:pointer">✕</button></span>`).join(' ')
-    : '<span class="tag">(sin imágenes)</span>';
+    ? _otMapas.map((m, i) => `<span class="oc-chip"><span class="oc-chip-nom" title="${escA(m.nombre)}">🗺️ ${esc(m.nombre)}</span><button type="button" class="oc-chip-x" data-delmapaot="${i}" title="Quitar imagen" aria-label="Quitar ${escA(m.nombre)}">✕</button></span>`).join('')
+    : '<span class="oc-empty">Sin imágenes adjuntas.</span>';
 }
 
 registrarVista('orden', () => renderOrden());
