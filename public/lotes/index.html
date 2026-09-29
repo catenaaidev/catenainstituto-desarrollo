@@ -1022,6 +1022,148 @@ table.hm td.hm-c{padding:0}
  * recuadro de formulario RCI 08 y tienen que salir impresas igual que siempre. */
 body.cuadricula table:not(.hm):not(.orden-hoja table) :is(th,td){border:1px solid #d9d3c7}
 button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+/* =====================================================================
+   ORDEN DE MUESTRAS — tarjeta de controles (#ordenControls) y datos de la
+   hoja (#otHeader). Rediseno 2026-09.
+
+   Todo va con prefijo #ordenControls / #otHeader: los .mfilt-btn, .btn y
+   campos son compartidos con las otras pestanas y no tienen que cambiar alla.
+   Solo tokens del :root, sin colores escritos a mano. Nada de esto toca
+   #otPaginas ni el @media print: al imprimir, body.printing-orden oculta
+   estas dos tarjetas enteras.
+
+   Jerarquia: una sola accion principal (Imprimir, arriba a la derecha);
+   "fuertes" en contorno de acento para la accion de cada seccion (Sortear,
+   Armar orden); el resto fantasmas. Controles de 34px de alto en toda la
+   tarjeta.
+   ===================================================================== */
+#ordenControls,#otHeader{margin-bottom:14px}
+#ordenControls{--oc-h:34px}
+
+/* ---- cabecera ---- */
+#ordenControls .oc-head{display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap;
+  padding-bottom:14px;margin-bottom:16px;border-bottom:1px solid var(--line-soft)}
+#ordenControls .oc-head h2{margin:0}
+#ordenControls .oc-count{font-size:12px;color:var(--muted);background:var(--panel2);
+  border-radius:var(--r-pill);padding:3px 10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#ordenControls .oc-count:empty{display:none}
+#ordenControls .oc-head-fin{margin-left:auto;display:flex;gap:8px}
+#ordenControls button.oc-print{padding:0 18px}
+
+/* ---- secciones ---- */
+#ordenControls .oc-sec{display:flex;flex-direction:column;gap:10px;min-width:0}
+#ordenControls .oc-sec-lotes{padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--line-soft)}
+:is(#ordenControls,#otHeader) .oc-sec-t{margin:0;display:flex;align-items:center;gap:8px;
+  font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:1.4px;
+  text-transform:uppercase;color:var(--muted)}
+#ordenControls .oc-n{display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:18px;height:18px;border-radius:var(--r-pill);font-size:10px;letter-spacing:0;
+  background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+#ordenControls .oc-hint{margin:-4px 0 0;font-size:12px;line-height:1.45;color:var(--muted)}
+
+#ordenControls .oc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+#ordenControls .oc-panel{background:var(--panel-hi);border:1px solid var(--line-soft);
+  border-radius:var(--r-md);padding:14px 16px}
+
+/* ---- filas y campos ---- */
+#ordenControls .oc-row{display:flex;align-items:flex-end;gap:10px 12px;flex-wrap:wrap;min-width:0}
+#ordenControls .oc-row-filtros{align-items:center}
+#ordenControls .oc-row-fin{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+:is(#ordenControls,#otHeader) .oc-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+:is(#ordenControls,#otHeader) .oc-lbl{font-size:11.5px;font-weight:600;color:var(--muted);
+  letter-spacing:.01em;white-space:nowrap}
+#ordenControls .oc-lbl-inline{margin-right:2px}
+#ordenControls .oc-field-buscar{flex:1 1 240px;max-width:340px}
+
+/* alto parejo: selects, inputs, botones y pildoras de filtro */
+#ordenControls :is(select,input.txt),#otHeader input.txt{height:var(--oc-h,34px);padding-top:0;
+  padding-bottom:0;font-size:13.5px;max-width:100%}
+#ordenControls button.btn,#ordenControls .mfilt-btn{height:var(--oc-h);padding:0 14px;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;
+  font-size:13px;line-height:1}
+
+/* buscador con lupa (mascara SVG pintada con el token, sirve en cualquier tema) */
+#ordenControls .oc-search{position:relative}
+#ordenControls .oc-search::before{content:'';position:absolute;left:11px;top:50%;width:14px;height:14px;
+  margin-top:-7px;background:var(--muted);pointer-events:none;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") center/contain no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") center/contain no-repeat}
+#ordenControls .oc-search:focus-within::before{background:var(--accent)}
+#ordenControls .oc-search input.txt{width:100%;padding-left:33px}
+
+/* pildoras de filtro (solo aca: las de las otras pestanas quedan igual) */
+#ordenControls .mfilt-bar{gap:6px}
+#ordenControls .mfilt-btn{border-radius:var(--r-pill);padding:0 13px;color:var(--txt);font-weight:500}
+#ordenControls .mfilt-btn:hover{border-color:var(--accent-line);background:var(--accent-soft)}
+#ordenControls .mfilt-btn.active{border-color:var(--accent);color:var(--accent);font-weight:600}
+#ordenControls .mfilt-btn:focus-visible{border-radius:var(--r-pill)}
+
+/* ---- variantes de boton ---- */
+#ordenControls button.btn.oc-ghost{background:transparent;border-color:transparent;box-shadow:none;
+  color:var(--txt);font-weight:500}
+#ordenControls button.btn.oc-ghost:hover{background:var(--accent-soft);color:var(--accent)}
+#ordenControls button.btn.oc-strong{background:var(--accent-soft);border-color:var(--accent-line);
+  color:var(--accent);box-shadow:none}
+#ordenControls button.btn.oc-strong:hover{background:var(--panel);border-color:var(--accent)}
+#ordenControls button.btn:disabled{opacity:.55;cursor:progress;transform:none}
+#ordenControls button.btn:focus-visible{border-radius:var(--r-sm)}
+/* adjuntar: contorno punteado, lee como "soltar archivo aca" */
+#ordenControls #btnOtMapa{border:1px dashed var(--line);background:var(--panel)}
+#ordenControls #btnOtMapa:hover{border-color:var(--accent);background:var(--accent-soft)}
+
+/* ---- stepper de cantidad: un solo control de tres partes ---- */
+#ordenControls .oc-stepper{display:inline-flex;align-items:stretch;height:var(--oc-h);
+  border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);
+  box-shadow:var(--sh-xs);overflow:hidden}
+#ordenControls .oc-stepper button.btn{height:auto;width:34px;padding:0;border:none;border-radius:0;
+  box-shadow:none;background:transparent;font-size:16px;font-weight:500;color:var(--muted)}
+#ordenControls .oc-stepper button.btn:hover{background:var(--accent-soft);color:var(--accent)}
+#ordenControls .oc-stepper button.btn:focus-visible{box-shadow:inset var(--ring)}
+#ordenControls #otDefCantidad{min-width:34px;display:inline-flex;align-items:center;justify-content:center;
+  font-weight:700;font-variant-numeric:tabular-nums;border-left:1px solid var(--line-soft);
+  border-right:1px solid var(--line-soft)}
+
+/* ---- pegar lotes ---- */
+#ordenControls textarea.oc-pegar{width:100%;min-height:62px;resize:vertical;font-family:inherit;
+  font-size:13.5px;line-height:1.45}
+
+/* ---- avisos de estado: reservan su renglon para no hacer saltar la tarjeta ---- */
+#ordenControls .oc-note{min-height:19px;font-size:12px;line-height:1.5;color:var(--muted)}
+#ordenControls .oc-note:not(:empty){color:var(--txt);padding-left:9px;border-left:2px solid var(--accent-line)}
+
+/* ---- chips de mapas adjuntos ---- */
+#ordenControls .oc-chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+#ordenControls .oc-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;height:28px;
+  padding:0 4px 0 11px;border:1px solid var(--line);border-radius:var(--r-pill);
+  background:var(--panel);font-size:12px;color:var(--txt)}
+#ordenControls .oc-chip-nom{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#ordenControls .oc-chip-x{flex:none;width:20px;height:20px;border:none;border-radius:var(--r-pill);
+  background:transparent;color:var(--muted);cursor:pointer;font-size:11px;line-height:1;padding:0}
+#ordenControls .oc-chip-x:hover{background:var(--accent-soft);color:var(--nook)}
+#ordenControls .oc-chip-x:focus-visible{outline:none;box-shadow:var(--ring)}
+#ordenControls .oc-empty{font-size:12px;color:var(--muted);font-style:italic}
+
+/* ---- datos de la hoja (#otHeader) ---- */
+#otHeader{padding-top:16px;padding-bottom:18px}
+#otHeader .oc-sec-t{margin-bottom:12px}
+#otHeader .oh-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 16px}
+#otHeader input.txt{width:100%;font-size:13.5px}
+
+/* ---- pantallas angostas ---- */
+@media (max-width:900px){
+  #ordenControls .oc-grid{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:600px){
+  #ordenControls,#otHeader{padding:16px 15px}
+  #ordenControls .oc-head h2{flex:1 1 100%}
+  #ordenControls .oc-head-fin{margin-left:auto}
+  #ordenControls .oc-field-buscar{flex-basis:100%;max-width:none}
+  #ordenControls #ordenToolbar > .oc-field:not(.oc-field-buscar){flex:1 1 100%}
+  #ordenControls #ordenToolbar select{width:100%}
+  #ordenControls .oc-lbl-inline{flex:1 1 100%}
+  #ordenControls .oc-row-fin{margin-left:0;width:100%}
+  #ordenControls .oc-panel{padding:13px 13px}
+}
 </style>
 </head>
 <body>
