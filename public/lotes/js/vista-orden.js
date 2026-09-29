@@ -39,6 +39,43 @@ let _otPegado     = '';                   // texto del recuadro "Pegar lotes", s
 /* Lista de recipientes validos. Unico lugar: antes vivia repetida como
  * literal en dos puntos del archivo (la fila y el select por defecto). */
 const RECIPIENTES_OT = ['Tubo falcon', 'Botella 120 mL'];
+
+/* Recipientes escritos a mano con "✎ Otro…": se suman a la lista y se
+ * recuerdan en ESTE navegador (comodidad por PC, no dato compartido: la orden
+ * es efimera y el papel lleva el texto tal cual). */
+const OTRO_REC = '__otro__';
+const LS_REC = 'lotes_recipientes_extra';
+let _otRecExtra = (() => {
+  try { const v = JSON.parse(localStorage.getItem(LS_REC) || '[]'); return Array.isArray(v) ? v.map(String) : []; }
+  catch (e) { return []; }
+})();
+const _recLista = () => RECIPIENTES_OT.concat(_otRecExtra);
+
+/* Devuelve el nombre canonico: si ya existe (sin importar mayusculas) usa ese;
+ * si no, lo suma a la lista. '' si vino vacio. */
+function _recSumar(nombre){
+  const v = String(nombre ?? '').trim();
+  if (!v) return '';
+  const ya = _recLista().find(r => r.toLowerCase() === v.toLowerCase());
+  if (ya) return ya;
+  _otRecExtra.push(v);
+  try { localStorage.setItem(LS_REC, JSON.stringify(_otRecExtra)); } catch (e) {}
+  /* que aparezca ya en el selector por defecto, sin esperar un re-render */
+  const def = $('otDefRecipiente');
+  if (def) def.innerHTML = _recOpciones(_otRecipiente);
+  return v;
+}
+
+/* <option>s de un selector de recipiente: la lista, el valor actual si no esta
+ * en ella, y al final "✎ Otro…" para escribir uno nuevo. */
+function _recOpciones(actual){
+  const lista = _recLista();
+  if (actual && !lista.includes(actual)) lista.push(actual);
+  return lista.map(v => `<option value="${escA(v)}"${v === actual ? ' selected' : ''}>${esc(v)}</option>`).join('') +
+    `<option value="${OTRO_REC}">✎ Otro…</option>`;
+}
+const _recSelectFila = (i, actual) =>
+  `<select class="cell" data-oti="${i}" data-otk="recipiente">${_recOpciones(actual)}</select>`;
 const ORDEN_PER_PAGE = HOJA_POR_PAGINA;
 
 /* Adaptador de la grilla sobre _otRows.
@@ -75,7 +112,9 @@ const _otAdaptador = {
       return 'ok';
     }
     if (k === 'recipiente'){
-      const m = RECIPIENTES_OT.find(r => r.toLowerCase() === val.toLowerCase());
+      /* Cualquier texto vale: los conocidos se normalizan, uno nuevo se suma
+       * a la lista (pegar "Frasco 50 mL" desde el Excel tiene que andar). */
+      const m = _recSumar(val);
       if (!m) return 'invalido';
       obj.recipiente = m;
       return 'ok';
@@ -158,10 +197,6 @@ function _otRenderTabla(){
 
   let tb = '';
   _otRows.forEach((r, i) => {
-    const recOpts = RECIPIENTES_OT.map(v =>
-      `<option value="${escA(v)}"${v === r.recipiente ? ' selected' : ''}>${esc(v)}</option>`
-    ).join('');
-
     tb += `<tr data-oti="${i}">
   <td><input class="cell${r.noEncontrado ? ' ot-noexiste' : ''}" type="text" data-oti="${i}" data-otk="lote" value="${escA(r.lote)}"${r.noEncontrado ? ' title="No hay ningún lote con ese número"' : ''}></td>
   <td><input class="cell" type="text" data-oti="${i}" data-otk="variedad"  value="${escA(r.variedad)}"></td>
@@ -169,7 +204,7 @@ function _otRenderTabla(){
   <td><input class="cell num" type="text" data-oti="${i}" data-otk="barril" value="${escA(r.barril || '')}" style="width:70px"></td>
   <td><input class="cell num" type="text" data-oti="${i}" data-otk="litros" value="${escA(r.litros)}"></td>
   <td><input class="cell" type="text" data-oti="${i}" data-otk="motivo"   value="${escA(r.motivo)}"></td>
-  <td><select class="cell" data-oti="${i}" data-otk="recipiente">${recOpts}</select></td>
+  <td>${_recSelectFila(i, r.recipiente)}</td>
   <td style="white-space:nowrap">
     <button class="rowbtn" data-ot-minus="${i}" title="Menos" style="font-size:13px">−</button>
     <input class="cell num" type="text" data-oti="${i}" data-otk="cantidad" value="${escA(String(r.cantidad))}" style="width:34px;text-align:center;display:inline-block">
@@ -212,7 +247,7 @@ function _otRenderTabla(){
       // no pisa el numero vigente, igual que el resto de la grilla.
       const n = num(el.value);
       if (n != null && n >= 1) _otRows[i].cantidad = Math.round(n);
-    } else {
+    } else if (el.dataset.otk !== 'recipiente'){   // el recipiente nuevo se toma al confirmarlo (change)
       _otRows[i][el.dataset.otk] = el.value;
     }
     _otPintarPaginas();
@@ -241,11 +276,33 @@ function _otRenderTabla(){
       _otPintarPaginas();
       return;
     }
+    /* Recipiente escrito a mano (despues de elegir "✎ Otro…"): vuelve a ser
+     * selector con el nombre nuevo. Se reemplaza SOLO el contenido de la celda,
+     * no el tbody (mismo motivo que el lote, arriba). Vacio = se arrepintio. */
+    const otro = e.target.closest('input.cell[data-otk="recipiente"]');
+    if (otro){ _otConfirmarRecFila(otro); return; }
     const el = e.target.closest('select.cell[data-otk]');
     if (!el) return;
     const i = +el.dataset.oti;
+    if (el.dataset.otk === 'recipiente' && el.value === OTRO_REC){
+      const antes = _otRows[i] ? _otRows[i].recipiente : '';
+      el.closest('td').innerHTML = `<input class="cell" type="text" data-oti="${i}" data-otk="recipiente" data-antes="${escA(antes)}" placeholder="Escribí el recipiente…">`;
+      const inp = tbody.querySelector(`input.cell[data-oti="${i}"][data-otk="recipiente"]`);
+      if (inp){
+        inp.focus();
+        inp.addEventListener('keydown', ev => { if (ev.key === 'Enter'){ ev.preventDefault(); inp.blur(); } });
+      }
+      return;
+    }
     if (_otRows[i]) _otRows[i][el.dataset.otk] = el.value;
     _otPintarPaginas();
+  });
+
+  /* Salir del campo sin tocar nada tambien lo cierra (el change no salta si
+   * el valor no cambio). */
+  tbody.addEventListener('focusout', e => {
+    const otro = e.target.closest('input.cell[data-otk="recipiente"]');
+    if (otro) _otConfirmarRecFila(otro);
   });
 
   tbody.addEventListener('click', e => {
@@ -276,6 +333,17 @@ function _otRenderTabla(){
       return;
     }
   });
+}
+
+function _otConfirmarRecFila(otro){
+  const td = otro.closest('td');
+  if (!td || !otro.isConnected) return;   // ya confirmado (change + focusout)
+  const r = _otRows[+otro.dataset.oti];
+  if (!r) return;
+  const v = _recSumar(otro.value);
+  r.recipiente = v || otro.dataset.antes || _otRecipiente;
+  td.innerHTML = _recSelectFila(+otro.dataset.oti, r.recipiente);
+  _otPintarPaginas();
 }
 
 /* Pinta #otPaginas: la vista de PAPEL, paginada a 25 filas, mas una hoja
@@ -604,9 +672,6 @@ export function renderOrden(){
     { v:'sinControl', l:'Sin control de proceso' },
   ].map(o => `<option value="${escA(o.v)}"${o.v === _otAtencionTipo ? ' selected' : ''}>${esc(o.l)}</option>`).join('');
 
-  const recOpts = RECIPIENTES_OT.map(v =>
-    `<option value="${escA(v)}"${v === _otRecipiente ? ' selected' : ''}>${esc(v)}</option>`
-  ).join('');
 
   sec.innerHTML = `
 <div id="ordenControls" class="card">
@@ -669,7 +734,10 @@ export function renderOrden(){
       <div class="oc-row">
         <div class="oc-field">
           <label class="oc-lbl" for="otDefRecipiente">Recipiente</label>
-          <select id="otDefRecipiente">${recOpts}</select>
+          <div class="oc-rec">
+            <select id="otDefRecipiente">${_recOpciones(_otRecipiente)}</select>
+            <input class="txt" id="otDefRecipienteOtro" type="text" placeholder="Escribí el recipiente…" hidden>
+          </div>
         </div>
         <div class="oc-field">
           <span class="oc-lbl">Cantidad</span>
@@ -835,7 +903,29 @@ export function renderOrden(){
   });
 
   /* recipiente / cantidad por defecto */
-  $('otDefRecipiente').addEventListener('change', e => { _otRecipiente = e.target.value; });
+  /* "✎ Otro…" cambia el selector por un campo de texto; al confirmarlo
+   * (Enter o salir del campo) el nombre nuevo queda elegido y en la lista. */
+  const recSel = $('otDefRecipiente'), recOtro = $('otDefRecipienteOtro');
+  recSel.addEventListener('change', e => {
+    if (e.target.value === OTRO_REC){
+      recSel.hidden = true; recOtro.hidden = false; recOtro.value = ''; recOtro.focus();
+      return;
+    }
+    _otRecipiente = e.target.value;
+  });
+  const recConfirmar = () => {
+    if (recOtro.hidden) return;
+    const v = _recSumar(recOtro.value);
+    if (v) _otRecipiente = v;
+    recSel.innerHTML = _recOpciones(_otRecipiente);
+    recOtro.hidden = true; recSel.hidden = false;
+  };
+  recOtro.addEventListener('change', recConfirmar);
+  recOtro.addEventListener('blur', recConfirmar);
+  recOtro.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); recConfirmar(); }
+    if (e.key === 'Escape'){ recOtro.value = ''; recConfirmar(); }
+  });
   $('btnOtDefMinus').addEventListener('click', () => {
     if (_otCantidad > 1){ _otCantidad--; $('otDefCantidad').textContent = _otCantidad; }
   });
