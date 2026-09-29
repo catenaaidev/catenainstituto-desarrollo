@@ -6,7 +6,8 @@
  * firmas se desincroniza en el primer cambio de formulario de calidad.
  *
  * No sabe nada de lotes ni de dosis: recibe filas ya armadas y un renderizador
- * de fila. Todo lo que cambia entre las dos ordenes entra por cfg. */
+ * de fila. Todo lo que cambia entre las dos ordenes entra por cfg (antesBanda
+ * y despuesTabla son HTML opcional, los usa la orden de microbiologia). */
 'use strict';
 
 import { esc, escA } from './nucleo.js';
@@ -62,10 +63,12 @@ export function pintarHojas(cfg){
       hojaTop() +
       hojaTitulo(c.titulo) +
       hojaMeta(c.meta) +
+      (c.antesBanda || '') +
       hojaBanda(c.banda) +
       (c.nota ? `<div class="oh-nota">${c.nota}</div>` : '') +
       `<table>${c.colgroup || ''}<thead>${c.thead || ''}</thead>` +
       `<tbody>${filas || `<tr><td colspan="${c.columnas || 1}" class="c" style="padding:18px">${esc(c.textoVacio || '')}</td></tr>`}</tbody></table>` +
+      (c.despuesTabla || '') +
       hojaPie(c.emitio, c.recibio) +
       `<div class="oh-hoja-num">Hoja ${pg + 1} de ${paginas.length}</div>` +
     `</div>`;
