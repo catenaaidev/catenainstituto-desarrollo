@@ -13,6 +13,8 @@
  * asi se testea en node. */
 'use strict';
 
+import { campoHoja } from './hoja-campos.js';
+
 const esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /* Valores del Excel 0868, literales. Cambiar un default no pisa lo que cada
@@ -30,16 +32,7 @@ export const TEXTOS_MICRO_DEF = Object.freeze({
   nota:          'Entregar a Julieta',
 });
 
-/* Campos del panel de edicion, en el orden en que se muestran: la pantalla los
- * pone en una grilla de 2x2 (los dos textos largos arriba, las dos lineas
- * cortas abajo). `largo` = se edita en un textarea (una instruccion por
- * renglon). */
-export const CAMPOS_ORDEN_MICRO = [
-  { k: 'instrucciones', l: 'Instrucciones (arriba de la tabla)', largo: true },
-  { k: 'cierre',        l: 'Indicaciones (abajo de la tabla)', largo: true },
-  { k: 'banda',         l: 'Banda' },
-  { k: 'subtitulo',     l: 'Recipiente / subtítulo' },
-];
+/* Campos del cartel de la caja (hoja 2), en orden. */
 export const CAMPOS_CARTEL = [
   { k: 'de',      l: 'De:' },
   { k: 'retira',  l: 'Retira en Agrelo:' },
@@ -61,28 +54,26 @@ export function textosMicro(guardado){
   return out;
 }
 
-/* Texto multilinea -> un <div> por renglon no vacio. */
-export function renglones(texto){
-  return String(texto ?? '').split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-    .map(s => `<div>${esc(s)}</div>`).join('');
-}
-
 /* Configuracion para pintarHojas (orden-hoja.js): mismo encabezado RCI 08,
  * paginado y firmas que la orden de analisis; cambian las columnas y los
- * textos. hojasExtra (mapas, etc.) se suman DESPUES del cartel. */
+ * textos. La hoja es la vista previa editable: instrucciones, banda, dia,
+ * subtitulo, indicaciones y el cartel son campos data-campo (hoja-campos.js).
+ * hojasExtra (mapas, etc.) se suman DESPUES del cartel. */
 export function cfgHojasMicro({ filas, textos, titulo, meta, dia, emitio, recibio, porPagina, hojasExtra }){
   const t = textosMicro(textos);
-  const instr = renglones(t.instrucciones);
-  const cierre = renglones(t.cierre);
   return {
     filas: filas || [],
     porPagina,
+    editable: true,
     titulo, meta, emitio, recibio,
-    banda: [t.banda, dia || '', ''],
-    antesBanda: instr ? `<div class="oh-instr">${instr}</div>` : '',
-    nota: t.subtitulo.trim() ? `<b>${esc(t.subtitulo.trim())}</b>` : '',
-    despuesTabla: cierre ? `<div class="oh-instr oh-instr-fin">${cierre}</div>` : '',
-    colgroup: '<colgroup><col style="width:34px"><col style="width:56px"><col style="width:90px"><col></colgroup>',
+    banda: [{ campo: 'banda', valor: t.banda, ph: 'Banda' }, { campo: 'dia', valor: dia || '', ph: 'día' }, ''],
+    antesBanda: campoHoja('instrucciones', t.instrucciones, { tipo: 'area', cls: 'oh-instr', ph: 'Instrucciones (opcional)' }),
+    nota: campoHoja('subtitulo', t.subtitulo, { cls: 'oh-campo-sub', ph: 'Recipiente (opcional)' }),
+    despuesTabla: campoHoja('cierre', t.cierre, { tipo: 'area', cls: 'oh-instr oh-instr-fin', ph: 'Indicaciones (opcional)' }),
+    /* Columnas justas, como en el Excel: la tabla no se estira a todo el
+     * ancho de la hoja (la Vasija quedaba con medio renglon vacio). */
+    claseTabla: 'oh-tabla-justa',
+    colgroup: '<colgroup><col style="width:36px"><col style="width:60px"><col style="width:84px"><col style="width:220px"></colgroup>',
     thead: '<tr><th class="c oh-num">#</th><th class="oh-check">Check</th><th class="c">Lote</th><th>Vasija</th></tr>',
     columnas: 4,
     textoVacio: 'Sin lotes. Cargalos con «Pegar lotes», el filtro Lote o «Agregar fila».',
@@ -94,10 +85,10 @@ export function cfgHojasMicro({ filas, textos, titulo, meta, dia, emitio, recibi
 }
 
 /* Hoja 2: el cartel de la caja. Sin encabezado de calidad (en el Excel
- * tampoco): es un rotulo, se lee de lejos. */
+ * tampoco): es un rotulo, se lee de lejos. Cada valor se edita sobre la hoja. */
 export function hojaCartel(textos){
   const t = textosMicro(textos);
   const filas = CAMPOS_CARTEL.map(c =>
-    `<tr><th>${esc(c.l)}</th><td>${esc(t[c.k])}</td></tr>`).join('');
+    `<tr><th>${esc(c.l)}</th><td>${campoHoja(c.k, t[c.k], { cls: 'oh-campo-cartel' })}</td></tr>`).join('');
   return `<div class="orden-hoja oh-cartel"><table>${filas}</table></div>`;
 }
