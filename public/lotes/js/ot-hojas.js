@@ -13,6 +13,7 @@ import { esc } from './nucleo.js';
 import { hojaTop, hojaMeta, hojaBanda, hojaPie } from './orden-hoja.js';
 import { plantillaPorId, origenTanque, hojasDePlantilla, COLS_VACIADO } from './ot-plantillas.js';
 import { resumenVasijas } from './ot-armado.js';
+import { bloquesDeOT } from './ot-bloques.js';
 import { fmtFecha } from './fechas.js';
 
 // Lo que entra en una A4 con los dos bloques (vaciado + llenado), igual que la
@@ -147,26 +148,60 @@ function rotular(ot, de){
   return `<div class="ot-paso"><span class="ot-caja">☐</span>Rotular vasija ID. <b>${txt}</b></div>`;
 }
 
-export function hojaOT(ot){
+/* Los bloques que salen de los datos de la OT: no se editan sobre la hoja. */
+function bloqueFijo(ot, b){
+  switch (b.tipo){
+    case 'ids':              return b.de === 'corte' ? bloqueIdCorte(ot) : bloqueIds(ot);
+    case 'tabla-vaciado':    return b.porBarril ? tablaVaciadoPorBarril(ot) : tablaVaciado(ot, b.columnas);
+    case 'rotular':          return rotular(ot, b.de);
+    case 'tabla-correccion': return tablaCorreccion(ot, b.vasija, b.modelo);
+    case 'tabla-llenado':    return tablaLlenado(ot, b.modelo);
+    default:                 return '';
+  }
+}
+
+/* Modo editable (sub-pestaña Órdenes de trabajo): cada paso y dato es un
+ * textarea con data-bloque = su índice en bloquesDeOT(ot), y cada bloque lleva
+ * sus controles (＋ insertar un paso debajo; ✕ quitar, solo en los de texto).
+ * La impresión nunca usa este modo: hojasOT arma la hoja de nuevo desde los
+ * datos, así que los controles no llegan al papel. */
+const textoEditable = (i, texto) =>
+  `<textarea class="ot-texto" data-bloque="${i}" rows="1" placeholder="Escribí el paso…">${esc(texto)}</textarea>`;
+
+function controles(i, quitable){
+  return '<span class="ot-ctrl">' +
+    `<button type="button" class="ot-insertar" data-insertar="${i}" title="Insertar un paso debajo" aria-label="Insertar un paso debajo">＋</button>` +
+    (quitable ? `<button type="button" class="ot-quitar" data-quitar="${i}" title="Quitar este renglón" aria-label="Quitar este renglón">✕</button>` : '') +
+    '</span>';
+}
+
+// Un paso que quedó vacío no sale en el papel.
+const vacio = b => !String((b && b.texto) || '').trim();
+
+export function hojaOT(ot, { editable = false } = {}){
   const pl = plantillaPorId(ot.plantilla);
   const hayOrganico = ot.lotes.some(l => l.organico);
-  const cuerpo = (pl ? pl.bloques : []).map(b => {
+  const cuerpo = bloquesDeOT(ot).map((b, i) => {
     switch (b.tipo){
       case 'paso': {
+        if (!editable && vacio(b)) return '';
         const dest = b.destaca === 'organico' && hayOrganico ? ' ot-destaca' : '';
         const ok = b.ok ? '<span class="ot-ok">OK ☐</span>' : '';
-        return `<div class="ot-paso${dest}"><span class="ot-caja">☐</span>${esc(b.texto)}${ok}</div>`;
+        const texto = editable ? textoEditable(i, b.texto) : esc(b.texto);
+        return `<div class="ot-paso${dest}${editable ? ' ot-editable' : ''}"><span class="ot-caja">☐</span>` +
+          `${texto}${ok}${editable ? controles(i, true) : ''}</div>`;
       }
       case 'dato': {
+        if (!editable && vacio(b)) return '';
         const ok = b.ok ? '<span class="ot-ok">OK ☐</span>' : '';
-        return `<div class="ot-dato">${esc(b.texto)} <span class="ot-linea"></span>${ok}</div>`;
+        const texto = editable ? textoEditable(i, b.texto) : esc(b.texto);
+        return `<div class="ot-dato${editable ? ' ot-editable' : ''}">${texto} <span class="ot-linea"></span>` +
+          `${ok}${editable ? controles(i, true) : ''}</div>`;
       }
-      case 'ids':              return b.de === 'corte' ? bloqueIdCorte(ot) : bloqueIds(ot);
-      case 'tabla-vaciado':    return b.porBarril ? tablaVaciadoPorBarril(ot) : tablaVaciado(ot, b.columnas);
-      case 'rotular':          return rotular(ot, b.de);
-      case 'tabla-correccion': return tablaCorreccion(ot, b.vasija, b.modelo);
-      case 'tabla-llenado':    return tablaLlenado(ot, b.modelo);
-      default:                 return '';
+      default: {
+        const html = bloqueFijo(ot, b);
+        return editable ? `<div class="ot-fijo">${html}${controles(i, false)}</div>` : html;
+      }
     }
   }).join('');
   const lotesTxt = ot.lotes.map(l => l.lote).join(' · ');

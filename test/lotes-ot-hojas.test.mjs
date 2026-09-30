@@ -3,12 +3,14 @@
  * window ANTES del import dinámico. */
 import { describe, it, expect, beforeAll } from 'vitest';
 
-let H, armarOT;
+let H, armarOT, P;
 beforeAll(async () => {
   globalThis.window ??= { addEventListener(){} };
   H = await import('../public/lotes/js/ot-hojas.js');
   ({ armarOT } = await import('../public/lotes/js/ot-armado.js'));
+  P = await import('../public/lotes/js/ot-plantillas.js');
 });
+const plBloques = () => P.plantillaPorId('barricas-barricas').bloques;
 
 const barril = (num) => ({ num, estado: 'LLENO', cap: 225, litros: 225, anio: '2022',
   marca: 'TARANSAUD', origen: 'FRANCES', trat: 'REF.101 M' });
@@ -227,5 +229,51 @@ describe('TQ a barricas (modelo 0912)', () => {
   it('mas de 19 barricas pasa a otra hoja de planilla', () => {
     const o = ot([{ lote: '9', barriles: [], vasijas_manual: 'E 1', barricas_previstas: 25 }], 'tq-barricas');
     expect(cuenta(H.hojasPlanilla(o), 'class="orden-hoja')).toBe(2);
+  });
+});
+
+describe('hojaOT con pasos propios y editable', () => {
+  const lotes = () => [{ lote: '26217', id_texto: 'CS', barriles: [barril('2221713')] }];
+
+  it('usa los pasos propios de la OT', () => {
+    const o = ot(lotes());
+    o.bloques = [{ tipo: 'paso', texto: 'Paso inventado para esta OT' }];
+    const h = H.hojaOT(o);
+    expect(h).toContain('Paso inventado para esta OT');
+    expect(h).not.toContain('Sanitizar clapets');
+  });
+
+  it('un paso vacio no se imprime', () => {
+    const o = ot(lotes());
+    o.bloques = [{ tipo: 'paso', texto: '   ' }, { tipo: 'paso', texto: 'Sí va' }];
+    expect(cuenta(H.hojaOT(o), 'class="ot-paso')).toBe(1);
+  });
+
+  it('sin editable no hay textarea ni controles', () => {
+    const h = H.hojaOT(ot(lotes()));
+    expect(h).not.toContain('<textarea');
+    expect(h).not.toContain('ot-ctrl');
+  });
+
+  it('editable: un textarea por paso/dato con su indice y controles', () => {
+    const h = H.hojaOT(ot(lotes()), { editable: true });
+    const bs = plBloques();
+    const textos = bs.filter(b => b.tipo === 'paso' || b.tipo === 'dato').length;
+    expect(cuenta(h, '<textarea class="ot-texto"')).toBe(textos);
+    expect(h).toContain('data-bloque="1"');
+    expect(cuenta(h, 'data-quitar=')).toBe(textos);
+    expect(cuenta(h, 'data-insertar=')).toBe(bs.length);
+    expect(h).toContain('Sanitizar clapets antes de comenzar trasiego.</textarea>');
+  });
+
+  it('editable: la tabla va envuelta y sin boton de quitar', () => {
+    const h = H.hojaOT(ot(lotes()), { editable: true });
+    expect(h).toMatch(/<div class="ot-fijo"><div class="ot-ids">/);
+  });
+
+  it('editable: escapa el texto dentro del textarea', () => {
+    const o = ot(lotes());
+    o.bloques = [{ tipo: 'paso', texto: '<b>ojo</b> & listo' }];
+    expect(H.hojaOT(o, { editable: true })).toContain('&lt;b&gt;ojo&lt;/b&gt; &amp; listo</textarea>');
   });
 });
