@@ -41,8 +41,11 @@ export function elegirOT(id){
 export function renderOrdenesTrabajo(cont, callbacks){
   if (!cont) return;
   _cb = { ..._cb, ...(callbacks || {}) };
-  const lista = filtrarOrdenes(_ordenes(), { soloPendientes: _soloPendientes, busca: _busca });
-  if (_elegida && !_otPorId(_elegida)) _elegida = null;
+  // Las OT sin ningun movimiento detras (huerfanas) no se muestran ni se abren.
+  const movimientos = DATOS().movimientos || [];
+  const vivas = filtrarOrdenes(_ordenes(), { soloPendientes: false, movimientos });
+  const lista = filtrarOrdenes(vivas, { soloPendientes: _soloPendientes, busca: _busca });
+  if (_elegida && !vivas.some(o => o.id === _elegida)) _elegida = null;
   if (!_elegida && lista.length) _elegida = lista[0].id;
 
   const filas = lista.map(ot => {
@@ -55,7 +58,7 @@ export function renderOrdenesTrabajo(cont, callbacks){
       `<span class="otl-sub">${esc(pl ? pl.nombre : ot.plantilla || '')}</span>` +
       `<span class="otl-sub">${esc(resumenLotes(ot))}</span></button>`;
   }).join('');
-  const vacio = _ordenes().length
+  const vacio = vivas.length
     ? 'Ninguna OT con este filtro.'
     : 'Todavía no hay órdenes de trabajo. Emití la primera con ➕ Emitir OT.';
 

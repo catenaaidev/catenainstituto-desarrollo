@@ -27,6 +27,13 @@ describe('filtrarOrdenes', () => {
     const c = o('OT-2026-009', '2026-09-25', 'pendiente', ['1'], { lote_corte: { lote: '26999' } });
     expect(filtrarOrdenes([c], { busca: '26999' })).toHaveLength(1);
   });
+  it('con movimientos, oculta las OT a las que no les queda ninguno', () => {
+    const conMov = { ...o('OT-2026-020', '2026-09-29', 'pendiente', ['1']), lotes: [{ lote: '1', mov_id: 'a-0' }] };
+    const huerfana = { ...o('OT-2026-021', '2026-09-29', 'pendiente', ['2']), lotes: [{ lote: '2', mov_id: 'b-0' }] };
+    expect(filtrarOrdenes([conMov, huerfana], { movimientos: [{ id: 'a-0' }] }).map(x => x.ot)).toEqual(['OT-2026-020']);
+    // sin pasar movimientos no se filtra por esto
+    expect(filtrarOrdenes([conMov, huerfana])).toHaveLength(2);
+  });
   it('no muta la lista', () => {
     const copia = LISTA.map(x => x.ot);
     filtrarOrdenes(LISTA, { soloPendientes: false });

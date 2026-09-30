@@ -132,3 +132,19 @@ export function otDeMovimiento(ordenes, mov){
   if (!id) return null;
   return (ordenes || []).find(o => (o.lotes || []).some(l => l.mov_id === id)) || null;
 }
+
+/* Borra la OT y TODOS sus movimientos: borrar en el Historial una fila de una
+ * OT borra la OT entera (decision del usuario), para que no quede una OT sin
+ * movimientos en la lista. El lote que haya creado un Corte no se toca. Borra
+ * en el lugar (las vistas tienen referencias a estos arrays) y devuelve
+ * cuantos movimientos saco. */
+export function eliminarOT(datos, ot){
+  const ids = new Set((ot.lotes || []).map(l => l.mov_id));
+  const movs = datos.movimientos || [];
+  const antes = movs.length;
+  for (let i = movs.length - 1; i >= 0; i--) if (ids.has(movs[i].id)) movs.splice(i, 1);
+  const ordenes = datos.ordenes_trabajo || [];
+  const i = ordenes.indexOf(ot);
+  if (i !== -1) ordenes.splice(i, 1);
+  return antes - movs.length;
+}
