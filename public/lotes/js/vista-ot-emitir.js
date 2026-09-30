@@ -300,9 +300,11 @@ export function armarOTDeSesion({ numero, fecha, plantilla, destino, emitio, lot
   });
 }
 
-/* Suma la OT y sus movimientos a los datos, guarda, y recién con el guardado
- * confirmado ofrece imprimir. `antes` corre justo antes de sumar la OT (el
- * Corte crea ahí su lote): todo entra en el mismo guardado. */
+/* Suma la OT y sus movimientos a los datos, avisa a la vista (onListo(ot):
+ * Movimientos abre la hoja de la OT nueva para ajustar los pasos) y guarda.
+ * Se imprime desde esa hoja, que vuelve a guardar antes. `antes` corre justo
+ * antes de sumar la OT (el Corte crea ahí su lote): todo entra en el mismo
+ * guardado. */
 export async function registrarOT(ot, onListo, antes){
   const hoy = new Date().toISOString().slice(0, 10);
   const usuario = usuarioActual();
@@ -314,15 +316,13 @@ export async function registrarOT(ot, onListo, antes){
   d.movimientos.unshift(...movimientosDeOT(ot, usuario, hoy));
   markDirty();
   cerrarOverlay();
-  onListo();
+  onListo(ot);
 
   const ok = await guardar(false);
   if (!ok){
     alert('La OT NO se guardó, así que todavía no conviene imprimirla. Resolvé el guardado; '
-        + 'si la fila sigue en la tabla, imprimila con su botón 🖨, y si no, emitila de nuevo.');
-    return;
+        + 'si la OT sigue en «Órdenes de trabajo», su botón 🖨 vuelve a intentar guardar, y si no, emitila de nuevo.');
   }
-  abrirImprimirOT(ot);
 }
 
 const NOMBRES_HOJA = { ot: 'Orden de trabajo', planilla: 'Planilla de movimiento de barriles', rotulos: 'Rótulos' };

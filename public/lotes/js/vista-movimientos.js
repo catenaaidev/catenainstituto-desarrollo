@@ -8,9 +8,10 @@ import { toggleSort, sortRows, opcionesValores, matchValor,
 import { activarGrilla, adaptadorCols } from './grilla.js';
 import { esEjecutado, PENDIENTE, EJECUTADO, proximoNumeroOT } from './ot-movimientos.js';
 import { fmtFecha } from './fechas.js';
-import { abrirEmitirOT, abrirImprimirOT } from './vista-ot-emitir.js';
+import { abrirEmitirOT } from './vista-ot-emitir.js';
 import { abrirConfirmarOT } from './vista-ot-confirmar.js';
 import { otDeMovimiento } from './ot-armado.js';
+import { renderOrdenesTrabajo, elegirOT } from './vista-ot-lista.js';
 
 /* --- tipos validos --- */
 const TIPOS_MOV = ['descube', 'trasiego', 'relleno', 'traspaso', 'renombre', 'salida'];
@@ -70,6 +71,39 @@ CAMPOS_FLT_MOV.forEach(c => filtMov[c.campo] = new Set());
 let _descMov = [], _instMov = [];
 let _movFiltBusca = '';
 
+/* Sub-pestaña: 'historial' (la tabla de movimientos) u 'ordenes' (lista de OT
+ * con la hoja editable, vista-ot-lista.js). Solo en memoria. */
+let _sub = 'historial';
+
+function _selectorSub(){
+  const b = (k, txt) => `<button type="button" data-sub="${k}" role="radio" aria-checked="${_sub === k}"` +
+    `${_sub === k ? ' class="on"' : ''}>${txt}</button>`;
+  return `<div class="mov-sub" role="radiogroup" aria-label="Vista de Movimientos">` +
+    b('historial', '📋 Historial') + b('ordenes', '📝 Órdenes de trabajo') + '</div>';
+}
+
+function _cablearSelector(sec){
+  sec.querySelector('.mov-sub').addEventListener('click', e => {
+    const b = e.target.closest('[data-sub]');
+    if (!b || b.dataset.sub === _sub) return;
+    _sub = b.dataset.sub;
+    renderMovimientos();
+  });
+}
+
+/* Abre una OT en la sub-pestaña Órdenes de trabajo. */
+export function verOrdenTrabajo(id){
+  _sub = 'ordenes';
+  elegirOT(id);
+  renderMovimientos();
+}
+
+/* Al emitir (formulario o asistente del Corte) se abre la hoja de la OT nueva
+ * para ajustar los pasos antes de imprimir. */
+function _alEmitir(ot){
+  if (ot && ot.id) verOrdenTrabajo(ot.id); else renderMovimientos();
+}
+
 /* --- construir mapa lote -> {variedad, proyecto} --- */
 function _buildLoteMap(){
   const m = new Map();
@@ -128,6 +162,18 @@ export function renderMovimientos(){
 
   const sec = $('tab-movimientos'); if (!sec) return;
 
+  if (_sub === 'ordenes'){
+    // #otMovHoja tiene que existir: imprimirOT pinta ahi y el @media print de
+    // printing-ot-mov muestra solo ese hijo de #tab-movimientos.
+    sec.innerHTML = _selectorSub() + '<div id="movOrdenes"></div><div id="otMovHoja" style="display:none"></div>';
+    _cablearSelector(sec);
+    renderOrdenesTrabajo($('movOrdenes'), {
+      onEmitir: () => abrirEmitirOT(_alEmitir),
+      onCambio: renderMovimientos,
+    });
+    return;
+  }
+
   const loteMap = _buildLoteMap();
   const allMovEnrich = _enrich(DATOS().movimientos, loteMap);
 
@@ -146,7 +192,7 @@ export function renderMovimientos(){
   const destExt = (DATOS().config && DATOS().config.destinos_externos) || [];
 
   /* --- HTML de controles y tabla --- */
-  const html = `
+  const html = `${_selectorSub()}
 <div class="toolbar" id="movToolbar">
   <input class="txt" id="buscaMov" placeholder="🔎 Buscar por lote…" style="min-width:160px" value="${escA(_movFiltBusca)}">
   <div class="mfilt-bar" id="fltMovBar"></div>
@@ -180,6 +226,7 @@ export function renderMovimientos(){
 <div id="otMovHoja" style="display:none"></div>`;
 
   sec.innerHTML = html;
+  _cablearSelector(sec);
 
   const t = $('tMov');
 
@@ -252,7 +299,7 @@ export function renderMovimientos(){
   function cellAcciones(o, ri){
     const btnConfirmar = esEjecutado(o) ? '' : `<button class="rowbtn" data-confirmar="${ri}" title="Confirmar que el trabajo se hizo">✓</button>`;
     const btnImprimir  = String(o.ot || '').trim()
-      ? `<button class="rowbtn" data-imprimirot="${ri}" title="Imprimir la hoja de esta OT">🖨️</button>`
+      ? `<button class="rowbtn" data-imprimirot="${ri}" title="Ver e imprimir la hoja de esta OT">🖨️</button>`
       : '';
     const btnBorrar    = `<button class="rowbtn" data-del="${ri}" title="Eliminar movimiento">✕</button>`;
     return btnConfirmar + btnImprimir + btnBorrar;
@@ -358,7 +405,7 @@ export function renderMovimientos(){
         // Las OT anteriores a las plantillas no tienen entrada en
         // ordenes_trabajo: siguen saliendo con la hoja genérica.
         const ot = otDeMovimiento(DATOS().ordenes_trabajo, fila);
-        if (ot) abrirImprimirOT(ot); else _imprimirOT(fila);
+        if (ot) verOrdenTrabajo(ot.id); else _imprimirOT(fila);
         return;
       }
       const b = e.target.closest('[data-del]');
@@ -425,7 +472,7 @@ export function renderMovimientos(){
   // Emitir usa el formato RCI 08 con plantillas y barriles del Mapa. El modal
   // viejo (_abrirModalOT) queda solo para CONFIRMAR movimientos sueltos que no
   // tienen una OT de trasiego detrás.
-  $('btnEmitirOT').addEventListener('click', () => abrirEmitirOT(renderMovimientos));
+  $('btnEmitirOT').addEventListener('click', () => abrirEmitirOT(_alEmitir));
 
   /* Grilla tipo planilla, con TRES reglas que solo la vista puede aplicar:
    *
