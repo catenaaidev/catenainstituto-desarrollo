@@ -628,11 +628,20 @@
   .orden-hoja .ot-dato .ot-ok{margin-left:14px;font-weight:700;white-space:nowrap}
   .orden-hoja .ot-tabla .ot-destino{vertical-align:middle;text-align:center;font-weight:700}
   .orden-hoja .ot-chica{font-size:11px}
-  .orden-hoja.ot-rotulos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .ot-rotulo{border:2px solid #111;padding:14px;position:relative;min-height:120px;page-break-inside:avoid}
-  .ot-rot-lote{font-size:40px;font-weight:700}
-  .ot-rot-id{font-size:16px}
-  .ot-rot-n{position:absolute;top:8px;right:12px;font-size:22px;font-weight:700}
+  /* Rotulos: la hoja "rotulo" de la 0700. Nueve filas por A4 (182 x 269 mm
+     utiles con el @page de 14 mm), cada una con los DOS rotulos iguales de un
+     barril. Arriba el lote grande y el QR; abajo el ID y el numero de barril. */
+  .orden-hoja.ot-rotulos{display:flex;flex-direction:column;gap:2.5mm}
+  .ot-rot-par{display:grid;grid-template-columns:1fr 1fr;gap:4mm;page-break-inside:avoid;break-inside:avoid}
+  .ot-rotulo{border:2px solid #111;height:27mm;box-sizing:border-box;display:grid;
+    grid-template-columns:1fr 20mm;grid-template-rows:1fr 8mm;color:#111}
+  .ot-rot-lote{font-size:52px;line-height:1;display:flex;align-items:center;justify-content:center;
+    font-family:Calibri,Carlito,Arial,sans-serif}
+  .ot-rot-qr{display:flex;align-items:center;justify-content:center;padding:1mm}
+  .ot-rot-qr svg{width:16mm;height:16mm;display:block}
+  .ot-rot-id,.ot-rot-n{border-top:2px solid #111;display:flex;align-items:center;justify-content:center;
+    font-size:13px;white-space:nowrap;overflow:hidden}
+  .ot-rot-n{border-left:2px solid #111}
   .ote-lote{margin-bottom:8px}
   .ote-barriles{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0;font-size:13px}
 
@@ -1636,6 +1645,9 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
      Para actualizarlo: npm pack chart.js@<version> y copiar dist/chart.umd.js.
      Va sin type="module" a proposito — el build UMD publica window.Chart. -->
 <script src="js/vendor/chart.umd.js"></script>
+<!-- QR de los rotulos de las OT (numero de lote). Mismo archivo que Prensas
+     (qrcode-generator 1.4.4); clasico, publica window.qrcode. -->
+<script src="js/vendor/qrcode.min.js"></script>
 <script>/* Base de la API del modulo: al convivir los tres modulos en un mismo
    sitio, cada uno tiene su propio prefijo. Va como global porque app.js es un
    modulo ES y sus imports no comparten alcance. */

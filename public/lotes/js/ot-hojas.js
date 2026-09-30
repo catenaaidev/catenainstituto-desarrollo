@@ -278,16 +278,35 @@ export function hojasPlanilla(ot){
   }).join('');
 }
 
+// Lo que entra en una A4 de la hoja "rotulo" del Excel: 9 filas de a dos.
+export const PARES_POR_HOJA = 9;
+
+/* QR con el número de lote como texto, para leerlo con la cámara del teléfono
+ * sin red ni login. La librería (qrcode-generator, la misma de Prensas) es un
+ * <script> clásico del index.html; sin ella (los tests) el hueco sale vacío. */
+function qrLote(lote){
+  const qrcode = globalThis.qrcode;
+  if (typeof qrcode !== 'function' || !lote) return '';
+  const qr = qrcode(0, 'M'); qr.addData(String(lote)); qr.make();
+  return qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+}
+
 export function hojaRotulos(ot){
-  // Desde tanque no hay barriles del Mapa: un rótulo por barrica a llenar.
+  // Desde tanque no hay barriles del Mapa: un par por barrica a llenar.
+  // Cada barril lleva DOS rótulos iguales, uno al lado del otro, como el Excel.
   const tanque = origenTanque(ot.plantilla);
-  const rotulos = ot.lotes.flatMap(l => {
+  const pares = ot.lotes.flatMap(l => {
     const n = tanque ? aLlenar(l) : Math.max(l.barriles.length, 1);
-    return Array.from({ length: n }, (_, i) =>
-      `<div class="ot-rotulo"><div class="ot-rot-lote">${esc(l.lote)}</div>` +
-      `<div class="ot-rot-id">${esc(l.id_texto || '')}</div><div class="ot-rot-n">${i + 1}</div></div>`);
-  }).join('');
-  return `<div class="orden-hoja ot-rotulos">${rotulos}</div>`;
+    const qr = qrLote(l.lote);
+    return Array.from({ length: n }, (_, i) => {
+      const r = `<div class="ot-rotulo"><div class="ot-rot-lote">${esc(l.lote)}</div>` +
+        `<div class="ot-rot-qr">${qr}</div>` +
+        `<div class="ot-rot-id">${esc(l.id_texto || '')}</div><div class="ot-rot-n">${i + 1}</div></div>`;
+      return `<div class="ot-rot-par">${r}${r}</div>`;
+    });
+  });
+  return trozos(pares, PARES_POR_HOJA)
+    .map(pag => `<div class="orden-hoja ot-rotulos">${pag.join('')}</div>`).join('');
 }
 
 export function hojasOT(ot, opciones){

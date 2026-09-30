@@ -1,7 +1,7 @@
 /* Las hojas son strings de HTML, así que se prueban sin DOM. orden-hoja.js
  * importa nucleo.js, que engancha un beforeunload al cargar: por eso el stub de
  * window ANTES del import dinámico. */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 let H, armarOT, P;
 beforeAll(async () => {
@@ -101,14 +101,48 @@ describe('hojasPlanilla', () => {
   });
 });
 
-describe('hojaRotulos', () => {
-  it('un rotulo por barril, numerado', () => {
-    const h = H.hojaRotulos(ot([{ lote: '26217', id_texto: 'CS VSC', barriles: [barril('a'), barril('b'), barril('c')] }]));
-    expect(cuenta(h, 'class="ot-rotulo"')).toBe(3);
-    expect(h).toContain('>3<');
+describe('hojaRotulos (modelo hoja "rotulo" de la 0700)', () => {
+  const tres = () => ot([{ lote: '26217', id_texto: 'CS VSC', barriles: [barril('a'), barril('b'), barril('c')] }]);
+  const barriles = n => Array.from({ length: n }, (_, i) => barril(String(i)));
+
+  it('dos rotulos iguales por barril, numerados', () => {
+    const h = H.hojaRotulos(tres());
+    expect(cuenta(h, 'class="ot-rotulo"')).toBe(6);
+    expect(cuenta(h, 'class="ot-rot-par"')).toBe(3);
+    expect(cuenta(h, '<div class="ot-rot-n">3</div>')).toBe(2);
+    expect(cuenta(h, '<div class="ot-rot-id">CS VSC</div>')).toBe(6);
   });
-  it('un lote sin barriles lleva un rotulo', () => {
-    expect(cuenta(H.hojaRotulos(ot([{ lote: '1', barriles: [] }])), 'class="ot-rotulo"')).toBe(1);
+  it('un lote sin barriles lleva un par', () => {
+    expect(cuenta(H.hojaRotulos(ot([{ lote: '1', barriles: [] }])), 'class="ot-rotulo"')).toBe(2);
+  });
+  it('9 pares por hoja, como el Excel', () => {
+    const cuantas = n => cuenta(H.hojaRotulos(ot([{ lote: '1', barriles: barriles(n) }])), 'class="orden-hoja ot-rotulos"');
+    expect(cuantas(9)).toBe(1);
+    expect(cuantas(10)).toBe(2);
+  });
+  it('desde tanque: un par por barrica prevista', () => {
+    const h = H.hojaRotulos(ot([{ lote: '26295', barricas_previstas: 4 }], 'tq-barricas'));
+    expect(cuenta(h, 'class="ot-rotulo"')).toBe(8);
+  });
+
+  describe('QR con el numero de lote', () => {
+    let datos;
+    beforeAll(() => {
+      datos = [];
+      globalThis.qrcode = () => ({ addData(d){ datos.push(d); }, make(){},
+        createSvgTag(){ return '<svg data-qr></svg>'; } });
+    });
+    afterAll(() => { delete globalThis.qrcode; });
+
+    it('cada rotulo lleva el QR del lote, generado una vez por lote', () => {
+      const h = H.hojaRotulos(tres());
+      expect(cuenta(h, '<div class="ot-rot-qr"><svg data-qr></svg></div>')).toBe(6);
+      expect(datos).toEqual(['26217']);
+    });
+  });
+  it('sin la libreria de QR la hoja sale igual, con el hueco vacio', () => {
+    const h = H.hojaRotulos(tres());
+    expect(cuenta(h, '<div class="ot-rot-qr"></div>')).toBe(6);
   });
 });
 
@@ -222,8 +256,8 @@ describe('TQ a barricas (modelo 0912)', () => {
     expect(cuenta(lle, '<td>26295</td>')).toBe(7);
   });
 
-  it('un rotulo por barrica a llenar', () => {
-    expect(cuenta(H.hojaRotulos(tq()), 'class="ot-rotulo"')).toBe(7);
+  it('un par de rotulos por barrica a llenar', () => {
+    expect(cuenta(H.hojaRotulos(tq()), 'class="ot-rotulo"')).toBe(14);
   });
 
   it('mas de 19 barricas pasa a otra hoja de planilla', () => {
