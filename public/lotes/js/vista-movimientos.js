@@ -199,7 +199,6 @@ export function renderMovimientos(){
   <button class="btn" id="btnLimpiarFltMov">🧹 Limpiar filtros</button>
   <span class="tag" id="movCount"></span>
   <div class="spacer"></div>
-  <button class="btn primary" id="btnEmitirOT">➕ Emitir OT</button>
   <button class="btn" id="btnAddMov">Registrar movimiento hecho</button>
 </div>
 <div class="scroll tall">
@@ -484,10 +483,9 @@ export function renderMovimientos(){
     renderMovimientos();
   });
 
-  // Emitir usa el formato RCI 08 con plantillas y barriles del Mapa. El modal
+  // Emitir OT vive solo en la sub-pestaña Órdenes de trabajo. El modal
   // viejo (_abrirModalOT) queda solo para CONFIRMAR movimientos sueltos que no
   // tienen una OT de trasiego detrás.
-  $('btnEmitirOT').addEventListener('click', () => abrirEmitirOT(_alEmitir));
 
   /* Grilla tipo planilla, con TRES reglas que solo la vista puede aplicar:
    *
