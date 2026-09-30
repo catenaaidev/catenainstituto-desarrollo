@@ -76,10 +76,10 @@ let _ocUnidad = 'sol';   // 'mbk' | 'sol'
  *  numero, los decimales y la etiqueta, para que papel, pantalla y chip no
  *  puedan discrepar. */
 const OC_UNIDAD = {
-  mbk: { col: 'MBK (g)',  dec: 2, de: d => d.mbk_g,       total: f => f.mbk_total_g,
+  mbk: { col: 'MBK (g)',  prod: 'MBK',     dec: 2, de: d => d.mbk_g,       total: f => f.mbk_total_g,
          suf: 'g',  nota: 'Agregar el MBK indicado en cada barrica.',
          chip: g => (g / 1000).toFixed(3) + ' kg de MBK' },
-  sol: { col: 'mL sol.',  dec: 1, de: d => d.ml_solucion, total: f => f.ml_total,
+  sol: { col: 'mL sol.',  prod: 'Sol1030', dec: 1, de: d => d.ml_solucion, total: f => f.ml_total,
          suf: 'mL', nota: 'Agregar los mL de solución indicados en cada barrica.',
          chip: ml => (ml / 1000).toFixed(2) + ' L de solución d1030' },
 };

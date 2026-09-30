@@ -28,31 +28,34 @@ export const INSTRUCCIONES_SOLUCION =
   'Homogeneizar.<br>' +
   'Densidad: ____________</div>';
 
-export const COLUMNAS_PAPEL = 4;
+export const COLUMNAS_PAPEL = 5;
 
 export const COLGROUP_PAPEL =
-  '<colgroup><col style="width:34px"><col style="width:110px"><col style="width:120px"><col style="width:60px"></colgroup>';
+  '<colgroup><col style="width:34px"><col style="width:110px"><col style="width:90px"><col style="width:120px"><col style="width:60px"></colgroup>';
 
-/** Encabezado de la tabla. u = config de la unidad (col = titulo de la dosis). */
+/** Encabezado de la tabla. u = config de la unidad (col = titulo de la dosis).
+ *  PRODUCTO va antes de la dosis, como en la B219 ("P - MBK - Sol1030"). */
 export function theadPapel(u){
-  return '<tr><th class="c oh-num">#</th><th class="c">BARRIL</th>' +
+  return '<tr><th class="c oh-num">#</th><th class="c">BARRIL</th><th class="c">PRODUCTO</th>' +
          '<th class="c">' + esc(u.col) + '</th><th class="oh-check">Check</th></tr>';
 }
 
-/** Una fila del papel: separador de lote (lote · año · total) o barril.
- *  u = config de la unidad vigente ({dec, suf, de(dosis), total(fila)}). */
+/** Una fila del papel: separador de lote (lote · año) o barril.
+ *  u = config de la unidad vigente ({prod, dec, de(dosis)}). El total del lote
+ *  no va: el operario agrega barril por barril, y un total al lado de las
+ *  dosis se confunde con una dosis mas. */
 export function filaPapel({ numero, fila }, u){
   if (fila.tipo === 'lote'){
     const lote = fila.lote.lote;
     const anio = anioDeLote(lote);
     return '<tr class="oc-sep">' +
       '<td class="c oh-num"></td>' +
-      '<td colspan="3"><b>' + esc(lote) + '</b>' + (anio ? ' · ' + anio : '') +
-      ' · total <b>' + fmt(u.total(fila), u.dec) + '</b> ' + esc(u.suf) + '</td></tr>';
+      '<td colspan="4"><b>' + esc(lote) + '</b>' + (anio ? ' · ' + anio : '') + '</td></tr>';
   }
   return '<tr>' +
     '<td class="c oh-num">' + numero + '</td>' +
     '<td class="c">' + esc(fila.barrica.num || '—') + '</td>' +
+    '<td class="c">' + esc(u.prod) + '</td>' +
     '<td class="c"><b>' + fmt(u.de(fila.dosis), u.dec) + '</b></td>' +
     '<td class="oh-check"></td>' +
   '</tr>';
