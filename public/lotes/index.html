@@ -1192,6 +1192,56 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 #otPaginas .orden-hoja{width:210mm;max-width:none;min-height:297mm;padding:14mm;box-sizing:border-box;margin:0 auto;
   border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,.10),0 10px 28px rgba(40,30,20,.10)}
 #otPaginas .orden-hoja + .orden-hoja{margin-top:22px}
+
+/* ---- Movimientos: Historial | Ordenes de trabajo ----
+ * Mismo selector segmentado que Analisis / Microbiologia de la Orden de muestras. */
+#tab-movimientos .mov-sub{display:inline-flex;height:32px;margin:0 0 10px;border:1px solid var(--line);
+  border-radius:var(--r-pill);background:var(--panel2);padding:2px;gap:2px}
+#tab-movimientos .mov-sub button{border:none;background:transparent;color:var(--muted);font:inherit;
+  font-size:13px;font-weight:600;padding:0 14px;border-radius:var(--r-pill);cursor:pointer}
+#tab-movimientos .mov-sub button:hover{color:var(--accent)}
+#tab-movimientos .mov-sub button.on{background:var(--panel);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+#tab-movimientos .mov-sub button:focus-visible{outline:none;box-shadow:var(--ring)}
+
+/* lista de OT a la izquierda, hoja A4 a la derecha (debajo en pantallas angostas) */
+.otl{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:1100px){.otl{grid-template-columns:minmax(0,1fr)}}
+.otl-barra{flex-wrap:wrap;gap:8px}
+.otl-barra .txt{flex:1 1 140px;min-width:0}
+.otl-chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.otl-lista{display:flex;flex-direction:column;gap:6px;max-height:calc(100vh - 230px);overflow:auto;padding:2px}
+.otl-fila{display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid var(--line);border-radius:8px;
+  background:var(--panel);color:var(--txt);padding:8px 10px;font:inherit;font-size:13px;cursor:pointer}
+.otl-fila:hover{border-color:var(--accent)}
+.otl-fila.on{border-color:var(--accent);box-shadow:var(--ring)}
+.otl-fila .otl-l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.otl-fila .otl-sub{color:var(--muted);font-size:12px}
+.otl-vacio{color:var(--muted);padding:18px 4px}
+.otl-der{min-width:0;overflow-x:auto;padding:0 2px 24px}
+.otl-cab{width:210mm;max-width:100%;margin:0 auto 8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  font-size:12.5px;color:var(--muted)}
+.otl-cab b{color:var(--txt)}
+.otl-cab .otl-botones{margin-left:auto;display:flex;gap:6px}
+#otlHoja .orden-hoja{width:210mm;max-width:none;min-height:297mm;padding:14mm;box-sizing:border-box;margin:0 auto;
+  border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,.10),0 10px 28px rgba(40,30,20,.10)}
+
+/* pasos editables sobre la hoja: ＋/✕ en el margen izquierdo, al pasar el mouse */
+.orden-hoja .ot-editable,.orden-hoja .ot-fijo{position:relative}
+.orden-hoja textarea.ot-texto{flex:1 1 auto;min-width:0;font:inherit;color:inherit;background:transparent;
+  border:1px dashed transparent;border-radius:3px;padding:0 3px;margin:-1px 0;resize:none;overflow:hidden;
+  field-sizing:content;min-height:1.4em;line-height:1.35}
+.orden-hoja .ot-dato.ot-editable{display:flex;align-items:baseline;gap:6px}
+.orden-hoja .ot-dato.ot-editable textarea.ot-texto{flex:0 1 auto}
+.orden-hoja .ot-editable:hover textarea.ot-texto{border-color:#ddd4c6;background:#fcfaf6}
+.orden-hoja textarea.ot-texto:focus{outline:none;border-style:solid;border-color:#e08a2b;background:#fff}
+.orden-hoja textarea.ot-texto::placeholder{color:#b3aa9e;font-style:italic}
+.orden-hoja .ot-ctrl{position:absolute;left:-48px;top:1px;display:flex;gap:2px;opacity:0}
+.orden-hoja .ot-fijo > .ot-ctrl{top:auto;bottom:0}
+.orden-hoja .ot-editable:hover > .ot-ctrl,.orden-hoja .ot-fijo:hover > .ot-ctrl,.orden-hoja .ot-ctrl:focus-within{opacity:1}
+.orden-hoja .ot-ctrl button{width:20px;height:20px;padding:0;border:none;border-radius:50%;background:transparent;
+  color:#a39a8e;font-size:11px;line-height:20px;cursor:pointer}
+.orden-hoja .ot-ctrl .ot-insertar:hover{background:#e6efe0;color:#2f6b2f}
+.orden-hoja .ot-ctrl .ot-quitar:hover{background:#f3dcd9;color:#b3261e}
 #ordenControls.oc-micro .oc-grid{grid-template-columns:minmax(0,1fr)!important}
 
 /* ---- 50 filas por hoja (.oh-compacta) ----
