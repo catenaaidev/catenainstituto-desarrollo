@@ -22,7 +22,9 @@ import { $, esc, escA, registrarVista, DATOS, markDirty, guardar,
          mostrarOverlay, cerrarOverlay, usuarioActual } from './nucleo.js';
 import { armarCorreccion, aplicarCorreccion,
          anularCorreccion, revertirAnulacion } from './so2-bitacora.js';
-import { pintarHojas, hojaTop, HOJA_POR_PAGINA } from './orden-hoja.js';
+import { pintarHojas, HOJA_POR_PAGINA } from './orden-hoja.js';
+import { filaPapel, theadPapel, COLGROUP_PAPEL, COLUMNAS_PAPEL,
+         INSTRUCCIONES_SOLUCION } from './orden-correccion-papel.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti } from './tabla.js';
 
@@ -412,72 +414,12 @@ export function _ocAviso(l){
   return '';
 }
 
-/* L4: el papel tiene 7 columnas. POSICION y MBK (g) salieron de la hoja por
- * pedido de bodega: el operario dosifica con la solucion, y la posicion la
- * consulta en pantalla. Los dos siguen calculandose, siguen en la tabla de
- * pantalla y siguen guardandose en la bitacora; lo que cambia es que no se
- * imprimen. */
-function _ocRenderFila({ numero, fila }){
-  const u = _ocUni();
-  if (fila.tipo === 'lote'){
-    const l = fila.lote;
-    const aviso = _ocAviso(l);
-    const cartel = _ocCartelCorregido(l);
-    /* El cartel va primero: dice algo sobre la validez del SO2 que el operario
-     * va a usar para dosificar, y eso pesa mas que el estado del inventario.
-     * Se concatena dentro del <td> existente: la estructura de 7 columnas con
-     * colspan="6" NO se toca (Task 4). */
-    const extra = [cartel, aviso].filter(Boolean)
-      .map(a => ' · <span class="oc-aviso">' + esc(a) + '</span>').join('');
-    return '<tr class="oc-sep">' +
-      '<td class="c oh-num"></td>' +
-      '<td colspan="6"><b>' + esc(l.lote) + '</b> · ' + esc(l.variedad) + ' · ' +
-      'pH ' + fmt(l.ph, 2) + ' · SO₂ ' + fmt(l.so2_libre, 1) + ' → <b>' + fmt(fila.objetivo, 1) + '</b> mg/L · ' +
-      'molecular ' + fmt(l.molecular_actual, 3) + ' · total <b>' + fmt(u.total(fila), u.dec) + '</b> ' + u.suf +
-      extra +
-      '</td></tr>';
-  }
-  const b = fila.barrica;
-  return '<tr>' +
-    '<td class="c oh-num">' + numero + '</td>' +
-    '<td class="c">' + esc(b.num || '—') + '</td>' +
-    '<td class="c">' + esc(b.cap == null ? (b.vasija || '—') : String(b.cap)) + '</td>' +
-    '<td class="c">' + esc(b.estado) + '</td>' +
-    '<td class="c">' + fmt(b.litros_usados, 0) + (b.litros_de_capacidad ? '*' : '') + '</td>' +
-    '<td class="c"><b>' + fmt(u.de(fila.dosis), u.dec) + '</b></td>' +
-    '<td class="oh-check"></td>' +
-  '</tr>';
-}
-
-/* El sello del mapa. NO es trazabilidad decorativa: la asignacion
- * barrica -> lote cambia 9,9% por semana, unas 8 barricas por dia sobre una
- * orden de 489. Sin esto no hay manera de saber cuan vieja es la hoja que el
- * operario tiene en la mano. */
-function _ocSello(){
-  const p = (_ocOrden && _ocOrden.procedencia) || {};
-  return '<div class="oc-sello">Mapa de barriles v' + esc(String(p.version || '?')) + ' · ' +
-         'actualizado ' + esc(p.actualizado || '?') + ' · ' + esc(p.archivo || '?') + '</div>';
-}
-
-/* Hoja final con los lotes que no se pueden dosificar. Sin analisis no hay
- * dosis y no se inventa: esta lista es justo el insumo de la Orden de muestras.
- * Sin parametros: no los usa. */
-function _ocHojaNoCalculables(){
-  const n = (_ocOrden && _ocOrden.no_calculables) || [];
-  if (!n.length) return null;
-  const filas = n.map(x =>
-    '<tr><td class="c">' + esc(x.lote) + '</td><td>' + esc(x.variedad) + '</td>' +
-    '<td class="c">' + (x.so2_libre == null ? '—' : fmt(x.so2_libre, 1)) + '</td>' +
-    '<td class="c">' + (x.ph == null ? '—' : fmt(x.ph, 2)) + '</td>' +
-    '<td>' + esc(x.motivo) + '</td></tr>').join('');
-  return '<div class="orden-hoja">' + hojaTop() +
-    '<div class="oh-titulo">Necesitan análisis antes de corregir</div>' +
-    '<div class="oh-nota">Sin SO₂ o sin pH válidos no se puede calcular la dosis. ' +
-    'Estos ' + n.length + ' lotes necesitan análisis primero.</div>' +
-    '<table><thead><tr><th class="c">LOTE</th><th>VARIEDAD</th>' +
-    '<th class="c">SO₂</th><th class="c">pH</th><th>MOTIVO</th></tr></thead>' +
-    '<tbody>' + filas + '</tbody></table>' + _ocSello() + '</div>';
-}
+/* El papel sigue el formato de la B219 (orden en Excel de bodega): lote, año,
+ * numero de barril y dosis. Todo lo demas (pH, SO2, objetivo, molecular,
+ * capacidad, estado, litros, avisos y posicion) se sigue calculando y se ve en
+ * la tabla de pantalla, pero no se imprime: al operario no le sirve para
+ * dosificar. El armado de la fila vive en orden-correccion-papel.js (puro). */
+function _ocRenderFila(x){ return filaPapel(x, _ocUni()); }
 
 function _ocPintarPaginas(){
   const cont = $('ocPaginas');
@@ -489,7 +431,6 @@ function _ocPintarPaginas(){
   const meta = { fechaTxt, anio: p.length === 3 ? p[0] : '',
                  nro: $('ocNumOrden') ? $('ocNumOrden').value : '' };
   const banda = ['CORRECCIÓN SO₂', '', 'Bodega'];
-  const extra = _ocHojaNoCalculables();
 
   cont.innerHTML = pintarHojas({
     filas: _ocBuildRowsLocal(),
@@ -498,17 +439,15 @@ function _ocPintarPaginas(){
     meta, banda,
     emitio: $('ocEmitio') ? $('ocEmitio').value : '',
     recibio: $('ocRecibio') ? $('ocRecibio').value : '',
-    nota: _ocUni().nota + ' Los litros marcados con * son estimados por capacidad. ' + _ocSello(),
-    /* BARRICA queda como la columna elastica: POSICION era la unica que lo era
-     * y sin reemplazo la tabla queda angosta y pegada a la izquierda. */
-    colgroup: '<colgroup><col style="width:32px"><col><col style="width:50px"><col style="width:62px"><col style="width:56px"><col style="width:70px"><col style="width:46px"></colgroup>',
-    thead: '<tr><th class="c oh-num">#</th><th class="c">BARRICA</th><th class="c">CAP.</th>' +
-           '<th class="c">ESTADO</th><th class="c">LITROS</th>' +
-           '<th class="c">' + esc(_ocUni().col) + '</th><th class="oh-check">Check</th></tr>',
-    columnas: 7,
+    /* Las instrucciones de densidad son de la solucion: con MBK no van. */
+    antesBanda: _ocUnidad === 'sol' ? INSTRUCCIONES_SOLUCION : '',
+    nota: _ocUni().nota,
+    claseTabla: 'oh-tabla-justa',
+    colgroup: COLGROUP_PAPEL,
+    thead: theadPapel(_ocUni()),
+    columnas: COLUMNAS_PAPEL,
     textoVacio: 'No hay lotes a corregir para los criterios elegidos.',
     renderFila: _ocRenderFila,
-    hojasExtra: extra ? [extra] : [],
   });
 }
 
