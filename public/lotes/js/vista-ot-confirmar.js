@@ -14,14 +14,16 @@ export function abrirConfirmarOT(ot, onListo){
   const filas = ot.lotes.map((l, i) => `
 <tr><td><b>${esc(l.lote)}</b><br><span style="color:var(--muted)">${esc(l.id_texto)}</span></td>
   <td>${esc(l.litros_previstos ?? '')}</td>
-  <td><input class="txt" id="otcDest${i}" value="${escA(l.destino_real || ot.destino)}" placeholder="Tanque real"></td>
-  <td><input class="txt" type="number" step="any" id="otcLit${i}" value="${escA(l.litros_reales ?? '')}"></td>
-  <td><input class="txt" type="number" step="any" id="otcMer${i}" value="${escA(l.merma ?? '')}"></td></tr>`).join('');
+  <td><input class="txt otc-dest" id="otcDest${i}" value="${escA(l.destino_real || ot.destino)}" placeholder="Tanque real"></td>
+  <td><input class="txt otc-num" type="number" step="any" id="otcLit${i}" value="${escA(l.litros_reales ?? '')}"></td>
+  <td><input class="txt otc-num" type="number" step="any" id="otcMer${i}" value="${escA(l.merma ?? '')}"></td></tr>`).join('');
 
+  // .otc-tabla ensancha la caja del cartel (la comun es de 460 px y la tabla
+  // no entra); el scroll es para un corte de muchos lotes o una pantalla chica.
   mostrarOverlay(`
 <h3 style="margin:0 0 14px">✓ Confirmar ${esc(ot.ot)}</h3>
-<table><thead><tr><th>Lote</th><th>Previstos</th><th>Destino real</th><th>Litros reales</th><th>Merma</th></tr></thead>
-<tbody>${filas}</tbody></table>
+<div class="otc-scroll"><table class="otc-tabla"><thead><tr><th>Lote</th><th>Previstos</th><th>Destino real</th><th>Litros reales</th><th>Merma</th></tr></thead>
+<tbody>${filas}</tbody></table></div>
 <div style="display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;margin-top:12px">
   <label>Operario</label><input class="txt" id="otcOperario" placeholder="Quién lo hizo…">
   <label>Pasos</label><label><input type="checkbox" id="otcPasos"> Todos los pasos de la hoja están cumplidos</label>
