@@ -3,7 +3,7 @@
  * sin pantalla. */
 import { describe, it, expect } from 'vitest';
 import { litrosPrevistos, resumenVasijas, armarOT, movimientosDeOT,
-         confirmarOT, sinEscanear, otDeMovimiento } from '../public/lotes/js/ot-armado.js';
+         confirmarOT, sinEscanear, otDeMovimiento, eliminarOT } from '../public/lotes/js/ot-armado.js';
 import { proximoNumeroOT } from '../public/lotes/js/ot-movimientos.js';
 
 const barril = (num, cap = 225, estado = 'LLENO') =>
@@ -155,6 +155,29 @@ describe('otDeMovimiento', () => {
     expect(otDeMovimiento([ot], { id: 'ot-x-0' })).toBe(ot);
     expect(otDeMovimiento([ot], { id: 'mov-viejo' })).toBeNull();
     expect(otDeMovimiento(undefined, { id: 'ot-x-0' })).toBeNull();
+  });
+});
+
+describe('eliminarOT', () => {
+  it('saca la OT y todos sus movimientos, y deja los demas', () => {
+    const ot = otDe([{ lote: '26217', barriles: CINCO }, { lote: '26218', barriles: [barril('9')] }]);
+    const otra = otDe([{ lote: '26300', barriles: [barril('8')] }], { id: 'ot-y' });
+    const suelto = { id: 'mov-suelto', lote: '1' };
+    const datos = {
+      ordenes_trabajo: [ot, otra],
+      movimientos: [...movimientosDeOT(ot, 'ana', '2026-09-23'), suelto, ...movimientosDeOT(otra, 'ana', '2026-09-23')],
+    };
+    const movs = datos.movimientos;
+    expect(eliminarOT(datos, ot)).toBe(2);
+    expect(datos.ordenes_trabajo).toEqual([otra]);
+    expect(datos.movimientos.map(m => m.id)).toEqual(['mov-suelto', 'ot-y-0']);
+    // en el lugar: las vistas tienen referencias a estos arrays
+    expect(datos.movimientos).toBe(movs);
+  });
+  it('una OT que ya no esta no rompe', () => {
+    const ot = otDe([{ lote: '1', barriles: [barril('1')] }]);
+    const datos = { ordenes_trabajo: [], movimientos: [] };
+    expect(eliminarOT(datos, ot)).toBe(0);
   });
 });
 

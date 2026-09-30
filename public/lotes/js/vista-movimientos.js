@@ -10,7 +10,7 @@ import { esEjecutado, PENDIENTE, EJECUTADO, proximoNumeroOT } from './ot-movimie
 import { fmtFecha } from './fechas.js';
 import { abrirEmitirOT } from './vista-ot-emitir.js';
 import { abrirConfirmarOT } from './vista-ot-confirmar.js';
-import { otDeMovimiento } from './ot-armado.js';
+import { otDeMovimiento, eliminarOT } from './ot-armado.js';
 import { renderOrdenesTrabajo, elegirOT } from './vista-ot-lista.js';
 
 /* --- tipos validos --- */
@@ -411,6 +411,21 @@ export function renderMovimientos(){
       const b = e.target.closest('[data-del]');
       if (b){
         const o = t._rows[+b.dataset.del]; if (!o) return;
+        // Una fila de una OT se lleva la OT entera con todas sus filas: si no,
+        // la OT queda en «Órdenes de trabajo» sin movimientos detrás.
+        const ot = otDeMovimiento(DATOS().ordenes_trabajo, o);
+        if (ot){
+          const n = (ot.lotes || []).length;
+          const corte = ot.lote_corte && ot.lote_corte.lote
+            ? '\n\nEl lote ' + ot.lote_corte.lote + ' que creó el corte NO se borra.' : '';
+          if (confirm('Esta fila es de la ' + ot.ot + ' (' + n + (n === 1 ? ' lote' : ' lotes') + ').\n'
+              + '¿Eliminar la OT completa con ' + (n === 1 ? 'su movimiento' : 'sus ' + n + ' movimientos') + '?' + corte)){
+            eliminarOT(DATOS(), ot);
+            markDirty();
+            renderMovimientos();
+          }
+          return;
+        }
         if (confirm('¿Eliminar el movimiento del lote ' + esc(o.lote || '(sin lote)') + ' (' + esc(o.tipo || '') + ' ' + esc(fmtFecha(o.fecha)) + ')?')){
           const idx = DATOS().movimientos.indexOf(o);
           if (idx !== -1) DATOS().movimientos.splice(idx, 1);

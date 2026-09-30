@@ -7,9 +7,14 @@ import { esEjecutado } from './ot-movimientos.js';
 
 const lotesDe = ot => (ot.lotes || []).map(l => String(l.lote ?? ''));
 
-export function filtrarOrdenes(ordenes, { soloPendientes = true, busca = '' } = {}){
+/* `movimientos`: si viene, se ocultan las OT a las que no les queda ningun
+ * movimiento (las que quedaron huerfanas cuando el Historial borraba solo la
+ * fila, antes de que borrar una fila de una OT borrara la OT entera). */
+export function filtrarOrdenes(ordenes, { soloPendientes = true, busca = '', movimientos = null } = {}){
   const q = String(busca || '').trim().toLowerCase();
+  const vivos = movimientos ? new Set(movimientos.map(m => m && m.id)) : null;
   return (ordenes || [])
+    .filter(ot => !vivos || (ot.lotes || []).some(l => vivos.has(l.mov_id)))
     .filter(ot => !soloPendientes || !esEjecutado(ot))
     .filter(ot => !q ||
       String(ot.ot || '').toLowerCase().includes(q) ||
