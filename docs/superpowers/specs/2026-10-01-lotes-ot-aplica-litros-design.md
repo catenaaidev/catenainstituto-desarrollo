@@ -292,7 +292,7 @@ Al apretar **"Aplicar y guardar"**:
 |---|---|
 | cm fuera del rango de la tabla | Aviso en la fila; ese lote no se puede marcar hasta corregirlo |
 | cm negativo o vacío con destino tanque con tabla | Igual que el anterior |
-| Vasija destino que no está en el padrón | Se cargan litros a mano, con un link "agregar al padrón" |
+| Vasija destino que no está en el padrón | Se cargan litros a mano, con un aviso de que la vasija no está en el padrón (se agrega desde Configuración) |
 | Barril de merma que no existe en el Mapa | Se rechaza la fila, con el mismo criterio que el escáner |
 | La OT vacía más de lo que el lote tiene | Queda en 0, aviso visible; necesita su check |
 | El Mapa no responde | La propuesta se arma igual; la columna Mapa dice "no se pudo comparar" |
