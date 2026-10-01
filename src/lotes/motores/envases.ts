@@ -3,6 +3,8 @@
  *
  * Invariante del subsistema:
  *   litros_actuales = 50·cap50 + 200·cap200 + 225·cap225 + 500·cap500 + vasija_grande
+ *   … menos lo que les falta a las barricas mermas pendientes del lote
+ *   (DATOS().mermas, ver mermas.js). Con 0 mermas es exactamente esta suma.
  *
  * OJO CON LA ASIMETRÍA: los cuatro capNNN son CANTIDADES de envases, mientras
  * que vasija_grande son LITROS directos. Por eso vasija_grande no está en
