@@ -305,13 +305,15 @@
    * No entra en la caja comun de 460 px: se ensancha solo este cartel, los
    * campos van a su medida y la descripcion del lote baja de renglon. */
   .overlay .box:has(.otc-tabla){max-width:760px}
+  /* paso 2 trae ademas las columnas de envases (.otc-envs): no entra en 760px */
+  .overlay .box:has(.otc-envs){max-width:1100px}
   #overlayBox .otc-scroll{max-height:50vh;overflow:auto;text-align:left}
   #overlayBox .otc-tabla td{vertical-align:middle}
   #overlayBox .otc-tabla td:first-child{white-space:normal;min-width:150px}
-  #overlayBox .otc-tabla input.otc-dest{width:140px}
   #overlayBox .otc-tabla input.otc-num{width:85px}
   .otc-dest{min-width:340px}
-  .otc-dest .otc-vas{width:90px}.otc-dest .otc-num,.otc-env .otc-num{width:72px}
+  .otc-dest .otc-vas{width:90px}
+  #overlayBox .otc-tabla .otc-dest .otc-num, #overlayBox .otc-tabla .otc-env .otc-num{width:72px}
   .otc-calc{font-size:12px;color:var(--muted);margin-left:6px}
   .otc-merma{display:flex;gap:6px;margin:4px 0}
   .otc-corte{margin:0 0 12px;padding:10px;border:1px solid var(--line);border-radius:8px}

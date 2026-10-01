@@ -33,7 +33,7 @@ async function leerMapa(lotes, nums){
 export function abrirConfirmarOT(ot, onListo){
   const st = { ot, onListo, tipo: tipoDestino(ot.plantilla), corte: !!(ot.lote_corte && ot.lote_corte.lote),
                entradas: null, mapa: null, propuesta: null, paso: 1,
-               operario: '', pasos: false, comentario: '' };
+               operario: '', pasos: false, comentario: '', aplicada: false, faltan: [] };
   st.entradas = {
     por_lote: ot.lotes.map(l => st.tipo === 'tanque'
       ? { vasija: l.destino_real || ot.destino || '', cm: '', litros_manual: l.litros_reales ?? '' }
@@ -168,11 +168,23 @@ async function _irAPaso2(st){
   _guardarCabecera(st);
   const err = m => { $('otcErr').textContent = m; $('otcErr').style.display = ''; };
   if (!st.operario) return err('Falta el operario: la confirmación registra quién hizo el trabajo.');
+  // M1: sin tanque destino (y sin ot.destino de respaldo) el lote/movimiento
+  // queda sin vasija actual. Se valida antes de tocar la red.
+  if (st.tipo === 'tanque'){
+    if (st.corte){
+      if (!String(st.entradas.corte.vasija || '').trim()) return err('Falta el tanque destino del corte.');
+    } else {
+      const i = st.entradas.por_lote.findIndex(e => !String(e.vasija || '').trim());
+      if (i !== -1) return err('Falta el tanque destino del lote ' + st.ot.lotes[i].lote + '.');
+    }
+  }
   $('otcSig').disabled = true;
 
   const lotes = st.ot.lotes.map(l => l.lote).concat(st.corte ? [st.ot.lote_corte.lote] : []);
   const nums = st.entradas.por_lote.flatMap(e => (e.mermas || []).map(m => String(m.barril || '').trim())).filter(Boolean);
   st.mapa = await leerMapa(lotes, nums);
+  // M4: cancelaron o cerraron el overlay mientras se leia el Mapa.
+  if (!$('otcRaiz')) return;
 
   // Una barrica merma tiene que existir en el Mapa (mismo criterio que el escáner).
   if (nums.length){
@@ -185,8 +197,14 @@ async function _irAPaso2(st){
     }
   }
 
-  st.propuesta = proponer({ ot: st.ot, lotes: DATOS().lotes, mermas: DATOS().mermas, padron: DATOS().vasijas,
-    entradas: st.entradas, hoy: hoyISO() });
+  try {
+    st.propuesta = proponer({ ot: st.ot, lotes: DATOS().lotes, mermas: DATOS().mermas, padron: DATOS().vasijas,
+      entradas: st.entradas, hoy: hoyISO() });
+  } catch (e) {
+    console.error(e);
+    $('otcSig').disabled = false;
+    return err('No se pudo armar la propuesta: ' + e.message);
+  }
   _paso2(st);
 }
 
@@ -203,6 +221,10 @@ function _paso2(st){
   const corteBloqueado = st.corte && st.propuesta.items.some(it => it.bloqueado);
   const avisoCorte = corteBloqueado
     ? '<div class="msg err">Hay un lote bloqueado: el corte no se puede aplicar hasta corregirlo.</div>' : '';
+  // I1: un corte se aplica entero o nada. Si CUALQUIER lote del corte es
+  // "revisar" (sin foto de barriles), arrancar con unos marcados y otros no
+  // terminaria aplicando solo una parte: todos arrancan sin marcar.
+  const corteRevisar = st.corte && st.propuesta.items.some(it => it.revisar);
 
   const filas = st.propuesta.items.map((it, k) => {
     const ol = it.indice == null ? null : st.ot.lotes[it.indice];
@@ -214,9 +236,10 @@ function _paso2(st){
     // Bloqueado: disabled + sin check. Revisar (lote sin foto de barriles, no
     // bloqueado): habilitado pero SIN check por defecto, para que alguien lo
     // mire antes de aplicarlo. El resto: con check. Un corte con algun origen
-    // bloqueado frena (disabled) todos los checks de la OT.
+    // bloqueado frena (disabled) todos los checks de la OT, y un corte con
+    // algun origen revisar arranca con TODOS sin marcar (I1).
     const disabled = it.bloqueado || corteBloqueado;
-    const checked = !disabled && !it.revisar;
+    const checked = !disabled && !it.revisar && !corteRevisar;
     const claseFila = it.bloqueado ? ' class="otc-bloq"' : (it.revisar ? ' class="otc-revisar"' : '');
     return `<tr${claseFila}>
       <td><b>${esc(it.lote)}</b>${it.indice == null ? '<br><span style="color:var(--muted)">lote del corte</span>' : ''}</td>
@@ -237,6 +260,7 @@ los demás quedan como estaban (la OT se confirma igual).</p>
 ${avisoCorte}
 <div class="otc-scroll"><table class="otc-tabla"><thead><tr><th>Lote</th><th>Antes</th><th>Después</th><th>Litros</th><th>Merma</th><th>Mapa</th><th>Aplicar</th></tr></thead>
 <tbody>${filas}</tbody></table></div>
+<div class="msg err" id="otcErr2" style="display:none;margin-top:10px"></div>
 <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
   <button class="btn" id="otcVolver">← Volver</button>
   <button class="btn primary" id="otcAplicar">Aplicar y guardar</button>
@@ -264,33 +288,79 @@ ${avisoCorte}
   $('otcAplicar').addEventListener('click', () => _aplicar(st));
 }
 
+/* M3: si guardar() falla (sin llegar a un 409, que ya muestra su propio
+ * overlay), el cambio ya esta aplicado en memoria y marcado dirty: un segundo
+ * clic en "Aplicar y guardar" NO debe volver a aplicar la propuesta (duplicaria
+ * mermas nuevas, etc.), solo reintentar el guardado. st.aplicada distingue
+ * los dos casos. */
 async function _aplicar(st){
   $('otcAplicar').disabled = true; $('otcVolver').disabled = true;
-  const aplicar = new Set();
-  document.querySelectorAll('#otcRaiz .otc-check').forEach(c => {
-    if (c.checked) aplicar.add(st.propuesta.items[+c.dataset.k].lote);
-  });
-  const porIndice = new Map(st.propuesta.items.filter(x => x.indice != null).map(x => [x.indice, x]));
-  const hoy = hoyISO(), usuario = usuarioActual();
-  const por_lote = st.ot.lotes.map((l, i) => {
-    const it = porIndice.get(i);
-    const e = st.entradas.por_lote[i];
-    return {
-      destino_real: st.corte ? (st.entradas.corte.vasija || st.ot.destino) : st.tipo === 'tanque' ? e.vasija : (it && it.despues ? it.despues.vasija_actual : ''),
-      litros_reales: it ? it.litros_llegados : null,
-      merma_litros: it ? it.merma_litros : null,
-    };
-  });
-  const faltan = confirmarOT(st.ot, DATOS().movimientos || [], {
-    operario: st.operario, pasos_cumplidos: st.pasos, comentario: st.comentario, por_lote,
-  }, usuario, hoy);
-  aplicarPropuesta(DATOS(), st.ot, st.propuesta, aplicar, usuario, hoy);
-  markDirty();
-  invalidarDashMap();
-  st.onListo();
+  const err2 = m => { const el = $('otcErr2'); if (el){ el.textContent = m; el.style.display = ''; } };
+  const reactivar = () => { $('otcAplicar').disabled = false; $('otcVolver').disabled = false; };
+
+  if (!st.aplicada){
+    const habilitados = [...document.querySelectorAll('#otcRaiz .otc-check:not(:disabled)')];
+    const marcados = habilitados.filter(c => c.checked);
+    // I1: un corte no puede quedar aplicado a medias (el vino se contaria dos
+    // veces entre origen y destino). O se aplican todos los habilitados o
+    // ninguno.
+    if (st.corte && habilitados.length && marcados.length !== 0 && marcados.length !== habilitados.length){
+      reactivar();
+      return err2('En un corte se aplican todos los lotes o ninguno.');
+    }
+
+    const aplicar = new Set(marcados.map(c => st.propuesta.items[+c.dataset.k].lote));
+
+    // M2: confirmar a sabiendas si algun lote que se va a aplicar quedo sin
+    // litros medidos (no se toca: ver aplicarPropuesta/recalcularItem).
+    const corteItem = st.corte ? st.propuesta.items.find(x => x.indice == null) : null;
+    const sinLitros = st.corte
+      ? (corteItem && corteItem.litros_llegados == null)
+      : st.propuesta.items.some(it => it.indice != null && it.litros_llegados == null);
+    if (sinLitros && !confirm('Hay lotes sin litros medidos: la OT se confirma igual y esos lotes no se tocan. ¿Seguir?')){
+      reactivar();
+      return;
+    }
+
+    const porIndice = new Map(st.propuesta.items.filter(x => x.indice != null).map(x => [x.indice, x]));
+    const hoy = hoyISO(), usuario = usuarioActual();
+    const por_lote = st.ot.lotes.map((l, i) => {
+      const it = porIndice.get(i);
+      const e = st.entradas.por_lote[i];
+      // I2: en un corte, proponer() deja litros_llegados en null para los
+      // origenes (solo vacian, no reciben nada); lo que de verdad llego a
+      // alguna parte es litros_origen menos la merma repartida.
+      const litros_reales = st.corte && it
+        ? (it.litros_origen != null && it.merma_litros != null
+            ? Math.round((it.litros_origen - it.merma_litros) * 10) / 10 : it.litros_origen)
+        : (it ? it.litros_llegados : null);
+      return {
+        destino_real: st.corte ? (st.entradas.corte.vasija || st.ot.destino) : st.tipo === 'tanque' ? e.vasija : (it && it.despues ? it.despues.vasija_actual : ''),
+        litros_reales,
+        merma_litros: it ? it.merma_litros : null,
+      };
+    });
+    st.faltan = confirmarOT(st.ot, DATOS().movimientos || [], {
+      operario: st.operario, pasos_cumplidos: st.pasos, comentario: st.comentario, por_lote,
+    }, usuario, hoy);
+    aplicarPropuesta(DATOS(), st.ot, st.propuesta, aplicar, usuario, hoy);
+    markDirty();
+    invalidarDashMap();
+    st.onListo();
+    st.aplicada = true;
+  }
+
   const ok = await guardar();
-  if (!ok) return;   // guardar() ya mostro el error o el conflicto (409)
-  if (faltan.length){
+  if (!ok){
+    // guardar() ya mostro su propio error o el overlay de conflicto (409); si
+    // lo segundo, #otcRaiz ya no esta: no hay botones que reactivar.
+    if ($('otcRaiz')){
+      reactivar();
+      err2('No se guardó. Los cambios siguen en pantalla: probá Guardar de nuevo.');
+    }
+    return;
+  }
+  if (st.faltan.length){
     mostrarOverlay(`<h3 style="margin:0 0 14px">✓ ${esc(st.ot.ot)} confirmada</h3>
 <div class="msg err">Algunos movimientos de esta OT ya no están en la tabla (¿los borraron?). La OT quedó confirmada igual.</div>
 <div style="margin-top:18px;text-align:right"><button class="btn primary" id="otcCerrar">Entendido</button></div>`);
