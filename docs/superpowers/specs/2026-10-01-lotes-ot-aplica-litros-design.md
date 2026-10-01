@@ -116,10 +116,10 @@ tests en `test/`:
 | Módulo | Qué hace | Depende de |
 |---|---|---|
 | `cubicacion-tablas.js` | Las 6 tablas como datos. Hay que regenerarlo si cambia el Excel. | nada |
-| `cubicacion.js` | `litrosPorCm(vasija, cm)`, que devuelve `{litros, faltante, fueraDeRango}`. Interpola en línea recta y aplica D4. | tablas |
+| `cubicacion.js` | `litrosPorCm(vasija, cm)`, que devuelve `{litros, faltante, error}`. Interpola en línea recta y aplica D4. | tablas |
 | `vasijas-padron.js` | El padrón inicial (78 filas) y `buscarVasija(padron, num)`. | nada |
-| `mermas.js` | `mermasPendientes(mermas, porLoteMapa)` y `faltanteDeLote(mermas, lote)` | nada |
-| `propuesta-ot.js` | `proponer(ot, lotes, entradas, mapa)` → la propuesta "antes → después" por lote. `aplicarPropuesta(...)` muta el documento. | envases, cubicacion, mermas |
+| `mermas.js` | `faltanteDeLote`, `litrosDelLote`, `llenaSegunMapa`, `cerrarLlenasSegunMapa` (nombres exactos en el plan) | envases |
+| `propuesta-ot.js` | `proponer({ot, lotes, mermas, padron, entradas, hoy})` → la propuesta "antes → después" por lote. `aplicarPropuesta(...)` muta el documento. | envases, cubicacion, mermas |
 
 Pantallas que se tocan:
 
