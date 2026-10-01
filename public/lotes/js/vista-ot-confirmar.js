@@ -1,97 +1,301 @@
-/* ===== Lotes CIW — confirmar una OT de trasiego =====
+/* ===== Lotes CIW — confirmar una OT en dos pasos (spec 2026-10-01) =====
  *
- * Se cargan solo los totales por lote (destino real, litros reales, merma):
- * los OK de cada paso quedan en el papel firmado. Después se mira el Mapa de
- * Barriles, solo para AVISAR: si un barril de la OT sigue LLENO con el mismo
- * lote, faltó escanearlo. La OT nunca escribe en el Mapa. */
+ * Paso 1, "Lo que pasó": por lote, el tanque destino y sus cm (o litros), o las
+ * barricas llenas y las mermas. Paso 2, "Así queda cada lote": la propuesta
+ * antes -> despues de propuesta-ot.js, comparada con el Mapa de Barriles, con
+ * un check por lote. "Aplicar y guardar" confirma la OT (como siempre), aplica
+ * los lotes con check y guarda. El Mapa solo se lee. */
 'use strict';
 
-import { $, esc, escA, num, DATOS, markDirty, usuarioActual,
+import { $, esc, escA, num, DATOS, markDirty, guardar, usuarioActual, invalidarDashMap,
          mostrarOverlay, cerrarOverlay } from './nucleo.js';
-import { confirmarOT, sinEscanear } from './ot-armado.js';
+import { confirmarOT } from './ot-armado.js';
+import { barricasEstimadas } from './ot-plantillas.js';
+import { proponer, recalcularItem, compararConMapa, aplicarPropuesta, tipoDestino, ENV_KEYS }
+  from './propuesta-ot.js';
+import { buscarVasija } from './vasijas-padron.js';
+import { litrosPorCm } from './cubicacion.js';
+import { resumenEnvases } from './envases.js';
 
-export function abrirConfirmarOT(ot, onListo){
-  const filas = ot.lotes.map((l, i) => `
-<tr><td><b>${esc(l.lote)}</b><br><span style="color:var(--muted)">${esc(l.id_texto)}</span></td>
-  <td>${esc(l.litros_previstos ?? '')}</td>
-  <td><input class="txt otc-dest" id="otcDest${i}" value="${escA(l.destino_real || ot.destino)}" placeholder="Tanque real"></td>
-  <td><input class="txt otc-num" type="number" step="any" id="otcLit${i}" value="${escA(l.litros_reales ?? '')}"></td>
-  <td><input class="txt otc-num" type="number" step="any" id="otcMer${i}" value="${escA(l.merma ?? '')}"></td></tr>`).join('');
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+const fmtL = v => v == null ? '—' : Number(v).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' L';
 
-  // .otc-tabla ensancha la caja del cartel (la comun es de 460 px y la tabla
-  // no entra); el scroll es para un corte de muchos lotes o una pantalla chica.
-  mostrarOverlay(`
-<h3 style="margin:0 0 14px">✓ Confirmar ${esc(ot.ot)}</h3>
-<div class="otc-scroll"><table class="otc-tabla"><thead><tr><th>Lote</th><th>Previstos</th><th>Destino real</th><th>Litros reales</th><th>Merma</th></tr></thead>
-<tbody>${filas}</tbody></table></div>
-<div style="display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;margin-top:12px">
-  <label>Operario</label><input class="txt" id="otcOperario" placeholder="Quién lo hizo…">
-  <label>Pasos</label><label><input type="checkbox" id="otcPasos"> Todos los pasos de la hoja están cumplidos</label>
-  <label>Comentario</label><input class="txt" id="otcComentario">
-</div>
-<div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
-  <button class="btn" id="otcCancelar">Cancelar</button>
-  <button class="btn primary" id="otcAceptar">Confirmar</button>
-</div>`);
-
-  $('otcCancelar').addEventListener('click', () => cerrarOverlay());
-  $('otcAceptar').addEventListener('click', () => _aceptar(ot, onListo));
+async function leerMapa(lotes, nums){
+  const qs = [];
+  if (lotes.length) qs.push('lotes=' + encodeURIComponent(lotes.join(',')));
+  if (nums.length) qs.push('nums=' + encodeURIComponent(nums.join(',')));
+  try {
+    const r = await fetch(API + '/barriles?' + qs.join('&'));
+    return r.ok ? await r.json() : null;
+  } catch (e) { return null; }
 }
 
-async function _aceptar(ot, onListo){
-  const operario = $('otcOperario').value.trim();
-  if (!operario){ alert('Falta el operario: la confirmación registra quién hizo el trabajo.'); return; }
-  const por_lote = ot.lotes.map((_, i) => ({
-    destino_real: $('otcDest' + i).value,
-    litros_reales: num($('otcLit' + i).value),
-    merma: num($('otcMer' + i).value),
-  }));
-  // Sin destino real ni destino previsto de la OT, recorridoVasijas cierra la
-  // estadia del lote sin abrir una nueva: el lote queda sin vasija actual.
-  const sinDestino = por_lote.findIndex(r => !r.destino_real && !ot.destino);
-  if (sinDestino !== -1){
-    alert('Falta el tanque destino real del lote ' + ot.lotes[sinDestino].lote
-        + ': sin él el lote queda sin vasija actual.');
+export function abrirConfirmarOT(ot, onListo){
+  const st = { ot, onListo, tipo: tipoDestino(ot.plantilla), corte: !!(ot.lote_corte && ot.lote_corte.lote),
+               entradas: null, mapa: null, propuesta: null, paso: 1,
+               operario: '', pasos: false, comentario: '' };
+  st.entradas = {
+    por_lote: ot.lotes.map(l => st.tipo === 'tanque'
+      ? { vasija: l.destino_real || ot.destino || '', cm: '', litros_manual: l.litros_reales ?? '' }
+      : { barricas_llenas: l.barricas_previstas ?? barricasEstimadas(l.litros_previstos) ?? '', mermas: [] }),
+    corte: st.corte ? { vasija: ot.destino || '', cm: '', litros_manual: '' } : null,
+  };
+  _paso1(st);
+  // El Mapa se lee de entrada para ofrecer barriles en las mermas. Solo se
+  // refrescan las listas: repintar el paso 1 le sacaria el foco a quien tipea,
+  // y si ya paso al 2 lo devolveria para atras.
+  leerMapa(ot.lotes.map(l => l.lote), []).then(m => {
+    if (st.mapa) return;   // el paso 2 ya leyo uno mas nuevo
+    st.mapa = m;
+    if (st.paso !== 1) return;
+    ot.lotes.forEach((_, i) => { const dl = $('otcBarr' + i); if (dl) dl.outerHTML = _dlBarriles(st, i); });
+  });
+}
+
+/* ---------- paso 1 ---------- */
+
+function _dlVasijas(){
+  return '<datalist id="otcVasijas">' + (DATOS().vasijas || []).filter(v => v.activa !== false)
+    .map(v => `<option value="T ${escA(v.num)}">${esc(v.tipo)} · ${esc(v.cap_real)} L${v.tabla ? '' : ' · sin tabla'}</option>`)
+    .join('') + '</datalist>';
+}
+
+function _dlBarriles(st, i){
+  const ol = st.ot.lotes[i];
+  const enFoto = new Set((ol.barriles || []).map(b => String(b.num)));
+  const delMapa = ((st.mapa && st.mapa.por_lote) || {})[ol.lote] || [];
+  return `<datalist id="otcBarr${i}">` + delMapa
+    .filter(b => (b.estado === 'LLENO' || b.estado === 'MERMO') && !enFoto.has(String(b.num)))
+    .map(b => `<option value="${escA(b.num)}">${esc(b.estado)} · ${esc(b.cap ?? '')} L</option>`).join('') + '</datalist>';
+}
+
+function _bloqueTanque(id, e){
+  return `<input class="txt otc-vas" list="otcVasijas" data-id="${id}" data-f="vasija" value="${escA(e.vasija)}" placeholder="T 201">
+    <input class="txt otc-num" type="number" step="any" min="0" data-id="${id}" data-f="cm" value="${escA(e.cm)}" placeholder="cm">
+    <input class="txt otc-num" type="number" step="any" min="0" data-id="${id}" data-f="litros_manual" value="${escA(e.litros_manual)}" placeholder="litros">
+    <span class="otc-calc" id="otcCalc${id}"></span>`;
+}
+
+function _bloqueBarricas(st, i, e){
+  const mermas = e.mermas.map((m, j) => `<div class="otc-merma">
+      <input class="txt" list="otcBarr${i}" data-i="${i}" data-j="${j}" data-f="barril" value="${escA(m.barril)}" placeholder="N° barril">
+      <input class="txt otc-num" type="number" step="any" min="0" data-i="${i}" data-j="${j}" data-f="litros" value="${escA(m.litros)}" placeholder="litros">
+      <button class="btn" data-quitar="${i}:${j}" title="Quitar">✕</button></div>`).join('');
+  return `<label>Barricas llenas <input class="txt otc-num" type="number" min="0" step="1" data-i="${i}" data-f="barricas_llenas" value="${escA(e.barricas_llenas)}"></label>
+    <div class="otc-mermas">${mermas}<button class="btn" data-agregar="${i}">+ Barrica merma</button></div>${_dlBarriles(st, i)}`;
+}
+
+function _paso1(st){
+  const { ot } = st;
+  const filas = ot.lotes.map((l, i) => {
+    const e = st.entradas.por_lote[i];
+    const destino = st.corte ? '<span style="color:var(--muted)">va al tanque del corte</span>'
+      : st.tipo === 'tanque' ? _bloqueTanque(String(i), e) : _bloqueBarricas(st, i, e);
+    return `<tr><td><b>${esc(l.lote)}</b><br><span style="color:var(--muted)">${esc(l.id_texto)}</span></td>
+      <td>${esc(fmtL(l.litros_previstos))}</td><td class="otc-dest">${destino}</td></tr>`;
+  }).join('');
+  const corte = st.corte ? `<div class="otc-corte"><b>Tanque del corte · lote ${esc(ot.lote_corte.lote)}</b>
+      ${_bloqueTanque('c', st.entradas.corte)}</div>` : '';
+
+  st.paso = 1;
+  mostrarOverlay(`<div id="otcRaiz">
+<h3 style="margin:0 0 4px">✓ Confirmar ${esc(ot.ot)} · 1 de 2: lo que pasó</h3>
+<p style="margin:0 0 12px;color:var(--muted);font-size:13px">${st.tipo === 'tanque'
+    ? 'Elegí el tanque y cargá los <b>cm de merma</b> medidos; si el tanque no tiene tabla, cargá los litros.'
+    : 'Cargá cuántas barricas quedaron llenas y agregá las que quedaron mermas con sus litros.'}</p>
+${_dlVasijas()}${corte}
+<div class="otc-scroll"><table class="otc-tabla"><thead><tr><th>Lote</th><th>Previstos</th><th>Destino</th></tr></thead>
+<tbody>${filas}</tbody></table></div>
+<div style="display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center;margin-top:12px">
+  <label>Operario</label><input class="txt" id="otcOperario" value="${escA(st.operario)}" placeholder="Quién lo hizo…">
+  <label>Pasos</label><label><input type="checkbox" id="otcPasos"${st.pasos ? ' checked' : ''}> Todos los pasos de la hoja están cumplidos</label>
+  <label>Comentario</label><input class="txt" id="otcComentario" value="${escA(st.comentario)}">
+</div>
+<div class="msg err" id="otcErr" style="display:none;margin-top:10px"></div>
+<div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
+  <button class="btn" id="otcCancelar">Cancelar</button>
+  <button class="btn primary" id="otcSig">Siguiente →</button>
+</div></div>`);
+
+  // Los listeners van en #otcRaiz y no en #overlayBox: el box sobrevive entre
+  // overlays y cada repintado le sumaria otro listener.
+  const box = $('otcRaiz');
+  box.addEventListener('input', ev => _leerCampo(st, ev.target));
+  box.addEventListener('click', ev => {
+    const ag = ev.target.closest('[data-agregar]'), qu = ev.target.closest('[data-quitar]');
+    if (ag){ _guardarCabecera(st); st.entradas.por_lote[+ag.dataset.agregar].mermas.push({ barril: '', litros: '' }); _paso1(st); }
+    if (qu){ _guardarCabecera(st); const [i, j] = qu.dataset.quitar.split(':').map(Number);
+      st.entradas.por_lote[i].mermas.splice(j, 1); _paso1(st); }
+  });
+  $('otcCancelar').addEventListener('click', () => cerrarOverlay());
+  $('otcSig').addEventListener('click', () => _irAPaso2(st));
+  ot.lotes.forEach((_, i) => _pintarCalc(st, String(i)));
+  if (st.corte) _pintarCalc(st, 'c');
+}
+
+function _entradaDe(st, id){ return id === 'c' ? st.entradas.corte : st.entradas.por_lote[+id]; }
+
+function _leerCampo(st, el){
+  const f = el.dataset.f;
+  if (!f) return;
+  if (el.dataset.id != null){ _entradaDe(st, el.dataset.id)[f] = el.value; _pintarCalc(st, el.dataset.id); return; }
+  const e = st.entradas.por_lote[+el.dataset.i];
+  if (el.dataset.j != null) e.mermas[+el.dataset.j][f] = el.value; else e[f] = el.value;
+}
+
+/* Litros en vivo al lado del tanque: "4.075 L de 4.200". */
+function _pintarCalc(st, id){
+  const out = $('otcCalc' + id);
+  if (!out) return;
+  const e = _entradaDe(st, id);
+  const v = buscarVasija(DATOS().vasijas, e.vasija);
+  if (!v){ out.textContent = e.vasija ? 'no está en el padrón: cargá los litros' : ''; return; }
+  if (!v.tabla){ out.textContent = `${v.tipo} · sin tabla: cargá los litros`; return; }
+  if (e.cm === '' || e.cm == null){ out.textContent = `${v.tipo} · ${v.cap_real} L: cargá los cm`; return; }
+  const r = litrosPorCm(v, e.cm);
+  out.textContent = r.error === 'fuera-de-rango' ? `fuera de la tabla (máx. ${r.max} cm)`
+    : r.error ? 'cm inválido' : `${fmtL(r.litros)} de ${fmtL(v.cap_real)}`;
+}
+
+function _guardarCabecera(st){
+  if (!$('otcOperario')) return;
+  st.operario = $('otcOperario').value.trim();
+  st.pasos = $('otcPasos').checked;
+  st.comentario = $('otcComentario').value;
+}
+
+async function _irAPaso2(st){
+  _guardarCabecera(st);
+  const err = m => { $('otcErr').textContent = m; $('otcErr').style.display = ''; };
+  if (!st.operario) return err('Falta el operario: la confirmación registra quién hizo el trabajo.');
+  $('otcSig').disabled = true;
+
+  const lotes = st.ot.lotes.map(l => l.lote).concat(st.corte ? [st.ot.lote_corte.lote] : []);
+  const nums = st.entradas.por_lote.flatMap(e => (e.mermas || []).map(m => String(m.barril || '').trim())).filter(Boolean);
+  st.mapa = await leerMapa(lotes, nums);
+
+  // Una barrica merma tiene que existir en el Mapa (mismo criterio que el escáner).
+  if (nums.length){
+    if (!st.mapa || !st.mapa.por_num){ $('otcSig').disabled = false; return err('No se pudo consultar el Mapa para validar las barricas mermas. Probá de nuevo.'); }
+    const faltan = nums.filter(n => !st.mapa.por_num[n]);
+    if (faltan.length){ $('otcSig').disabled = false; return err('Estos barriles no existen en el Mapa: ' + faltan.join(', ')); }
+    for (const e of st.entradas.por_lote) for (const m of e.mermas || []){
+      const b = st.mapa.por_num[String(m.barril).trim()];
+      if (b) m.cap = b.cap;
+    }
+  }
+
+  st.propuesta = proponer({ ot: st.ot, lotes: DATOS().lotes, mermas: DATOS().mermas, padron: DATOS().vasijas,
+    entradas: st.entradas, hoy: hoyISO() });
+  _paso2(st);
+}
+
+/* ---------- paso 2 ---------- */
+
+const ETIQ = { cap500: '500', cap225: '225', cap200: '200', cap50: '50', vasija_grande: 'Tanque L' };
+
+function _paso2(st){
+  const porLote = (st.mapa && st.mapa.por_lote) || null;
+  // Un corte es todo-o-nada: aplicar los origenes sin el lote del corte (o al
+  // reves) hace contar el vino dos veces. Si algun item del corte esta
+  // bloqueado, se frenan los checks de toda la OT (el caso contrario ya lo
+  // frena aplicarPropuesta).
+  const corteBloqueado = st.corte && st.propuesta.items.some(it => it.bloqueado);
+  const avisoCorte = corteBloqueado
+    ? '<div class="msg err">Hay un lote bloqueado: el corte no se puede aplicar hasta corregirlo.</div>' : '';
+
+  const filas = st.propuesta.items.map((it, k) => {
+    const ol = it.indice == null ? null : st.ot.lotes[it.indice];
+    const avisos = it.avisos.map(a => `<div class="otc-aviso">⚠ ${esc(a)}</div>`).join('');
+    if (!it.despues) return `<tr><td><b>${esc(it.lote)}</b></td><td colspan="5">${avisos}</td><td></td></tr>`;
+    const cmp = compararConMapa(it, ol, porLote ? (porLote[it.lote] ?? null) : null, st.ot.fecha || '');
+    const envs = ENV_KEYS.map(kk => `<label class="otc-env">${ETIQ[kk]}
+        <input class="txt otc-num" type="number" step="any" min="0" data-k="${k}" data-env="${kk}" value="${escA(it.despues[kk] || '')}"></label>`).join('');
+    // Bloqueado: disabled + sin check. Revisar (lote sin foto de barriles, no
+    // bloqueado): habilitado pero SIN check por defecto, para que alguien lo
+    // mire antes de aplicarlo. El resto: con check. Un corte con algun origen
+    // bloqueado frena (disabled) todos los checks de la OT.
+    const disabled = it.bloqueado || corteBloqueado;
+    const checked = !disabled && !it.revisar;
+    const claseFila = it.bloqueado ? ' class="otc-bloq"' : (it.revisar ? ' class="otc-revisar"' : '');
+    return `<tr${claseFila}>
+      <td><b>${esc(it.lote)}</b>${it.indice == null ? '<br><span style="color:var(--muted)">lote del corte</span>' : ''}</td>
+      <td>${esc(resumenEnvases(it.antes) || '—')}<br>${esc(fmtL(it.antes.litros_actuales))}<br><span style="color:var(--muted)">${esc(it.antes.vasija_actual)}</span></td>
+      <td><div class="otc-envs">${envs}</div>
+          <input class="txt" data-k="${k}" data-env="vasija_actual" value="${escA(it.despues.vasija_actual)}" placeholder="Vasija actual"></td>
+      <td><b id="otcLitros${k}">${esc(fmtL(it.litros_despues))}</b></td>
+      <td>${esc(fmtL(it.merma_litros))}</td>
+      <td class="otc-mapa otc-${cmp.estado}">${esc(cmp.texto)}${avisos}</td>
+      <td><input type="checkbox" class="otc-check" data-k="${k}"${disabled ? ' disabled' : ''}${checked ? ' checked' : ''}></td></tr>`;
+  }).join('');
+
+  st.paso = 2;
+  mostrarOverlay(`<div id="otcRaiz">
+<h3 style="margin:0 0 4px">✓ Confirmar ${esc(st.ot.ot)} · 2 de 2: así queda cada lote</h3>
+<p style="margin:0 0 12px;color:var(--muted);font-size:13px">Revisá cada lote y corregí lo que haga falta. Solo se aplican los lotes con ☑;
+los demás quedan como estaban (la OT se confirma igual).</p>
+${avisoCorte}
+<div class="otc-scroll"><table class="otc-tabla"><thead><tr><th>Lote</th><th>Antes</th><th>Después</th><th>Litros</th><th>Merma</th><th>Mapa</th><th>Aplicar</th></tr></thead>
+<tbody>${filas}</tbody></table></div>
+<div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
+  <button class="btn" id="otcVolver">← Volver</button>
+  <button class="btn primary" id="otcAplicar">Aplicar y guardar</button>
+</div></div>`);
+
+  const box = $('otcRaiz');
+  box.addEventListener('input', ev => {
+    const el = ev.target; if (el.dataset.env == null) return;
+    const it = st.propuesta.items[+el.dataset.k];
+    it.despues[el.dataset.env] = el.dataset.env === 'vasija_actual' ? el.value : (num(el.value) ?? 0);
+    recalcularItem(it, DATOS().mermas);
+    $('otcLitros' + el.dataset.k).textContent = fmtL(it.litros_despues);
+  });
+  // Un corte se aplica entero o nada: tildar/destildar cualquier check mueve
+  // todos los demas checks habilitados de la OT al mismo valor.
+  if (st.corte){
+    box.addEventListener('change', ev => {
+      const el = ev.target;
+      if (!el.classList.contains('otc-check')) return;
+      const v = el.checked;
+      box.querySelectorAll('.otc-check:not(:disabled)').forEach(c => { c.checked = v; });
+    });
+  }
+  $('otcVolver').addEventListener('click', () => _paso1(st));
+  $('otcAplicar').addEventListener('click', () => _aplicar(st));
+}
+
+async function _aplicar(st){
+  $('otcAplicar').disabled = true; $('otcVolver').disabled = true;
+  const aplicar = new Set();
+  document.querySelectorAll('#otcRaiz .otc-check').forEach(c => {
+    if (c.checked) aplicar.add(st.propuesta.items[+c.dataset.k].lote);
+  });
+  const porIndice = new Map(st.propuesta.items.filter(x => x.indice != null).map(x => [x.indice, x]));
+  const hoy = hoyISO(), usuario = usuarioActual();
+  const por_lote = st.ot.lotes.map((l, i) => {
+    const it = porIndice.get(i);
+    const e = st.entradas.por_lote[i];
+    return {
+      destino_real: st.corte ? (st.entradas.corte.vasija || st.ot.destino) : st.tipo === 'tanque' ? e.vasija : (it && it.despues ? it.despues.vasija_actual : ''),
+      litros_reales: it ? it.litros_llegados : null,
+      merma_litros: it ? it.merma_litros : null,
+    };
+  });
+  const faltan = confirmarOT(st.ot, DATOS().movimientos || [], {
+    operario: st.operario, pasos_cumplidos: st.pasos, comentario: st.comentario, por_lote,
+  }, usuario, hoy);
+  aplicarPropuesta(DATOS(), st.ot, st.propuesta, aplicar, usuario, hoy);
+  markDirty();
+  invalidarDashMap();
+  st.onListo();
+  const ok = await guardar();
+  if (!ok) return;   // guardar() ya mostro el error o el conflicto (409)
+  if (faltan.length){
+    mostrarOverlay(`<h3 style="margin:0 0 14px">✓ ${esc(st.ot.ot)} confirmada</h3>
+<div class="msg err">Algunos movimientos de esta OT ya no están en la tabla (¿los borraron?). La OT quedó confirmada igual.</div>
+<div style="margin-top:18px;text-align:right"><button class="btn primary" id="otcCerrar">Entendido</button></div>`);
+    $('otcCerrar').addEventListener('click', () => cerrarOverlay());
     return;
   }
-  if (por_lote.some(r => r.litros_reales == null) &&
-      !confirm('Hay lotes sin litros reales. ¿Confirmar igual?')) return;
-
-  const faltan = confirmarOT(ot, DATOS().movimientos || [], {
-    operario, pasos_cumplidos: $('otcPasos').checked, comentario: $('otcComentario').value,
-    por_lote,
-  }, usuarioActual(), new Date().toISOString().slice(0, 10));
-  markDirty();
-  onListo();
-
-  // Frenar los botones antes del fetch: el modal sigue en pantalla hasta que
-  // se arman los avisos, y sin esto un clic ahi dispara la confirmacion de nuevo.
-  $('otcCancelar').disabled = true;
-  $('otcAceptar').disabled = true;
-
-  const avisos = [];
-  if (faltan.length){
-    avisos.push('Algunos movimientos de esta OT ya no están en la tabla (¿los borraron?). La OT quedó confirmada igual.');
-  }
-  try {
-    const r = await fetch(API + '/barriles?lotes=' + encodeURIComponent(ot.lotes.map(l => l.lote).join(',')));
-    if (r.ok){
-      const d = await r.json();
-      const pend = sinEscanear(ot, d.por_lote || {});
-      if (pend.length){
-        avisos.push('Estos barriles siguen LLENOS en el Mapa con el mismo lote. ¿Faltó escanear el vaciado? '
-          + pend.map(p => `${p.lote}: ${p.num}`).join(', '));
-      }
-    } else {
-      avisos.push('No se pudo consultar el Mapa de Barriles para revisar el escaneo.');
-    }
-  } catch (e){
-    avisos.push('No se pudo consultar el Mapa de Barriles para revisar el escaneo.');
-  }
-
-  if (!avisos.length){ cerrarOverlay(); return; }
-  mostrarOverlay(`<h3 style="margin:0 0 14px">✓ ${esc(ot.ot)} confirmada</h3>` +
-    avisos.map(a => `<div class="msg err">${esc(a)}</div>`).join('') +
-    `<div style="margin-top:18px;text-align:right"><button class="btn primary" id="otcCerrar">Entendido</button></div>`);
-  $('otcCerrar').addEventListener('click', () => cerrarOverlay());
+  cerrarOverlay();
 }

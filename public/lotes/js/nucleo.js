@@ -5,7 +5,7 @@
  * DATOS es una variable mutable que comparten todas las vistas. Los modulos ES
  * no permiten reasignar un binding exportado desde afuera, asi que se expone
  * por accesor: DATOS() para leer, setDatos() para reemplazar.
- * Forma: {meta, config, lotes, analisis, estado_lote, excepciones_analisis}
+ * Forma: {meta, config, lotes, analisis, estado_lote, excepciones_analisis, vasijas, mermas}
  */
 let _datos = null;
 export function DATOS(){ return _datos; }
@@ -180,6 +180,8 @@ export async function cargarDatos(){
     DATOS().analisis             = DATOS().analisis || [];
     DATOS().estado_lote          = DATOS().estado_lote || {};
     DATOS().excepciones_analisis = DATOS().excepciones_analisis || [];
+    DATOS().vasijas              = DATOS().vasijas || [];
+    DATOS().mermas               = DATOS().mermas || [];
     // Los objetos de DATOS() acaban de ser reemplazados: las pilas de deshacer
     // de la grilla quedarian apuntando a objetos huerfanos. grilla.js escucha
     // este evento para limpiarse; no se importa directamente para evitar el
