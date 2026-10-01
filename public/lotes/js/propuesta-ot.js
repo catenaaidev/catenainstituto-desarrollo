@@ -13,7 +13,7 @@
 import { litrosDeEnvases, resumenEnvases } from './envases.js';
 import { litrosPorCm } from './cubicacion.js';
 import { buscarVasija } from './vasijas-padron.js';
-import { codigoLote, faltanteDe, estaPendiente } from './mermas.js';
+import { codigoLote, faltanteDe, estaPendiente, nuevaMerma, resolver, litrosDelLote } from './mermas.js';
 import { origenTanque, LITROS_BARRICA } from './ot-plantillas.js';
 
 export const DESTINO_POR_PLANTILLA = {
@@ -233,4 +233,29 @@ export function compararConMapa(item, otLote, barrilesDelLote){
   const igual = ['cap50', 'cap200', 'cap225', 'cap500'].every(k => cuenta[k] === n0(d[k]));
   if (igual) return { estado: 'coincide', texto: '✓ coincide con el Mapa' };
   return { estado: 'difiere', texto: '⚠ el Mapa dice ' + (resumenEnvases(cuenta) || 'ninguna barrica') };
+}
+
+/* Aplica los items con check. Los envases en 0 se guardan como null (como el
+ * overlay de Envases deja los vacios); litros_actuales nunca null. */
+export function aplicarPropuesta(datos, ot, propuesta, aplicar, usuario, hoy){
+  if (!Array.isArray(datos.mermas)) datos.mermas = [];
+  for (const item of propuesta.items){
+    const lote = (datos.lotes || []).find(l => String(l.lote) === String(item.lote));
+    const destino = item.indice == null ? ot.lote_corte : ot.lotes[item.indice];
+    if (!lote || item.bloqueado || !item.despues || !aplicar.has(item.lote)){
+      if (destino) destino.aplicado = null;
+      continue;
+    }
+    const antes = fotoLote(lote);
+    for (const k of ENV_KEYS) lote[k] = n0(item.despues[k]) > 0 ? r1(n0(item.despues[k])) : null;
+    lote.vasija_actual = String(item.despues.vasija_actual || '').trim();
+    for (const id of item.mermas_cerradas){
+      const m = datos.mermas.find(x => x.id === id);
+      if (m && estaPendiente(m)) resolver(m, 'vaciada', usuario, hoy);
+    }
+    item.mermas_nuevas.forEach((m, j) =>
+      datos.mermas.push(nuevaMerma(m, `mer-${ot.id}-${codigoLote(item.lote)}-${j}`)));
+    lote.litros_actuales = litrosDelLote(lote, datos.mermas);
+    if (destino) destino.aplicado = { antes, despues: fotoLote(lote), por: usuario || '', el: hoy };
+  }
 }

@@ -3,7 +3,7 @@
  * (spec 2026-10-01). Puro: no aplica nada, eso es aplicarPropuesta. */
 import { describe, it, expect } from 'vitest';
 import { tipoDestino, capNormal, vaciadoDeLote, llenadoDeEntrada, proponer, recalcularItem,
-         compararConMapa } from '../public/lotes/js/propuesta-ot.js';
+         compararConMapa, aplicarPropuesta } from '../public/lotes/js/propuesta-ot.js';
 
 const PADRON = [
   { num: '201', tipo: 'TANQUE AC.INOX.', cap_real: 4200, tabla: 'tanque-40hl', activa: true },
@@ -177,5 +177,55 @@ describe('compararConMapa', () => {
   it('difiere y dice cuanto ve el Mapa', () => {
     const r = compararConMapa(item, { barriles: [] }, Array.from({ length: 10 }, (_, i) => b('n' + i)));
     expect(r).toEqual({ estado: 'difiere', texto: '⚠ el Mapa dice 10×225' });
+  });
+});
+
+describe('aplicarPropuesta', () => {
+  function caso() {
+    const datos = { lotes: [{ lote: 26217, cap225: 12, litros_actuales: 2700, vasija_actual: 'Nave 2' }],
+      mermas: [{ id: 'mer-viejo', lote: '26217', barril: '10', cap: 225, litros: 200, resuelta_el: '' }] };
+    const o = ot('barricas-barricas', [{ lote: '26217', barriles: DOCE, litros_previstos: 2700 }]);
+    const p = proponer({ ot: o, lotes: datos.lotes, mermas: datos.mermas, padron: PADRON, hoy: '2026-10-01',
+      entradas: { por_lote: [{ barricas_llenas: 11, mermas: [{ barril: '777', cap: 225, litros: 180 }] }], corte: null } });
+    return { datos, o, p };
+  }
+
+  it('con check escribe envases, litros, vasija, mermas y el antes/despues', () => {
+    const { datos, o, p } = caso();
+    aplicarPropuesta(datos, o, p, new Set(['26217']), 'ana', '2026-10-01');
+    expect(datos.lotes[0]).toMatchObject({ cap225: 12, cap500: null, vasija_grande: null,
+      litros_actuales: 2655, vasija_actual: '12 barricas' });
+    expect(datos.mermas.find(m => m.id === 'mer-viejo')).toMatchObject({ resuelta_como: 'vaciada', resuelta_el: '2026-10-01' });
+    expect(datos.mermas.find(m => m.barril === '777')).toMatchObject({ id: 'mer-ot-1-26217-0', litros: 180, resuelta_el: '' });
+    expect(o.lotes[0].aplicado).toMatchObject({ por: 'ana', el: '2026-10-01',
+      antes: { cap225: 12, litros_actuales: 2700, vasija_actual: 'Nave 2' },
+      despues: { cap225: 12, litros_actuales: 2655, vasija_actual: '12 barricas' } });
+  });
+
+  it('sin check no toca el lote ni las mermas', () => {
+    const { datos, o, p } = caso();
+    aplicarPropuesta(datos, o, p, new Set(), 'ana', '2026-10-01');
+    expect(datos.lotes[0]).toMatchObject({ cap225: 12, litros_actuales: 2700, vasija_actual: 'Nave 2' });
+    expect(datos.mermas).toHaveLength(1);
+    expect(o.lotes[0].aplicado).toBeNull();
+  });
+
+  it('un item bloqueado no se aplica aunque tenga check', () => {
+    const { datos, o, p } = caso();
+    p.items[0].bloqueado = true;
+    aplicarPropuesta(datos, o, p, new Set(['26217']), 'ana', '2026-10-01');
+    expect(datos.lotes[0].litros_actuales).toBe(2700);
+  });
+
+  it('en el corte el antes/despues del lote nuevo queda en ot.lote_corte', () => {
+    const datos = { lotes: [{ lote: 26300, litros_actuales: 0 }, { lote: 25315, cap225: 5, litros_actuales: 1125 }], mermas: [] };
+    const o = ot('barricas-tanque', [{ lote: '25315', barriles: DOCE.slice(0, 5), litros_previstos: 1125 }],
+      { lote_corte: { lote: '26300', id_texto: 'Corte' } });
+    const p = proponer({ ot: o, lotes: datos.lotes, mermas: [], padron: PADRON, hoy: '2026-10-01',
+      entradas: { por_lote: [{}], corte: { vasija: '154', litros_manual: 1100 } } });
+    aplicarPropuesta(datos, o, p, new Set(['25315', '26300']), 'ana', '2026-10-01');
+    expect(datos.lotes[1]).toMatchObject({ cap225: null, litros_actuales: 0, vasija_actual: '' });
+    expect(datos.lotes[0]).toMatchObject({ vasija_grande: 1100, litros_actuales: 1100, vasija_actual: 'T 154' });
+    expect(o.lote_corte.aplicado.despues.litros_actuales).toBe(1100);
   });
 });
