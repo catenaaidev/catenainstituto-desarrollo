@@ -87,3 +87,9 @@ export function fmtMes(valor){
   if (!m) return s;
   return `${dos(+m[2])}/${m[1]}`;
 }
+
+/** Fecha de HOY en la zona de la PC, 'YYYY-MM-DD'. No toISOString(): esa es
+ *  UTC y despues de las 21 h de Mendoza ya da el dia siguiente. */
+export function hoyLocalISO(d = new Date()){
+  return `${d.getFullYear()}-${dos(d.getMonth() + 1)}-${dos(d.getDate())}`;
+}

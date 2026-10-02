@@ -27,7 +27,7 @@ describe('barrilesDeLotes', () => {
     expect(r['26217'][0]).toEqual({
       num: '2221713', estado: 'LLENO', cap: 225, litros: 225,
       anio: '2022', marca: 'TARANSAUD', origen: 'FRANCES', trat: 'REF.101 M',
-      lote: '26217', fecha: '',
+      lote: '26217', fecha: '', ts: null,
     });
     expect(r['26217'][1].cap).toBe(225); // '225' del Excel se vuelve número
   });
@@ -52,6 +52,11 @@ describe('barrilesPorNum', () => {
     expect(r['777']).toMatchObject({ lote: '26730 ROJO', fecha: '2026-10-03', estado: 'LLENO' });
     expect(r['9001']).toMatchObject({ lote: '26300' });
     expect(r['nada']).toBeNull();
+  });
+
+  it('trae el ts del Mapa (la merma lo usa para no cerrarse con su propio escaneo)', () => {
+    const inv = [...INV, { num: '778', estado: 'LLENO', cap: 225, litros: 225, lote: '26217', fecha: '2026-10-01', ts: 1788912988373 }];
+    expect(barrilesPorNum({ inventario: inv }, ['778'])['778']!.ts).toBe(1788912988373);
   });
 });
 

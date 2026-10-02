@@ -17,8 +17,11 @@ import { buscarVasija } from './vasijas-padron.js';
 import { litrosPorCm } from './cubicacion.js';
 import { resumenEnvases } from './envases.js';
 import { refrescarMapaMermas } from './mermas-mapa.js';
+import { estaPendiente } from './mermas.js';
+import { esEjecutado } from './ot-movimientos.js';
+import { hoyLocalISO } from './fechas.js';
 
-const hoyISO = () => new Date().toISOString().slice(0, 10);
+const hoyISO = () => hoyLocalISO();
 const fmtL = v => v == null ? '—' : Number(v).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' L';
 
 async function leerMapa(lotes, nums){
@@ -32,6 +35,9 @@ async function leerMapa(lotes, nums){
 }
 
 export function abrirConfirmarOT(ot, onListo){
+  // M2: una OT ya confirmada no se vuelve a confirmar (duplicaria mermas y
+  // pisaria los reales). Todas las OT nacen con estado PENDIENTE.
+  if (esEjecutado(ot)) return;
   const st = { ot, onListo, tipo: tipoDestino(ot.plantilla), corte: !!(ot.lote_corte && ot.lote_corte.lote),
                entradas: null, mapa: null, propuesta: null, paso: 1,
                operario: '', pasos: false, comentario: '', aplicada: false, faltan: [] };
@@ -41,6 +47,8 @@ export function abrirConfirmarOT(ot, onListo){
       : { barricas_llenas: l.barricas_previstas ?? barricasEstimadas(l.litros_previstos) ?? '', mermas: [] }),
     corte: st.corte ? { vasija: ot.destino || '', cm: '', litros_manual: '' } : null,
   };
+  // I3: el valor por defecto de barricas llenas, para saber si alguien ya lo toco.
+  st.llenasIniciales = st.entradas.por_lote.map(e => e.barricas_llenas);
   _paso1(st);
   // El Mapa se lee de entrada para ofrecer barriles en las mermas. Solo se
   // refrescan las listas: repintar el paso 1 le sacaria el foco a quien tipea,
@@ -131,7 +139,17 @@ ${_dlVasijas()}${corte}
   box.addEventListener('input', ev => _leerCampo(st, ev.target));
   box.addEventListener('click', ev => {
     const ag = ev.target.closest('[data-agregar]'), qu = ev.target.closest('[data-quitar]');
-    if (ag){ _guardarCabecera(st); st.entradas.por_lote[+ag.dataset.agregar].mermas.push({ barril: '', litros: '' }); _paso1(st); }
+    if (ag){
+      _guardarCabecera(st);
+      const i = +ag.dataset.agregar, e = st.entradas.por_lote[i], ini = st.llenasIniciales[i];
+      // I3: las previstas ya incluyen la barrica que quedo merma. Si nadie
+      // toco "Barricas llenas", al agregar la merma se le resta una (una sola
+      // vez: despues ya no coincide con el valor inicial).
+      if (ini !== '' && ini != null && Number(ini) > 0 && String(e.barricas_llenas) === String(ini))
+        e.barricas_llenas = Number(ini) - 1;
+      e.mermas.push({ barril: '', litros: '' });
+      _paso1(st);
+    }
     if (qu){ _guardarCabecera(st); const [i, j] = qu.dataset.quitar.split(':').map(Number);
       st.entradas.por_lote[i].mermas.splice(j, 1); _paso1(st); }
   });
@@ -186,10 +204,21 @@ async function _irAPaso2(st){
       if (i !== -1) return err('Falta el tanque destino del lote ' + st.ot.lotes[i].lote + '.');
     }
   }
-  $('otcSig').disabled = true;
-
   const lotes = st.ot.lotes.map(l => l.lote).concat(st.corte ? [st.ot.lote_corte.lote] : []);
   const nums = st.entradas.por_lote.flatMap(e => (e.mermas || []).map(m => String(m.barril || '').trim())).filter(Boolean);
+  // I4: una barrica merma no puede repetirse, ni ser una de las que esta OT
+  // vacio, ni tener ya otra merma pendiente. Se valida antes de tocar la red.
+  const vistos = new Set();
+  const vaciados = new Set(st.ot.lotes.flatMap(l => (l.barriles || []).map(b => String(b.num).trim())));
+  const pendientes = new Set((DATOS().mermas || []).filter(estaPendiente).map(m => String(m.barril).trim()));
+  for (const n of nums){
+    if (vistos.has(n)) return err(`El barril ${n} está repetido en las mermas.`);
+    vistos.add(n);
+    if (vaciados.has(n)) return err(`El barril ${n} es uno de los que se vaciaron en esta OT.`);
+    if (pendientes.has(n)) return err(`El barril ${n} ya tiene una merma pendiente.`);
+  }
+  $('otcSig').disabled = true;
+
   st.mapa = await leerMapa(lotes, nums);
   // M4: cerrarOverlay() solo saca la clase 'show' (#otcRaiz sigue en el DOM):
   // si cancelaron (Cancelar/Escape/click afuera) mientras se leia el Mapa, no
@@ -203,7 +232,7 @@ async function _irAPaso2(st){
     if (faltan.length){ $('otcSig').disabled = false; return err('Estos barriles no existen en el Mapa: ' + faltan.join(', ')); }
     for (const e of st.entradas.por_lote) for (const m of e.mermas || []){
       const b = st.mapa.por_num[String(m.barril).trim()];
-      if (b) m.cap = b.cap;
+      if (b){ m.cap = b.cap; m.mapa_ts = b.ts ?? null; }   // C1: ver llenaSegunMapa
     }
   }
 
@@ -241,8 +270,9 @@ function _paso2(st){
     const avisos = it.avisos.map(a => `<div class="otc-aviso">⚠ ${esc(a)}</div>`).join('');
     if (!it.despues) return `<tr><td><b>${esc(it.lote)}</b></td><td colspan="5">${avisos}</td><td></td></tr>`;
     const cmp = compararConMapa(it, ol, porLote ? (porLote[it.lote] ?? null) : null, st.ot.fecha || '');
+    // M3: las barricas se cuentan enteras; solo el tanque lleva decimales.
     const envs = ENV_KEYS.map(kk => `<label class="otc-env">${ETIQ[kk]}
-        <input class="txt otc-num" type="number" step="any" min="0" data-k="${k}" data-env="${kk}" value="${escA(it.despues[kk] || '')}"></label>`).join('');
+        <input class="txt otc-num" type="number" step="${kk === 'vasija_grande' ? 'any' : '1'}" min="0" data-k="${k}" data-env="${kk}" value="${escA(it.despues[kk] || '')}"></label>`).join('');
     // Bloqueado: disabled + sin check. Revisar (lote sin foto de barriles, no
     // bloqueado): habilitado pero SIN check por defecto, para que alguien lo
     // mire antes de aplicarlo. El resto: con check. Un corte con algun origen
@@ -280,7 +310,10 @@ ${avisoCorte}
   box.addEventListener('input', ev => {
     const el = ev.target; if (el.dataset.env == null) return;
     const it = st.propuesta.items[+el.dataset.k];
-    it.despues[el.dataset.env] = el.dataset.env === 'vasija_actual' ? el.value : (num(el.value) ?? 0);
+    const kk = el.dataset.env;
+    it.despues[kk] = kk === 'vasija_actual' ? el.value
+      : kk === 'vasija_grande' ? (num(el.value) ?? 0)
+      : Math.max(0, Math.round(num(el.value) ?? 0));   // M3: barricas enteras
     recalcularItem(it, DATOS().mermas);
     $('otcLitros' + el.dataset.k).textContent = fmtL(it.litros_despues);
   });

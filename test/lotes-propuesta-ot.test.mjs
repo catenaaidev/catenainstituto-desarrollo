@@ -351,3 +351,47 @@ describe('aplicarPropuesta', () => {
     expect(o.lotes[0].aplicado).toEqual(aplicadoAntes);
   });
 });
+
+describe('C1: la merma nace con el ts del Mapa y desde la fecha de la OT', () => {
+  const entrada = { barricas_llenas: 11, mermas: [{ barril: '777', cap: 225, litros: 180, mapa_ts: 1788912988373 }] };
+  it('llenadoDeEntrada conserva mapa_ts (null si no vino)', () => {
+    expect(llenadoDeEntrada(entrada, 'barricas', PADRON).mermas[0].mapa_ts).toBe(1788912988373);
+    expect(llenadoDeEntrada({ barricas_llenas: 0, mermas: [{ barril: '7', cap: 225, litros: 100 }] }, 'barricas', PADRON)
+      .mermas[0].mapa_ts).toBeNull();
+  });
+  it('proponer usa ot.fecha como desde y pasa mapa_ts; aplicarPropuesta lo guarda', () => {
+    const datos = { lotes: [{ lote: 26217, cap225: 12, litros_actuales: 2700 }], mermas: [] };
+    const o = ot('barricas-barricas', [{ lote: '26217', barriles: DOCE, litros_previstos: 2700 }], { fecha: '2026-09-29' });
+    const p = proponer({ ot: o, lotes: datos.lotes, mermas: [], padron: PADRON, hoy: '2026-10-01',
+      entradas: { por_lote: [entrada], corte: null } });
+    expect(p.items[0].mermas_nuevas[0]).toMatchObject({ desde: '2026-09-29', mapa_ts: 1788912988373 });
+    aplicarPropuesta(datos, o, p, new Set(['26217']), 'ana', '2026-10-01');
+    expect(datos.mermas[0]).toMatchObject({ barril: '777', desde: '2026-09-29', mapa_ts: 1788912988373 });
+  });
+});
+
+describe('I3: llegaron mas litros de los que salieron', () => {
+  it('barricas: avisa si se conto la merma dentro de las llenas', () => {
+    const lotes = [{ lote: 26217, cap225: 12, litros_actuales: 2700 }];
+    const p = proponer({ ot: ot('barricas-barricas', [{ lote: '26217', barriles: DOCE, litros_previstos: 2700 }]),
+      lotes, mermas: [], padron: PADRON, hoy: '2026-10-01',
+      entradas: { por_lote: [{ barricas_llenas: 12, mermas: [{ barril: '777', cap: 225, litros: 180 }] }], corte: null } });
+    expect(p.items[0].merma_litros).toBe(-180);
+    expect(p.items[0].avisos).toContain('Llegaron más litros de los que salieron: ¿contaste la barrica merma dentro de las llenas?');
+  });
+  it('con merma positiva no avisa', () => {
+    const lotes = [{ lote: 26217, cap225: 12, litros_actuales: 2700 }];
+    const p = proponer({ ot: ot('barricas-barricas', [{ lote: '26217', barriles: DOCE, litros_previstos: 2700 }]),
+      lotes, mermas: [], padron: PADRON, hoy: '2026-10-01',
+      entradas: { por_lote: [{ barricas_llenas: 11, mermas: [{ barril: '777', cap: 225, litros: 180 }] }], corte: null } });
+    expect(p.items[0].avisos.some(a => a.startsWith('Llegaron más litros'))).toBe(false);
+  });
+  it('tanque: avisa sin la pregunta de las barricas', () => {
+    const lotes = [{ lote: 26217, cap225: 19, litros_actuales: 4275 }];
+    const p = proponer({ ot: ot('barrica-tanque', [{ lote: '26217', barriles: DOCE, litros_previstos: 2700 }]),
+      lotes, mermas: [], padron: PADRON, hoy: '2026-10-01',
+      entradas: { por_lote: [{ vasija: 'T 201', cm: 30 }], corte: null } });
+    expect(p.items[0].merma_litros).toBe(2700 - 4075);
+    expect(p.items[0].avisos).toContain('Llegaron más litros de los que salieron.');
+  });
+});

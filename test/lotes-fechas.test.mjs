@@ -8,7 +8,8 @@
  * mes por el camino.
  */
 import { describe, it, expect } from 'vitest';
-import { fmtFecha, fmtMes, aIso } from '../public/lotes/js/fechas.js';
+import { fmtFecha, fmtMes, aIso, hoyLocalISO } from '../public/lotes/js/fechas.js';
+import { hoyLocalISO as hoyDesdeHoja } from '../public/lotes/js/hoja-campos.js';
 
 describe('fmtFecha', () => {
   it('pasa el ISO a dd/mm/aaaa', () => {
@@ -111,5 +112,16 @@ describe('ida y vuelta', () => {
   it('un ISO guardado sobrevive a mostrarlo y volverlo a guardar', () => {
     for (const iso of ['2026-09-10', '2026-01-05', '2025-12-31'])
       expect(aIso(fmtFecha(iso))).toBe(iso);
+  });
+});
+
+describe('hoyLocalISO', () => {
+  it('usa la fecha de la PC, no la UTC', () => {
+    // 23:30 local del 28/09: en Mendoza (UTC-3) toISOString ya diria 29.
+    expect(hoyLocalISO(new Date(2026, 8, 28, 23, 30))).toBe('2026-09-28');
+    expect(hoyLocalISO(new Date(2026, 0, 5, 0, 1))).toBe('2026-01-05');
+  });
+  it('hoja-campos.js la re-exporta (vista-orden.js la importa de ahi)', () => {
+    expect(hoyDesdeHoja).toBe(hoyLocalISO);
   });
 });

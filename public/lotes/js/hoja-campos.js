@@ -25,12 +25,8 @@ export function campoHoja(k, valor, { tipo = 'text', cls = '', ph = '' } = {}){
   return `<input ${attrs} type="${tipo === 'date' ? 'date' : 'text'}" value="${escA(valor)}">`;
 }
 
-/* Fecha de HOY en la zona de la PC, 'YYYY-MM-DD'. No toISOString(): esa es
- * UTC y despues de las 21 h de Mendoza ya da el dia siguiente. */
-export function hoyLocalISO(d = new Date()){
-  const p = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
+/* hoyLocalISO vive en fechas.js; se re-exporta para vista-orden.js. */
+export { hoyLocalISO } from './fechas.js';
 
 const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 

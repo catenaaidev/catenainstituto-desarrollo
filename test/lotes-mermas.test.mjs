@@ -75,3 +75,31 @@ describe('cerrar', () => {
     expect(lote.litros_actuales).toBe(2700);
   });
 });
+
+describe('C1: la merma no se cierra con el escaneo de su propia OT', () => {
+  it('nuevaMerma guarda mapa_ts (null si no viene)', () => {
+    expect(M().mapa_ts).toBeNull();
+    expect(M({ mapa_ts: 1788912988373 }).mapa_ts).toBe(1788912988373);
+  });
+  it('con mapa_ts: LLENO con el mismo ts sigue pendiente, aunque la fecha sea posterior', () => {
+    const m = M({ mapa_ts: 1788912988373 });
+    expect(llenaSegunMapa(m, { estado: 'LLENO', lote: '26217', fecha: '2026-10-03', ts: 1788912988373 })).toBe(false);
+  });
+  it('con mapa_ts: un ts posterior la cierra', () => {
+    const m = M({ mapa_ts: 1788912988373 });
+    expect(llenaSegunMapa(m, { estado: 'LLENO', lote: '26217', fecha: '2026-10-01', ts: 1788912999999 })).toBe(true);
+    expect(llenaSegunMapa(m, { estado: 'MERMO', lote: '26217', fecha: '2026-10-03', ts: 1788912999999 })).toBe(false);
+    expect(llenaSegunMapa(m, { estado: 'LLENO', lote: '26217', fecha: '2026-10-03', ts: null })).toBe(false);
+  });
+  it('sin mapa_ts: la fecha igual a desde sigue pendiente; posterior la cierra', () => {
+    expect(llenaSegunMapa(M(), { estado: 'LLENO', lote: '26217', fecha: '2026-10-01' })).toBe(false);
+    expect(llenaSegunMapa(M(), { estado: 'LLENO', lote: '26217', fecha: '2026-10-02' })).toBe(true);
+  });
+});
+
+describe('M1: sin mermas del lote no se redondea', () => {
+  it('3048.625 en tanque queda 3048.625', () => {
+    expect(litrosDelLote({ lote: 26217, vasija_grande: 3048.625 }, [])).toBe(3048.625);
+    expect(litrosDelLote({ lote: 26217, vasija_grande: 3048.625 }, [M({ lote: '26300' })])).toBe(3048.625);
+  });
+});

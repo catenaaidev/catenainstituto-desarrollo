@@ -139,7 +139,11 @@ export function llenadoDeEntrada(entrada, tipo, padron){
       }
       llenado[CLAVE[clave]]++;
       litros += l;
-      mermas.push({ barril: String(m.barril).trim(), cap, litros: l });
+      // C1: el ts del Mapa de esa barrica al confirmar (vista-ot-confirmar.js
+      // lo copia de la lectura del paso 2): la merma solo se cierra sola con
+      // un cambio del Mapa POSTERIOR a este.
+      const ts = m.mapa_ts == null || m.mapa_ts === '' ? null : Number(m.mapa_ts);
+      mermas.push({ barril: String(m.barril).trim(), cap, litros: l, mapa_ts: Number.isFinite(ts) ? ts : null });
     }
     const total = n + mermas.length;
     vasija_texto = total === 1 ? '1 barrica' : `${total} barricas`;
@@ -212,8 +216,10 @@ export function proponer({ ot, lotes, mermas, padron, entradas, hoy }){
       else if (quedaAlgo && nuevo) vasija = vasija ? `${nuevo} + ${vasija}` : nuevo;
       else vasija = nuevo || vasija;
 
+      // C1: desde es la fecha de TRABAJO de la OT (la que anota el escaner),
+      // no la del dia en que alguien la confirma.
       nuevas = ll.mermas.map(m => ({ lote: String(ol.lote), barril: m.barril, cap: m.cap, litros: m.litros,
-        desde: hoy, ot: ot.ot }));
+        desde: ot.fecha || hoy, ot: ot.ot, mapa_ts: m.mapa_ts ?? null }));
     } else if (litrosDeEnvases(env) <= 0) vasija = '';
     const vaciados = new Set(((ol.barriles) || []).map(x => String(x.num)));
     const cerradas = (mermas || []).filter(m => estaPendiente(m) && codigoLote(m.lote) === codigoLote(ol.lote)
@@ -224,6 +230,13 @@ export function proponer({ ot, lotes, mermas, padron, entradas, hoy }){
       merma_litros: origen != null && llegados != null ? r1(origen - llegados) : null,
       litros_despues: null, avisos, bloqueado, revisar };
     recalcularItem(item, mermas);
+    // I3: barricas_llenas arranca con las previstas; si ademas se agrega la
+    // merma, esa barrica se cuenta dos veces y la merma da negativa.
+    if (item.merma_litros != null && item.merma_litros < 0){
+      avisos.push(tipo === 'barricas'
+        ? 'Llegaron más litros de los que salieron: ¿contaste la barrica merma dentro de las llenas?'
+        : 'Llegaron más litros de los que salieron.');
+    }
     // En un corte el origen quedando en 0 es lo esperado; en un trasiego no.
     if (!corte && item.litros_despues <= 0) avisos.push('El lote queda en 0 L y pasa a inactivo.');
     items.push(item);

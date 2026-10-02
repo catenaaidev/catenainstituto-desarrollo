@@ -20,6 +20,9 @@ export interface BarrilOT {
   trat: string;
   lote: string;
   fecha: string;
+  /** Momento (ms) del ultimo cambio de esa barrica en el Mapa. Las mermas de
+   * Lotes lo guardan al confirmar la OT para no cerrarse con su propio escaneo. */
+  ts: number | null;
 }
 
 /** Números que vienen del Excel como texto ('225') o vacíos. */
@@ -43,6 +46,7 @@ function aBarrilOT(b: Record<string, unknown>): BarrilOT {
     trat: txt(b.trat),
     lote: txt(b.lote),
     fecha: txt(b.fecha),
+    ts: numero(b.ts),
   };
 }
 

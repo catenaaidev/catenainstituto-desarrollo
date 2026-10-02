@@ -50,7 +50,7 @@ export function renderVasijas(cont){
       const n = Number(el.value);
       // Vacio, negativo o no numerico: lo mismo que "sin dato" (null), nunca
       // una capacidad imposible.
-      v.cap_real = (el.value === '' || !Number.isFinite(n) || n < 0) ? null : n;
+      v.cap_real = (el.value.trim() === '' || !Number.isFinite(n) || n < 0) ? null : n;
     }
     else if (f === 'tabla') v.tabla = el.value || null;
     else if (f === 'num'){

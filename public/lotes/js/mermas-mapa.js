@@ -9,6 +9,7 @@
 import { DATOS, usuarioActual, registrarAntesDeGuardar, registrarInit,
          invalidarVista, vistaActiva, renderActivo } from './nucleo.js';
 import { estaPendiente, cerrarLlenasSegunMapa, recalcularLitros } from './mermas.js';
+import { hoyLocalISO } from './fechas.js';
 
 /* undefined = todavia no se leyo el Mapa (recien cargo la pagina); null = la
  * ultima lectura fallo; objeto = la ultima lectura, aunque este vacio ({}). */
@@ -36,8 +37,7 @@ export async function refrescarMapaMermas(){
 
 export function cerrarMermasLlenas(datos){
   if (!_porNum || !Array.isArray(datos.mermas)) return false;
-  const lotes = cerrarLlenasSegunMapa(datos.mermas, _porNum, usuarioActual() || 'Mapa',
-    new Date().toISOString().slice(0, 10));
+  const lotes = cerrarLlenasSegunMapa(datos.mermas, _porNum, usuarioActual() || 'Mapa', hoyLocalISO());
   if (!lotes.size) return false;
   recalcularLitros(datos.lotes, datos.mermas, lotes);
   return true;

@@ -3,7 +3,8 @@
 
 import { $, esc, escA, registrarVista, irALote,
          DATOS, markDirty, guardar } from './nucleo.js';
-import { resumenEnvases, litrosDeEnvases, CAPACIDADES } from './envases.js';
+import { resumenEnvases, CAPACIDADES } from './envases.js';
+import { litrosDelLote } from './mermas.js';
 
 const ETIQUETA = {
   coincide:            'Coincide',
@@ -40,7 +41,8 @@ export function aplicarDesglose(lote, desglose){
     const n = Number(desglose[c.k]) || 0;
     lote[c.k] = n > 0 ? n : null;   // null en cero, como un lote recien creado
   }
-  lote.litros_actuales = litrosDeEnvases(lote);
+  // I2: las barricas mermas pendientes del lote se siguen descontando.
+  lote.litros_actuales = litrosDelLote(lote, DATOS().mermas);
   return lote;
 }
 

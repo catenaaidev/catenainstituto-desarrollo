@@ -5,7 +5,8 @@
  * litros del lote:
  *   litros_actuales = litrosDeEnvases(lote) - faltante de sus mermas pendientes
  * Se cierra sola cuando el Mapa de Barriles la muestra LLENO con el mismo lote
- * y fecha posterior (cerrarLlenasSegunMapa), a mano, o cuando otra OT la vacia. */
+ * Y registro un cambio en esa barrica despues de la OT (llenaSegunMapa), a
+ * mano, o cuando otra OT la vacia. */
 'use strict';
 
 import { litrosDeEnvases } from './envases.js';
@@ -35,23 +36,41 @@ export function faltanteDeLote(mermas, lote){
 /* Nunca null y nunca negativo: motor_etapas lee litros_actuales <= 0 como lote cerrado. */
 export function litrosDelLote(lote, mermas){
   if (!lote) return 0;
-  return Math.max(0, r1(litrosDeEnvases(lote) - faltanteDeLote(mermas, lote.lote)));
+  const falta = faltanteDeLote(mermas, lote.lote);
+  // M1: sin mermas del lote no se redondea (3048,625 L de tanque quedan asi).
+  if (falta === 0) return litrosDeEnvases(lote);
+  return Math.max(0, r1(litrosDeEnvases(lote) - falta));
 }
 
-export function nuevaMerma({ lote, barril, cap, litros, desde, ot }, id){
+/* mapa_ts: el `ts` que tenia esa barrica en el Mapa al confirmar la OT (null
+ * si no se sabia). Ver llenaSegunMapa. */
+export function nuevaMerma({ lote, barril, cap, litros, desde, ot, mapa_ts = null }, id){
+  const ts = mapa_ts == null || mapa_ts === '' ? null : Number(mapa_ts);
   return { id, lote: String(lote), barril: String(barril).trim(), cap: Number(cap), litros: Number(litros),
-           desde: String(desde || ''), ot: String(ot || ''),
+           desde: String(desde || ''), ot: String(ot || ''), mapa_ts: Number.isFinite(ts) ? ts : null,
            resuelta_el: '', resuelta_por: '', resuelta_como: '' };
 }
 
-/* barrilMapa: la fila del Mapa para ese numero ({estado, lote, fecha}) o null.
- * Sin fecha en el Mapa no se cierra: es preferible una merma de mas en la lista
- * que una barrica medio vacia que nadie recuerda. */
+/* b: la fila del Mapa para ese numero ({estado, lote, fecha, ts}) o null.
+ *
+ * C1: el escaner deja la barrica rellenada en LLENO con la fecha del dia de
+ * trabajo, y volver a escanear una LLENO del mismo lote no mueve ni fecha ni
+ * ts. Por eso "LLENO y fecha >= desde" la cerraba apenas se confirmaba la OT.
+ * Ahora tiene que haber un cambio en el Mapa DESPUES de la OT:
+ *   - si la merma guardo el ts del Mapa al confirmar (mapa_ts), un ts mayor;
+ *   - si no (mermas viejas o el Mapa no tenia ts), una fecha estrictamente
+ *     posterior a desde (la fecha de la OT).
+ * Sin dato no se cierra: es preferible una merma de mas en la lista que una
+ * barrica medio vacia que nadie recuerda. */
 export function llenaSegunMapa(m, b){
   if (!m || !b || b.estado !== 'LLENO') return false;
   if (codigoLote(b.lote) !== codigoLote(m.lote)) return false;
+  if (typeof m.mapa_ts === 'number' && Number.isFinite(m.mapa_ts)){
+    const ts = b.ts == null || b.ts === '' ? NaN : Number(b.ts);
+    return Number.isFinite(ts) && ts > m.mapa_ts;
+  }
   const f = String(b.fecha || '');
-  return !!f && f >= String(m.desde || '');
+  return !!f && f > String(m.desde || '');
 }
 
 export function resolver(m, como, usuario, hoy){
