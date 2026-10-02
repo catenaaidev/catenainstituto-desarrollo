@@ -315,11 +315,17 @@ export async function guardar(forzar, intento = 0){
   if (_ediciones !== edicionesAlEnviar){
     // Se editó durante el viaje: queda pendiente (y en el borrador del equipo).
     markDirty();
+    cargarDashboard();
     if (cambioHook || intento > 0) renderActivo();
     return true;
   }
   if (FUSION) FUSION.borrador.borrar('lotes');
   markSaved();
+  /* El tablero, el Dashboard y los colores de Lotes salen de /api/dashboard,
+   * que el servidor calcula sobre lo GUARDADO. Antes se pedia una sola vez al
+   * abrir la pagina, asi que despues de corregir un criterio o cargar un
+   * analisis seguian mostrando el veredicto viejo hasta recargar. */
+  cargarDashboard();
   if (cambioHook || intento > 0) renderActivo();
   if (intento > 0) $('statusBar').textContent = '✓ Guardado (v' + DATOS().meta.version + ') · combinado con lo que guardaron otros';
   if (j.respaldo){
@@ -353,21 +359,38 @@ export function dashData(){ return _dashData; }
 export function dashLoading(){ return _dashLoading; }
 export function invalidarDashMap(){ _dashMap = null; }
 
-export async function cargarDashboard(){
-  if (_dashLoading) return;
+/* Version del documento guardado en el servidor. La lee cargarDashboard para
+ * saber si su respuesta ya describe lo ultimo que se guardo. */
+const _versionGuardada = () => ((DATOS() || {}).meta || {}).version ?? null;
+let _dashPendiente = false;
+let _dashPromesa = null;
+
+/* Si ya hay un pedido en vuelo se anota que hace falta otro (ese pedido puede
+ * haber salido ANTES de un guardado y traer el tablero viejo) y se devuelve la
+ * misma promesa: quien hace `await cargarDashboard()` espera los datos nuevos,
+ * no vuelve enseguida con los viejos. */
+export function cargarDashboard(){
+  if (_dashPromesa){ _dashPendiente = true; return _dashPromesa; }
+  _dashPromesa = _cargarDashboard().finally(() => { _dashPromesa = null; });
+  return _dashPromesa;
+}
+
+async function _cargarDashboard(){
   _dashLoading = true;
   try {
-    /* La clave de años con la que se pide. Si el selector cambia mientras
-     * viaja, la respuesta describe otros años: se descarta y se vuelve a
-     * pedir, sin soltar _dashLoading entre medio (sino se superponen dos
-     * pedidos en vuelo). */
-    let clave, j;
+    /* La clave de años y la version con que se pide. Si el selector cambia o
+     * alguien guarda mientras viaja, la respuesta describe otra cosa: se
+     * descarta y se vuelve a pedir, sin soltar _dashLoading entre medio (sino
+     * se superponen dos pedidos en vuelo). */
+    let clave, version, j;
     do {
+      _dashPendiente = false;
       clave = queryAnios();
+      version = _versionGuardada();
       const r = await fetch(API+'/dashboard' + (clave ? '?anios=' + clave : ''));
       if (!r.ok) return;
       j = await r.json();
-    } while (queryAnios() !== clave);
+    } while (queryAnios() !== clave || _versionGuardada() !== version || _dashPendiente);
     _dashData = j;
     _dashMap = new Map();
     for (const e of (j.lotes||[])){

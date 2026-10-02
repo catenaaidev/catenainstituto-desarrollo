@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { indicesPorObjeto, armarFilas,
-         esQuimicaReal, esCorreccionReal } from '../public/lotes/js/analisis-filas.js';
+         esQuimicaReal, esCorreccionReal, estadoCartelLote } from '../public/lotes/js/analisis-filas.js';
 
 describe('indicesPorObjeto', () => {
   it('da para cada objeto la misma posicion que indexOf', () => {
@@ -123,5 +123,64 @@ describe('esQuimicaReal / esCorreccionReal', () => {
     // mbk_a_agregar en 0 es el relleno que dejo la migracion del Excel
     expect(esCorreccionReal({ mbk_a_agregar: 0 })).toBe(false);
     expect(esCorreccionReal(null)).toBe(false);
+  });
+});
+
+/* El cartel del lote (la franja con el numero) dice como esta el lote segun su
+ * ULTIMO analisis. Antes tomaba la ultima medicion de cada metrica por
+ * separado, asi que un valor viejo que nadie volvio a medir dejaba el cartel
+ * naranja aunque el analisis de hoy estuviera todo bien. */
+describe('estadoCartelLote', () => {
+  const v = (fecha, fuera = [], dentro = []) => ({ fecha, fuera: new Set(fuera), dentro: new Set(dentro) });
+
+  it('manda el ultimo analisis aunque uno viejo tenga algo fuera', () => {
+    expect(estadoCartelLote([
+      v('2026-08-01', ['malico'], ['so2_libre']),
+      v('2026-09-14', [], ['so2_libre', 'so2_molecular', 'ph']),
+    ])).toBe('ok');
+  });
+
+  it('naranja si el ultimo analisis tiene algo fuera', () => {
+    expect(estadoCartelLote([
+      v('2026-08-01', [], ['ph']),
+      v('2026-09-14', ['av'], ['ph']),
+    ])).toBe('mal');
+  });
+
+  it('no depende del orden en que llegan las filas', () => {
+    expect(estadoCartelLote([
+      v('2026-09-14', [], ['ph']),
+      v('2026-08-01', ['av'], []),
+    ])).toBe('ok');
+  });
+
+  it('dos analisis del mismo ultimo dia se juntan', () => {
+    expect(estadoCartelLote([
+      v('2026-09-14', [], ['ph']),
+      v('2026-09-14', ['av'], []),
+    ])).toBe('mal');
+  });
+
+  it('saltea los analisis sin ningun veredicto (sin medicion juzgable)', () => {
+    expect(estadoCartelLote([
+      v('2026-08-01', [], ['ph']),
+      v('2026-09-30'),
+    ])).toBe('ok');
+  });
+
+  it('sin ningun veredicto no hay color', () => {
+    expect(estadoCartelLote([v('2026-09-30'), v('')])).toBe(null);
+    expect(estadoCartelLote([])).toBe(null);
+  });
+
+  it('una fila sin fecha no le gana a una con fecha', () => {
+    expect(estadoCartelLote([
+      v('', ['av'], []),
+      v('2026-09-14', [], ['ph']),
+    ])).toBe('ok');
+  });
+
+  it('si solo hay filas sin fecha, se juzga con ellas', () => {
+    expect(estadoCartelLote([v('', ['av'], [])])).toBe('mal');
   });
 });

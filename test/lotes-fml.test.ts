@@ -538,6 +538,21 @@ describe('flags de una fila de análisis', () => {
     expect(flagsAnalisis({ so2_libre: 28.0, ph: 2.93 }, eff())).not.toContain('so2_libre');
   });
 
+  // Gluc+Fruc tenia un 3,0 fijo en el codigo, fuera de la pantalla de
+  // criterios: dejaba naranja a 166 lotes 2026 que por lo demas estaban bien.
+  it('juzga Gluc+Fruc con el criterio configurable gluc_fruc_max', () => {
+    expect(CRITERIOS_DEFAULT.gluc_fruc_max).toBe(3.0);
+    expect(flagsAnalisis({ gluc_fruc: 3.3 }, eff())).toContain('gluc_fruc');
+    expect(flagsAnalisis({ gluc_fruc: 3.0 }, eff())).not.toContain('gluc_fruc');
+    const laxo = criteriosEfectivos(
+      { default: { ...CRITERIOS_DEFAULT }, por_variedad: { 'Pinot Noir': { gluc_fruc_max: 4 } } },
+      'Pinot Noir',
+    );
+    expect(flagsAnalisis({ gluc_fruc: 3.3 }, laxo)).not.toContain('gluc_fruc');
+    expect(dentroAnalisis({ gluc_fruc: 3.3 }, laxo)).toContain('gluc_fruc');
+    expect(flagsAnalisis({ gluc_fruc: 4.1 }, laxo)).toContain('gluc_fruc');
+  });
+
   it('sin pH no marca el SO2 por encima del piso', () => {
     // 30 > piso 20 y no hay pH: no se puede calcular el molecular, no hay
     // veredicto. El lote tambien queda 'sin_datos' (ver estadoSo2).

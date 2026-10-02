@@ -9,6 +9,7 @@
 export const CRITERIOS_DEFAULT = {
   hace_fml:               'si',
   fa_azucar_reductor_max: 5.0,
+  gluc_fruc_max:          3.0,
   fml_malico_finalizada:  0.2,
   fml_malico_2ultimas:    0.5,
   so2_molecular_objetivo: 0.38,

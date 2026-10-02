@@ -6,7 +6,7 @@ import { $, esc, escA, DATOS, markDirty, registrarVista, registrarInit, irALote,
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla } from './grilla.js';
-import { armarFilas, esQuimicaReal, esCorreccionReal } from './analisis-filas.js';
+import { armarFilas, esQuimicaReal, esCorreccionReal, estadoCartelLote } from './analisis-filas.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
 import { crearAnchos } from './anchos-cols.js';
@@ -553,7 +553,7 @@ export function renderAnalisis(){
   &nbsp;·&nbsp;
   <span class="sw fuera"></span> Valor fuera de criterio
   &nbsp;·&nbsp;
-  <span class="sw sep-mal"></span> Lote cuya última medición tiene algo fuera de criterio
+  <span class="sw sep-mal"></span> Lote cuyo último análisis tiene algo fuera de criterio
   &nbsp;·&nbsp;
   <span class="sw vacio"></span> Análisis de un lote sin litros (filas atenuadas)
 </div>
@@ -561,9 +561,8 @@ export function renderAnalisis(){
   Sólo se pintan las columnas que tienen criterio (pH, AV, Gluc+Fruc, Az. Reductor,
   Málico, SO₂ libre y SO₂ molecular). Una celda sin color es una que no se puede
   juzgar: sin medición, o sin el pH que hace falta para el molecular.
-  <br>La banda del lote muestra cómo está <b>hoy</b>: vale la última medición de cada
-  valor, así que un lote puede tener filas viejas en naranja y estar en verde. Un
-  valor que quedó fuera de criterio y nadie volvió a medir sigue contando.
+  <br>La banda del lote muestra cómo está <b>hoy</b>: la decide su último análisis,
+  así que un lote puede tener filas viejas en naranja y estar en verde.
 </div>
 <div class="scroll tall"><table id="tAnalisis"></table></div>`;
 
@@ -627,20 +626,9 @@ export function renderAnalisis(){
     ? (_veredictoDe(fila.analisis) || SIN_VEREDICTO)
     : SIN_VEREDICTO;
 
-  /* Estado de cada lote, para pintar su separador.
-   *
-   * El separador dice como esta el lote HOY, no si alguna vez tuvo algo mal:
-   * vale el ULTIMO veredicto de CADA metrica. Un pH que se corrigio en abril no
-   * puede dejar el lote en naranja para siempre cuando las cinco mediciones
-   * siguientes dieron bien — era el bug que se veia con el lote 26139.
-   *
-   * Es metrica por metrica, y no "el veredicto de la ultima fila", porque no
-   * todas se miden juntas: si la corrida de septiembre trajo pH y SO2 pero no
-   * malico, el malico sigue valiendo el de la ultima vez que se lo midio. Un
-   * problema que nadie volvio a medir sigue abierto. Es exactamente el criterio
-   * con el que el motor juzga el lote (estadoPh y estadoSo2 en
-   * fml-condiciones.ts caminan el historial hacia atras y se quedan con el
-   * ultimo valor valido de cada una).
+  /* Estado de cada lote, para pintar su separador: lo decide su ULTIMO
+   * analisis (estadoCartelLote en analisis-filas.js explica por que ya no es
+   * la ultima medicion de cada metrica por separado).
    *
    * Se calcula sobre las filas que QUEDARON despues de filtrar, no sobre todo
    * el lote: el separador describe lo que hay debajo de el, si no marcaria un
@@ -653,32 +641,16 @@ export function renderAnalisis(){
   for (const fila of filasDeDatos){
     if (fila.tipo !== 'quimica') continue;
     const lote = String(fila.analisis.lote ?? '');
+    const v = veredictoDe(fila);
+    const item = { fecha: _fechaIso(fila.analisis), fuera: v.fuera, dentro: v.dentro };
     const lista = quimicasPorLote.get(lote);
-    if (lista) lista.push(fila); else quimicasPorLote.set(lote, [fila]);
+    if (lista) lista.push(item); else quimicasPorLote.set(lote, [item]);
   }
 
   const estadoDeLote = new Map();
-  for (const [lote, filas] of quimicasPorLote){
-    /* De la mas reciente a la mas vieja. Se ordena por FECHA y no por el orden
-     * en que estan saliendo en pantalla: la tabla se puede ordenar por
-     * cualquier columna, y con sortAnalisis en pH "la ultima fila del grupo" no
-     * es "la medicion mas reciente". Las fechas son ISO, asi que comparar los
-     * textos ya es comparar cronologicamente, y las filas sin fecha ('') caen
-     * al final: no pueden ser la ultima palabra sobre nada. */
-    const recientesPrimero = [...filas].sort(
-      (a, b) => _fechaIso(b.analisis).localeCompare(_fechaIso(a.analisis)));
-
-    const yaResuelta = new Set();
-    let hayFuera = false;
-    for (const f of recientesPrimero){
-      const v = veredictoDe(f);
-      for (const m of v.fuera){
-        if (yaResuelta.has(m)) continue;
-        yaResuelta.add(m); hayFuera = true;
-      }
-      for (const m of v.dentro) yaResuelta.add(m);
-    }
-    if (yaResuelta.size) estadoDeLote.set(lote, hayFuera ? 'mal' : 'ok');
+  for (const [lote, veredictos] of quimicasPorLote){
+    const e = estadoCartelLote(veredictos);
+    if (e) estadoDeLote.set(lote, e);
   }
 
   /* filas: se recorre filasVirtuales COMPLETO (con separadores), pero el

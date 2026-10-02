@@ -46,6 +46,7 @@ export { valorValido, ordenarPorFecha, INVALIDO, type Fila };
 export interface Criterios {
   hace_fml: string;
   fa_azucar_reductor_max: number;
+  gluc_fruc_max: number;
   fml_malico_finalizada: number;
   fml_malico_2ultimas: number;
   so2_molecular_objetivo: number;
@@ -65,6 +66,10 @@ export interface Criterios {
 export const CRITERIOS_DEFAULT: Criterios = {
   hace_fml: 'si',
   fa_azucar_reductor_max: 5.0,
+  // Solo pinta la celda Gluc+Fruc de Analisis; ninguna condicion del tablero
+  // lo usa. Antes era un 3.0 fijo en veredictosAnalisis, invisible en la
+  // pantalla de criterios.
+  gluc_fruc_max: 3.0,
   fml_malico_finalizada: 0.2,
   fml_malico_2ultimas: 0.5,
   so2_molecular_objetivo: 0.38,
@@ -384,7 +389,7 @@ export function veredictosAnalisis(
   }
 
   const gf = valido(a.gluc_fruc);
-  if (gf !== null) v.gluc_fruc = gf > 3.0 ? 'fuera' : 'dentro';
+  if (gf !== null) v.gluc_fruc = gf > eff.gluc_fruc_max ? 'fuera' : 'dentro';
 
   const az = valido(a.azucar_reductor);
   if (az !== null) v.azucar_reductor = az > eff.fa_azucar_reductor_max ? 'fuera' : 'dentro';

@@ -2,7 +2,7 @@
 'use strict';
 
 import { $, esc, escA, DATOS, dashData, registrarVista,
-         markDirty, guardar, cargarDashboard, usuarioActual, irALote } from './nucleo.js';
+         markDirty, guardar, usuarioActual, irALote } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
 import { criteriosEfectivosJS } from './criterios.js';
 import { metricasPorLote, heatmapVariedadAlarma, resumen } from './dash-metricas.js';
@@ -85,8 +85,8 @@ async function confirmarEtapa(fila){
     if (av) avance = av;
   }
   _confirmar(fila.lote, fila.etapa_sugerida, avance);
-  const ok = await guardar(false);
-  if (ok) cargarDashboard();
+  // guardar() ya vuelve a pedir el dashboard.
+  await guardar(false);
 }
 
 /* Confirma TODOS los lotes de la bandeja y hace UN SOLO guardado. */
@@ -101,8 +101,8 @@ async function confirmarTodasLasEtapas(filas){
     return f._avance;
   }));
   filas.forEach((f, i) => _confirmar(f.lote, f.etapa_sugerida, avances[i]));
-  const ok = await guardar(false);
-  if (ok) cargarDashboard();
+  // guardar() ya vuelve a pedir el dashboard.
+  await guardar(false);
 }
 
 /* ---------- graficos ----------

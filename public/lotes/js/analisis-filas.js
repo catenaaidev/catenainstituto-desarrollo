@@ -117,3 +117,29 @@ export function armarFilas(analisisArray, sortState, filtroFila){
   }
   return salida;
 }
+
+/** Color del cartel de un lote en la pestana Analisis: 'mal', 'ok' o null.
+ *
+ *  Manda el ULTIMO analisis del lote, no la ultima medicion de cada metrica por
+ *  separado: antes un malico o una AV de hace meses que nadie volvio a medir
+ *  dejaba el cartel naranja aunque el analisis de hoy estuviera todo en
+ *  criterio, y el cartel contradecia a las celdas que tenia justo debajo.
+ *
+ *  `veredictos` es una lista de {fecha, fuera, dentro} (fecha ISO o '' si no
+ *  tiene una usable; fuera/dentro, Sets de metricas). Los analisis sin ningun
+ *  veredicto (sin medicion juzgable) no cuentan: no pueden decir que el lote
+ *  esta bien. Si el ultimo dia tiene dos analisis, se juzgan juntos. Una fila
+ *  sin fecha solo se usa si ninguna con fecha tiene veredicto.
+ *
+ *  null = sin color: nada que juzgar no es lo mismo que "esta bien". */
+export function estadoCartelLote(veredictos){
+  const juzgables = (veredictos || []).filter(v => v.fuera.size || v.dentro.size);
+  if (!juzgables.length) return null;
+  const conFecha = juzgables.filter(v => v.fecha);
+  let ultimos = juzgables;
+  if (conFecha.length){
+    const max = conFecha.reduce((m, v) => v.fecha > m ? v.fecha : m, '');
+    ultimos = conFecha.filter(v => v.fecha === max);
+  }
+  return ultimos.some(v => v.fuera.size) ? 'mal' : 'ok';
+}
