@@ -11,6 +11,7 @@ import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
 import { crearAnchos } from './anchos-cols.js';
 import { fmtFecha, fmtMes } from './fechas.js';
+import { visible } from './selector-anios.js';
 
 /* Columnas de la tabla de análisis. Las 2 ultimas son de la CORRECCION de SO2
  * (viven en analisis.correccion.*, no directo en el registro) y solo se ven
@@ -381,7 +382,9 @@ function initFiltrosAn(){
       set: filtAn[c.k],
       /* cmpValores ordena numerico cuando los valores son numeros, asi que los
        * lotes y las mediciones salen en orden y no alfabeticamente. */
-      opciones: () => opcionesValores(DATOS().analisis || [], leer, c.fmt),
+      // Solo los analisis de los años prendidos: no ofrecer un valor que solo
+      // existe en un año apagado.
+      opciones: () => opcionesValores((DATOS().analisis || []).filter(a => visible(a.lote)), leer, c.fmt),
       match: matchValor(leer),
     };
   });
@@ -478,12 +481,17 @@ export function renderAnalisis(){
   /* Para el pintado, que tiene a mano el NUMERO de lote y no el analisis. */
   const esVacio = (numLote) => estaVacio(loteObjMap.get(String(numLote ?? '')));
 
+  /* Selector de años: se filtra el array crudo ANTES de armar meses y
+   * registrosFiltrados, para que ninguno de los dos ofrezca ni cuente lo de
+   * un año apagado. */
+  const delAnio = (DATOS().analisis || []).filter(a => visible(a.lote));
+
   /* -------- construir opciones de filtros -------- */
-  const meses     = [...new Set((DATOS().analisis||[]).map(a => (a.fecha_analisis||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const meses     = [...new Set(delAnio.map(a => (a.fecha_analisis||'').slice(0,7)).filter(Boolean))].sort().reverse();
 
   /* -------- filtrar el array crudo (mes/busca/variedad/proyecto, igual que
      antes: se filtran los REGISTROS, no las filas virtuales) -------- */
-  let registrosFiltrados = DATOS().analisis || [];
+  let registrosFiltrados = delAnio;
   if (_filtAnalisisBusca){
     const q = _filtAnalisisBusca.toLowerCase();
     registrosFiltrados = registrosFiltrados.filter(a => String(a.lote??'').toLowerCase().includes(q));
@@ -745,7 +753,7 @@ export function renderAnalisis(){
   tb += '</tbody>';
   t.innerHTML = h + tb;
 
-  $('analisisCount').textContent = filasDeDatos.length + ' filas / ' + (DATOS().analisis||[]).length + ' análisis';
+  $('analisisCount').textContent = filasDeDatos.length + ' filas / ' + delAnio.length + ' análisis';
 
   /* -------- sort por clic en encabezado -------- */
   t.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => {

@@ -16,6 +16,7 @@ import { crearFiltroLlenado } from './filtro-llenado.js';
 import { fmtFecha } from './fechas.js';
 import { PASOS, armarHijo, validarNumeroLote, ordenarConFijos,
          movimientoHijo } from './lote-nuevo.js';
+import { visible, montarSelectorAnios } from './selector-anios.js';
 
 /* La clave de storage es la de siempre (lotes_cols_ancho): respeta los anchos
  * que la gente ya tiene guardados. El encabezado de Lotes son DOS filas
@@ -232,8 +233,10 @@ function initFiltrosLotes(){
         label: c.label, campo: c.campo, col: c.col,
         set: filtLotes[c.campo],
         opciones: () => {
-          // Opciones ordenadas por el orden del proceso
-          const enrich = DATOS().lotes.map(_enrichLote);
+          // Opciones ordenadas por el orden del proceso. Solo de los años
+          // prendidos, para no ofrecer una etapa que solo existe en un año
+          // apagado.
+          const enrich = DATOS().lotes.filter(l => visible(l.lote)).map(_enrichLote);
           const vals = [...new Set(enrich.map(l => l._etapa || ''))];
           vals.sort((a, b) => {
             const ia = ETAPAS_ORDEN.indexOf(a);
@@ -255,8 +258,9 @@ function initFiltrosLotes(){
         opciones: () => {
           /* Solo los tipos que hay en los datos, para no ofrecer opciones que no
            * matchean nada: hoy ningun lote usa barricas de 500 L. Mismo criterio
-           * que opcionesValores con los campos planos. */
-          const lotes = DATOS().lotes;
+           * que opcionesValores con los campos planos. Solo de los años
+           * prendidos, mismo motivo que el resto de los filtros. */
+          const lotes = DATOS().lotes.filter(l => visible(l.lote));
           const presentes = new Set();
           let haySin = false;
           for (const l of lotes){
@@ -282,7 +286,9 @@ function initFiltrosLotes(){
     return {
       label: c.label, campo: c.campo, col: c.col,
       set: filtLotes[c.campo],
-      opciones: () => opcionesValores(DATOS().lotes, l=>l[c.campo], c.fmt),
+      // Solo de los años prendidos: no ofrecer un valor que solo existe en un
+      // año apagado.
+      opciones: () => opcionesValores(DATOS().lotes.filter(l => visible(l.lote)), l=>l[c.campo], c.fmt),
       match: matchValor(l=>l[c.campo]),
     };
   });
@@ -564,6 +570,10 @@ export function renderLotes(){
              _envases_n: contarEnvases(l), _origIdx: origIdx };
   });
 
+  /* Selector de años: lo de un año apagado no se dibuja (los fijos recien
+   * creados igual van arriba, ver ordenarConFijos). */
+  rows = rows.filter(l => visible(l.lote));
+
   if (q) rows = rows.filter(l => String(l.lote||'').toLowerCase().includes(q));
   rows = rows.filter(l => pasaMulti(l, _descLotes));
   if (fltLlenado) rows = rows.filter(l => fltLlenado.pasa(l));
@@ -784,7 +794,8 @@ export function renderLotes(){
     });
   }
 
-  $('lotesCount').textContent = rows.length + ' / ' + DATOS().lotes.length + ' lotes';
+  const totalAnios = DATOS().lotes.filter(l => visible(l.lote)).length;
+  $('lotesCount').textContent = rows.length + ' / ' + totalAnios + ' lotes';
   pintarBotonOrdenar(fijos.length);
   /* Grilla tipo planilla. El adaptador se arma en cada render porque t._rows
      cambia; activarGrilla es idempotente y restaura la seleccion por identidad. */
@@ -950,6 +961,10 @@ function abrirAsistente(padre){
     for (const p of PASOS) base[p.k] = vals[p.k];
     base.lote = v.valor;
     DATOS().lotes.unshift(base);
+    /* Un lote de un año nuevo (27001...) agrega su boton de año solo, sea por
+     * el asistente de Nuevo lote o por ⎘ Hijo: los dos pasan por aca.
+     * Idempotente, no rompe nada llamarla de nuevo. */
+    montarSelectorAnios(DATOS().lotes);
     /* El hijo deja un traspaso padre→hijo en Movimientos: sin eso no aparece
      * en el Linaje de la ficha. */
     if (padre){
