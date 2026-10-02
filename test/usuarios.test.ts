@@ -72,6 +72,23 @@ describe('login con usuario y contraseña', () => {
     expect((await entrar('admin', '1234')).res.status).toBe(401);
   });
 
+  it('arregla tablas de un intento anterior con otro esquema (lo que pasó en producción)', async () => {
+    await env.DB.batch([
+      env.DB.prepare('DROP TABLE sesiones'),
+      env.DB.prepare('DROP TABLE usuarios'),
+      env.DB.prepare('CREATE TABLE usuarios (email TEXT PRIMARY KEY, password_hash TEXT NOT NULL)'),
+      env.DB.prepare("INSERT INTO usuarios VALUES ('admin', 'pbkdf2-sha256$120000$xx$yy')"),
+      env.DB.prepare('CREATE TABLE sesiones (token TEXT PRIMARY KEY, email TEXT, expira INTEGER)'),
+      env.DB.prepare('CREATE INDEX idx_sesiones_email ON sesiones(email)'),
+    ]);
+
+    const { res, cookie, cuerpo } = await entrar('admin', '1234');
+    expect(res.status).toBe(200);
+    expect(cuerpo).toMatchObject({ es_admin: true, debe_cambiar: true });
+    const me = await pedir('/api/auth/me', { cookie });
+    expect(me.status).toBe(200);
+  });
+
   it('rechaza credenciales incorrectas', async () => {
     expect((await entrar('admin', 'otra')).res.status).toBe(401);
     expect((await entrar('nadie', '1234')).res.status).toBe(401);

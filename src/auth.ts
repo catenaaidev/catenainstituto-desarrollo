@@ -132,6 +132,25 @@ function cookieBorrada(): string {
  * migrations/0002: da igual cuál de los dos corra primero.
  */
 export async function prepararAutenticacion(env: Env): Promise<void> {
+  // Restos de intentos anteriores de este login, con otro esquema: en
+  // producción apareció una `sesiones` sin la columna `vence`, y como
+  // CREATE TABLE IF NOT EXISTS no la toca, todo lo de abajo fallaba (1101).
+  // Las sesiones se tiran (a lo sumo, hay que volver a entrar); una tabla de
+  // usuarios incompatible se renombra, no se borra.
+  const usu = await columnasDe(env, 'usuarios');
+  const usuariosIncompatibles = usu.size > 0 && !(usu.has('email') && usu.has('password_hash'));
+  const ses = await columnasDe(env, 'sesiones');
+  const sesionesIncompatibles =
+    ses.size > 0 && !['token_hash', 'email', 'creado', 'ultimo_uso', 'vence'].every((c) => ses.has(c));
+  // Si se renombra usuarios, SQLite haría apuntar la clave foránea de
+  // sesiones a la tabla renombrada: sesiones también se recrea.
+  if (sesionesIncompatibles || (usuariosIncompatibles && ses.size > 0)) {
+    await env.DB.prepare('DROP TABLE sesiones').run();
+  }
+  if (usuariosIncompatibles) {
+    await env.DB.prepare(`ALTER TABLE usuarios RENAME TO usuarios_anterior_${Date.now()}`).run();
+  }
+
   await env.DB.batch([
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS usuarios (
       email         TEXT PRIMARY KEY,
@@ -154,14 +173,18 @@ export async function prepararAutenticacion(env: Env): Promise<void> {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sesiones_vence ON sesiones(vence)'),
   ]);
 
-  // Una base donde ya se aplicó la primera versión de 0002 no tiene estas dos.
-  const { results } = await env.DB.prepare('PRAGMA table_info(usuarios)').all<{ name: string }>();
-  const columnas = new Set((results ?? []).map((c) => c.name));
-  if (!columnas.has('es_admin')) {
-    await env.DB.prepare('ALTER TABLE usuarios ADD COLUMN es_admin INTEGER NOT NULL DEFAULT 0').run();
-  }
-  if (!columnas.has('debe_cambiar')) {
-    await env.DB.prepare('ALTER TABLE usuarios ADD COLUMN debe_cambiar INTEGER NOT NULL DEFAULT 0').run();
+  // Una usuarios de una versión anterior puede no tener estas columnas.
+  const columnas = await columnasDe(env, 'usuarios');
+  const faltantes: Array<[string, string]> = [
+    ['nombre', 'TEXT'],
+    ['activo', 'INTEGER NOT NULL DEFAULT 1'],
+    ['es_admin', 'INTEGER NOT NULL DEFAULT 0'],
+    ['debe_cambiar', 'INTEGER NOT NULL DEFAULT 0'],
+    ['creado', 'TEXT'],
+    ['actualizado', 'TEXT'],
+  ];
+  for (const [col, def] of faltantes) {
+    if (!columnas.has(col)) await env.DB.prepare(`ALTER TABLE usuarios ADD COLUMN ${col} ${def}`).run();
   }
 
   const hayAdmin = await env.DB.prepare(
@@ -169,19 +192,29 @@ export async function prepararAutenticacion(env: Env): Promise<void> {
   ).first();
   if (hayAdmin) return;
 
+  // Sin ningún administrador activo, `admin` vuelve a 1234 aunque ya existiera
+  // (por ejemplo, de un intento anterior con otra contraseña). No se puede
+  // llegar a este estado desde /admin.html: siempre queda un admin activo.
   const hash = await crearHashPassword(CLAVE_INICIAL);
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO usuarios (email, password_hash, nombre, activo, es_admin, debe_cambiar)
        VALUES ('admin', ?, 'Administrador', 1, 1, 1)
-       ON CONFLICT(email) DO NOTHING`,
+       ON CONFLICT(email) DO UPDATE SET
+         password_hash = excluded.password_hash, activo = 1, es_admin = 1, debe_cambiar = 1`,
     ).bind(hash),
+    env.DB.prepare("DELETE FROM sesiones WHERE email = 'admin'"),
     ...MODULOS.map((m) =>
       env.DB.prepare(
         `INSERT OR IGNORE INTO perfiles (email, modulo, rol, nombre) VALUES ('admin', ?, 'admin', 'Administrador')`,
       ).bind(m),
     ),
   ]);
+}
+
+async function columnasDe(env: Env, tabla: 'usuarios' | 'sesiones'): Promise<Set<string>> {
+  const { results } = await env.DB.prepare(`PRAGMA table_info(${tabla})`).all<{ name: string }>();
+  return new Set((results ?? []).map((c) => c.name));
 }
 
 export async function login(
