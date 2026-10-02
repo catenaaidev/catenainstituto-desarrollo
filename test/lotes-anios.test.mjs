@@ -2,7 +2,7 @@
  * importa tal cual en el runtime de Workers como lote-nuevo.js. */
 import { describe, it, expect } from 'vitest';
 import { anioDeLote, aniosDisponibles, seleccionInicial, alternarAnio,
-         loteVisible, otVisible, claveAnios } from '../public/lotes/js/anios.js';
+         loteVisible, otVisible, claveAnios, claveParaPrefetch } from '../public/lotes/js/anios.js';
 import { anioDeLote as anioServidor } from '../src/lotes/motores/anios';
 
 describe('anioDeLote', () => {
@@ -65,5 +65,24 @@ describe('claveAnios', () => {
   it('ordenada y separada por comas', () => {
     expect(claveAnios([2026, 2025])).toBe('2025,2026');
     expect(claveAnios(null)).toBe('');
+  });
+});
+
+describe('claveParaPrefetch', () => {
+  it('prefiere la guardada (eleccion explicita) si es valida', () => {
+    expect(claveParaPrefetch([2025], [2026])).toBe('2025');
+  });
+  it('sin guardada valida, cae a la ultima vista', () => {
+    expect(claveParaPrefetch(null, [2026])).toBe('2026');
+    expect(claveParaPrefetch('basura', [2025, 2026])).toBe('2025,2026');
+  });
+  it('sin ninguna de las dos, vacio (sin filtro)', () => {
+    expect(claveParaPrefetch(null, null)).toBe('');
+    expect(claveParaPrefetch('basura', 'tambien basura')).toBe('');
+  });
+  it('la ultima vista hace que un 2027 nuevo se adelante solo', () => {
+    // la "ultima" guardada al montar es siempre la seleccion efectiva de ese
+    // momento, asi que sigue al año mas nuevo aunque el usuario nunca clickee.
+    expect(claveParaPrefetch(null, [2027])).toBe('2027');
   });
 });

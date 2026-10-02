@@ -8,19 +8,31 @@
  * evento 'lotes:anios-cambiados' y app.js hace el resto. */
 'use strict';
 import { aniosDisponibles, seleccionInicial, alternarAnio, loteVisible,
-         otVisible, claveAnios } from './anios.js';
+         otVisible, claveAnios, claveParaPrefetch } from './anios.js';
 
 const CLAVE_LS = 'lotes_anios';
+// Solo para adelantar el /dashboard antes de montar (ver queryAnios): la
+// explicita (CLAVE_LS) manda, esta es el respaldo. No la lee seleccionInicial.
+const CLAVE_LS_ULTIMA = 'lotes_anios_ultima';
 let _sel = null;          // null = todavia no se monto: no se filtra nada
 let _disponibles = [];
 
 function _leerGuardada(){
   try { return JSON.parse(localStorage.getItem(CLAVE_LS) || 'null'); } catch(e) { return null; }
 }
+function _leerUltima(){
+  try { return JSON.parse(localStorage.getItem(CLAVE_LS_ULTIMA) || 'null'); } catch(e) { return null; }
+}
 function _guardar(){
   try { localStorage.setItem(CLAVE_LS, JSON.stringify(_sel)); } catch(e) {}
+  _guardarUltima();
 }
-function _esArrayDeAnios(v){ return Array.isArray(v) && v.every(Number.isInteger); }
+/* A diferencia de _guardar(), esta se llama tambien al montar (no solo al
+ * click): es la unica forma de que un usuario que nunca toca el selector deje
+ * de pedir el dashboard dos veces en cada carga (ver queryAnios). */
+function _guardarUltima(){
+  try { localStorage.setItem(CLAVE_LS_ULTIMA, JSON.stringify(_sel)); } catch(e) {}
+}
 
 export function aniosActivos(){ return _sel; }
 export function visible(lote){ return loteVisible(lote, _sel); }
@@ -33,8 +45,7 @@ export function otVisibleAhora(ot){ return otVisible(ot, _sel); }
  * una seleccion valida. */
 export function queryAnios(){
   if (_sel !== null) return claveAnios(_sel);
-  const g = _leerGuardada();
-  return _esArrayDeAnios(g) ? claveAnios(g) : '';
+  return claveParaPrefetch(_leerGuardada(), _leerUltima());
 }
 
 function _pintar(){
@@ -55,6 +66,7 @@ export function montarSelectorAnios(lotes){
   const antes = claveAnios(_sel);
   _disponibles = aniosDisponibles(lotes);
   _sel = seleccionInicial(_sel || _leerGuardada(), _disponibles);
+  _guardarUltima();
   _pintar();
   const cont = document.getElementById('selAnios');
   if (cont && !cont._escuchando){

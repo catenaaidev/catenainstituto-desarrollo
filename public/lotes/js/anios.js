@@ -58,3 +58,16 @@ export function otVisible(ot, sel){
 export function claveAnios(sel){
   return (sel && sel.length) ? [...sel].sort((a, b) => a - b).join(',') : '';
 }
+
+/* Que localStorage usar para adelantar el /dashboard ANTES de montar el
+ * selector (ver selector-anios.js:queryAnios): la eleccion explicita del
+ * usuario si sigue siendo valida, si no la ultima que se vio (aunque haya
+ * sido la del defecto), para que un 2027 nuevo se adelante solo sin esperar
+ * a que alguien lo clickee. seleccionInicial() sigue usando solo 'guardada'
+ * (la explicita) para no perder la memoria de "el usuario eligio ver 2025". */
+export function claveParaPrefetch(guardada, ultima){
+  const esArrayDeAnios = v => Array.isArray(v) && v.every(Number.isInteger);
+  if (esArrayDeAnios(guardada)) return claveAnios(guardada);
+  if (esArrayDeAnios(ultima)) return claveAnios(ultima);
+  return '';
+}
