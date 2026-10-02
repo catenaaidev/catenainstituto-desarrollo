@@ -70,7 +70,7 @@ export default {
 
     // ---- API del portal: qué módulos puede ver esta persona ----
     if (ruta === '/api/yo') {
-      const email = await emailDelUsuario(req, env, ctx);
+      const email = await emailDelUsuario(req, env);
       if (!email) {
         return json(401, {
           error: 'sin_sesion',
@@ -134,17 +134,6 @@ export default {
     return env.ASSETS.fetch(req);
   },
 
-async function tablaExiste(env: Env, nombre: string): Promise<boolean> {
-  try {
-    const fila = await env.DB.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
-    ).bind(nombre).first();
-    return Boolean(fila);
-  } catch {
-    return false;
-  }
-}
-
   /** Snapshot diario a R2 (cron de wrangler.jsonc). */
   async scheduled(_ev: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(env.DB.prepare('DELETE FROM sesiones WHERE vence <= ?').bind(Math.floor(Date.now() / 1000)).run());
@@ -156,6 +145,17 @@ async function tablaExiste(env: Env, nombre: string): Promise<boolean> {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+async function tablaExiste(env: Env, nombre: string): Promise<boolean> {
+  try {
+    const fila = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
+    ).bind(nombre).first();
+    return Boolean(fila);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Sirve el index.html de un módulo con el nombre del usuario ya cargado.

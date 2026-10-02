@@ -90,7 +90,7 @@ export async function login(
   email: string,
   password: string,
   env: Env,
-): Promise<{ response: Response; email?: string }> {
+): Promise<Response> {
   const normalized = email.trim().toLowerCase();
   if (!normalized || !password) {
     return Response.json({ error: 'credenciales_invalidas' }, { status: 401 });
