@@ -67,21 +67,25 @@ Módulo nuevo `public/lotes/js/anios.js` con `anioDeLote`, `aniosDisponibles`,
 **Filtra** (solo al armar lo que se muestra): las listas de Dashboard, Lotes,
 Análisis, Tablero FML, Correcciones SO2, Movimientos (historial y OT), Orden de
 muestras (candidatos y autocompletar), Cruce con barriles y Orden de corrección.
-Las respuestas del servidor (`/dashboard`, `/analisis`, `/orden-correccion`,
-cruce) se filtran en el navegador por el lote de cada fila. Los contadores
-("319 / 319 lotes") cuentan solo lo visible.
+Los motores del servidor reciben `?anios=2025,2026` en `/dashboard`, `/cruce` y
+`/orden-correccion` y calculan solo sobre los lotes (y análisis) de esos años,
+así los KPI, la bandeja de etapas, el tablero y la orden de muestras (que salen
+del dashboard) quedan coherentes con lo prendido. Los movimientos NO se recortan
+(el linaje de un 26xxx con padre 25xxx tiene que seguir viéndose). En el cruce,
+los huérfanos del Mapa se recortan por año. `/analisis` no cambia (el navegador
+engancha sus veredictos por posición) y se filtra en el navegador. Los
+contadores ("319 / 319 lotes") cuentan solo lo visible.
 
 **No filtra** (trabaja siempre sobre el documento entero):
 
-- controles de lote duplicado y el número sugerido para un lote nuevo (sigue
-  siendo el siguiente del año en curso);
+- controles de lote duplicado (el asistente no sugiere número, solo valida);
 - linaje, padre/hijo, `⎘ Hijo`, deducción de origen Uva/Vino;
 - vasijas, cubicación, padrón, configuración y criterios;
 - buscar un lote puntual para una OT o una ficha: si el lote es de un año
   apagado, se encuentra igual.
 
 El navegador sigue cargando y guardando `DATOS()` completo; `guardar()` no
-cambia. El servidor no cambia.
+cambia. Del servidor solo cambian las tres rutas de lectura de arriba.
 
 ### 4. Carga de 2025
 
@@ -92,6 +96,8 @@ cambia. El servidor no cambia.
 - Fusión con el documento vigente: agrega lotes 25xxx y sus análisis; **no toca
   nada de 2026**. Aborta si ya existe algún lote 25xxx en el documento (no se
   importa dos veces).
+- Los lotes 2025 llegan sin etapa confirmada: con 2025 prendido aparecen en la
+  bandeja de etapas del Dashboard, que ya tiene "Confirmar todos".
 - Quedan fuera: hojas Trasladar, Disponibles y Nebbiolos (21101, 23048, 24127 no
   son lotes 2025), y el registro RCI 19 de correcciones SO2 2025.
 
