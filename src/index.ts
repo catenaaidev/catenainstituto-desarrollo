@@ -134,6 +134,8 @@ export default {
     return env.ASSETS.fetch(req);
   },
 
+
+
   /** Snapshot diario a R2 (cron de wrangler.jsonc). */
   async scheduled(_ev: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(env.DB.prepare('DELETE FROM sesiones WHERE vence <= ?').bind(Math.floor(Date.now() / 1000)).run());
