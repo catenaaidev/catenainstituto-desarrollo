@@ -345,6 +345,10 @@
   .segm button:first-child{border-left:none}
   .segm button:hover{color:var(--txt)}
   .segm button[aria-pressed="true"]{background:var(--panel);color:var(--accent);font-weight:600}
+  /* Selector de años: a la derecha de la barra de pestañas, mismo look que
+     el filtro Todos | Llenos | Vacíos. */
+  .tabs .sel-anios{margin-left:auto;align-self:center}
+  .tabs .sel-anios button{padding:5px 12px}
   .mfilt-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:280px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;display:none}
   .mfilt-panel.open{display:block}
   /* ---- panel en modo anclado (embudos de la cabecera de Lotes) ----
@@ -1394,6 +1398,7 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
   <button data-v="cruce">🛢️ Cruce con barriles</button>
   <button data-v="ordencorr">💊 Orden de corrección</button>
   <button data-v="config">⚙️ Configuración</button>
+  <div class="segm sel-anios" id="selAnios" hidden aria-label="Años de lotes que se muestran"></div>
 </div>
 
 <main>

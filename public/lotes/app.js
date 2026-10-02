@@ -4,8 +4,10 @@
 /* Cada vista se registra sola al importarse (registrarVista). */
 import { cargarDatos, mostrarTab, refrescarAvisos, refrescarInfo,
          guardar, pedirUsuario, usuarioActual, verHistorial, cerrarOverlay,
-         cargarDashboard, $ } from './js/nucleo.js';
+         cargarDashboard, $, registrarInit, invalidarVistas, invalidarDashMap,
+         renderActivo, DATOS } from './js/nucleo.js';
 import { limpiarFiltrosMulti } from './js/tabla.js';
+import { montarSelectorAnios } from './js/selector-anios.js';
 
 import './js/vista-dashboard.js';
 import { renderLotes, agregarLote, ordenarLotes, descLotes, instLotes, resetLlenado,
@@ -34,7 +36,7 @@ window.cerrarOverlay       = cerrarOverlay;        // nucleo.js verHistorial(): 
 /* ---------- ARRANQUE ---------- */
 document.addEventListener('DOMContentLoaded', async () => {
   /* tabs */
-  document.querySelectorAll('.tabs button').forEach(b => {
+  document.querySelectorAll('.tabs button[data-v]').forEach(b => {
     b.addEventListener('click', () => mostrarTab(b.dataset.v));
   });
 
@@ -100,6 +102,16 @@ document.addEventListener('DOMContentLoaded', async () => {
    * se pedia cuando terminaba /datos, y la pantalla de inicio esperaba las dos
    * idas y vueltas en fila. Si el dashboard llega primero no pasa nada:
    * cargarDashboard no dibuja sin DATOS(), y cargarDatos lo dibuja al llegar. */
+  /* selector de años: se monta con los lotes ya cargados (registrarInit corre
+     antes del primer render) y cada cambio rearma todo lo que muestra lotes. */
+  registrarInit(() => montarSelectorAnios(DATOS().lotes));
+  document.addEventListener('lotes:anios-cambiados', () => {
+    invalidarVistas();
+    invalidarDashMap();
+    cargarDashboard();
+    renderActivo();
+  });
+
   const dash = cargarDashboard();
   await cargarDatos();
   refrescarAvisos();
