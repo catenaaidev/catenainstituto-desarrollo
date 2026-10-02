@@ -27,6 +27,7 @@ import { filaPapel, theadPapel, COLGROUP_PAPEL, COLUMNAS_PAPEL,
          INSTRUCCIONES_SOLUCION } from './orden-correccion-papel.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti } from './tabla.js';
+import { queryAnios } from './selector-anios.js';
 
 /* Formateador local: usa toFixed y muestra '—' para null/Infinity.
  * nucleo.js no exporta fmt (es local en cada vista que lo necesita). */
@@ -460,8 +461,15 @@ function _ocPintarPaginas(){
 
 async function _ocCargar(){
   const msg = $('ocMsg');
+  /* Capturado ANTES del fetch: si el año cambia mientras esto esta en vuelo,
+   * lo que llegue fue calculado para el año VIEJO. No hay _cargando aca (a
+   * diferencia de vista-cruce.js) porque esta vista se vuelve a pedir sola en
+   * cada render (renderOrdenCorreccion la llama siempre), así que alcanza con
+   * descartar la respuesta vieja sin re-disparar nada desde aca. */
+  const anios = queryAnios();
   try {
-    const r = await fetch(API+'/orden-correccion');
+    const r = await fetch(API+'/orden-correccion' + (anios ? '?anios=' + anios : ''));
+    if (queryAnios() !== anios) return;   // ya no vale: se descarta
     if (r.status === 503){
       const e = await r.json();
       /* Sin mapa no hay numeros de barril, que es el punto del subsistema. El
@@ -476,6 +484,7 @@ async function _ocCargar(){
     _ocOrden = await r.json();
     if (msg) msg.innerHTML = '';
   } catch (e){
+    if (queryAnios() !== anios) return;   // igual, un error de la peticion vieja tampoco vale
     if (msg) msg.innerHTML = '<div class="msg err">No se pudo cargar la orden: ' + esc(String(e)) + '</div>';
     _ocOrden = null;
   }

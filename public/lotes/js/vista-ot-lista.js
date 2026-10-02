@@ -21,6 +21,7 @@ import { filtrarOrdenes, resumenLotes } from './ot-lista.js';
 import { abrirImprimirOT } from './vista-ot-emitir.js';
 import { abrirConfirmarOT } from './vista-ot-confirmar.js';
 import { fmtFecha } from './fechas.js';
+import { otVisibleAhora } from './selector-anios.js';
 
 let _elegida = null;          // id de la OT abierta en la hoja
 let _soloPendientes = true;
@@ -43,7 +44,7 @@ export function renderOrdenesTrabajo(cont, callbacks){
   _cb = { ..._cb, ...(callbacks || {}) };
   // Las OT sin ningun movimiento detras (huerfanas) no se muestran ni se abren.
   const movimientos = DATOS().movimientos || [];
-  const vivas = filtrarOrdenes(_ordenes(), { soloPendientes: false, movimientos });
+  const vivas = filtrarOrdenes(_ordenes().filter(otVisibleAhora), { soloPendientes: false, movimientos });
   const lista = filtrarOrdenes(vivas, { soloPendientes: _soloPendientes, busca: _busca });
   if (_elegida && !vivas.some(o => o.id === _elegida)) _elegida = null;
   if (!_elegida && lista.length) _elegida = lista[0].id;

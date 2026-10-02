@@ -15,6 +15,7 @@ import { renderOrdenesTrabajo, elegirOT } from './vista-ot-lista.js';
 import { renderMermas } from './vista-mermas.js';
 import { planDeshacer, aplicarDeshacer } from './ot-deshacer.js';
 import { resumenEnvases } from './envases.js';
+import { visible } from './selector-anios.js';
 
 /* --- tipos validos --- */
 const TIPOS_MOV = ['descube', 'trasiego', 'relleno', 'traspaso', 'renombre', 'salida'];
@@ -108,6 +109,10 @@ function _alEmitir(ot){
   if (ot && ot.id) verOrdenTrabajo(ot.id); else renderMovimientos();
 }
 
+/* Un movimiento se ve si su lote o su lote_destino se ve: un traspaso
+ * 25xxx -> 26xxx aparece en los dos años prendidos. */
+const _movVisible = m => visible(m.lote) || (!!m.lote_destino && visible(m.lote_destino));
+
 /* --- construir mapa lote -> {variedad, proyecto} --- */
 function _buildLoteMap(){
   const m = new Map();
@@ -151,7 +156,7 @@ function initFiltrosMov(){
     label:    c.label,
     set:      filtMov[c.campo],
     opciones: () => opcionesValores(
-      _enrich(DATOS().movimientos || [], _buildLoteMap()),
+      _enrich((DATOS().movimientos || []).filter(_movVisible), _buildLoteMap()),
       r => r[c.campo]
     ),
     match:    matchValor(r => r[c.campo]),
@@ -265,7 +270,7 @@ export function renderMovimientos(){
   const allMovEnrich = _enrich(DATOS().movimientos, loteMap);
 
   /* filtrar */
-  let rows = allMovEnrich;
+  let rows = allMovEnrich.filter(_movVisible);
   if (_movFiltBusca){
     const q = _movFiltBusca.toLowerCase();
     rows = rows.filter(m => String(m.lote ?? '').toLowerCase().includes(q));
@@ -418,7 +423,7 @@ export function renderMovimientos(){
   $('tMovBody').innerHTML = tb ||
     '<tr><td colspan="13" style="color:var(--muted)">Sin movimientos con los filtros actuales.</td></tr>';
 
-  $('movCount').textContent = rows.length + ' / ' + DATOS().movimientos.length + ' movimientos';
+  $('movCount').textContent = rows.length + ' / ' + (DATOS().movimientos || []).filter(_movVisible).length + ' movimientos';
 
   /* --- listeners delegados (idempotente con t._wired) ---
    * La tabla se destruye y recrea en cada render (sec.innerHTML = html), por lo

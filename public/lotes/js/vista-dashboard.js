@@ -7,6 +7,7 @@ import { activarGrilla } from './grilla.js';
 import { criteriosEfectivosJS } from './criterios.js';
 import { metricasPorLote, heatmapVariedadAlarma, resumen } from './dash-metricas.js';
 import { estaPendiente } from './mermas.js';
+import { visible } from './selector-anios.js';
 import { prepararGraficos, destruirGraficos, cerrarDrill,
          graficoAV, graficoSO2, graficoDispersion, pintarHeatmap } from './dash-graficos.js';
 
@@ -263,7 +264,9 @@ export function renderDashboard(){
    * igual, es un bug. */
   const sinAnalisis = lotes.filter(faltaAnalizar).length;
   const faEnProc   = lotes.filter(l => l.fa_estado === 'no_finalizada').length;
-  const barrMermas = (DATOS().mermas || []).filter(estaPendiente).length;
+  /* Igual que vista-mermas.js: sin esto la tarjeta no coincide con la pestana
+   * Mermas cuando hay un año apagado. */
+  const barrMermas = (DATOS().mermas || []).filter(m => visible(m.lote)).filter(estaPendiente).length;
 
   const faqs = [
     { n: fmlNoTerm,   label: 'FML no terminada',       hi: fmlNoTerm  > 0 },

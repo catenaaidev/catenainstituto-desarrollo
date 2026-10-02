@@ -6,6 +6,7 @@ import { $, esc, escA, DATOS, markDirty, usuarioActual, pedirUsuario } from './n
 import { estaPendiente, faltanteDe, llenaSegunMapa, resolver, recalcularLitros, codigoLote } from './mermas.js';
 import { porNumMermas, refrescarMapaMermas, cerrarMermasLlenas } from './mermas-mapa.js';
 import { hoyLocalISO } from './fechas.js';
+import { visible } from './selector-anios.js';
 
 let _verResueltas = false;
 
@@ -22,7 +23,9 @@ const dias = desde => {
 export function renderMermas(cont, { onCambio }){
   const porNum = porNumMermas();
   const leyendo = porNum === undefined;
-  const todas = DATOS().mermas || [];
+  // m.lote puede venir con formato de codigoLote raro; visible() da true para
+  // un formato que no reconoce (sin año conocido = se sigue viendo).
+  const todas = (DATOS().mermas || []).filter(m => visible(m.lote));
   const filas = todas.filter(m => _verResueltas || estaPendiente(m)).map(m => {
     // Mientras se este leyendo el Mapa (porNum === undefined) o la lectura haya
     // fallado (null), no hay forma de saber si esta llena: nunca "pendiente"

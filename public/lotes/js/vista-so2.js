@@ -7,6 +7,7 @@ import { activarGrilla } from './grilla.js';
 import { pasaMulti, opcionesValores,
          initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
 import { fmtFecha } from './fechas.js';
+import { visible } from './selector-anios.js';
 
 /**
  * Calcula la corrección de SO2.
@@ -42,8 +43,8 @@ export function renderCorrecciones(){
     loteMap.set(String(l.lote ?? ''), l);
   }
 
-  /* ---- todos los lotes ordenados por número ---- */
-  const lotesSorted = [...(DATOS().lotes || [])].sort((a, b) => {
+  /* ---- todos los lotes ordenados por número (solo los visibles: el select) ---- */
+  const lotesSorted = [...(DATOS().lotes || [])].filter(l => visible(l.lote)).sort((a, b) => {
     const na = parseFloat(String(a.lote ?? ''));
     const nb = parseFloat(String(b.lote ?? ''));
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
@@ -325,6 +326,7 @@ function initFiltrosSo2(){
  * variedades que no tienen ninguna correccion cargada). */
 function _so2FilasConCorreccion(){
   return (DATOS().analisis || []).filter(a => {
+    if (!visible(a.lote)) return false;
     const c = a.correccion;
     if (!c) return false;
     return (c.ot_n && String(c.ot_n).trim() !== '') ||

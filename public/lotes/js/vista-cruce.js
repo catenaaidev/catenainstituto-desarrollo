@@ -5,6 +5,7 @@ import { $, esc, escA, registrarVista, irALote,
          DATOS, markDirty, guardar } from './nucleo.js';
 import { resumenEnvases, CAPACIDADES } from './envases.js';
 import { litrosDelLote } from './mermas.js';
+import { queryAnios } from './selector-anios.js';
 
 const ETIQUETA = {
   coincide:            'Coincide',
@@ -129,15 +130,33 @@ export async function cargarCruce(archivo){
   if (_cargando) return;
   _cargando = true; _error = '';
   render();
+  /* Capturado ANTES del fetch: si el usuario cambia de año mientras esto esta
+   * en vuelo, lo que llegue fue calculado para el año VIEJO. El listener de
+   * 'lotes:anios-cambiados' ya puso _informe en null al tocar el boton, pero
+   * sin esta guarda el 'else { _informe = j; }' de mas abajo lo pisaria con la
+   * respuesta vieja igual, violando esa misma invariante. */
+  const anios = queryAnios();
   try {
-    const url = API+'/cruce' + (archivo ? ('?archivo=' + encodeURIComponent(archivo)) : '');
+    const qs = new URLSearchParams();
+    if (archivo) qs.set('archivo', archivo);
+    if (anios) qs.set('anios', anios);
+    const url = API+'/cruce' + (qs.toString() ? '?' + qs.toString() : '');
     const r = await fetch(url);
     const j = await r.json();
-    if (!r.ok){ _error = j.error || ('HTTP ' + r.status); _informe = null; }
+    if (queryAnios() !== anios){
+      // El año cambio mientras esto estaba en vuelo: esta respuesta ya no
+      // vale para la seleccion actual. Se descarta sin reintentar solo: la
+      // pantalla vuelve al boton "Cruzar", igual que al cambiar de año.
+      _informe = null; _error = '';
+    } else if (!r.ok){ _error = j.error || ('HTTP ' + r.status); _informe = null; }
     else { _informe = j; }
   } catch(e){
-    _error = String(e && e.message || e);
-    _informe = null;
+    if (queryAnios() === anios){
+      _error = String(e && e.message || e);
+      _informe = null;
+    }
+    // Si el año ya cambio, un error de la peticion vieja tampoco vale: se
+    // deja _informe/_error como los dejo el listener de anios-cambiados.
   } finally {
     _cargando = false;
     render();
@@ -385,5 +404,9 @@ function imprimirChequeo(){
   window.addEventListener('afterprint', limpiar);
   window.print();
 }
+
+/* Un informe cruzado con otros años ya no vale: se descarta y la pantalla
+ * vuelve al boton "Cruzar". */
+document.addEventListener('lotes:anios-cambiados', () => { _informe = null; _error = ''; });
 
 registrarVista('cruce', () => render());

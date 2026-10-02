@@ -1,6 +1,8 @@
 /* ===== Lotes CIW — nucleo: estado compartido, guardado y navegacion ===== */
 'use strict';
 
+import { queryAnios } from './selector-anios.js';
+
 /* ---------- estado global ----------
  * DATOS es una variable mutable que comparten todas las vistas. Los modulos ES
  * no permiten reasignar un binding exportado desde afuera, asi que se expone
@@ -355,9 +357,17 @@ export async function cargarDashboard(){
   if (_dashLoading) return;
   _dashLoading = true;
   try {
-    const r = await fetch(API+'/dashboard');
-    if (!r.ok) return;
-    const j = await r.json();
+    /* La clave de años con la que se pide. Si el selector cambia mientras
+     * viaja, la respuesta describe otros años: se descarta y se vuelve a
+     * pedir, sin soltar _dashLoading entre medio (sino se superponen dos
+     * pedidos en vuelo). */
+    let clave, j;
+    do {
+      clave = queryAnios();
+      const r = await fetch(API+'/dashboard' + (clave ? '?anios=' + clave : ''));
+      if (!r.ok) return;
+      j = await r.json();
+    } while (queryAnios() !== clave);
     _dashData = j;
     _dashMap = new Map();
     for (const e of (j.lotes||[])){
