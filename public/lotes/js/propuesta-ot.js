@@ -351,13 +351,20 @@ export function aplicarPropuesta(datos, ot, propuesta, aplicar, usuario, hoy){
     const antes = fotoLote(lote);
     for (const k of ENV_KEYS) lote[k] = n0(item.despues[k]) > 0 ? r1(n0(item.despues[k])) : null;
     lote.vasija_actual = String(item.despues.vasija_actual || '').trim();
+    // Las mermas que toca quedan anotadas en `aplicado`: borrar la OT las
+    // deshace (ot-deshacer.js) y no hay otra forma de saber quien las cerro.
+    const cerradas = [];
     for (const id of item.mermas_cerradas){
       const m = datos.mermas.find(x => x.id === id);
-      if (m && estaPendiente(m)) resolver(m, 'vaciada', usuario, hoy);
+      if (m && estaPendiente(m)){ resolver(m, 'vaciada', usuario, hoy); cerradas.push(id); }
     }
-    item.mermas_nuevas.forEach((m, j) =>
-      datos.mermas.push(nuevaMerma(m, `mer-${ot.id}-${codigoLote(item.lote)}-${j}`)));
+    const creadas = item.mermas_nuevas.map((m, j) => {
+      const nueva = nuevaMerma(m, `mer-${ot.id}-${codigoLote(item.lote)}-${j}`);
+      datos.mermas.push(nueva);
+      return nueva.id;
+    });
     lote.litros_actuales = litrosDelLote(lote, datos.mermas);
-    if (destino) destino.aplicado = { antes, despues: fotoLote(lote), por: usuario || '', el: hoy };
+    if (destino) destino.aplicado = { antes, despues: fotoLote(lote), por: usuario || '', el: hoy,
+      mermas_creadas: creadas, mermas_cerradas: cerradas };
   }
 }

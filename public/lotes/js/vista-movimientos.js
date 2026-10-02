@@ -13,6 +13,8 @@ import { abrirConfirmarOT } from './vista-ot-confirmar.js';
 import { otDeMovimiento, eliminarOT } from './ot-armado.js';
 import { renderOrdenesTrabajo, elegirOT } from './vista-ot-lista.js';
 import { renderMermas } from './vista-mermas.js';
+import { planDeshacer, aplicarDeshacer } from './ot-deshacer.js';
+import { resumenEnvases } from './envases.js';
 
 /* --- tipos validos --- */
 const TIPOS_MOV = ['descube', 'trasiego', 'relleno', 'traspaso', 'renombre', 'salida'];
@@ -155,6 +157,40 @@ function initFiltrosMov(){
     match:    matchValor(r => r[c.campo]),
   }));
   _instMov = initFiltrosMulti('fltMovBar', _descMov, renderMovimientos);
+}
+
+/* Borrar una OT que ya se aplico a los lotes. Muestra que vuelve a como
+ * estaba y que no (los lotes que alguien cambio despues no se tocan) y deja
+ * elegir: borrar y deshacer, o solo borrar la OT. */
+function _abrirBorrarOTAplicada(ot, plan){
+  const env = f => f ? (resumenEnvases(f) || '—') + ' · ' + esc(f.litros_actuales ?? 0) + ' L' +
+    (f.vasija_actual ? ' · ' + esc(f.vasija_actual) : '') : '—';
+  const filas = plan.items.map(it => `<tr><td><b>${esc(it.lote)}</b></td><td>${env(it.ahora)}</td>
+    <td>${it.accion === 'volver' ? '→ ' + env(it.antes)
+      : it.accion === 'cambiado' ? '<span class="otc-aviso">⚠ se cambió después de la OT: no se toca</span>'
+      : '<span class="otc-aviso">⚠ el lote ya no existe</span>'}</td></tr>`).join('');
+  const nm = plan.mermasBorrar.length, nr = plan.mermasReabrir.length;
+  const mermas = (nm || nr) ? `<p style="margin:10px 0 0;font-size:13px;color:var(--muted)">${
+    nm ? (nm === 1 ? 'Se borra 1 barrica merma que creó esta OT. ' : `Se borran ${nm} barricas merma que creó esta OT. `) : ''}${
+    nr ? (nr === 1 ? 'Se reabre 1 merma que esta OT había cerrado al vaciarla.' : `Se reabren ${nr} mermas que esta OT había cerrado al vaciarlas.`) : ''}</p>` : '';
+  const corte = ot.lote_corte && ot.lote_corte.lote
+    ? `<p style="margin:10px 0 0;font-size:13px;color:var(--muted)">El lote ${esc(ot.lote_corte.lote)} que creó el corte NO se borra.</p>` : '';
+  mostrarOverlay(`<div id="otbRaiz">
+<h3 style="margin:0 0 4px">🗑 Borrar ${esc(ot.ot)}</h3>
+<p style="margin:0 0 12px;color:var(--muted);font-size:13px">Esta OT ya se aplicó a los lotes. Podés volverlos a como estaban antes de la OT.</p>
+<div class="otc-scroll"><table class="otc-tabla"><thead><tr><th>Lote</th><th>Ahora</th><th>Vuelve a</th></tr></thead>
+<tbody>${filas}</tbody></table></div>${mermas}${corte}
+<div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+  <button class="btn" id="otbCancelar">Cancelar</button>
+  <button class="btn danger" id="otbSolo">Solo borrar la OT</button>
+  <button class="btn primary" id="otbDeshacer">Borrar y deshacer</button>
+</div></div>`);
+  const fin = () => { eliminarOT(DATOS(), ot); markDirty(); cerrarOverlay(); renderMovimientos(); };
+  $('otbCancelar').addEventListener('click', () => cerrarOverlay());
+  $('otbSolo').addEventListener('click', () => {
+    if (confirm('Los lotes quedan como los dejó la OT. ¿Borrar solo la OT?')) fin();
+  });
+  $('otbDeshacer').addEventListener('click', () => { aplicarDeshacer(DATOS(), plan); fin(); });
 }
 
 /* --- renderMovimientos --- */
@@ -423,6 +459,9 @@ export function renderMovimientos(){
         // la OT queda en «Órdenes de trabajo» sin movimientos detrás.
         const ot = otDeMovimiento(DATOS().ordenes_trabajo, o);
         if (ot){
+          // Una OT ya aplicada cambio envases y litros: ofrecer volverlos atras.
+          const plan = planDeshacer(DATOS(), ot);
+          if (plan.aplicada){ _abrirBorrarOTAplicada(ot, plan); return; }
           const n = (ot.lotes || []).length;
           const corte = ot.lote_corte && ot.lote_corte.lote
             ? '\n\nEl lote ' + ot.lote_corte.lote + ' que creó el corte NO se borra.' : '';
