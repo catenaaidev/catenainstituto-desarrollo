@@ -14,11 +14,13 @@ const MEDIDAS = ['etanol', 'ph', 'av', 'gluc_fruc', 'malico', 'lactico', 'acidez
 
 const lleno = v => v !== null && v !== undefined && String(v).trim() !== '';
 
-/* Un renglón del Excel con lote y fecha pero sin ninguna medida, comentario ni
- * corrección: la planilla los tiene "preparados" y en la web no son nada. */
+/* Un renglón del Excel con lote y fecha pero sin ninguna medida, comentario,
+ * vasija analizada ni corrección: la planilla los tiene "preparados" y en la
+ * web no son nada. */
 function analisisVacio(a){
   if (MEDIDAS.some(k => lleno(a[k]))) return false;
   if (lleno(a.comentario)) return false;
+  if (lleno(a.vasija_analizada)) return false;
   const c = a.correccion || {};
   return !Object.values(c).some(v => lleno(v) && v !== 0);
 }

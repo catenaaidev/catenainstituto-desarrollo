@@ -53,4 +53,13 @@ describe('fusionarAnio', () => {
     fusionarAnio(d, conv(), 2025);
     expect(d.lotes).toHaveLength(1);
   });
+  it('un renglón con solo vasija_analizada no es vacío', () => {
+    const c = conv();
+    c.analisis.push({ lote: '25001', fecha_analisis: '2025-01-15', vasija_analizada: 't50',
+      ph: null, comentario: '', correccion: {} });
+    const { doc: r, reporte } = fusionarAnio(doc(), c, 2025);
+    expect(reporte.analisis).toBe(3);
+    expect(reporte.analisis_vacios).toBe(1);
+    expect(r.analisis.some(a => a.fecha_analisis === '2025-01-15' && a.vasija_analizada === 't50')).toBe(true);
+  });
 });
