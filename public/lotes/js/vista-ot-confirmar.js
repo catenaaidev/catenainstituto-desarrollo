@@ -17,7 +17,7 @@ import { buscarVasija } from './vasijas-padron.js';
 import { litrosPorCm } from './cubicacion.js';
 import { resumenEnvases } from './envases.js';
 import { refrescarMapaMermas } from './mermas-mapa.js';
-import { estaPendiente } from './mermas.js';
+import { estaPendiente, codigoLote } from './mermas.js';
 import { esEjecutado } from './ot-movimientos.js';
 import { hoyLocalISO } from './fechas.js';
 
@@ -74,10 +74,11 @@ function _dlVasijas(){
 
 function _dlBarriles(st, i){
   const ol = st.ot.lotes[i];
-  const enFoto = new Set((ol.barriles || []).map(b => String(b.num)));
+  // Se ofrecen tambien los barriles de la foto: en barricas a barricas se
+  // rellenan los MISMOS barriles que la OT vacio, y la merma suele ser uno.
   const delMapa = ((st.mapa && st.mapa.por_lote) || {})[ol.lote] || [];
   return `<datalist id="otcBarr${i}">` + delMapa
-    .filter(b => (b.estado === 'LLENO' || b.estado === 'MERMO') && !enFoto.has(String(b.num)))
+    .filter(b => b.estado === 'LLENO' || b.estado === 'MERMO')
     .map(b => `<option value="${escA(b.num)}">${esc(b.estado)} · ${esc(b.cap ?? '')} L</option>`).join('') + '</datalist>';
 }
 
@@ -206,15 +207,19 @@ async function _irAPaso2(st){
   }
   const lotes = st.ot.lotes.map(l => l.lote).concat(st.corte ? [st.ot.lote_corte.lote] : []);
   const nums = st.entradas.por_lote.flatMap(e => (e.mermas || []).map(m => String(m.barril || '').trim())).filter(Boolean);
-  // I4: una barrica merma no puede repetirse, ni ser una de las que esta OT
-  // vacio, ni tener ya otra merma pendiente. Se valida antes de tocar la red.
+  // I4: una barrica merma no puede repetirse ni tener ya otra merma
+  // pendiente. Puede ser uno de los barriles que la OT vacio (barricas a
+  // barricas rellena los mismos), y la merma pendiente que esta OT va a cerrar
+  // sola (mismo lote, barril en la foto: ver mermas_cerradas) no cuenta.
+  // Se valida antes de tocar la red.
   const vistos = new Set();
-  const vaciados = new Set(st.ot.lotes.flatMap(l => (l.barriles || []).map(b => String(b.num).trim())));
-  const pendientes = new Set((DATOS().mermas || []).filter(estaPendiente).map(m => String(m.barril).trim()));
+  const seCierra = m => st.ot.lotes.some(l => codigoLote(l.lote) === codigoLote(m.lote)
+    && (l.barriles || []).some(b => String(b.num).trim() === String(m.barril).trim()));
+  const pendientes = new Set((DATOS().mermas || []).filter(m => estaPendiente(m) && !seCierra(m))
+    .map(m => String(m.barril).trim()));
   for (const n of nums){
     if (vistos.has(n)) return err(`El barril ${n} está repetido en las mermas.`);
     vistos.add(n);
-    if (vaciados.has(n)) return err(`El barril ${n} es uno de los que se vaciaron en esta OT.`);
     if (pendientes.has(n)) return err(`El barril ${n} ya tiene una merma pendiente.`);
   }
   $('otcSig').disabled = true;
@@ -230,10 +235,14 @@ async function _irAPaso2(st){
     if (!st.mapa || !st.mapa.por_num){ $('otcSig').disabled = false; return err('No se pudo consultar el Mapa para validar las barricas mermas. Probá de nuevo.'); }
     const faltan = nums.filter(n => !st.mapa.por_num[n]);
     if (faltan.length){ $('otcSig').disabled = false; return err('Estos barriles no existen en el Mapa: ' + faltan.join(', ')); }
-    for (const e of st.entradas.por_lote) for (const m of e.mermas || []){
+    st.entradas.por_lote.forEach((e, i) => { for (const m of e.mermas || []){
       const b = st.mapa.por_num[String(m.barril).trim()];
-      if (b){ m.cap = b.cap; m.mapa_ts = b.ts ?? null; }   // C1: ver llenaSegunMapa
-    }
+      if (!b) continue;
+      m.cap = b.cap;
+      // C1: el ts solo sirve de sello si el relleno ya se escaneo (LLENO con este lote); si no (p.ej. sigue VACIO), null y vale la regla estricta de fecha.
+      const yaLleno = b.estado === 'LLENO' && codigoLote(b.lote) === codigoLote(st.ot.lotes[i].lote);
+      m.mapa_ts = yaLleno ? (b.ts ?? null) : null;
+    } });
   }
 
   try {
