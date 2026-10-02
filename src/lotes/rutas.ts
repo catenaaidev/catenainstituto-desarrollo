@@ -16,7 +16,7 @@ import { cruzar } from './motores/cruce';
 import { armarOrden } from './motores/correccion';
 import { ETAPAS, etapasSugeridas } from './motores/etapas';
 import { barrilesDeLotes, barrilesPorNum } from './motores/barriles-lote';
-import { leerAnios, enAnios, recortarPorAnios } from './motores/anios';
+import { leerAnios, enAnios, recortarPorAnios, anioDeLote } from './motores/anios';
 
 const MODULO = 'lotes';
 const HISTORIAL_MAX = 200;
@@ -270,7 +270,19 @@ export async function rutasLotes(
         mapa,
         etapasSugeridas(d, hoy),
       );
-      informe.huerfanos = informe.huerfanos.filter((h) => enAnios(h.lote, anios));
+      // Un huérfano de un año que ni aparece en el documento no es un huérfano
+      // de un año apagado (no hay boton para apagarlo): si lo sacamos de aca
+      // un Nebbiolo viejo (24xxx) desaparece del cruce para siempre.
+      const aniosDelDoc = new Set(
+        ((d.lotes as Record<string, unknown>[]) ?? [])
+          .map((l) => anioDeLote((l as { lote?: unknown }).lote))
+          .filter((a): a is number => a !== null),
+      );
+      informe.huerfanos = informe.huerfanos.filter((h) => {
+        if (enAnios(h.lote, anios)) return true;
+        const a = anioDeLote(h.lote);
+        return a === null || !aniosDelDoc.has(a);
+      });
       return json(200, informe);
     } catch (e) {
       if (e instanceof MapaNoDisponible) return json(503, { error: e.message });

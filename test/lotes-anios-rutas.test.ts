@@ -38,6 +38,10 @@ beforeAll(async () => {
 
   // Mapa de Barriles: un barril LLENO con el lote 25001, para los casos de
   // /cruce y /orden-correccion (misma forma que test/lotes-barriles-ruta.test.ts).
+  // Un segundo barril con 24127: ese lote no existe en 'lotes' (ni con 2024
+  // encendido, porque ni siquiera hay boton para 2024), asi que es huerfano
+  // siempre. Filtrarlo por enAnios() lo esconderia para siempre, como a un
+  // Nebbiolo real (24127, 23048, 21101) que el reviewer encontro en el Mapa.
   await env.DB.prepare(
     `INSERT OR REPLACE INTO documento (modulo, json) VALUES ('barriles', ?)`,
   ).bind(JSON.stringify({
@@ -45,6 +49,7 @@ beforeAll(async () => {
     estado: {
       inventario: [
         { num: '1001', estado: 'LLENO', cap: 225, litros: 225, lote: '25001' },
+        { num: '1002', estado: 'LLENO', cap: 225, litros: 225, lote: '24127' },
       ],
     },
   })).run();
@@ -83,6 +88,14 @@ describe('GET /cruce?anios=', () => {
     const j = await (await get('/cruce?anios=2026')).json<{ lotes: { lote: unknown }[]; huerfanos: { lote: unknown }[] }>();
     expect(lotesDe(j).some((l) => l.startsWith('25'))).toBe(false);
     expect(j.huerfanos.some((h) => String(h.lote).startsWith('25'))).toBe(false);
+  });
+  it('el huerfano 24127 (un año sin boton, fuera del documento) aparece sin parámetro', async () => {
+    const j = await (await get('/cruce')).json<{ huerfanos: { lote: unknown }[] }>();
+    expect(j.huerfanos.map((h) => String(h.lote))).toContain('24127');
+  });
+  it('el huerfano 24127 sigue apareciendo con anios=2026: 2024 no está en el documento', async () => {
+    const j = await (await get('/cruce?anios=2026')).json<{ huerfanos: { lote: unknown }[] }>();
+    expect(j.huerfanos.map((h) => String(h.lote))).toContain('24127');
   });
 });
 
