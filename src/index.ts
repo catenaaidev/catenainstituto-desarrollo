@@ -20,6 +20,7 @@ import {
   sesion,
   cambiarClave,
   prepararAutenticacion,
+  renovarCookie,
   type Modulo,
 } from './auth';
 import { rutasAdmin } from './admin';
@@ -133,12 +134,15 @@ export default {
         .all<{ modulo: string; rol: string; nombre: string | null }>();
 
       const s = await sesion(req, env);
-      return json(200, {
+      const res = json(200, {
         email,
         nombre: s?.nombre ?? results?.[0]?.nombre ?? email.split('@')[0],
         es_admin: s?.esAdmin ?? false,
         modulos: Object.fromEntries((results ?? []).map((r) => [r.modulo, r.rol])),
       });
+      const cookie = renovarCookie(req);
+      if (cookie) res.headers.set('Set-Cookie', cookie);
+      return res;
     }
 
     // ---- Reporte de gerencia, en vivo ----
@@ -155,6 +159,16 @@ export default {
       const prefijo = `/${modulo}/api`;
       if (ruta.startsWith(prefijo + '/') || ruta === prefijo) {
         const sub = ruta.slice(prefijo.length) || '/';
+
+        // Sin sesión, un 401 claro (antes salía un 403 "sin permiso" que la
+        // app mostraba como error raro). La pantalla avisa y no pierde nada.
+        if (!(await emailDelUsuario(req, env))) {
+          return json(401, {
+            error: 'sin_sesion',
+            detalles: ['Tu sesión se cerró. Iniciá sesión de nuevo; lo que cargaste sigue en la pantalla.'],
+          });
+        }
+
         const handler =
           modulo === 'prensas' ? rutasPrensas : modulo === 'barriles' ? rutasBarriles : rutasLotes;
 
@@ -251,6 +265,9 @@ async function servirConIdentidad(
     // Sin defer: tiene que envolver fetch ANTES de que la app haga su primer
     // pedido, o el aviso no aparece.
     `<script src="/shared/pendientes.js"></script>\n` +
+    // Fusión de cambios entre dispositivos, borrador local y aviso de sesión
+    // cerrada. Sin defer: la app lo lee al cargar.
+    `<script src="/shared/fusion.js"></script>\n` +
     // La exportación a Excel se arma en el navegador, porque la nube no
     // ejecuta openpyxl. Solo se carga donde hay botón de exportar: es 950 KB.
     (modulo === 'prensas' || modulo === 'lotes'
@@ -261,13 +278,14 @@ async function servirConIdentidad(
 
   const html = (await res.text()).replace('</head>', inyeccion);
 
-  return new Response(html, {
-    status: res.status,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-store',
-    },
-  });
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+  };
+  const cookie = renovarCookie(req);
+  if (cookie) headers['Set-Cookie'] = cookie;
+
+  return new Response(html, { status: res.status, headers });
 }
 
 /**

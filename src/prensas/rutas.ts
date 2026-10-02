@@ -142,15 +142,19 @@ export async function rutasPrensas(
 
     const actual = await leerDocumento(env);
 
-    const errores = validarDatos(nuevo, actual, forzar);
-    if (errores.length) return json(400, { error: 'validacion', detalles: errores });
-
+    // La versión va ANTES de validar: un guardado hecho sobre una versión vieja
+    // no tiene lo que cargaron los demás, y el freno lo tomaría por un borrado
+    // masivo. Con el 409 la app combina los cambios (shared/fusion.js) y
+    // reintenta; ahí sí se valida, ya con todo adentro.
     const va = Number((actual.meta as Record<string, unknown>)?.version ?? 0);
     const vc = Number((nuevo.meta as Record<string, unknown>)?.version ?? 0);
     if (vc !== va) {
       // Otra persona guardó mientras editabas.
       return json(409, { error: 'conflicto', actual });
     }
+
+    const errores = validarDatos(nuevo, actual, forzar);
+    if (errores.length) return json(400, { error: 'validacion', detalles: errores });
 
     const meta = (nuevo.meta ??= {}) as Record<string, unknown>;
     meta.version = va + 1;

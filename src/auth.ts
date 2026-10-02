@@ -36,7 +36,13 @@ export interface Sesion {
 }
 
 const COOKIE = 'ciw_session';
-const SESSION_DAYS = 7;
+// La sesión se corre hacia adelante con cada uso: quien trabaja todos los días
+// no queda afuera nunca a mitad de una carga (era la queja con Access). Solo se
+// cierra tras SESSION_DAYS sin usar la app, o con "Salir".
+const SESSION_DAYS = 30;
+// La cookie dura lo máximo que aceptan los navegadores; el vencimiento real lo
+// decide la tabla sesiones.
+const COOKIE_DAYS = 400;
 // Workers no acepta más de 100.000 iteraciones de PBKDF2: con más, deriveBits
 // tira una excepción y el login devuelve error 1101.
 const PBKDF2_ITERATIONS = 100_000;
@@ -115,8 +121,18 @@ function leerCookie(req: Request, nombre: string): string | null {
   return null;
 }
 
-function cookieSesion(token: string, maxAge = SESSION_DAYS * 86400): string {
+function cookieSesion(token: string, maxAge = COOKIE_DAYS * 86400): string {
   return `${COOKIE}=${token}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+/**
+ * Set-Cookie que vuelve a estirar la cookie de la sesión actual. Las sesiones
+ * abiertas antes de que la cookie durara COOKIE_DAYS (salían con 7 días) se
+ * renuevan solas al abrir el portal o un módulo.
+ */
+export function renovarCookie(req: Request): string | null {
+  const token = leerCookie(req, COOKIE);
+  return token ? cookieSesion(token) : null;
 }
 
 function cookieBorrada(): string {
@@ -366,9 +382,9 @@ async function buscarSesion(req: Request, env: Env): Promise<Sesion | null> {
 
   if (!fila?.email) return null;
 
-  // Renueva la actividad sin extender artificialmente la fecha de vencimiento.
-  await env.DB.prepare('UPDATE sesiones SET ultimo_uso = ? WHERE token_hash = ?')
-    .bind(ahora, tokenHash).run();
+  // Cada uso corre el vencimiento: la sesión vence por inactividad, no por edad.
+  await env.DB.prepare('UPDATE sesiones SET ultimo_uso = ?, vence = ? WHERE token_hash = ?')
+    .bind(ahora, ahora + SESSION_DAYS * 86400, tokenHash).run();
 
   return {
     email: fila.email.toLowerCase(),

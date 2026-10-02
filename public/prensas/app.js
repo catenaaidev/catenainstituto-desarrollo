@@ -39,7 +39,14 @@ const UNIDAD_DEFECTO = {TH2:'g/L', SO2:'ppm'};
 const unidadPorTipo = t => UNIDAD_DEFECTO[t] || '';
 function nextAgregadoId(){ let mx=0; for(const a of DATOS.agregados){ const n=+a.id; if(!isNaN(n)&&n>mx) mx=n; } return mx+1; }
 
-function markDirty(){ dirty=true; $('btnGuardar').disabled=false; const s=$('status'); s.textContent='● Cambios sin guardar'; s.className='status dirty'; }
+/* Copia del documento tal como lo trajo esta pantalla (o como quedó en su
+   último guardado): contra ella se calcula qué cambió acá, para combinarlo con
+   lo que guardaron otros (shared/fusion.js). */
+let BASE = null;
+const FUSION = window.CIWFusion;
+const borradorActual = () => ({ base: BASE, local: DATOS });
+function markDirty(){ dirty=true; $('btnGuardar').disabled=false; const s=$('status'); s.textContent='● Cambios sin guardar'; s.className='status dirty';
+  if(FUSION && DATOS) FUSION.borrador.programar('prensas', borradorActual); }
 function markSaved(){ dirty=false; $('btnGuardar').disabled=true; const s=$('status'); s.textContent='✓ Guardado (v'+DATOS.meta.version+')'; s.className='status saved'; }
 
 window.addEventListener('beforeunload', e => { if(dirty){ e.preventDefault(); e.returnValue=''; } });
@@ -81,7 +88,12 @@ async function cargar(){
   DATOS.meta = DATOS.meta || {version:0};
   DATOS.degustaciones = DATOS.degustaciones || [];
   DATOS.agregados = DATOS.agregados || [];
+  BASE = FUSION ? FUSION.clonar(DATOS) : null;
+  // Cambios que quedaron sin guardar en este equipo (recarga, corte, sesión vencida).
+  const recuperado = FUSION ? await FUSION.recuperar('prensas', DATOS) : null;
+  if(recuperado){ DATOS = recuperado; DATOS.degustaciones = DATOS.degustaciones || []; DATOS.agregados = DATOS.agregados || []; }
   markSaved();
+  if(recuperado) markDirty();
   initMesSelectors();
   initFiltroVariedad();
   initFiltrosLotes();
@@ -146,14 +158,20 @@ async function vigilarEstado(){
     } else el.style.display='none';
   }catch(e){/* servidor sin /api/estado o caído: se omite */}
 }
-async function guardar(forzar){
+async function guardar(forzar, intento=0){
   if(!dirty) return true;
   DATOS.meta.autor = usuarioActual() || pedirUsuario(true) || 'desconocido';
+  if(FUSION) await FUSION.borrador.guardar('prensas', borradorActual);
   let r;
   try{
     r = await fetch(API+'/datos'+(forzar?'?forzar=1':''), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(DATOS)});
   }catch(e){
-    alert('No se pudo guardar: el servidor no responde. Revisá que esté abierto (Abrir Prensas.bat) y probá de nuevo. Tus cambios siguen en pantalla.');
+    alert('No se pudo guardar: no hay conexión con el servidor. Tus cambios siguen en pantalla y quedaron guardados en este equipo; probá de nuevo cuando vuelva la señal.');
+    return false;
+  }
+  if(r.status===401){
+    alert('Tu sesión se cerró. Tus cambios siguen en pantalla y quedaron guardados en este equipo.\n\nIniciá sesión en la pestaña que se abre y después volvé a tocar Guardar.');
+    window.open('/login.html','_blank');
     return false;
   }
   if(r.status===400){
@@ -170,17 +188,29 @@ async function guardar(forzar){
     alert('Error al guardar: '+(j.error||r.status)); return false;
   }
   if(r.status===409){
-    const j = await r.json();
+    const j = await r.json().catch(()=>({}));
+    // Otra persona guardó mientras se editaba acá: se combinan los cambios de
+    // las dos y se vuelve a guardar. Nadie pierde lo suyo.
+    if(FUSION && BASE && j.actual && intento<4){
+      const serv = j.actual;
+      DATOS = FUSION.fusionarDocumento(BASE, DATOS, serv);
+      DATOS.degustaciones = DATOS.degustaciones || []; DATOS.agregados = DATOS.agregados || [];
+      BASE = FUSION.clonar(serv);
+      try{ renderActive(); }catch(e){}
+      return guardar(forzar, intento+1);
+    }
     mostrarOverlay('<h2 style="margin-top:0;color:#ffd766">Conflicto de versión</h2>'+
-      '<p style="color:#8c857b">Otra PC guardó cambios mientras editabas. Para no pisar su trabajo, recargá la última versión.</p>'+
-      '<p style="color:#ff8a7a;font-size:13px">⚠️ Tus cambios sin guardar se perderán al recargar.</p>'+
-      '<button class="btn primary" onclick="location.reload()">🔄 Recargar última versión</button>');
+      '<p style="color:#8c857b">Otra PC guardó cambios mientras editabas y no se pudieron combinar solos.</p>'+
+      '<p style="color:#8c857b;font-size:13px">Tus cambios quedaron guardados en este equipo: al recargar se te ofrece recuperarlos.</p>'+
+      '<button class="btn primary" onclick="location.reload()">🔄 Recargar y recuperar</button>');
     return false;
   }
-  if(!r.ok){ alert('Error al guardar: '+r.status); return false; }
+  if(!r.ok){ alert('Error al guardar: '+r.status+'. Tus cambios siguen en pantalla y guardados en este equipo.'); return false; }
   const j = await r.json();
   DATOS.meta.version = j.version; DATOS.meta.guardado = j.guardado;
+  if(FUSION){ BASE = FUSION.clonar(DATOS); FUSION.borrador.borrar('prensas'); }
   markSaved();
+  if(intento>0){ const s=$('status'); s.textContent='✓ Guardado (v'+DATOS.meta.version+') · combinado con lo que guardaron otros'; }
   try{ postGuardarDeg(); }catch(e){}
   if(j.respaldo){ const s=$('status'); s.textContent='✓ Guardado (v'+DATOS.meta.version+') · respaldo: '+j.respaldo+(j.reporte?' · reporte actualizado':''); s.title='Respaldo .md en backups'+(j.reporte?' · '+j.reporte+' actualizado para el jefe (OneDrive)':''); }
   return true;

@@ -1285,7 +1285,11 @@ async function sincronizar() {
   let confirmar = false;
   try {
     for (let intento = 0; intento < 4; intento++) {
-      const d = await (await fetch(API+'/estado', { cache: 'no-store' })).json();
+      const rEst = await fetch(API+'/estado', { cache: 'no-store' });
+      // Sesión cerrada u otro error: no es el estado del servidor. Se queda lo
+      // de esta pantalla (pendiente incluido) y se reintenta más tarde.
+      if (!rEst.ok) break;
+      const d = await rEst.json();
       if (!pendienteLocal) {
         if (d.version !== versionServidor) adoptar(d); else versionServidor = d.version;
         ponerInsignia('ok'); sincronizando = false; return;

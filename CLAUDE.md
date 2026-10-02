@@ -41,7 +41,20 @@ Exige la bandera `--piso-la-web` justamente para que no pase por inercia. El
 
 El dato de cada módulo es **un JSON entero en una fila** de la tabla
 `documento`, con un contador `version`. Las tablas por fila son "Fase 3" y no
-existen todavía: por eso dos personas no pueden editar el mismo módulo a la vez.
+existen todavía. Para que varias personas editen a la vez sin perder nada:
+
+- El servidor rechaza con 409 (y manda el documento `actual`) un guardado hecho
+  sobre una versión vieja. **La versión se chequea antes de validar**: si no, el
+  freno toma un guardado viejo por un borrado masivo.
+- Prensas y Lotes combinan solos ese 409 con `public/shared/fusion.js`
+  (fusión de tres vías contra la copia `BASE`/`_base` de cuando cargaron) y
+  reintentan. `lotes` se combina por número de lote; las demás secciones fila
+  por fila por contenido. No agregar "lote" como clave automática: fundía
+  análisis distintos del mismo lote.
+- Lo no guardado vive también en IndexedDB (borrador por módulo y usuario) y se
+  ofrece recuperar al reabrir. Barriles tiene su propia fusión y cola.
+- La sesión dura 30 días **desde el último uso** (se estira con cada pedido) y
+  las APIs de módulo sin sesión responden 401, que la pantalla avisa.
 
 ## Comandos
 

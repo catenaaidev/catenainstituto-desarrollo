@@ -30,11 +30,19 @@ export const escA = v => String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&qu
 export const num  = v => { if (v===''||v==null) return null; const n=parseFloat(String(v).replace(',','.')); return isNaN(n)?null:n; };
 
 /* ---------- estado guardar ---------- */
+/* Copia del documento tal como lo trajo esta pantalla (o como quedó en su
+ * último guardado): contra ella se calcula qué cambió acá, para combinarlo con
+ * lo que guardaron otros dispositivos (shared/fusion.js). */
+let _base = null;
+const FUSION = window.CIWFusion;
+const borradorActual = () => ({ base: _base, local: _datos });
+
 export function markDirty(){
   dirty = true;
   invalidarVistas();
   $('btnGuardar').disabled = false;
   const s = $('statusBar'); s.textContent = '● Cambios sin guardar'; s.className = 'status dirty';
+  if (FUSION && _datos) FUSION.borrador.programar('lotes', borradorActual);
 }
 export function markSaved(){
   dirty = false;
@@ -175,24 +183,33 @@ export async function cargarDatos(){
     const r = await fetch(API+'/datos');
     if (!r.ok){ $('statusBar').textContent = 'Error al cargar ('+r.status+')'; return; }
     setDatos(await r.json());
-    DATOS().meta                 = DATOS().meta || { version:0 };
-    DATOS().lotes                = DATOS().lotes || [];
-    DATOS().analisis             = DATOS().analisis || [];
-    DATOS().estado_lote          = DATOS().estado_lote || {};
-    DATOS().excepciones_analisis = DATOS().excepciones_analisis || [];
-    DATOS().vasijas              = DATOS().vasijas || [];
-    DATOS().mermas               = DATOS().mermas || [];
+    completarSecciones();
+    _base = FUSION ? FUSION.clonar(DATOS()) : null;
+    // Cambios que quedaron sin guardar en este equipo (recarga, corte, sesión vencida).
+    const recuperado = FUSION ? await FUSION.recuperar('lotes', DATOS()) : null;
+    if (recuperado){ setDatos(recuperado); completarSecciones(); }
     // Los objetos de DATOS() acaban de ser reemplazados: las pilas de deshacer
     // de la grilla quedarian apuntando a objetos huerfanos. grilla.js escucha
     // este evento para limpiarse; no se importa directamente para evitar el
     // ciclo grilla->tabla->nucleo->grilla.
     document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
     markSaved();   // tambien invalida el cache de pestañas
+    if (recuperado) markDirty();
     _inits.forEach(fn => fn());
     renderActivo();
   } catch(e) {
     $('statusBar').textContent = 'Sin conexión con el servidor';
   }
+}
+
+function completarSecciones(){
+  DATOS().meta                 = DATOS().meta || { version:0 };
+  DATOS().lotes                = DATOS().lotes || [];
+  DATOS().analisis             = DATOS().analisis || [];
+  DATOS().estado_lote          = DATOS().estado_lote || {};
+  DATOS().excepciones_analisis = DATOS().excepciones_analisis || [];
+  DATOS().vasijas              = DATOS().vasijas || [];
+  DATOS().mermas               = DATOS().mermas || [];
 }
 
 /* Funciones que corren justo antes de cada POST y pueden tocar DATOS(). Hoy:
@@ -202,13 +219,14 @@ const _antesDeGuardar = [];
 export function registrarAntesDeGuardar(fn){ _antesDeGuardar.push(fn); }
 
 /* ---------- guardar (con 409/412 faithful port) ---------- */
-export async function guardar(forzar){
+export async function guardar(forzar, intento = 0){
   if (!dirty) return true;
   let cambioHook = false;
   for (const fn of _antesDeGuardar){
     try { if (fn(DATOS())) { invalidarVistas(); cambioHook = true; } } catch (e) { console.error('antesDeGuardar:', e); }
   }
   DATOS().meta.autor = usuarioActual() || pedirUsuario(true) || 'desconocido';
+  if (FUSION) await FUSION.borrador.guardar('lotes', borradorActual);
   let r;
   try {
     r = await fetch(API+'/datos' + (forzar ? '?forzar=1' : ''), {
@@ -217,7 +235,12 @@ export async function guardar(forzar){
       body: JSON.stringify(DATOS())
     });
   } catch(e) {
-    alert('No se pudo guardar: el servidor no responde. Revisá que esté abierto y probá de nuevo. Tus cambios siguen en pantalla.');
+    alert('No se pudo guardar: no hay conexión con el servidor. Tus cambios siguen en pantalla y quedaron guardados en este equipo; probá de nuevo cuando vuelva la señal.');
+    return false;
+  }
+  if (r.status === 401){
+    alert('Tu sesión se cerró. Tus cambios siguen en pantalla y quedaron guardados en este equipo.\n\nIniciá sesión en la pestaña que se abre y después volvé a tocar Guardar.');
+    window.open('/login.html', '_blank');
     return false;
   }
   if (r.status === 400){
@@ -236,20 +259,35 @@ export async function guardar(forzar){
     alert('Error al guardar: ' + (j.error || r.status)); return false;
   }
   if (r.status === 409){
+    const j = await r.json().catch(() => ({}));
+    // Otro dispositivo guardó mientras se editaba acá: se combinan los cambios
+    // de los dos y se vuelve a guardar. Nadie pierde lo suyo.
+    if (FUSION && _base && j.actual && intento < 4){
+      const serv = j.actual;
+      setDatos(FUSION.fusionarDocumento(_base, DATOS(), serv));
+      completarSecciones();
+      _base = FUSION.clonar(serv);
+      // Los objetos de DATOS() cambiaron: la grilla limpia sus pilas de deshacer.
+      document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
+      invalidarVistas();
+      return guardar(forzar, intento + 1);
+    }
     mostrarOverlay(
       '<h2 style="margin-top:0;color:#ffd766">Conflicto de versión</h2>'+
-      '<p style="color:var(--muted)">Otra PC guardó cambios mientras editabas. Para no pisar su trabajo, recargá la última versión.</p>'+
-      '<p style="color:#ff8a7a;font-size:13px">⚠️ Tus cambios sin guardar se perderán al recargar.</p>'+
-      '<button class="btn primary" onclick="location.reload()">🔄 Recargar última versión</button>'
+      '<p style="color:var(--muted)">Otra PC guardó cambios mientras editabas y no se pudieron combinar solos.</p>'+
+      '<p style="color:var(--muted);font-size:13px">Tus cambios quedaron guardados en este equipo: al recargar se te ofrece recuperarlos.</p>'+
+      '<button class="btn primary" onclick="location.reload()">🔄 Recargar y recuperar</button>'
     );
     return false;
   }
-  if (!r.ok){ alert('Error al guardar: ' + r.status); return false; }
+  if (!r.ok){ alert('Error al guardar: ' + r.status + '. Tus cambios siguen en pantalla y guardados en este equipo.'); return false; }
   const j = await r.json();
   DATOS().meta.version = j.version;
   DATOS().meta.actualizado = j.actualizado;
+  if (FUSION){ _base = FUSION.clonar(DATOS()); FUSION.borrador.borrar('lotes'); }
   markSaved();
-  if (cambioHook) renderActivo();
+  if (cambioHook || intento > 0) renderActivo();
+  if (intento > 0) $('statusBar').textContent = '✓ Guardado (v' + DATOS().meta.version + ') · combinado con lo que guardaron otros';
   if (j.respaldo){
     const s = $('statusBar');
     s.textContent = '✓ Guardado (v' + DATOS().meta.version + ') · respaldo: ' + j.respaldo;

@@ -122,12 +122,14 @@ export async function rutasLotes(
 
     const actual = await leerDocumento(env);
 
-    const errores = validarDatos(nuevo, actual, forzar, SECCIONES_LOTES);
-    if (errores.length) return json(400, { error: 'validacion', detalles: errores });
-
+    // La versión va ANTES de validar (ver prensas/rutas.ts): uno viejo no tiene
+    // lo de los demás y el freno lo tomaría por un borrado masivo.
     const va = Number((actual.meta as Record<string, unknown>)?.version ?? 0);
     const vc = Number((nuevo.meta as Record<string, unknown>)?.version ?? 0);
     if (vc !== va) return json(409, { error: 'conflicto', actual });
+
+    const errores = validarDatos(nuevo, actual, forzar, SECCIONES_LOTES);
+    if (errores.length) return json(400, { error: 'validacion', detalles: errores });
 
     const meta = (nuevo.meta ??= {}) as Record<string, unknown>;
     meta.version = va + 1;

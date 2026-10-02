@@ -89,6 +89,24 @@ describe('login con usuario y contraseña', () => {
     expect(me.status).toBe(200);
   });
 
+  it('sin sesión, las APIs de los módulos responden 401 (la pantalla avisa y no pierde nada)', async () => {
+    for (const ruta of ['/prensas/api/datos', '/lotes/api/datos', '/barriles/api/estado']) {
+      const res = await pedir(ruta);
+      expect(res.status).toBe(401);
+      await expect(res.json()).resolves.toMatchObject({ error: 'sin_sesion' });
+    }
+  });
+
+  it('la sesión se estira con cada uso y la cookie dura mucho', async () => {
+    const { res, cookie } = await entrar('admin', '1234');
+    expect(res.headers.get('Set-Cookie')).toMatch(/Max-Age=34560000/);
+    // Se fuerza un vencimiento inminente: usarla lo vuelve a correr 30 días.
+    await env.DB.prepare('UPDATE sesiones SET vence = ?').bind(Math.floor(Date.now() / 1000) + 60).run();
+    await pedir('/api/auth/me', { cookie });
+    const fila = await env.DB.prepare('SELECT vence FROM sesiones').first<{ vence: number }>();
+    expect(fila!.vence).toBeGreaterThan(Math.floor(Date.now() / 1000) + 29 * 86400);
+  });
+
   it('rechaza credenciales incorrectas', async () => {
     expect((await entrar('admin', 'otra')).res.status).toBe(401);
     expect((await entrar('nadie', '1234')).res.status).toBe(401);
