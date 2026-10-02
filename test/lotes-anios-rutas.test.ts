@@ -23,7 +23,13 @@ beforeAll(async () => {
       { lote: 26001, variedad: 'Malbec', litros_actuales: 225, cap225: 1 },
     ],
     analisis: [
-      { lote: '25001', fecha_analisis: '2026-09-01', so2_libre: 30, ph: 3.6 },
+      // 25001 con SO2 bajo el objetivo (piso 20, objetivo molecular 0,38 a
+      // pH 3.6 da ~24,4): necesita corrección y entra a armarOrden(). 26001
+      // con SO2 por encima del objetivo: no necesita corrección y no entra,
+      // para que la presencia o ausencia de '25001' en /orden-correccion sea
+      // justamente lo que prueba el recorte por año, no una casualidad del
+      // criterio de SO2.
+      { lote: '25001', fecha_analisis: '2026-09-01', so2_libre: 15, ph: 3.6 },
       { lote: '26001', fecha_analisis: '2026-09-01', so2_libre: 30, ph: 3.6 },
     ],
     movimientos: [],
@@ -81,6 +87,10 @@ describe('GET /cruce?anios=', () => {
 });
 
 describe('GET /orden-correccion?anios=', () => {
+  it('sin parámetro el 25001 (necesita corrección) entra en lotes', async () => {
+    const j = await (await get('/orden-correccion')).json<{ lotes: { lote: unknown }[] }>();
+    expect(lotesDe(j)).toContain('25001');
+  });
   it('con anios=2026 ningún lote empieza con 25', async () => {
     const j = await (await get('/orden-correccion?anios=2026')).json<{ lotes: { lote: unknown }[] }>();
     expect(lotesDe(j).some((l) => l.startsWith('25'))).toBe(false);
