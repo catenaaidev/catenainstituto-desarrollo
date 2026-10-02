@@ -96,13 +96,17 @@ export function confirmarOT(ot, movimientos, reales, usuario, hoy){
     const r = (reales.por_lote || [])[i] || {};
     l.destino_real = String(r.destino_real || '').trim();
     l.litros_reales = r.litros_reales ?? null;
-    l.merma = r.merma ?? null;
+    // merma_litros (2026-10-01) reemplaza al campo viejo sin unidad; merma se
+    // sigue llenando para que las hojas ya impresas lean lo mismo.
+    l.merma_litros = r.merma_litros ?? null;
+    l.merma = r.merma_litros ?? r.merma ?? null;
     const m = porId.get(l.mov_id);
     if (!m){ faltan.push(l.mov_id); return; }
     // Los reales PISAN a los previstos: desde aca el movimiento es el registro
     // de lo que paso, y recien ahora cuenta para etapas y linaje.
     m.vasija_destino = l.destino_real || ot.destino;
     m.litros = l.litros_reales;
+    m.merma_litros = l.merma_litros;
     m.operario = reales.operario;
     m.estado = EJECUTADO;
   });

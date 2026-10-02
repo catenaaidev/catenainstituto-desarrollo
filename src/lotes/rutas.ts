@@ -15,7 +15,7 @@ import { normalizarMapa, MapaNoDisponible } from './motores/mapa';
 import { cruzar } from './motores/cruce';
 import { armarOrden } from './motores/correccion';
 import { ETAPAS } from './motores/etapas';
-import { barrilesDeLotes } from './motores/barriles-lote';
+import { barrilesDeLotes, barrilesPorNum } from './motores/barriles-lote';
 
 const MODULO = 'lotes';
 const HISTORIAL_MAX = 200;
@@ -266,18 +266,22 @@ export async function rutasLotes(
     }
   }
 
-  // ---------- GET /barriles?lotes=26217,26218 ----------
-  // Para las OT de trasiego: los barriles de cada lote con los datos de la
-  // planilla. Solo lectura: el Mapa lo escribe el escáner, nunca una OT.
+  // ---------- GET /barriles?lotes=26217,26218  y/o  ?nums=2221713,451 ----------
+  // Para las OT de trasiego y las barricas mermas. Solo lectura: el Mapa lo
+  // escribe el escáner, nunca una OT.
   if (ruta === '/barriles' && req.method === 'GET') {
-    const pedidos = (new URL(req.url).searchParams.get('lotes') ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!pedidos.length) return json(400, { error: 'falta el parámetro lotes' });
+    const qs = new URL(req.url).searchParams;
+    const lista = (p: string) => (qs.get(p) ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const pedidos = lista('lotes');
+    const nums = lista('nums');
+    if (!pedidos.length && !nums.length) return json(400, { error: 'falta el parámetro lotes o nums' });
     try {
       const doc = await leerMapaBarriles(env);
-      return json(200, { version: doc.version, por_lote: barrilesDeLotes(doc.estado ?? {}, pedidos) });
+      const estado = doc.estado ?? {};
+      const r: Record<string, unknown> = { version: doc.version };
+      if (pedidos.length) r.por_lote = barrilesDeLotes(estado, pedidos);
+      if (nums.length) r.por_num = barrilesPorNum(estado, nums);
+      return json(200, r);
     } catch (e) {
       if (e instanceof MapaNoDisponible) return json(503, { error: e.message });
       throw e;

@@ -10,7 +10,8 @@ import { activarGrilla, adaptadorCols, limpiarSeleccion } from './grilla.js';
 import { colsVisibles, bandasVisibles, alternar } from './grupos-cols.js';
 import { crearAnchos } from './anchos-cols.js';
 import { CAPACIDADES, resumenEnvases, contarEnvases,
-         litrosDeEnvases, tiposDeEnvase, estaVacio, esOrganico } from './envases.js';
+         tiposDeEnvase, estaVacio, esOrganico } from './envases.js';
+import { litrosDelLote, faltanteDeLote } from './mermas.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { fmtFecha } from './fechas.js';
 import { PASOS, armarHijo, validarNumeroLote, ordenarConFijos,
@@ -371,6 +372,10 @@ function abrirOverlayEnvases(o){
          data-envk="${escA(c.k)}" value="${escA(o[c.k] != null ? String(o[c.k]) : '')}">
   <span class="envsub" id="envsub_${c.k}">—</span>`).join('');
 
+  // Lo que explica que el total no sea la suma de los subtotales: el
+  // descuento de litrosDelLote por barricas mermas pendientes (mermas.js).
+  const faltanteMermas = faltanteDeLote(DATOS().mermas, o.lote);
+
   mostrarOverlay(`
 <h3 style="margin:0 0 14px">Envases del lote ${esc(String(o.lote ?? ''))}</h3>
 <div style="display:grid;grid-template-columns:auto 90px auto;gap:8px 12px;align-items:center;text-align:left">
@@ -383,6 +388,7 @@ function abrirOverlayEnvases(o){
 <div style="margin-top:14px;text-align:right;font-size:14px">
   total: <b id="envTotal">0</b> L
 </div>
+${faltanteMermas > 0 ? `<div style="text-align:right;font-size:13px;color:var(--muted)">− ${esc(faltanteMermas)} L de barricas mermas pendientes</div>` : ''}
 <div class="msg err" id="envError" style="display:none;margin-top:10px;text-align:left"></div>
 <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
   <button class="btn" id="envCancelar">Cancelar</button>
@@ -418,7 +424,7 @@ function abrirOverlayEnvases(o){
       const n = vals[c.k];
       $('envsub_' + c.k).textContent = n ? '= ' + (n * c.cap) : '= —';
     }
-    $('envTotal').textContent = String(litrosDeEnvases(vals));
+    $('envTotal').textContent = String(litrosDelLote({ ...vals, lote: o.lote }, DATOS().mermas));
     const err = $('envError');
     if (malos.length){
       err.textContent = 'Revisá los campos marcados: las barricas se cuentan con números '
@@ -442,7 +448,8 @@ function abrirOverlayEnvases(o){
     /* litros_actuales va en 0 y NUNCA en null cuando el desglose queda vacio:
      * motor_etapas compara litros_actuales <= 0 y asi estan guardados los lotes
      * vacios de datos.json. */
-    o.litros_actuales = litrosDeEnvases(vals);
+    // Menos lo que les falta a las barricas mermas pendientes (mermas.js).
+    o.litros_actuales = litrosDelLote({ ...vals, lote: o.lote }, DATOS().mermas);
     markDirty();
     cerrarOverlay();
     /* Recargar el dashboard: pasar a 0 litros vuelve el lote inactivo y eso

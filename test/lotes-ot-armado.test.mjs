@@ -135,6 +135,15 @@ describe('confirmarOT', () => {
     expect(faltan).toEqual(['ot-x-0']);
     expect(ot.estado).toBe('ejecutado');
   });
+
+  it('guarda la merma en litros en la OT y en el movimiento', () => {
+    const ot = otDe([{ lote: '26217', barriles: CINCO }]);
+    const movs = movimientosDeOT(ot, 'ana', '2026-09-23');
+    confirmarOT(ot, movs, { operario: 'Juan', por_lote: [{ destino_real: 'T 201', litros_reales: 1100, merma_litros: 25 }] },
+      'ana', '2026-09-24');
+    expect(ot.lotes[0]).toMatchObject({ merma_litros: 25, merma: 25 });
+    expect(movs[0].merma_litros).toBe(25);
+  });
 });
 
 describe('sinEscanear', () => {

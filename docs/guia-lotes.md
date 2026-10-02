@@ -715,5 +715,26 @@ lado (`src/prensas/validacion.ts:182-195`).
 
 ---
 
+## Confirmar una OT: así queda cada lote
+
+Desde el 2026-10, confirmar una OT actualiza los envases y los litros del lote, siempre con un check tuyo.
+
+1. **Lo que pasó.**
+   - Si el destino es un tanque, elegí el tanque (por ejemplo "T 201") y cargá los **cm de merma** que mediste. Al lado ves los litros, calculados con la tabla de cubicación y la Cap REAL.
+   - Si el tanque no tiene tabla (foudres, tinajas, los de 3.300 / 6.000 / 46.500 L), cargá los litros.
+   - Si el destino son barricas, cargá cuántas quedaron llenas y agregá cada barrica merma con su número y sus litros.
+2. **Así queda cada lote.** Ves el antes y el después de cada lote, la merma en litros y qué dice el Mapa de Barriles. Corregí lo que haga falta y dejá tildados los lotes que querés aplicar. **Aplicar y guardar** confirma la OT y guarda.
+
+**Barricas mermas.**
+- Quedan en Movimientos → 🛢 Mermas.
+- Mientras están pendientes, lo que les falta se descuenta de los litros del lote.
+- Se cierran solas cuando el Mapa registra un cambio en esa barrica después de la OT (por ejemplo, la marcás MERMO y después se escanea el relleno); si la completaste sin escanear, usá ✓ resuelta.
+
+**Vasijas fijas.** El padrón está en ⚙️ Configuración → Vasijas fijas. La primera vez, apretá "Cargar padrón inicial".
+
+La tabla del tanque de 75 HL del Excel de cubicación tiene dos valores que suben entre 197 y 200 cm: revisarla.
+
+---
+
 *Guía escrita el 2026-09-10 contra el código de `main`. Si cambiás una regla,
 buscá acá la referencia `archivo:línea` y actualizá el párrafo.*

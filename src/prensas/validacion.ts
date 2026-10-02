@@ -35,9 +35,11 @@ export const SECCIONES_PRENSAS: ConfigSecciones = {
  * Excel no la trae y tiene que poder guardarse igual. Lo mismo `ordenes_trabajo`
  * (las OT de trasiego, 2026-09-23): va en `secciones` y no en `requeridas` para
  * que tenga el control de lista y el freno anti-borrado sin exigirla.
+ * `vasijas` (padrón de vasijas fijas) y `mermas` (barricas mermas), 2026-10-01:
+ * mismo criterio.
  */
 export const SECCIONES_LOTES: ConfigSecciones = {
-  secciones: ['lotes', 'analisis', 'movimientos', 'ordenes_trabajo'],
+  secciones: ['lotes', 'analisis', 'movimientos', 'ordenes_trabajo', 'vasijas', 'mermas'],
   requeridas: ['lotes', 'analisis'],
 };
 

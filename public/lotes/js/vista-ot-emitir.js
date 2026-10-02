@@ -14,6 +14,7 @@ import { hojasOT } from './ot-hojas.js';
 import { proximoNumeroOT } from './ot-movimientos.js';
 import { esOrganico } from './envases.js';
 import { abrirCorteOT } from './vista-ot-corte.js';
+import { hoyLocalISO } from './fechas.js';
 
 /* Estado del modal abierto: una entrada por lote agregado. */
 let _lotes = [];      // [{lote, id_texto, organico, barriles:[...], tildados:Set<num>, vasijas_manual, litros, litrosManual, barricas, barricasManual}]
@@ -158,7 +159,8 @@ export function iniciarSesionLotes(plantilla){
 
 export function abrirEmitirOT(onListo){
   iniciarSesionLotes();
-  const hoy = new Date().toISOString().slice(0, 10);
+  // Fecha de trabajo por defecto: la LOCAL (las mermas de la OT cuentan desde aca).
+  const hoy = hoyLocalISO();
   const numero = proximoNumeroOT(DATOS().movimientos || [], Number(hoy.slice(0, 4)), DATOS().ordenes_trabajo || []);
   const opts = PLANTILLAS_OT.map(p => `<option value="${escA(p.id)}">${esc(p.nombre)}</option>`).join('');
 

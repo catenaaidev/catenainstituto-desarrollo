@@ -7,7 +7,7 @@
  */
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
-import { barrilesDeLotes } from '../src/lotes/motores/barriles-lote';
+import { barrilesDeLotes, barrilesPorNum } from '../src/lotes/motores/barriles-lote';
 import { rutasLotes } from '../src/lotes/rutas';
 
 const INV = [
@@ -27,6 +27,7 @@ describe('barrilesDeLotes', () => {
     expect(r['26217'][0]).toEqual({
       num: '2221713', estado: 'LLENO', cap: 225, litros: 225,
       anio: '2022', marca: 'TARANSAUD', origen: 'FRANCES', trat: 'REF.101 M',
+      lote: '26217', fecha: '', ts: null,
     });
     expect(r['26217'][1].cap).toBe(225); // '225' del Excel se vuelve número
   });
@@ -41,6 +42,21 @@ describe('barrilesDeLotes', () => {
 
   it('tolera un estado sin inventario', () => {
     expect(barrilesDeLotes({}, ['26217'])).toEqual({ '26217': [] });
+  });
+});
+
+describe('barrilesPorNum', () => {
+  it('trae cada numero pedido con su lote, o null si no existe', () => {
+    const inv = [...INV, { num: '777', estado: 'LLENO', cap: 225, litros: 225, lote: '26730 ROJO', fecha: '2026-10-03' }];
+    const r = barrilesPorNum({ inventario: inv }, ['777', ' 9001 ', 'nada']);
+    expect(r['777']).toMatchObject({ lote: '26730 ROJO', fecha: '2026-10-03', estado: 'LLENO' });
+    expect(r['9001']).toMatchObject({ lote: '26300' });
+    expect(r['nada']).toBeNull();
+  });
+
+  it('trae el ts del Mapa (la merma lo usa para no cerrarse con su propio escaneo)', () => {
+    const inv = [...INV, { num: '778', estado: 'LLENO', cap: 225, litros: 225, lote: '26217', fecha: '2026-10-01', ts: 1788912988373 }];
+    expect(barrilesPorNum({ inventario: inv }, ['778'])['778']!.ts).toBe(1788912988373);
   });
 });
 
@@ -68,8 +84,20 @@ describe('GET /barriles', () => {
     expect((await pedir('?lotes=26217')).status).toBe(503);
   });
 
-  it('400 sin lotes', async () => {
+  it('400 sin lotes ni nums', async () => {
     expect((await pedir('')).status).toBe(400);
+  });
+
+  it('nums devuelve por_num', async () => {
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO documento (modulo, json) VALUES ('barriles', ?)`,
+    ).bind(JSON.stringify({ version: 2304, estado: { inventario: INV } })).run();
+    const r = await pedir('?nums=2221713,nada');
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { version: number; por_num: Record<string, unknown> };
+    expect(j.version).toBe(2304);
+    expect(j.por_num['2221713']).toMatchObject({ lote: '26217' });
+    expect(j.por_num['nada']).toBeNull();
   });
 
   it('devuelve version y barriles de los lotes pedidos', async () => {

@@ -5,7 +5,7 @@
  * DATOS es una variable mutable que comparten todas las vistas. Los modulos ES
  * no permiten reasignar un binding exportado desde afuera, asi que se expone
  * por accesor: DATOS() para leer, setDatos() para reemplazar.
- * Forma: {meta, config, lotes, analisis, estado_lote, excepciones_analisis}
+ * Forma: {meta, config, lotes, analisis, estado_lote, excepciones_analisis, vasijas, mermas}
  */
 let _datos = null;
 export function DATOS(){ return _datos; }
@@ -180,6 +180,8 @@ export async function cargarDatos(){
     DATOS().analisis             = DATOS().analisis || [];
     DATOS().estado_lote          = DATOS().estado_lote || {};
     DATOS().excepciones_analisis = DATOS().excepciones_analisis || [];
+    DATOS().vasijas              = DATOS().vasijas || [];
+    DATOS().mermas               = DATOS().mermas || [];
     // Los objetos de DATOS() acaban de ser reemplazados: las pilas de deshacer
     // de la grilla quedarian apuntando a objetos huerfanos. grilla.js escucha
     // este evento para limpiarse; no se importa directamente para evitar el
@@ -193,9 +195,19 @@ export async function cargarDatos(){
   }
 }
 
+/* Funciones que corren justo antes de cada POST y pueden tocar DATOS(). Hoy:
+ * el cierre de las barricas mermas que el Mapa ya ve llenas (mermas-mapa.js).
+ * Van por registro y no por import para no armar el ciclo nucleo -> mermas-mapa -> nucleo. */
+const _antesDeGuardar = [];
+export function registrarAntesDeGuardar(fn){ _antesDeGuardar.push(fn); }
+
 /* ---------- guardar (con 409/412 faithful port) ---------- */
 export async function guardar(forzar){
   if (!dirty) return true;
+  let cambioHook = false;
+  for (const fn of _antesDeGuardar){
+    try { if (fn(DATOS())) { invalidarVistas(); cambioHook = true; } } catch (e) { console.error('antesDeGuardar:', e); }
+  }
   DATOS().meta.autor = usuarioActual() || pedirUsuario(true) || 'desconocido';
   let r;
   try {
@@ -237,6 +249,7 @@ export async function guardar(forzar){
   DATOS().meta.version = j.version;
   DATOS().meta.actualizado = j.actualizado;
   markSaved();
+  if (cambioHook) renderActivo();
   if (j.respaldo){
     const s = $('statusBar');
     s.textContent = '✓ Guardado (v' + DATOS().meta.version + ') · respaldo: ' + j.respaldo;

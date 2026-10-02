@@ -4,6 +4,7 @@
 import { $, esc, escA, DATOS, markDirty, registrarVista } from './nucleo.js';
 import { CRITERIOS_DEFAULT } from './criterios.js';
 import { activarGrilla } from './grilla.js';
+import { renderVasijas } from './vista-vasijas.js';
 
 /** Columnas de la tabla de configuración, en orden de presentación. */
 const COLS_CONFIG = [
@@ -286,6 +287,8 @@ export function renderConfig(){
     t.addEventListener('change', _cfgOnChange);
     t.addEventListener('click',  _cfgOnClick);
   }
+
+  renderVasijas($('cfgVasijas'));
 }
 
 export function agregarVariedadConfig(){

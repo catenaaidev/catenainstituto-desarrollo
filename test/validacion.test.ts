@@ -250,3 +250,11 @@ describe('ordenes_trabajo en Lotes', () => {
     expect(e.join(' ')).toMatch(/se perderían 25 de 30 ordenes_trabajo/);
   });
 });
+
+describe('vasijas y mermas en Lotes', () => {
+  it('estan declaradas pero no son requeridas', () => {
+    expect(SECCIONES_LOTES.secciones).toEqual(expect.arrayContaining(['vasijas', 'mermas']));
+    expect(SECCIONES_LOTES.requeridas).not.toContain('vasijas');
+    expect(SECCIONES_LOTES.requeridas).not.toContain('mermas');
+  });
+});
