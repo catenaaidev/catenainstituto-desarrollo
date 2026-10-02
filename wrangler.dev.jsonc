@@ -2,7 +2,7 @@
   // ⚠️ COPIA DE wrangler.jsonc PARA DESARROLLO LOCAL, SIN EL BLOQUE "ai".
   //
   // Con el binding de Workers AI declarado, `wrangler dev` intenta resolverlo
-  // contra la cuenta (es un binding remoto), se topa con Cloudflare Access
+  // contra la cuenta (es un binding remoto), intenta resolver un binding remoto
   // delante del Worker publicado y aborta antes de levantar el servidor. Sin el
   // bloque "ai" el resto de la plataforma se prueba local sin problemas; lo
   // único que no se puede probar acá es el asistente.
@@ -23,7 +23,7 @@
 
   // Archivos estáticos: el portal y las pantallas de cada módulo.
   // run_worker_first lista lo que TIENE que pasar por el Worker: las APIs, y
-  // el index.html de cada módulo (para inyectarle la identidad de Office 365).
+  // el index.html de cada módulo (para inyectarle la identidad de la sesión).
   // Todo lo demás —app.js, fuentes, librerías— lo sirve el CDN directo.
   "assets": {
     "directory": "./public",

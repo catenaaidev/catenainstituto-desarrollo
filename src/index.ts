@@ -4,14 +4,14 @@
  * Sirve el portal y las pantallas de los tres módulos (archivos estáticos de
  * public/) y responde las APIs de cada uno. Reemplaza a los tres servidor.py.
  *
- * Quién entra lo decide Cloudflare Access (Office 365) ANTES de llegar acá.
+ * Quién entra lo decide el sistema de autenticación propio (la cuenta de la plataforma) ANTES de llegar acá.
  * Qué puede hacer cada uno, lo decide este código con la tabla `perfiles`.
  */
 
 import { rutasPrensas, snapshot } from './prensas/rutas';
 import { rutasBarriles } from './barriles/rutas';
 import { rutasLotes } from './lotes/rutas';
-import { emailDelUsuario, identidad, baseInicializada, type Modulo } from './auth';
+import { emailDelUsuario, identidad, baseInicializada, login, logout, type Modulo } from './auth';
 import { json } from './respuestas';
 import { PLANTILLA as PLANTILLA_PRENSAS } from './prensas/reporte-plantilla';
 import { construirReporte as construirReporteLotes } from './lotes/reporte';
@@ -22,6 +22,28 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const ruta = url.pathname;
+
+    // ---- Autenticación propia ----
+    if (ruta === '/api/auth/login' && req.method === 'POST') {
+      // Esta ruta no requiere sesión, pero sí necesita la migración 0002.
+      if (!(await baseInicializada(env)) || !(await tablaExiste(env, 'usuarios'))) {
+        return json(503, { error: 'base_sin_inicializar', detalles: ['Falta aplicar la migración de autenticación.'] });
+      }
+      const body = await req.json().catch(() => null) as { email?: string; password?: string } | null;
+      return login(body?.email ?? '', body?.password ?? '', env);
+    }
+
+    if (ruta === '/api/auth/logout') {
+      return logout(req, env);
+    }
+
+    if (ruta === '/api/auth/me') {
+      const email = await emailDelUsuario(req, env);
+      if (!email) return json(401, { error: 'sin_sesion' });
+      const usuario = await env.DB.prepare('SELECT email, nombre FROM usuarios WHERE email = ?')
+        .bind(email).first<{email:string; nombre:string|null}>();
+      return json(200, { email, nombre: usuario?.nombre ?? email.split('@')[0] });
+    }
 
     // ---- La base todavía sin tablas ----
     // Pasa entre publicar el Worker y correr las migraciones. Sin este aviso,
@@ -52,10 +74,7 @@ export default {
       if (!email) {
         return json(401, {
           error: 'sin_sesion',
-          detalles: [
-            'No hay una identidad verificada.',
-            'Falta encender Cloudflare Access sobre este Worker (paso 6 de DESPLIEGUE.md).',
-          ],
+          detalles: ['Tu sesión no está iniciada o venció.', 'Ingresá nuevamente desde /login.html.'],
         });
       }
 
@@ -96,7 +115,7 @@ export default {
     }
 
     // ---- Archivos estáticos ----
-    // A la pantalla de cada módulo se le inyecta la identidad de Office 365,
+    // A la pantalla de cada módulo se le inyecta la identidad de la cuenta de la plataforma,
     // para que la app no tenga que preguntar "¿quién sos?".
     const esPantallaDeModulo = MODULOS.some(
       (m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`,
@@ -106,11 +125,29 @@ export default {
       return servirConIdentidad(req, env, ctx, ruta);
     }
 
+    // El portal también es privado. La página de login queda pública.
+    if (ruta === '/' || ruta === '/index.html') {
+      const email = await emailDelUsuario(req, env);
+      if (!email) return Response.redirect(new URL('/login.html', req.url).toString(), 302);
+    }
+
     return env.ASSETS.fetch(req);
   },
 
+async function tablaExiste(env: Env, nombre: string): Promise<boolean> {
+  try {
+    const fila = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
+    ).bind(nombre).first();
+    return Boolean(fila);
+  } catch {
+    return false;
+  }
+}
+
   /** Snapshot diario a R2 (cron de wrangler.jsonc). */
   async scheduled(_ev: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(env.DB.prepare('DELETE FROM sesiones WHERE vence <= ?').bind(Math.floor(Date.now() / 1000)).run());
     const fila = await env.DB.prepare('SELECT json, version FROM documento WHERE modulo = ?')
       .bind('prensas')
       .first<{ json: string; version: number }>();
@@ -125,7 +162,7 @@ export default {
  *
  * Así desaparece el cartel "¿Quién está usando la app?" sin tocar app.js: la
  * app lee ese nombre de localStorage, y acá se lo dejamos puesto con la
- * identidad verificada por Office 365.
+ * identidad verificada por la cuenta de la plataforma.
  */
 async function servirConIdentidad(
   req: Request,
@@ -160,7 +197,7 @@ async function servirConIdentidad(
   const contexto = { email: id.email, nombre, rol: id.rol, modulo, modulos };
 
   const inyeccion =
-    `<script>/* Identidad de Office 365 y contexto de la plataforma, puestos por el servidor. */\n` +
+    `<script>/* Identidad de la cuenta de la plataforma y contexto de la plataforma, puestos por el servidor. */\n` +
     // Prensas y Lotes preguntan el nombre por prompt y lo guardan acá; se lo
     // dejamos puesto para que no lo pregunten.
     `try{localStorage.setItem('prensas_usuario',${JSON.stringify(nombre)});}catch(e){}\n` +

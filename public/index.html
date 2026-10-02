@@ -107,7 +107,7 @@
     <span id="quien"></span>
     <!-- La sesión la maneja Cloudflare Access, no la app: se cierra en su
          propia dirección. Importa en las PC compartidas de la bodega. -->
-    <a id="salir" class="salir" href="/cdn-cgi/access/logout"
+    <a id="salir" class="salir" href="/api/auth/logout"
        title="Cerrar sesión y volver al login" hidden>Salir</a>
   </div>
 </header>
@@ -115,7 +115,7 @@
 <main>
   <div class="intro">
     <h2>Elegí con qué querés trabajar</h2>
-    <p>Entraste con tu usuario de la bodega. Cada módulo se abre con los permisos que
+    <p>Entraste con tu usuario de la plataforma. Cada módulo se abre con los permisos que
        tenés asignados en él, y todo lo que edites queda registrado a tu nombre.</p>
   </div>
 
@@ -218,13 +218,14 @@ function tarjeta(m, rol) {
 
     // El servidor explica qué falta cuando la plataforma todavía no está
     // terminada de configurar. Mostrarlo tal cual ahorra adivinar.
-    if (r.status === 503 || r.status === 401) {
+    if (r.status === 401) {
+      location.replace('/login.html');
+      return;
+    }
+    if (r.status === 503) {
       const j = await r.json().catch(() => ({}));
-      const titulo = r.status === 503
-        ? 'La plataforma todavía no está lista'
-        : 'Falta encender el login';
       grid.innerHTML =
-        '<div class="error"><strong>' + esc(titulo) + '</strong><br><br>' +
+        '<div class="error"><strong>La plataforma todavía no está lista</strong><br><br>' +
         (j.detalles || []).map(d => esc(d)).join('<br>') +
         '</div>';
       return;
