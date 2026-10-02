@@ -70,11 +70,11 @@
     );
   }
 
-  /* Cerrar sesión. La sesión no la maneja la app sino Cloudflare Access, así
-     que se cierra en su dirección: /api/auth/logout. Hace falta sobre
-     todo en las PC compartidas de la bodega, donde si no queda abierta y el
-     siguiente que se sienta guarda con el nombre del anterior. */
+  /* Cerrar sesión: /api/auth/logout borra la sesión y la cookie. Hace falta
+     sobre todo en las PC compartidas de la bodega, donde si no queda abierta y
+     el siguiente que se sienta guarda con el nombre del anterior. */
   partes.push('<span class="sep"></span>');
+  partes.push('<a class="salir" href="/cambiar-clave.html" title="Cambiar tu contraseña">Contraseña</a>');
   partes.push('<a class="salir" href="/api/auth/logout" ' +
     'title="Cerrar sesión y volver al login">Salir</a>');
 

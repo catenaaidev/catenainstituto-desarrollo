@@ -25,24 +25,26 @@ button{width:100%;margin-top:22px;padding:12px;border:0;border-radius:8px;backgr
   <div class="sub">Catena Institute</div>
   <p>Ingresá con tu usuario y contraseña para acceder a los módulos que tenés asignados.</p>
   <form id="form" autocomplete="on">
-    <div class="field"><label for="email">Correo electrónico</label><input id="email" name="email" type="email" autocomplete="username" required autofocus></div>
+    <div class="field"><label for="usuario">Usuario</label><input id="usuario" name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></div>
     <div class="field"><label for="password">Contraseña</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
     <button id="submit" type="submit">Ingresar</button>
-    <div id="error" class="error">El correo o la contraseña no son correctos.</div>
+    <div id="error" class="error">El usuario o la contraseña no son correctos.</div>
   </form>
   <div class="footer">Bodegas Esmeralda · Catena Institute</div>
 </main>
 <script>
 (async()=>{
-  try { const r=await fetch('/api/auth/me',{cache:'no-store'}); if(r.ok){location.replace('/');return;} } catch(e){}
+  // Quien todavía tiene la contraseña inicial va directo a cambiarla.
+  const destino=j=>j&&j.debe_cambiar?'/cambiar-clave.html':'/';
+  try { const r=await fetch('/api/auth/me',{cache:'no-store'}); if(r.ok){location.replace(destino(await r.json()));return;} } catch(e){}
   const form=document.getElementById('form'), btn=document.getElementById('submit'), err=document.getElementById('error');
   form.addEventListener('submit',async e=>{
     e.preventDefault(); err.style.display='none'; btn.disabled=true; btn.textContent='Ingresando…';
     try{
-      const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:form.email.value,password:form.password.value})});
-      if(r.ok){location.replace('/');return;}
+      const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usuario:form.usuario.value,password:form.password.value})});
+      if(r.ok){location.replace(destino(await r.json().catch(()=>({}))));return;}
       const j=await r.json().catch(()=>({}));
-      err.textContent=j.error==='base_sin_inicializar'?'El sistema todavía no está configurado.': 'El correo o la contraseña no son correctos.';
+      err.textContent=j.error==='base_sin_inicializar'?'El sistema todavía no está configurado.': 'El usuario o la contraseña no son correctos.';
       err.style.display='block';
     }catch(e){err.textContent='No se pudo conectar con el servidor. Intentá nuevamente.';err.style.display='block';}
     btn.disabled=false; btn.textContent='Ingresar';

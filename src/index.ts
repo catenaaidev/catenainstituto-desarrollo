@@ -11,7 +11,18 @@
 import { rutasPrensas, snapshot } from './prensas/rutas';
 import { rutasBarriles } from './barriles/rutas';
 import { rutasLotes } from './lotes/rutas';
-import { emailDelUsuario, identidad, baseInicializada, login, logout, type Modulo } from './auth';
+import {
+  emailDelUsuario,
+  identidad,
+  baseInicializada,
+  login,
+  logout,
+  sesion,
+  cambiarClave,
+  prepararAutenticacion,
+  type Modulo,
+} from './auth';
+import { rutasAdmin } from './admin';
 import { json } from './respuestas';
 import { PLANTILLA as PLANTILLA_PRENSAS } from './prensas/reporte-plantilla';
 import { construirReporte as construirReporteLotes } from './lotes/reporte';
@@ -25,12 +36,14 @@ export default {
 
     // ---- Autenticación propia ----
     if (ruta === '/api/auth/login' && req.method === 'POST') {
-      // Esta ruta no requiere sesión, pero sí necesita la migración 0002.
-      if (!(await baseInicializada(env)) || !(await tablaExiste(env, 'usuarios'))) {
-        return json(503, { error: 'base_sin_inicializar', detalles: ['Falta aplicar la migración de autenticación.'] });
+      // Esta ruta no requiere sesión. Las tablas de usuarios las crea ella
+      // misma si faltan (con la cuenta admin / 1234); perfiles viene de 0001.
+      if (!(await baseInicializada(env))) {
+        return json(503, { error: 'base_sin_inicializar', detalles: ['Falta aplicar las migraciones de la base.'] });
       }
-      const body = await req.json().catch(() => null) as { email?: string; password?: string } | null;
-      return login(body?.email ?? '', body?.password ?? '', env);
+      await prepararAutenticacion(env);
+      const body = await req.json().catch(() => null) as { usuario?: string; email?: string; password?: string } | null;
+      return login(body?.usuario ?? body?.email ?? '', body?.password ?? '', env);
     }
 
     if (ruta === '/api/auth/logout') {
@@ -38,11 +51,23 @@ export default {
     }
 
     if (ruta === '/api/auth/me') {
-      const email = await emailDelUsuario(req, env);
-      if (!email) return json(401, { error: 'sin_sesion' });
-      const usuario = await env.DB.prepare('SELECT email, nombre FROM usuarios WHERE email = ?')
-        .bind(email).first<{email:string; nombre:string|null}>();
-      return json(200, { email, nombre: usuario?.nombre ?? email.split('@')[0] });
+      const s = await sesion(req, env);
+      if (!s) return json(401, { error: 'sin_sesion' });
+      return json(200, {
+        email: s.email,
+        nombre: s.nombre ?? s.email.split('@')[0],
+        es_admin: s.esAdmin,
+        debe_cambiar: s.debeCambiar,
+      });
+    }
+
+    if (ruta === '/api/auth/cambiar-clave' && req.method === 'POST') {
+      return cambiarClave(req, env);
+    }
+
+    // ---- Administración de usuarios ----
+    if (ruta.startsWith('/api/admin/')) {
+      return rutasAdmin(req, env, ruta.slice('/api/admin'.length));
     }
 
     // ---- La base todavía sin tablas ----
@@ -68,6 +93,22 @@ export default {
       });
     }
 
+    // ---- Contraseña inicial sin cambiar ----
+    // Con la contraseña 1234 la sesión solo sirve para cambiarla. Los módulos
+    // ya la rechazan por su cuenta (identidad() devuelve null); acá se le
+    // explica a la pantalla qué pasa en vez de un 403 genérico.
+    if (tocaLaBase) {
+      const s = await sesion(req, env);
+      if (s?.debeCambiar) {
+        const esPantalla = MODULOS.some((m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`);
+        if (esPantalla) return Response.redirect(new URL('/cambiar-clave.html', req.url).toString(), 302);
+        return json(403, {
+          error: 'debe_cambiar_clave',
+          detalles: ['Tenés que cambiar la contraseña inicial antes de seguir.'],
+        });
+      }
+    }
+
     // ---- API del portal: qué módulos puede ver esta persona ----
     if (ruta === '/api/yo') {
       const email = await emailDelUsuario(req, env);
@@ -84,9 +125,11 @@ export default {
         .bind(email)
         .all<{ modulo: string; rol: string; nombre: string | null }>();
 
+      const s = await sesion(req, env);
       return json(200, {
         email,
-        nombre: results?.[0]?.nombre ?? email.split('@')[0],
+        nombre: s?.nombre ?? results?.[0]?.nombre ?? email.split('@')[0],
+        es_admin: s?.esAdmin ?? false,
         modulos: Object.fromEntries((results ?? []).map((r) => [r.modulo, r.rol])),
       });
     }
@@ -148,17 +191,6 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-async function tablaExiste(env: Env, nombre: string): Promise<boolean> {
-  try {
-    const fila = await env.DB.prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
-    ).bind(nombre).first();
-    return Boolean(fila);
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Sirve el index.html de un módulo con el nombre del usuario ya cargado.
  *
@@ -174,6 +206,9 @@ async function servirConIdentidad(
 ): Promise<Response> {
   const modulo = ruta.split('/')[1] as Modulo;
   const id = await identidad(req, env, ctx, modulo);
+
+  // Sin sesión no se entrega la pantalla: antes la frenaba Access, ahora el login.
+  if (!id) return Response.redirect(new URL('/login.html', req.url).toString(), 302);
 
   // Se pide la ruta canónica con barra final: el manejador de assets redirige
   // /prensas/index.html a /prensas/, y eso nos dejaría en un bucle.

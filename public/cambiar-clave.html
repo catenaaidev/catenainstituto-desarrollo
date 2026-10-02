@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cambiar contraseña · Catena Institute</title>
+<style>
+@font-face{font-family:Fraunces;src:url('/prensas/fonts/fraunces-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:Hanken;src:url('/prensas/fonts/hanken-grotesk-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:Hanken;src:url('/prensas/fonts/hanken-grotesk-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
+:root{--bg:#f7f5f1;--panel:#fff;--line:#e7e3da;--txt:#2a2622;--muted:#8c857b;--accent:#8a3340;--accent2:#6f2731}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--txt);font-family:Hanken,system-ui,sans-serif;display:grid;place-items:center;padding:24px}
+.card{width:min(430px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:34px;box-shadow:0 18px 50px -35px rgba(42,38,34,.35)}
+h1{font-family:Fraunces,Georgia,serif;font-size:26px;font-weight:600;margin:0 0 4px}.sub{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:2.2px}
+p{color:var(--muted);font-size:14px;line-height:1.55}.field{margin:18px 0 0}label{display:block;font-size:12px;font-weight:600;margin-bottom:7px}
+input{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--txt);font:inherit;font-size:14px}input:focus{outline:2px solid rgba(138,51,64,.18);border-color:var(--accent)}
+button{width:100%;margin-top:22px;padding:12px;border:0;border-radius:8px;background:var(--accent);color:white;font:600 14px Hanken,system-ui;cursor:pointer}button:hover{background:var(--accent2)}button:disabled{opacity:.65;cursor:wait}
+.error{display:none;margin-top:16px;padding:11px 13px;border-radius:8px;background:#fdf3f2;border:1px solid #e9c9c5;color:#8c3b32;font-size:13px;line-height:1.45}
+.aviso{margin:16px 0 0;padding:11px 13px;border-radius:8px;background:#f9f2e4;color:#8a6420;font-size:13px;line-height:1.45}
+.footer{margin-top:22px;text-align:center;color:var(--muted);font-size:12px}.footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Cambiar contraseña</h1>
+  <div class="sub" id="quien">Catena Institute</div>
+  <div class="aviso" id="aviso" hidden>Estás entrando con la contraseña inicial. Elegí una propia para continuar.</div>
+  <form id="form" autocomplete="on">
+    <input type="text" name="username" id="username" autocomplete="username" hidden>
+    <div class="field"><label for="actual">Contraseña actual</label><input id="actual" type="password" autocomplete="current-password" required autofocus></div>
+    <div class="field"><label for="nueva">Contraseña nueva</label><input id="nueva" type="password" autocomplete="new-password" minlength="6" required></div>
+    <div class="field"><label for="repetir">Repetí la contraseña nueva</label><input id="repetir" type="password" autocomplete="new-password" minlength="6" required></div>
+    <p style="margin:10px 0 0;font-size:12px">Al menos 6 caracteres, y distinta de 1234.</p>
+    <button id="submit" type="submit">Guardar contraseña</button>
+    <div id="error" class="error"></div>
+  </form>
+  <div class="footer"><a id="volver" href="/" hidden>Volver al menú</a> <a href="/api/auth/logout">Salir</a></div>
+</main>
+<script>
+(async()=>{
+  let yo;
+  try {
+    const r=await fetch('/api/auth/me',{cache:'no-store'});
+    if(r.status===401){location.replace('/login.html');return;}
+    yo=await r.json();
+  } catch(e){ yo={}; }
+  if(yo.email){
+    document.getElementById('quien').textContent='Usuario: '+yo.email;
+    document.getElementById('username').value=yo.email;
+  }
+  if(yo.debe_cambiar){ document.getElementById('aviso').hidden=false; }
+  else { document.getElementById('volver').hidden=false; }
+
+  const form=document.getElementById('form'), btn=document.getElementById('submit'), err=document.getElementById('error');
+  const mostrar=t=>{err.textContent=t;err.style.display='block';};
+  form.addEventListener('submit',async e=>{
+    e.preventDefault(); err.style.display='none';
+    const actual=form.actual.value, nueva=form.nueva.value, repetir=form.repetir.value;
+    if(nueva!==repetir){mostrar('Las dos contraseñas nuevas no coinciden.');return;}
+    btn.disabled=true; btn.textContent='Guardando…';
+    try{
+      const r=await fetch('/api/auth/cambiar-clave',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actual,nueva})});
+      if(r.ok){location.replace('/');return;}
+      if(r.status===401){location.replace('/login.html');return;}
+      const j=await r.json().catch(()=>({}));
+      mostrar((j.detalles&&j.detalles[0])||'No se pudo cambiar la contraseña.');
+    }catch(e){mostrar('No se pudo conectar con el servidor. Intentá nuevamente.');}
+    btn.disabled=false; btn.textContent='Guardar contraseña';
+  });
+})();
+</script>
+</body>
+</html>

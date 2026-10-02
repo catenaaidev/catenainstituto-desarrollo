@@ -2,12 +2,24 @@
  * Autenticación propia de la plataforma.
  *
  * La identidad ya no depende de Cloudflare Access. El usuario inicia sesión
- * con email + contraseña y el Worker mantiene una sesión mediante una cookie
- * HttpOnly. Los roles siguen viviendo en `perfiles`, por módulo.
+ * con usuario + contraseña y el Worker mantiene una sesión mediante una cookie
+ * HttpOnly. Los roles siguen viviendo en `perfiles`, por módulo, con el nombre
+ * de usuario en la columna `email` (se llama así desde la época de Access; un
+ * usuario puede ser también un email).
+ *
+ * Las cuentas nuevas nacen con la contraseña inicial 1234 y `debe_cambiar = 1`:
+ * hasta que la cambien, la sesión solo sirve para cambiarla.
  */
 
 export type Rol = 'admin' | 'editor' | 'lector';
 export type Modulo = 'prensas' | 'barriles' | 'lotes';
+
+export const MODULOS: Modulo[] = ['prensas', 'barriles', 'lotes'];
+export const ROLES: Rol[] = ['admin', 'editor', 'lector'];
+
+/** Contraseña con la que nace (o se resetea) toda cuenta. */
+export const CLAVE_INICIAL = '1234';
+export const CLAVE_MINIMA = 6;
 
 export interface Identidad {
   email: string;
@@ -15,9 +27,19 @@ export interface Identidad {
   nombre: string | null;
 }
 
+/** Quién tiene la sesión abierta, antes de mirar módulos. */
+export interface Sesion {
+  email: string;
+  nombre: string | null;
+  esAdmin: boolean;
+  debeCambiar: boolean;
+}
+
 const COOKIE = 'ciw_session';
 const SESSION_DAYS = 7;
-const PBKDF2_ITERATIONS = 120_000;
+// Workers no acepta más de 100.000 iteraciones de PBKDF2: con más, deriveBits
+// tira una excepción y el login devuelve error 1101.
+const PBKDF2_ITERATIONS = 100_000;
 
 function bytesToB64(bytes: ArrayBuffer | Uint8Array): string {
   const a = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -54,7 +76,6 @@ async function derivePassword(password: string, salt: Uint8Array, iterations = P
 }
 
 export async function crearHashPassword(password: string): Promise<string> {
-  if (password.length < 10) throw new Error('La contraseña debe tener al menos 10 caracteres.');
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const hash = await derivePassword(password, salt);
   return `pbkdf2-sha256$${PBKDF2_ITERATIONS}$${bytesToB64(salt)}$${hash}`;
@@ -64,9 +85,25 @@ async function verificarPassword(password: string, encoded: string): Promise<boo
   const [alg, it, salt64, expected] = encoded.split('$');
   if (alg !== 'pbkdf2-sha256' || !it || !salt64 || !expected) return false;
   const iterations = Number(it);
-  if (!Number.isInteger(iterations) || iterations < 50_000 || iterations > 1_000_000) return false;
+  if (!Number.isInteger(iterations) || iterations < 10_000 || iterations > PBKDF2_ITERATIONS) return false;
   const actual = await derivePassword(password, b64ToBytes(salt64), iterations);
   return actual === expected;
+}
+
+/** Usuario en minúsculas y sin espacios. Acepta también un email. */
+export function normalizarUsuario(valor: unknown): string {
+  return String(valor ?? '').trim().toLowerCase();
+}
+
+export function usuarioValido(usuario: string): boolean {
+  return /^[a-z0-9._@-]{2,64}$/.test(usuario);
+}
+
+/** null si la contraseña nueva sirve; si no, el motivo. */
+export function problemaClaveNueva(nueva: string): string | null {
+  if (nueva.length < CLAVE_MINIMA) return `La contraseña tiene que tener al menos ${CLAVE_MINIMA} caracteres.`;
+  if (nueva === CLAVE_INICIAL) return 'La contraseña nueva no puede ser la inicial.';
+  return null;
 }
 
 function leerCookie(req: Request, nombre: string): string | null {
@@ -86,23 +123,86 @@ function cookieBorrada(): string {
   return `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 }
 
+/**
+ * Deja la base lista para el login: tablas de usuarios y sesiones, columnas
+ * nuevas y la cuenta `admin` / 1234 si todavía no hay ningún administrador.
+ *
+ * Se corre en cada login (no en cada pedido) para que el despliegue no dependa
+ * de acordarse de `npm run migrar:nube`. Todo es idempotente, y coincide con
+ * migrations/0002: da igual cuál de los dos corra primero.
+ */
+export async function prepararAutenticacion(env: Env): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS usuarios (
+      email         TEXT PRIMARY KEY,
+      password_hash TEXT NOT NULL,
+      nombre        TEXT,
+      activo        INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0,1)),
+      es_admin      INTEGER NOT NULL DEFAULT 0 CHECK (es_admin IN (0,1)),
+      debe_cambiar  INTEGER NOT NULL DEFAULT 0 CHECK (debe_cambiar IN (0,1)),
+      creado        TEXT NOT NULL DEFAULT (datetime('now')),
+      actualizado   TEXT NOT NULL DEFAULT (datetime('now'))
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS sesiones (
+      token_hash TEXT PRIMARY KEY,
+      email      TEXT NOT NULL REFERENCES usuarios(email) ON DELETE CASCADE,
+      creado     INTEGER NOT NULL,
+      ultimo_uso INTEGER NOT NULL,
+      vence      INTEGER NOT NULL
+    )`),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sesiones_email ON sesiones(email)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_sesiones_vence ON sesiones(vence)'),
+  ]);
+
+  // Una base donde ya se aplicó la primera versión de 0002 no tiene estas dos.
+  const { results } = await env.DB.prepare('PRAGMA table_info(usuarios)').all<{ name: string }>();
+  const columnas = new Set((results ?? []).map((c) => c.name));
+  if (!columnas.has('es_admin')) {
+    await env.DB.prepare('ALTER TABLE usuarios ADD COLUMN es_admin INTEGER NOT NULL DEFAULT 0').run();
+  }
+  if (!columnas.has('debe_cambiar')) {
+    await env.DB.prepare('ALTER TABLE usuarios ADD COLUMN debe_cambiar INTEGER NOT NULL DEFAULT 0').run();
+  }
+
+  const hayAdmin = await env.DB.prepare(
+    'SELECT 1 FROM usuarios WHERE es_admin = 1 AND activo = 1 LIMIT 1',
+  ).first();
+  if (hayAdmin) return;
+
+  const hash = await crearHashPassword(CLAVE_INICIAL);
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO usuarios (email, password_hash, nombre, activo, es_admin, debe_cambiar)
+       VALUES ('admin', ?, 'Administrador', 1, 1, 1)
+       ON CONFLICT(email) DO NOTHING`,
+    ).bind(hash),
+    ...MODULOS.map((m) =>
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO perfiles (email, modulo, rol, nombre) VALUES ('admin', ?, 'admin', 'Administrador')`,
+      ).bind(m),
+    ),
+  ]);
+}
+
 export async function login(
-  email: string,
+  usuarioIngresado: string,
   password: string,
   env: Env,
 ): Promise<Response> {
-  const normalized = email.trim().toLowerCase();
-  if (!normalized || !password) {
+  const usuarioNorm = normalizarUsuario(usuarioIngresado);
+  if (!usuarioNorm || !password) {
     return Response.json({ error: 'credenciales_invalidas' }, { status: 401 });
   }
 
   const usuario = await env.DB.prepare(
-    'SELECT email, password_hash, nombre, activo FROM usuarios WHERE email = ?',
-  ).bind(normalized).first<{
+    'SELECT email, password_hash, nombre, activo, es_admin, debe_cambiar FROM usuarios WHERE email = ?',
+  ).bind(usuarioNorm).first<{
     email: string;
     password_hash: string;
     nombre: string | null;
     activo: number;
+    es_admin: number;
+    debe_cambiar: number;
   }>();
 
   if (!usuario || usuario.activo !== 1 || !(await verificarPassword(password, usuario.password_hash))) {
@@ -117,7 +217,7 @@ export async function login(
 
   await env.DB.prepare(
     'INSERT INTO sesiones (token_hash, email, creado, ultimo_uso, vence) VALUES (?, ?, ?, ?, ?)',
-  ).bind(tokenHash, normalized, ahora, ahora, vence).run();
+  ).bind(tokenHash, usuario.email, ahora, ahora, vence).run();
 
   const headers = new Headers({
     'Content-Type': 'application/json; charset=utf-8',
@@ -129,6 +229,8 @@ export async function login(
     ok: true,
     email: usuario.email,
     nombre: usuario.nombre ?? usuario.email.split('@')[0],
+    es_admin: usuario.es_admin === 1,
+    debe_cambiar: usuario.debe_cambiar === 1,
   }), { status: 200, headers });
 }
 
@@ -152,22 +254,82 @@ export async function logout(req: Request, env: Env): Promise<Response> {
   });
 }
 
-export async function emailDelUsuario(req: Request, env: Env): Promise<string | null> {
+/**
+ * Cambia la contraseña de quien tiene la sesión abierta y le saca la marca de
+ * "debe cambiarla". Cierra sus otras sesiones: si alguien más la conocía, deja
+ * de servirle.
+ */
+export async function cambiarClave(req: Request, env: Env): Promise<Response> {
+  const s = await sesion(req, env);
+  if (!s) return Response.json({ error: 'sin_sesion' }, { status: 401 });
+
+  const body = await req.json().catch(() => null) as { actual?: string; nueva?: string } | null;
+  const actual = String(body?.actual ?? '');
+  const nueva = String(body?.nueva ?? '');
+
+  const fila = await env.DB.prepare('SELECT password_hash FROM usuarios WHERE email = ?')
+    .bind(s.email).first<{ password_hash: string }>();
+  if (!fila || !(await verificarPassword(actual, fila.password_hash))) {
+    return Response.json({ error: 'clave_actual_incorrecta', detalles: ['La contraseña actual no es correcta.'] }, { status: 400 });
+  }
+
+  const problema = problemaClaveNueva(nueva);
+  if (problema) return Response.json({ error: 'clave_invalida', detalles: [problema] }, { status: 400 });
+  if (nueva === actual) {
+    return Response.json({ error: 'clave_invalida', detalles: ['La contraseña nueva tiene que ser distinta de la actual.'] }, { status: 400 });
+  }
+
+  const token = leerCookie(req, COOKIE);
+  const tokenHash = token ? await sha256(token) : '';
+  await env.DB.batch([
+    env.DB.prepare(
+      "UPDATE usuarios SET password_hash = ?, debe_cambiar = 0, actualizado = datetime('now') WHERE email = ?",
+    ).bind(await crearHashPassword(nueva), s.email),
+    env.DB.prepare('DELETE FROM sesiones WHERE email = ? AND token_hash <> ?').bind(s.email, tokenHash),
+  ]);
+
+  return Response.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
+}
+
+// Un pedido puede preguntar por la sesión varias veces (el ruteo y después el
+// módulo): se resuelve una sola vez por pedido.
+const sesionesPorPedido = new WeakMap<Request, Promise<Sesion | null>>();
+
+/** La sesión del pedido, aunque todavía deba cambiar la contraseña. */
+export function sesion(req: Request, env: Env): Promise<Sesion | null> {
+  let p = sesionesPorPedido.get(req);
+  if (!p) {
+    p = buscarSesion(req, env);
+    sesionesPorPedido.set(req, p);
+  }
+  return p;
+}
+
+async function buscarSesion(req: Request, env: Env): Promise<Sesion | null> {
   const token = leerCookie(req, COOKIE);
   if (!token) {
     // Compatibilidad exclusiva con tests existentes. Nunca se habilita en producción.
     if ((env as { TEST_MODE?: string }).TEST_MODE === '1') {
       const testEmail = req.headers.get('Cf-Access-Authenticated-User-Email');
-      return testEmail?.toLowerCase() ?? null;
+      return testEmail ? { email: testEmail.toLowerCase(), nombre: null, esAdmin: false, debeCambiar: false } : null;
     }
     return null;
   }
 
   const tokenHash = await sha256(token);
   const ahora = Math.floor(Date.now() / 1000);
-  const fila = await env.DB.prepare(
-    'SELECT email FROM sesiones WHERE token_hash = ? AND vence > ?',
-  ).bind(tokenHash, ahora).first<{ email: string }>();
+  type Fila = { email: string; nombre: string | null; es_admin: number; debe_cambiar: number };
+  let fila: Fila | null;
+  try {
+    fila = await env.DB.prepare(
+      `SELECT u.email, u.nombre, u.es_admin, u.debe_cambiar
+         FROM sesiones s JOIN usuarios u ON u.email = s.email
+        WHERE s.token_hash = ? AND s.vence > ? AND u.activo = 1`,
+    ).bind(tokenHash, ahora).first<Fila>();
+  } catch {
+    // Tablas sin crear o sin las columnas nuevas: el próximo login las prepara.
+    return null;
+  }
 
   if (!fila?.email) return null;
 
@@ -175,7 +337,21 @@ export async function emailDelUsuario(req: Request, env: Env): Promise<string | 
   await env.DB.prepare('UPDATE sesiones SET ultimo_uso = ? WHERE token_hash = ?')
     .bind(ahora, tokenHash).run();
 
-  return fila.email.toLowerCase();
+  return {
+    email: fila.email.toLowerCase(),
+    nombre: fila.nombre,
+    esAdmin: fila.es_admin === 1,
+    debeCambiar: fila.debe_cambiar === 1,
+  };
+}
+
+/**
+ * Usuario con sesión válida y ya habilitado para trabajar. Quien todavía tiene
+ * la contraseña inicial queda afuera: su sesión solo sirve para cambiarla.
+ */
+export async function emailDelUsuario(req: Request, env: Env): Promise<string | null> {
+  const s = await sesion(req, env);
+  return s && !s.debeCambiar ? s.email : null;
 }
 
 export async function autenticar(

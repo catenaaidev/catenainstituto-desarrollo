@@ -105,8 +105,9 @@
   <span class="sub">Catena Institute</span>
   <div class="right">
     <span id="quien"></span>
-    <!-- La sesión la maneja Cloudflare Access, no la app: se cierra en su
-         propia dirección. Importa en las PC compartidas de la bodega. -->
+    <a id="admin" class="salir" href="/admin.html" title="Crear, editar y eliminar usuarios" hidden>Usuarios</a>
+    <a id="clave" class="salir" href="/cambiar-clave.html" title="Cambiar tu contraseña" hidden>Contraseña</a>
+    <!-- Cerrar sesión importa en las PC compartidas de la bodega. -->
     <a id="salir" class="salir" href="/api/auth/logout"
        title="Cerrar sesión y volver al login" hidden>Salir</a>
   </div>
@@ -222,6 +223,13 @@ function tarjeta(m, rol) {
       location.replace('/login.html');
       return;
     }
+    if (r.status === 403) {
+      const j = await r.json().catch(() => ({}));
+      if (j.error === 'debe_cambiar_clave') {
+        location.replace('/cambiar-clave.html');
+        return;
+      }
+    }
     if (r.status === 503) {
       const j = await r.json().catch(() => ({}));
       grid.innerHTML =
@@ -236,6 +244,8 @@ function tarjeta(m, rol) {
 
     document.getElementById('quien').textContent = '👤 ' + (yo.nombre || yo.email);
     document.getElementById('salir').hidden = false;
+    document.getElementById('clave').hidden = false;
+    document.getElementById('admin').hidden = !yo.es_admin;
 
     const conAcceso = MODULOS.filter(m => yo.modulos[m.id]).length;
     grid.innerHTML = MODULOS.map(m => tarjeta(m, yo.modulos[m.id])).join('');

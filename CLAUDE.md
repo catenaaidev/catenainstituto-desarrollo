@@ -5,7 +5,10 @@ Prensas, Mapa de Barriles y Lotes. Reemplaza a los tres `servidor.py` que
 corrían en PCs de la bodega.
 
 - Producción: https://catenainstitute.besa-junin.workers.dev
-- Login: Cloudflare Access (One-time PIN, pensado para pasar a Azure AD)
+- Login: propio, usuario y contraseña (`src/auth.ts`, cookie `ciw_session`).
+  Usuarios en `/admin.html`; las cuentas nuevas nacen con `1234` y deben
+  cambiarla al entrar. La cuenta `admin` / `1234` se crea sola en el primer
+  login si no hay ningún administrador.
 - Repo: github.com/lucs56/catenainstitute — **es público**, no commitear datos
   ni emails del personal
 
@@ -29,7 +32,8 @@ Exige la bandera `--piso-la-web` justamente para que no pase por inercia. El
 ## Cómo está armado
 
 - `src/index.ts` — ruteo, entrega de páginas e inyección de identidad
-- `src/auth.ts` — identidad de Access + roles por módulo (tabla `perfiles`)
+- `src/auth.ts` — login, sesiones y roles por módulo (tabla `perfiles`)
+- `src/admin.ts` — API de administración de usuarios (`/api/admin/usuarios`)
 - `src/{prensas,barriles,lotes}/` — rutas y reglas de cada módulo
 - `src/lotes/motores/` — los 8 motores portados de Python
 - `public/` — las pantallas, servidas por el CDN; `public/shared/` es común
@@ -63,9 +67,11 @@ existen todavía: por eso dos personas no pueden editar el mismo módulo a la ve
   (`.github/workflows/desplegar.yml`): `wrangler types` → `tsc --noEmit` →
   tests → `wrangler deploy`. **No corre las migraciones**: eso es a mano con
   `npm run migrar:nube`.
-- **La cola de pendientes de Barriles no distingue una sesión de Access vencida
-  de un corte de red.** Access responde un redirect con HTML, no un 401, y la
-  cola lo confunde con una caída. Problema conocido, sin resolver.
+- **PBKDF2 en Workers admite como máximo 100.000 iteraciones.** Con más,
+  `deriveBits` tira excepción y el login da error 1101.
+- **Los tests se identifican con la cabecera `Cf-Access-Authenticated-User-Email`**
+  (solo con `TEST_MODE=1`, que pone `vitest.config.ts`). En producción la
+  identidad sale únicamente de la cookie de sesión.
 - **La pantalla de Barriles no tiene service worker ni manifest**, así que una
   recarga sin señal deja la pantalla en blanco. Relevante para la zona de la
   bodega sin cobertura Wi-Fi.

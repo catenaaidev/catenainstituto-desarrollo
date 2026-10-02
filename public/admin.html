@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usuarios · Plataforma CIW</title>
+<style>
+  @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
+  @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
+  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
+  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
+
+  :root{
+    --bg:#f7f5f1; --panel:#ffffff; --panel2:#f1efe9; --line:#e7e3da;
+    --txt:#2a2622; --muted:#8c857b; --accent:#8a3340; --accent2:#6f2731;
+    --ok:#3f7d4f; --warn:#b07d2c;
+    --serif:'Fraunces',Georgia,'Times New Roman',serif;
+    --sans:'Hanken Grotesk',system-ui,Segoe UI,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;-webkit-font-smoothing:antialiased;min-height:100vh}
+  header{padding:22px 30px 16px;display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-family:var(--serif);font-size:26px;font-weight:500}
+  header .sub{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:2.8px}
+  header .right{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+  .link{color:var(--muted);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:4px 10px;font-size:11.5px}
+  .link:hover{border-color:var(--accent);color:var(--accent)}
+
+  main{max-width:1080px;margin:0 auto;padding:34px 26px 70px}
+  .barra{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+  .barra h2{margin:0;font-family:var(--serif);font-size:22px;font-weight:500}
+  .barra .nota{color:var(--muted);font-size:13px}
+  .barra button{margin-left:auto}
+
+  button,.btn{font:600 13px var(--sans);border-radius:7px;padding:8px 14px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff}
+  button:hover{background:var(--accent2)}
+  button.sec{background:#fff;color:var(--txt);border-color:var(--line)}
+  button.sec:hover{border-color:var(--accent);color:var(--accent);background:#fff}
+  button.peligro{background:#fff;color:#8c3b32;border-color:#e9c9c5}
+  button.peligro:hover{background:#fdf3f2}
+  button:disabled{opacity:.6;cursor:wait}
+  button.chico{padding:5px 10px;font-size:12px}
+
+  .tabla{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .tabla th,.tabla td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+  .tabla th{font-size:10.5px;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted);font-weight:600;background:var(--panel2)}
+  .tabla tr:last-child td{border-bottom:0}
+  .tabla td.acciones{white-space:nowrap;text-align:right}
+  .tabla td.acciones button{margin-left:6px}
+  .usuario{font-weight:600}
+  .muted{color:var(--muted);font-size:12px}
+  .envoltura{overflow-x:auto}
+
+  .chip{display:inline-block;font-size:9.5px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;padding:3px 7px;border-radius:20px;white-space:nowrap;margin:1px 2px 1px 0}
+  .chip.admin{background:#f3e7e9;color:var(--accent)}
+  .chip.editor{background:#e6efe8;color:var(--ok)}
+  .chip.lector{background:#f1efe9;color:var(--muted)}
+  .chip.warn{background:#f7efe0;color:var(--warn)}
+  .chip.off{background:#eee;color:#888}
+
+  dialog{border:1px solid var(--line);border-radius:12px;padding:0;width:min(520px,calc(100% - 32px));box-shadow:0 24px 60px -30px rgba(42,38,34,.45)}
+  dialog::backdrop{background:rgba(42,38,34,.35)}
+  .dlg{padding:26px}
+  .dlg h3{margin:0 0 14px;font-family:var(--serif);font-size:21px;font-weight:600}
+  .campo{margin:14px 0 0}
+  .campo label{display:block;font-size:12px;font-weight:600;margin-bottom:6px}
+  .campo input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:7px;font:inherit}
+  .campo input:focus,.campo select:focus{outline:2px solid rgba(138,51,64,.18);border-color:var(--accent)}
+  .mods{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  .mods label{font-weight:400;color:var(--muted);font-size:12px;margin-bottom:4px}
+  .mods select{width:100%;padding:8px;border:1px solid var(--line);border-radius:7px;font:inherit;background:#fff}
+  .checks{display:flex;gap:20px;flex-wrap:wrap}
+  .checks label{display:flex;align-items:center;gap:7px;font-weight:400;font-size:13px}
+  .pie{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
+  .pie .izq{margin-right:auto}
+  .ayuda{color:var(--muted);font-size:12px;line-height:1.5;margin:6px 0 0}
+  .error{background:#fdf3f2;border:1px solid #e9c9c5;color:#8c3b32;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;margin-top:14px}
+  .ok{background:#e6efe8;border:1px solid #c6dccb;color:#2f5f3c;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;margin-bottom:16px}
+
+  @media (max-width:640px){
+    header{padding:18px 16px 14px}
+    main{padding:24px 16px 50px}
+    .mods{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Plataforma CIW</h1>
+  <span class="sub">Administración de usuarios</span>
+  <div class="right">
+    <span id="quien"></span>
+    <a class="link" href="/">← Menú</a>
+    <a class="link" href="/api/auth/logout">Salir</a>
+  </div>
+</header>
+
+<main>
+  <div id="mensaje"></div>
+  <div class="barra">
+    <h2>Usuarios</h2>
+    <span class="nota">Los usuarios nuevos entran con la contraseña <strong>1234</strong> y se les pide cambiarla.</span>
+    <button id="nuevo" type="button">+ Nuevo usuario</button>
+  </div>
+  <div id="contenido"><p class="muted">Cargando usuarios…</p></div>
+</main>
+
+<dialog id="dlg">
+  <form class="dlg" id="form" method="dialog">
+    <h3 id="titulo">Nuevo usuario</h3>
+    <div class="campo">
+      <label for="f-usuario">Usuario</label>
+      <input type="text" id="f-usuario" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+      <p class="ayuda">Con el que inicia sesión. Letras, números, punto, guion o @. Se guarda en minúsculas.</p>
+    </div>
+    <div class="campo">
+      <label for="f-nombre">Nombre</label>
+      <input type="text" id="f-nombre" autocomplete="off" placeholder="Como aparece en la app y en el historial">
+    </div>
+    <div class="campo">
+      <label>Acceso a cada módulo</label>
+      <div class="mods">
+        <div><label for="m-prensas">Prensas</label><select id="m-prensas"></select></div>
+        <div><label for="m-barriles">Barriles</label><select id="m-barriles"></select></div>
+        <div><label for="m-lotes">Lotes</label><select id="m-lotes"></select></div>
+      </div>
+      <p class="ayuda">Lector: solo mira · Editor: carga y edita · Admin: todo, incluidos los respaldos.</p>
+    </div>
+    <div class="campo checks">
+      <label><input type="checkbox" id="f-activo" checked> Activo (puede iniciar sesión)</label>
+      <label><input type="checkbox" id="f-admin"> Administra usuarios</label>
+    </div>
+    <div id="f-error"></div>
+    <div class="pie">
+      <button type="button" class="sec izq" id="f-reset" hidden>Resetear contraseña a 1234</button>
+      <button type="button" class="sec" id="f-cancelar">Cancelar</button>
+      <button type="submit" id="f-guardar">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const MODULOS = ['prensas', 'barriles', 'lotes'];
+const NOMBRES = { prensas: 'Prensas', barriles: 'Barriles', lotes: 'Lotes' };
+const OPCIONES = [['', 'Sin acceso'], ['lector', 'Lector'], ['editor', 'Editor'], ['admin', 'Admin']];
+
+let yo = null;
+let usuarios = [];
+let editando = null; // usuario original que se está editando; null = alta
+
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => (
+    { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
+  ));
+}
+
+for (const m of MODULOS) {
+  $('m-' + m).innerHTML = OPCIONES.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+}
+
+function avisar(texto, tipo = 'ok') {
+  $('mensaje').innerHTML = texto ? `<div class="${tipo}">${esc(texto)}</div>` : '';
+  if (texto) window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function api(metodo, ruta, cuerpo) {
+  const r = await fetch('/api/admin' + ruta, {
+    method: metodo,
+    headers: cuerpo ? { 'Content-Type': 'application/json' } : {},
+    body: cuerpo ? JSON.stringify(cuerpo) : undefined,
+    cache: 'no-store',
+  });
+  if (r.status === 401) { location.replace('/login.html'); throw new Error('sin sesión'); }
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 403 && j.error === 'debe_cambiar_clave') { location.replace('/cambiar-clave.html'); throw new Error('debe cambiar'); }
+  if (!r.ok) throw new Error((j.detalles && j.detalles[0]) || j.error || ('Error ' + r.status));
+  return j;
+}
+
+function fila(u) {
+  const mods = MODULOS.filter(m => u.modulos[m])
+    .map(m => `<span class="chip ${esc(u.modulos[m])}">${NOMBRES[m]}: ${esc(u.modulos[m])}</span>`).join('')
+    || '<span class="muted">Sin módulos</span>';
+  const estado = [
+    u.activo ? '' : '<span class="chip off">Inactivo</span>',
+    u.es_admin ? '<span class="chip admin">Administra usuarios</span>' : '',
+    u.debe_cambiar ? '<span class="chip warn">Contraseña inicial</span>' : '',
+  ].join('') || '<span class="muted">Activo</span>';
+  const soyYo = yo && u.usuario === yo.email;
+  return `<tr>
+    <td><div class="usuario">${esc(u.usuario)}${soyYo ? ' <span class="muted">(vos)</span>' : ''}</div><div class="muted">${esc(u.nombre)}</div></td>
+    <td>${mods}</td>
+    <td>${estado}</td>
+    <td class="acciones">
+      <button class="sec chico" data-editar="${esc(u.usuario)}">Editar</button>
+      ${soyYo ? '' : `<button class="peligro chico" data-eliminar="${esc(u.usuario)}">Eliminar</button>`}
+    </td>
+  </tr>`;
+}
+
+function pintar() {
+  if (!usuarios.length) {
+    $('contenido').innerHTML = '<p class="muted">Todavía no hay usuarios.</p>';
+    return;
+  }
+  $('contenido').innerHTML =
+    '<div class="envoltura"><table class="tabla"><thead><tr>' +
+    '<th>Usuario</th><th>Módulos</th><th>Estado</th><th></th>' +
+    '</tr></thead><tbody>' + usuarios.map(fila).join('') + '</tbody></table></div>';
+}
+
+async function cargar() {
+  try {
+    const j = await api('GET', '/usuarios');
+    usuarios = j.usuarios;
+    pintar();
+  } catch (e) {
+    $('contenido').innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  }
+}
+
+function abrir(u) {
+  editando = u ? u.usuario : null;
+  $('titulo').textContent = u ? 'Editar usuario' : 'Nuevo usuario';
+  $('f-usuario').value = u ? u.usuario : '';
+  $('f-nombre').value = u ? u.nombre : '';
+  for (const m of MODULOS) $('m-' + m).value = (u && u.modulos[m]) || '';
+  $('f-activo').checked = u ? u.activo : true;
+  $('f-admin').checked = u ? u.es_admin : false;
+  const soyYo = u && yo && u.usuario === yo.email;
+  $('f-activo').disabled = !!soyYo;
+  $('f-admin').disabled = !!soyYo;
+  $('f-reset').hidden = !u;
+  $('f-error').innerHTML = '';
+  $('dlg').showModal();
+  $(u ? 'f-nombre' : 'f-usuario').focus();
+}
+
+function datosDelForm() {
+  const modulos = {};
+  for (const m of MODULOS) modulos[m] = $('m-' + m).value || null;
+  return {
+    usuario: $('f-usuario').value.trim().toLowerCase(),
+    nombre: $('f-nombre').value.trim(),
+    activo: $('f-activo').checked,
+    es_admin: $('f-admin').checked,
+    modulos,
+  };
+}
+
+$('nuevo').addEventListener('click', () => abrir(null));
+$('f-cancelar').addEventListener('click', () => $('dlg').close());
+
+$('contenido').addEventListener('click', async (e) => {
+  const ed = e.target.closest('[data-editar]');
+  if (ed) { abrir(usuarios.find(u => u.usuario === ed.dataset.editar)); return; }
+  const el = e.target.closest('[data-eliminar]');
+  if (el) {
+    const u = el.dataset.eliminar;
+    if (!confirm(`¿Eliminar el usuario "${u}"? Pierde el acceso a la plataforma. El historial de lo que cargó se conserva.`)) return;
+    el.disabled = true;
+    try {
+      await api('DELETE', '/usuarios/' + encodeURIComponent(u));
+      avisar(`Usuario "${u}" eliminado.`);
+      await cargar();
+    } catch (err) {
+      avisar(err.message, 'error');
+      el.disabled = false;
+    }
+  }
+});
+
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const datos = datosDelForm();
+  const btn = $('f-guardar');
+  btn.disabled = true;
+  $('f-error').innerHTML = '';
+  try {
+    if (editando) {
+      await api('PUT', '/usuarios/' + encodeURIComponent(editando), datos);
+      avisar(`Usuario "${datos.usuario}" actualizado.`);
+    } else {
+      await api('POST', '/usuarios', datos);
+      avisar(`Usuario "${datos.usuario}" creado. Entra con la contraseña 1234 y se le va a pedir cambiarla.`);
+    }
+    $('dlg').close();
+    await cargar();
+  } catch (err) {
+    $('f-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+  }
+  btn.disabled = false;
+});
+
+$('f-reset').addEventListener('click', async () => {
+  if (!editando) return;
+  if (!confirm(`¿Resetear la contraseña de "${editando}" a 1234? Se le cierran las sesiones abiertas y al entrar se le pide elegir una nueva.`)) return;
+  const btn = $('f-reset');
+  btn.disabled = true;
+  try {
+    await api('PUT', '/usuarios/' + encodeURIComponent(editando), { resetear_clave: true });
+    avisar(`La contraseña de "${editando}" volvió a 1234. Al entrar se le va a pedir cambiarla.`);
+    $('dlg').close();
+    await cargar();
+  } catch (err) {
+    $('f-error').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+  }
+  btn.disabled = false;
+});
+
+(async function () {
+  try {
+    const r = await fetch('/api/auth/me', { cache: 'no-store' });
+    if (r.status === 401) { location.replace('/login.html'); return; }
+    yo = await r.json();
+    if (yo.debe_cambiar) { location.replace('/cambiar-clave.html'); return; }
+    if (!yo.es_admin) {
+      $('nuevo').hidden = true;
+      $('contenido').innerHTML = '<div class="error">Solo un administrador puede gestionar usuarios.</div>';
+      return;
+    }
+    $('quien').textContent = '👤 ' + (yo.nombre || yo.email);
+  } catch (e) {
+    $('contenido').innerHTML = '<div class="error">No se pudo conectar con el servidor.</div>';
+    return;
+  }
+  await cargar();
+})();
+</script>
+
+</body>
+</html>

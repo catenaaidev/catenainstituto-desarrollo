@@ -219,45 +219,41 @@ coincide, **parás acá** y lo revisás: no sigas.
 > ⚠️ El estado del Mapa de Barriles sale del respaldo del **28/08/2026 (v1939)**.
 > Si conseguís el archivo del día del corte, reimportá ese en su lugar.
 
-Ahora cargá las personas. Creá `usuarios.sql` con los emails reales:
-
-```sql
-INSERT OR REPLACE INTO perfiles (email, modulo, rol, nombre) VALUES
-  ('marcelo@catenawines.com',  'prensas',  'admin',  'Marcelo'),
-  ('marcelo@catenawines.com',  'barriles', 'admin',  'Marcelo'),
-  ('marcelo@catenawines.com',  'lotes',    'admin',  'Marcelo'),
-  ('lab@catenawines.com',      'prensas',  'editor', 'Laboratorio'),
-  ('gerencia@catenawines.com', 'prensas',  'lector', 'Gerencia');
-```
-
-```bash
-npx wrangler d1 execute catenainstitute --remote --file=usuarios.sql
-```
-
-> Los roles: **admin** hace todo · **editor** carga y edita · **lector** solo mira.
-> El rol es **por módulo**: alguien puede ser editor en Prensas y lector en Lotes.
+Las personas se cargan desde la propia plataforma (paso 6).
 
 ---
 
-## 6 · Encender el login (5 min) — IMPRESCINDIBLE
+## 6 · Login y usuarios (5 min) — IMPRESCINDIBLE
 
-En el panel de Cloudflare:
+La plataforma tiene login propio con **usuario y contraseña**: ya no usa
+Cloudflare Access.
 
-1. Entrá a **Workers & Pages → catenainstitute → Access**.
-2. Tocá **"Protect this Worker behind Access"**.
-3. Elegí proteger **todo el tráfico**.
-4. Creá la política. Para arrancar hoy mismo, sin depender de Sistemas:
-   - Método: **One-time PIN** (código de 6 dígitos al mail).
-   - Regla: *Emails ending in* → `@catenawines.com`.
+1. Entrá a la dirección del sitio. Te manda a `/login.html`.
+2. Ingresá con **usuario `admin` y contraseña `1234`**. Esa cuenta se crea sola
+   en el primer login (las tablas también: no hace falta correr migraciones
+   para esto).
+3. Te pide cambiar la contraseña. Elegí una propia: desde ahí `1234` deja de
+   servir para `admin`.
+4. En el portal, botón **Usuarios** (`/admin.html`): crear, editar (nombre,
+   usuario, permisos por módulo, activo, si administra usuarios), resetear la
+   contraseña y eliminar.
 
-Probá desde una ventana de incógnito: tiene que pedirte el mail y el código
-**antes** de mostrar nada.
+Toda cuenta nueva —y toda cuenta a la que se le resetea la contraseña— entra
+con **`1234`** y se le pide cambiarla antes de poder ver nada.
 
-### Después: pasarlo a Office 365
+> Los roles: **admin** hace todo · **editor** carga y edita · **lector** solo mira.
+> El rol es **por módulo**: alguien puede ser editor en Prensas y lector en Lotes.
+> "Administra usuarios" es aparte: decide quién entra a la plataforma.
 
-Cuando Sistemas registre la aplicación (§7), en *Zero Trust → Integrations →
-Identity providers* agregás **Azure AD** con los tres datos que te den, y cambiás
-el método de la política. **No hay que tocar código ni migrar usuarios.**
+> Los perfiles de la época de Access estaban cargados por email. Si creás el
+> usuario con ese mismo email y no le marcás módulos, conserva los permisos
+> que ya tenía.
+
+> ⚠️ Si el Worker sigue protegido con Cloudflare Access, apagalo: en
+> **Zero Trust → Access → Applications** borrá la aplicación de
+> `catenainstitute` (o en **Workers & Pages → catenainstitute → Settings →
+> Domains & Routes**, desactivá Access). Si no, antes del login propio va a
+> seguir apareciendo el código por mail.
 
 ---
 
