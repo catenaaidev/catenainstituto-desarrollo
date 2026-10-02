@@ -16,6 +16,7 @@ import { cruzar } from './motores/cruce';
 import { armarOrden } from './motores/correccion';
 import { ETAPAS, etapasSugeridas } from './motores/etapas';
 import { barrilesDeLotes, barrilesPorNum } from './motores/barriles-lote';
+import { leerAnios, enAnios, recortarPorAnios } from './motores/anios';
 
 const MODULO = 'lotes';
 const HISTORIAL_MAX = 200;
@@ -222,9 +223,13 @@ export async function rutasLotes(
 
   const hoy = hoyBodega(env.TZ_BODEGA);
 
+  // ?anios=2025,2026: el selector de años de la pantalla. Solo las rutas que
+  // corren motores lo usan; sin el parámetro calculan con todo, como siempre.
+  const anios = leerAnios(new URL(req.url).searchParams.get('anios'));
+
   // ---------- GET /dashboard ----------
   if (ruta === '/dashboard' && req.method === 'GET') {
-    return json(200, datosDashboard(await leerDocumento(env), hoy));
+    return json(200, datosDashboard(recortarPorAnios(await leerDocumento(env), anios), hoy));
   }
 
   // ---------- GET /analisis ----------
@@ -257,7 +262,16 @@ export async function rutasLotes(
       const d = await leerDocumento(env);
       // Con la etapa sugerida: un lote que nadie confirmó en la bandeja de
       // etapas no se marca "sin envase" mientras todavía está fermentando.
-      return json(200, cruzar((d.lotes as Record<string, unknown>[]) ?? [], mapa, etapasSugeridas(d, hoy)));
+      // Los lotes van recortados por año; las etapas sugeridas salen del
+      // documento entero (el linaje cruza años). Un barril del Mapa con un lote
+      // de un año apagado quedaría como huérfano: se lo saca de ahí también.
+      const informe = cruzar(
+        (recortarPorAnios(d, anios).lotes as Record<string, unknown>[]) ?? [],
+        mapa,
+        etapasSugeridas(d, hoy),
+      );
+      informe.huerfanos = informe.huerfanos.filter((h) => enAnios(h.lote, anios));
+      return json(200, informe);
     } catch (e) {
       if (e instanceof MapaNoDisponible) return json(503, { error: e.message });
       throw e;
@@ -268,7 +282,7 @@ export async function rutasLotes(
   if (ruta === '/orden-correccion' && req.method === 'GET') {
     try {
       const mapa = normalizarMapa(await leerMapaBarriles(env));
-      return json(200, armarOrden(await leerDocumento(env), mapa, hoy));
+      return json(200, armarOrden(recortarPorAnios(await leerDocumento(env), anios), mapa, hoy));
     } catch (e) {
       if (e instanceof MapaNoDisponible) return json(503, { error: e.message });
       throw e;
