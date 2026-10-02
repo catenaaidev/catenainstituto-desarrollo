@@ -12,6 +12,7 @@ import { abrirEmitirOT } from './vista-ot-emitir.js';
 import { abrirConfirmarOT } from './vista-ot-confirmar.js';
 import { otDeMovimiento, eliminarOT } from './ot-armado.js';
 import { renderOrdenesTrabajo, elegirOT } from './vista-ot-lista.js';
+import { renderMermas } from './vista-mermas.js';
 
 /* --- tipos validos --- */
 const TIPOS_MOV = ['descube', 'trasiego', 'relleno', 'traspaso', 'renombre', 'salida'];
@@ -71,15 +72,16 @@ CAMPOS_FLT_MOV.forEach(c => filtMov[c.campo] = new Set());
 let _descMov = [], _instMov = [];
 let _movFiltBusca = '';
 
-/* Sub-pestaña: 'historial' (la tabla de movimientos) u 'ordenes' (lista de OT
- * con la hoja editable, vista-ot-lista.js). Solo en memoria. */
+/* Sub-pestaña: 'historial' (la tabla de movimientos), 'ordenes' (lista de OT
+ * con la hoja editable, vista-ot-lista.js) o 'mermas' (barricas mermas
+ * pendientes, vista-mermas.js). Solo en memoria. */
 let _sub = 'historial';
 
 function _selectorSub(){
   const b = (k, txt) => `<button type="button" data-sub="${k}" role="radio" aria-checked="${_sub === k}"` +
     `${_sub === k ? ' class="on"' : ''}>${txt}</button>`;
   return `<div class="mov-sub" role="radiogroup" aria-label="Vista de Movimientos">` +
-    b('historial', '📋 Historial') + b('ordenes', '📝 Órdenes de trabajo') + '</div>';
+    b('historial', '📋 Historial') + b('ordenes', '📝 Órdenes de trabajo') + b('mermas', '🛢 Mermas') + '</div>';
 }
 
 function _cablearSelector(sec){
@@ -161,6 +163,13 @@ export function renderMovimientos(){
   if (!DATOS().movimientos) DATOS().movimientos = [];
 
   const sec = $('tab-movimientos'); if (!sec) return;
+
+  if (_sub === 'mermas'){
+    sec.innerHTML = _selectorSub() + '<div id="movMermas"></div>';
+    _cablearSelector(sec);
+    renderMermas($('movMermas'), { onCambio: renderMovimientos });
+    return;
+  }
 
   if (_sub === 'ordenes'){
     // #otMovHoja tiene que existir: imprimirOT pinta ahi y el @media print de

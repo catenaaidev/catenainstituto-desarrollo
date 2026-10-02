@@ -195,9 +195,18 @@ export async function cargarDatos(){
   }
 }
 
+/* Funciones que corren justo antes de cada POST y pueden tocar DATOS(). Hoy:
+ * el cierre de las barricas mermas que el Mapa ya ve llenas (mermas-mapa.js).
+ * Van por registro y no por import para no armar el ciclo nucleo -> mermas-mapa -> nucleo. */
+const _antesDeGuardar = [];
+export function registrarAntesDeGuardar(fn){ _antesDeGuardar.push(fn); }
+
 /* ---------- guardar (con 409/412 faithful port) ---------- */
 export async function guardar(forzar){
   if (!dirty) return true;
+  for (const fn of _antesDeGuardar){
+    try { if (fn(DATOS())) invalidarVistas(); } catch (e) { console.error('antesDeGuardar:', e); }
+  }
   DATOS().meta.autor = usuarioActual() || pedirUsuario(true) || 'desconocido';
   let r;
   try {

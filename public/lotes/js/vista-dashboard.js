@@ -6,6 +6,7 @@ import { $, esc, escA, DATOS, dashData, registrarVista,
 import { activarGrilla } from './grilla.js';
 import { criteriosEfectivosJS } from './criterios.js';
 import { metricasPorLote, heatmapVariedadAlarma, resumen } from './dash-metricas.js';
+import { estaPendiente } from './mermas.js';
 import { prepararGraficos, destruirGraficos, cerrarDrill,
          graficoAV, graficoSO2, graficoDispersion, pintarHeatmap } from './dash-graficos.js';
 
@@ -262,6 +263,7 @@ export function renderDashboard(){
    * igual, es un bug. */
   const sinAnalisis = lotes.filter(faltaAnalizar).length;
   const faEnProc   = lotes.filter(l => l.fa_estado === 'no_finalizada').length;
+  const barrMermas = (DATOS().mermas || []).filter(estaPendiente).length;
 
   const faqs = [
     { n: fmlNoTerm,   label: 'FML no terminada',       hi: fmlNoTerm  > 0 },
@@ -269,6 +271,7 @@ export function renderDashboard(){
     { n: mermos,      label: 'Mermos (no lleno)',        hi: mermos     > 0 },
     { n: sinAnalisis, label: 'Faltan analizar',          hi: sinAnalisis > 0 },
     { n: faEnProc,    label: 'FA en proceso',            hi: faEnProc   > 0 },
+    { n: barrMermas,  label: 'Barricas mermas',          hi: barrMermas > 0 },
   ];
 
   $('dashFaq').innerHTML = faqs.map(f =>

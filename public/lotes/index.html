@@ -1233,6 +1233,8 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 #tab-movimientos .mov-sub button:hover{color:var(--accent)}
 #tab-movimientos .mov-sub button.on{background:var(--panel);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 #tab-movimientos .mov-sub button:focus-visible{outline:none;box-shadow:var(--ring)}
+#tab-movimientos tr.mer-llena td{color:#54d38a}
+#tab-movimientos tr.mer-resuelta td{opacity:.6}
 
 /* lista de OT a la izquierda, hoja A4 a la derecha (debajo en pantallas angostas) */
 .otl{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
@@ -1647,6 +1649,12 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
         <tbody id="tConfigProyBody"></tbody>
       </table>
     </div>
+    <h2 style="margin:22px 0 8px">Vasijas fijas</h2>
+    <div class="note" style="margin-bottom:8px">
+      Tanques, piletas, huevos y foudres (las barricas están en el Mapa de Barriles). La <b>Cap REAL</b> manda;
+      la tabla de cubicación pasa los cm de merma a litros al confirmar una OT. Sin tabla, se cargan los litros a mano.
+    </div>
+    <div id="cfgVasijas"></div>
   </section>
 </main>
 
