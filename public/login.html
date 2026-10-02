@@ -44,7 +44,9 @@ button{width:100%;margin-top:22px;padding:12px;border:0;border-radius:8px;backgr
       const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usuario:form.usuario.value,password:form.password.value})});
       if(r.ok){location.replace(destino(await r.json().catch(()=>({}))));return;}
       const j=await r.json().catch(()=>({}));
-      err.textContent=j.error==='base_sin_inicializar'?'El sistema todavía no está configurado.': 'El usuario o la contraseña no son correctos.';
+      err.textContent=r.status===401?'El usuario o la contraseña no son correctos.'
+        :j.error==='base_sin_inicializar'?'El sistema todavía no está configurado.'
+        :'Error del servidor ('+r.status+')'+(j.detalles&&j.detalles[0]?': '+j.detalles[0]:'')+'. Avisá a quien administra la plataforma.';
       err.style.display='block';
     }catch(e){err.textContent='No se pudo conectar con el servidor. Intentá nuevamente.';err.style.display='block';}
     btn.disabled=false; btn.textContent='Ingresar';

@@ -41,9 +41,16 @@ export default {
       if (!(await baseInicializada(env))) {
         return json(503, { error: 'base_sin_inicializar', detalles: ['Falta aplicar las migraciones de la base.'] });
       }
-      await prepararAutenticacion(env);
-      const body = await req.json().catch(() => null) as { usuario?: string; email?: string; password?: string } | null;
-      return login(body?.usuario ?? body?.email ?? '', body?.password ?? '', env);
+      // Sin este try, una falla acá es un "error 1101" mudo y la pantalla de
+      // login lo muestra como contraseña incorrecta.
+      try {
+        await prepararAutenticacion(env);
+        const body = await req.json().catch(() => null) as { usuario?: string; email?: string; password?: string } | null;
+        return await login(body?.usuario ?? body?.email ?? '', body?.password ?? '', env);
+      } catch (e) {
+        console.error('login', e);
+        return json(500, { error: 'error_interno', detalles: [e instanceof Error ? e.message : String(e)] });
+      }
     }
 
     if (ruta === '/api/auth/logout') {
