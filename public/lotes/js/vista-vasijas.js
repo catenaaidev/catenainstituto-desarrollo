@@ -41,12 +41,23 @@ export function renderVasijas(cont){
   cont.querySelector('tbody').addEventListener('change', ev => {
     const el = ev.target, v = vs[+el.dataset.i]; if (!v) return;
     const f = el.dataset.f;
-    if (f === 'activa') v.activa = el.checked;
-    else if (f === 'cap_real') v.cap_real = el.value === '' ? null : Number(el.value);
+    if (f === 'activa'){
+      v.activa = el.checked;
+      markDirty(); renderVasijas(cont);
+      return;
+    }
+    if (f === 'cap_real'){
+      const n = Number(el.value);
+      // Vacio, negativo o no numerico: lo mismo que "sin dato" (null), nunca
+      // una capacidad imposible.
+      v.cap_real = (el.value === '' || !Number.isFinite(n) || n < 0) ? null : n;
+    }
     else if (f === 'tabla') v.tabla = el.value || null;
     else if (f === 'num'){
       const n = el.value.trim();
-      const repetida = vs.some((o, j) => j !== +el.dataset.i && normalizarNumVasija(o.num) === normalizarNumVasija(n));
+      // Vacio es valido (fila recien agregada, todavia sin numero asignado):
+      // solo se chequea contra las demas cuando hay algo que comparar.
+      const repetida = n !== '' && vs.some((o, j) => j !== +el.dataset.i && normalizarNumVasija(o.num) === normalizarNumVasija(n));
       if (repetida){ $('vasErr').textContent = `Ya existe la vasija ${n}.`; $('vasErr').style.display = ''; el.value = v.num; return; }
       $('vasErr').style.display = 'none';
       v.num = n;

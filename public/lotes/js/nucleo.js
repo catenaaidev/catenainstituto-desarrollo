@@ -204,8 +204,9 @@ export function registrarAntesDeGuardar(fn){ _antesDeGuardar.push(fn); }
 /* ---------- guardar (con 409/412 faithful port) ---------- */
 export async function guardar(forzar){
   if (!dirty) return true;
+  let cambioHook = false;
   for (const fn of _antesDeGuardar){
-    try { if (fn(DATOS())) invalidarVistas(); } catch (e) { console.error('antesDeGuardar:', e); }
+    try { if (fn(DATOS())) { invalidarVistas(); cambioHook = true; } } catch (e) { console.error('antesDeGuardar:', e); }
   }
   DATOS().meta.autor = usuarioActual() || pedirUsuario(true) || 'desconocido';
   let r;
@@ -248,6 +249,7 @@ export async function guardar(forzar){
   DATOS().meta.version = j.version;
   DATOS().meta.actualizado = j.actualizado;
   markSaved();
+  if (cambioHook) renderActivo();
   if (j.respaldo){
     const s = $('statusBar');
     s.textContent = '✓ Guardado (v' + DATOS().meta.version + ') · respaldo: ' + j.respaldo;

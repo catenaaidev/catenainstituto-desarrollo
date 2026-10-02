@@ -16,6 +16,7 @@ import { proponer, recalcularItem, compararConMapa, aplicarPropuesta, tipoDestin
 import { buscarVasija } from './vasijas-padron.js';
 import { litrosPorCm } from './cubicacion.js';
 import { resumenEnvases } from './envases.js';
+import { refrescarMapaMermas } from './mermas-mapa.js';
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 const fmtL = v => v == null ? '—' : Number(v).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' L';
@@ -377,6 +378,10 @@ async function _aplicar(st){
     }
     return;
   }
+  // Puede haber dejado barricas mermas: que el Mapa las vea al toque y no
+  // haga falta esperar a que alguien abra Mermas y apriete 🔄. Sin esperar:
+  // no bloquea el cierre de este overlay por una lectura de red.
+  refrescarMapaMermas();
   if (st.faltan.length){
     mostrarOverlay(`<h3 style="margin:0 0 14px">✓ ${esc(st.ot.ot)} confirmada</h3>
 <div class="msg err">Algunos movimientos de esta OT ya no están en la tabla (¿los borraron?). La OT quedó confirmada igual.</div>
