@@ -53,6 +53,16 @@ describe('fusionarAnio', () => {
     fusionarAnio(d, conv(), 2025);
     expect(d.lotes).toHaveLength(1);
   });
+  it('rechaza un análisis de otro año, aunque esté vacío', () => {
+    const c = conv();
+    c.analisis.push({ lote: '26003', fecha_analisis: '2026-03-01', ph: null, comentario: '', correccion: {} });
+    expect(() => fusionarAnio(doc(), c, 2025)).toThrow(/26003/);
+  });
+  it('rechaza lotes repetidos dentro del convertido', () => {
+    const c = conv();
+    c.lotes.push({ lote: '25001', variedad: 'Chardonnay' });
+    expect(() => fusionarAnio(doc(), c, 2025)).toThrow(/25001/);
+  });
   it('un renglón con solo vasija_analizada no es vacío', () => {
     const c = conv();
     c.analisis.push({ lote: '25001', fecha_analisis: '2025-01-15', vasija_analizada: 't50',

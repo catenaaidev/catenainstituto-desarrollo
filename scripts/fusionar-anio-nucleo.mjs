@@ -30,6 +30,15 @@ export function fusionarAnio(doc, convertido, anio){
   if (ajenos.length) throw new Error(`el Excel trae lotes que no son de ${anio}: ${ajenos.slice(0, 10).join(', ')}`);
   const yaEstan = (doc.lotes || []).filter(l => anioDeLote(l.lote) === anio);
   if (yaEstan.length) throw new Error(`el documento ya tiene ${yaEstan.length} lotes de ${anio}: no se importa dos veces`);
+  // Antes de descartar los vacíos: un análisis de otro año (vacío o no) nunca
+  // tendría que colarse, y mirar todos antes de filtrar es mas seguro que
+  // confiar en que los vacios nunca tengan un lote raro.
+  const analisisAjenos = (convertido.analisis || [])
+    .filter(a => lleno(a.lote) && anioDeLote(a.lote) !== anio)
+    .map(a => a.lote);
+  if (analisisAjenos.length) {
+    throw new Error(`el Excel trae análisis que no son de ${anio}: ${[...new Set(analisisAjenos)].slice(0, 10).join(', ')}`);
+  }
 
   const lotes = (convertido.lotes || []).map(l => {
     const n = {};
@@ -37,6 +46,8 @@ export function fusionarAnio(doc, convertido, anio){
     n.lote = Number(String(l.lote).trim());   // como los de 2026
     return n;
   });
+  const repetidos = [...new Set(lotes.map(l => l.lote).filter((lo, i, a) => a.indexOf(lo) !== i))];
+  if (repetidos.length) throw new Error(`el Excel trae el mismo lote repetido: ${repetidos.join(', ')}`);
   const todos = convertido.analisis || [];
   const analisis = todos.filter(a => !analisisVacio(a)).map(a => ({ ...a, lote: String(a.lote).trim() }));
   const maestro = new Set(lotes.map(l => String(l.lote)));
