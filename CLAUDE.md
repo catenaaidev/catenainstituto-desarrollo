@@ -76,10 +76,12 @@ existen todavía. Para que varias personas editen a la vez sin perder nada:
   `test/freno.test.mjs` está en `.mjs` a propósito para quedar fuera del
   typecheck: no hay declaraciones para un `.mjs` y `tsc` fallaría, frenando el
   despliegue. No lo pases a `.ts`.
-- **El despliegue es GitHub Actions en cada push a `main`**
-  (`.github/workflows/desplegar.yml`): `wrangler types` → `tsc --noEmit` →
-  tests → `wrangler deploy`. **No corre las migraciones**: eso es a mano con
-  `npm run migrar:nube`.
+- **El despliegue lo hace Workers Builds de Cloudflare en cada push a `main`**
+  (check "Workers Builds: catenainstitute"). `.github/workflows/desplegar.yml`
+  solo verifica: `wrangler types` → `tsc --noEmit` → tests; ya no publica (su
+  token quedó inválido y fallaba en cada push). Ojo: Workers Builds publica
+  aunque los tests fallen. **No corre las migraciones**: eso es a mano con
+  `npm run migrar:nube` (las tablas de login se crean solas al primer login).
 - **PBKDF2 en Workers admite como máximo 100.000 iteraciones.** Con más,
   `deriveBits` tira excepción y el login da error 1101.
 - **Los tests se identifican con la cabecera `Cf-Access-Authenticated-User-Email`**

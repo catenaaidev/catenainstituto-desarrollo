@@ -322,25 +322,11 @@ const API='/barriles/api';</script>
     main { padding: 10px; }
   }
 
-  /* ===== fase de usuario (operario / programador) ===== */
-  #pantallaRol { position: fixed; inset: 0; background: linear-gradient(135deg, #2a1320, #4a1428); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
-  #pantallaRol .caja-rol { background: #fff; border-radius: 16px; padding: 34px 30px; max-width: 520px; width: 100%; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,.4); }
-  #pantallaRol h2 { color: var(--vino-osc); margin-bottom: 6px; }
-  #pantallaRol .sub { color: #777; font-size: .9rem; margin-bottom: 24px; }
-  #pantallaRol .botones-rol { display: flex; gap: 16px; flex-wrap: wrap; }
-  #pantallaRol .botones-rol button { flex: 1; min-width: 180px; border: 2px solid var(--vino); background: #fff; color: var(--vino); border-radius: 12px; padding: 26px 16px; font-size: 1.15rem; font-weight: 700; cursor: pointer; line-height: 1.5; }
-  #pantallaRol .botones-rol button:hover { background: var(--vino); color: #fff; }
-  #pantallaRol .emoji-rol { font-size: 2.4rem; display: block; margin-bottom: 6px; }
-  #cajaPass { margin-top: 22px; display: none; }
-  #cajaPass.visible { display: block; }
-  #cajaPass input { font-size: 1.1rem; padding: 11px 14px; border: 2px solid var(--gris); border-radius: 8px; width: 100%; max-width: 280px; text-align: center; }
-  #cajaPass .err-pass { color: var(--error); font-size: .85rem; margin-top: 8px; min-height: 18px; }
-
+  /* ===== vista según el rol de la plataforma (operario / programador) ===== */
   #navOperario { display: none; background: var(--vino-osc); align-items: center; flex-wrap: wrap; }
   #navOperario button { background: none; border: none; color: #d9c5cd; padding: 14px 24px; font-size: 1.05rem; cursor: pointer; border-bottom: 3px solid transparent; }
   #navOperario button.activo { color: #fff; border-bottom-color: #e8b4c8; font-weight: 700; }
   #navOperario button:hover { color: #fff; }
-  #navOperario .cambiar { margin-left: auto; font-size: .85rem; }
   #opVistaSel { display: none; gap: 10px; padding: 10px 20px; background: #f0e6ea; align-items: center; }
   #opVistaSel button { background: #fff; border: 1px solid var(--vino); color: var(--vino); border-radius: 8px; padding: 8px 18px; font-size: .95rem; cursor: pointer; font-weight: 600; }
   #opVistaSel button.activo { background: var(--vino); color: #fff; }
@@ -417,7 +403,7 @@ const API='/barriles/api';</script>
     /* dejar visible solo la versión imprimible */
     body > header, body > nav, #opVistaSel, main,
     #overlayCamara, #overlayCamaraEsc, #overlayCamaraBar, #overlayPedido, #overlayCamaraPalet,
-    #cartelLado, #modal, #pantallaRol { display: none !important; }
+    #cartelLado, #modal { display: none !important; }
     #areaImpresion { display: block !important; }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 
@@ -457,7 +443,6 @@ const API='/barriles/api';</script>
   <button data-panel="mapa3d">🧊 Vista 3D</button>
   <button data-panel="reportes">📊 Reportes</button>
   <button data-panel="celular">📱 Celular</button>
-  <button class="cambiar-usuario" style="margin-left:auto;">👤 Cambiar usuario</button>
 </nav>
 <nav id="navOperario">
   <button data-op="cargar">📦 Cargar box</button>
@@ -466,7 +451,6 @@ const API='/barriles/api';</script>
   <button data-op="inventario">🧾 Inventario</button>
   <button data-op="pedidos">🏷️ Pedidos de rótulos</button>
   <button data-op="celular">📱 Conectar teléfono</button>
-  <button class="cambiar-usuario cambiar">👤 Cambiar usuario</button>
 </nav>
 <div id="opVistaSel">
   <span id="opVistaLabel" style="font-size:.85rem; color:#6b1f3a; font-weight:600;">Ver y cargar en:</span>
@@ -861,13 +845,12 @@ const API='/barriles/api';</script>
         <li>Conectá el celular al <b>mismo WiFi</b> que esta laptop.</li>
         <li>Escaneá el QR de arriba con la cámara del celular y abrí el enlace en <b>Chrome</b>.</li>
         <li>La primera vez Chrome avisa <i>"La conexión no es privada"</i>: tocá <b>Configuración avanzada → Acceder de todos modos</b>. Es normal — es tu propio servidor local, los datos nunca salen de la bodega.</li>
-        <li>Elegí <b>👷 Operario</b> en la pantalla de inicio.</li>
         <li>Tocá <b>📦 Cargar box</b>, elegí el barril o la celda en el mapa (2D o 3D) y cargalo con la pistola, la cámara o escribiendo el lote. Todo aparece al instante en esta laptop.</li>
       </ol>
       <ol class="pasos" data-modo="web">
         <li>Escaneá el QR de arriba con la cámara del celular y abrí el enlace en <b>Chrome</b>.</li>
-        <li>Escribí el <b>mail de la bodega</b>. Llega un código de 6 dígitos a ese mail: ponelo y entrás. El teléfono queda recordado, no lo vuelve a pedir cada vez.</li>
-        <li>Elegí <b>👷 Operario</b> en la pantalla de inicio.</li>
+        <li>Entrá con tu <b>usuario y contraseña</b> de la plataforma. El teléfono queda recordado: mientras lo uses, no lo vuelve a pedir.</li>
+        <li>La app abre sola en la vista que te corresponde: los editores, en la de operario.</li>
         <li>Tocá <b>📦 Cargar box</b>, elegí el barril o la celda en el mapa (2D o 3D) y cargalo con la pistola, la cámara o escribiendo el lote. Todo aparece al instante en la computadora y en los demás teléfonos.</li>
       </ol>
       <p class="nota" style="margin-top:10px;">💡 El lector Bluetooth también puede emparejarse directo con el celular: en ese caso escaneás con la pistola y el celular solo muestra el avance.</p>
@@ -1006,24 +989,6 @@ const API='/barriles/api';</script>
     <div class="titulo">⛔ Sin conexión con el servidor</div>
     <p>No se pueden cargar cambios hasta que vuelva la conexión. La app lo intenta sola cada 3 segundos.</p>
     <p id="veloSinConexionPend" class="pend">⚠ Tu último cambio todavía <b>no llegó</b> al servidor. <b>No cierres ni recargues esta página</b>: se sube solo cuando vuelva la conexión.</p>
-  </div>
-</div>
-
-<div id="pantallaRol">
-  <div class="caja-rol">
-    <h2>🍷 Mapa de Barriles</h2>
-    <p class="sub">¿Cómo vas a usar la app?</p>
-    <div class="botones-rol">
-      <button id="btnRolOperario"><span class="emoji-rol">👷</span>Operario<br><span style="font-weight:400; font-size:.8rem;">Cargar y buscar barriles</span></button>
-      <button id="btnRolProgramador"><span class="emoji-rol">🧑‍💻</span>Programador<br><span style="font-weight:400; font-size:.8rem;">Configuración completa</span></button>
-    </div>
-    <div id="cajaPass">
-      <p style="margin-bottom:8px; color:var(--vino-osc); font-weight:600;">Contraseña de programador</p>
-      <input type="password" id="inputPass" placeholder="••••••" autocomplete="off">
-      <div class="err-pass" id="errPass"></div>
-      <button class="btn" id="btnEntrarProg" style="margin-top:6px;">Entrar</button>
-      <button class="btn sec" id="btnCancelarProg" style="margin-top:6px;">Volver</button>
-    </div>
   </div>
 </div>
 
@@ -1831,17 +1796,25 @@ function pedidoCerrarForm() {
   capturaManualAbierta = false;
 }
 
-// ================== FASE DE USUARIO (operario / programador) ==================
-const CLAVE_ROL = 'mapaBarriles_rol';
-const PASS_PROG = 'ciw2026';
+// ================== VISTA SEGÚN EL ROL (operario / programador) ==================
+// Ya no se elige en la pantalla ni hay contraseña de programador: la vista sale
+// del rol que el usuario tiene en Barriles en la plataforma (window.CIW, lo
+// inyecta el servidor). admin → programador; editor y lector → operario (al
+// lector igual el servidor no le deja guardar).
+function rolDeLaPlataforma() {
+  const r = (window.CIW && window.CIW.rol) || '';
+  return r === 'admin' ? 'programador' : 'operario';
+}
 let rol = null, opVistaActual = 'mapa';
+// Clase puesta ya, antes de que termine de cargar: si no, un editor vería un
+// instante la barra del programador.
+document.body.classList.add(rolDeLaPlataforma() === 'programador' ? 'rol-programador' : 'rol-operario');
+try { localStorage.removeItem('mapaBarriles_rol'); } catch (e) {}   // el rol que se elegía a mano
 
 function aplicarRol(r) {
   rol = r;
   document.body.classList.toggle('rol-operario', r === 'operario');
   document.body.classList.toggle('rol-programador', r === 'programador');
-  $('pantallaRol').style.display = 'none';
-  try { localStorage.setItem(CLAVE_ROL, r); } catch (e) {}
   // El historial arranca plegado para el operario (le tapa la pantalla de carga)
   // y desplegado para el programador, que entra justamente a mirarlo.
   $('escCajaHistorial').open = (r === 'programador');
@@ -1851,15 +1824,6 @@ function aplicarRol(r) {
   if (r === 'operario') opSeccion('cargar');
   else if (!document.querySelector('.panel.activo')) activarPanel('inventario');
   revisarMigracion();
-}
-
-function mostrarSelectorRol() {
-  rol = null;
-  try { localStorage.removeItem(CLAVE_ROL); } catch (e) {}
-  document.body.classList.remove('rol-operario', 'rol-programador');
-  $('cajaPass').classList.remove('visible');
-  $('inputPass').value = ''; $('errPass').textContent = '';
-  $('pantallaRol').style.display = 'flex';
 }
 
 // Operario: dos secciones (cargar / buscar) que reusan los paneles de Mapa y Vista 3D.
@@ -1884,16 +1848,6 @@ function opVista(vista) {
   activarPanel(vista);
 }
 
-$('btnRolOperario').addEventListener('click', () => aplicarRol('operario'));
-$('btnRolProgramador').addEventListener('click', () => { $('cajaPass').classList.add('visible'); $('inputPass').focus(); });
-$('btnCancelarProg').addEventListener('click', () => { $('cajaPass').classList.remove('visible'); $('errPass').textContent = ''; $('inputPass').value = ''; });
-function intentarPass() {
-  if ($('inputPass').value === PASS_PROG) { $('cajaPass').classList.remove('visible'); $('inputPass').value = ''; aplicarRol('programador'); }
-  else { $('errPass').textContent = '❌ Contraseña incorrecta.'; $('inputPass').select(); }
-}
-$('btnEntrarProg').addEventListener('click', intentarPass);
-$('inputPass').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); intentarPass(); } });
-document.querySelectorAll('.cambiar-usuario').forEach(b => b.addEventListener('click', mostrarSelectorRol));
 document.querySelectorAll('#navOperario button[data-op]').forEach(b => b.addEventListener('click', () => opSeccion(b.dataset.op)));
 document.querySelectorAll('#opVistaSel button[data-opvista]').forEach(b => b.addEventListener('click', () => opVista(b.dataset.opvista)));
 
@@ -5805,11 +5759,7 @@ $('pedInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.prev
   barSetContador();   // si no, el contador arranca en 0 hasta que cambiás de pestaña
   dibujarTablaBoxes();
   aplicarModoLote();   // aplicar el interruptor por lote según lo guardado
-  // aplicar el rol guardado en este dispositivo, o pedir que elijan
-  let rolGuardado = null;
-  try { rolGuardado = localStorage.getItem(CLAVE_ROL); } catch (e) {}
-  if (rolGuardado === 'operario' || rolGuardado === 'programador') aplicarRol(rolGuardado);
-  else mostrarSelectorRol();
+  aplicarRol(rolDeLaPlataforma());
   setInterval(sondear, 3000);
 })();
 </script>
