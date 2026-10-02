@@ -345,16 +345,17 @@
   .segm button:first-child{border-left:none}
   .segm button:hover{color:var(--txt)}
   .segm button[aria-pressed="true"]{background:var(--panel);color:var(--accent);font-weight:600}
-  /* Selector de años: a la derecha de la barra de pestañas, mismo look que
-     el filtro Todos | Llenos | Vacíos. El [hidden] va aparte porque .segm (y
-     .tabs button mas abajo) le ganan en especificidad al [hidden] del user
-     agent: sin esto, antes de montar (o con un solo año) se veía una astilla
-     vacía en vez de desaparecer. */
-  .tabs .sel-anios[hidden]{display:none}
-  .tabs .sel-anios{margin-left:auto;align-self:center}
-  .tabs .sel-anios button{padding:5px 12px;border-radius:0;border-bottom:none}
-  .tabs .sel-anios button[aria-pressed="true"],
-  .tabs .sel-anios button[aria-pressed="true"]:hover{background:var(--panel);color:var(--accent);font-weight:600}
+  /* Selector de años: vive en la cabecera (header .right), junto a los demás
+     botones, mismo look que el filtro Todos | Llenos | Vacíos (.segm). No va
+     adentro de .tabs: esa barra ya se scrollea horizontal con datos reales
+     (~1488px de contenido contra ~1260px visibles) y el selector terminaba
+     empujado fuera de pantalla y aplastado a 2px. El [hidden] va aparte
+     porque .segm (display:inline-flex) le gana en especificidad al [hidden]
+     del user agent: sin esto, antes de montar (o con un solo año) se veía
+     una astilla vacía en vez de desaparecer. flex-shrink:0 para que no lo
+     aplaste el resto de header .right si falta espacio. */
+  .sel-anios[hidden]{display:none}
+  .sel-anios{flex-shrink:0}
   .mfilt-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:280px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;display:none}
   .mfilt-panel.open{display:block}
   /* ---- panel en modo anclado (embudos de la cabecera de Lotes) ----
@@ -1384,6 +1385,7 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
     <span class="status" id="redInfo" style="color:var(--muted);font-size:12px"></span>
     <span class="status" id="usuario" style="cursor:pointer" title="Quién está usando la app. Clic para cambiar.">👤 —</span>
     <span class="status" id="statusBar">Cargando…</span>
+    <div class="segm sel-anios" id="selAnios" hidden aria-label="Años de lotes que se muestran"></div>
     <button class="btn" id="btnCuadricula" aria-pressed="false" title="Mostrar u ocultar el recuadro de todas las celdas de las tablas. Se recuerda en esta computadora.">▦ Cuadrícula</button>
     <button class="btn" id="btnHistorial" title="Quién guardó qué y cuándo">🕘 Historial</button>
     <button class="btn primary" id="btnGuardar" disabled>💾 Guardar</button>
@@ -1404,7 +1406,6 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
   <button data-v="cruce">🛢️ Cruce con barriles</button>
   <button data-v="ordencorr">💊 Orden de corrección</button>
   <button data-v="config">⚙️ Configuración</button>
-  <div class="segm sel-anios" id="selAnios" hidden aria-label="Años de lotes que se muestran"></div>
 </div>
 
 <main>
