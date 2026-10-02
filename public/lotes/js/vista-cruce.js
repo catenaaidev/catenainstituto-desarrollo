@@ -5,6 +5,7 @@ import { $, esc, escA, registrarVista, irALote,
          DATOS, markDirty, guardar } from './nucleo.js';
 import { resumenEnvases, CAPACIDADES } from './envases.js';
 import { litrosDelLote } from './mermas.js';
+import { queryAnios } from './selector-anios.js';
 
 const ETIQUETA = {
   coincide:            'Coincide',
@@ -130,7 +131,11 @@ export async function cargarCruce(archivo){
   _cargando = true; _error = '';
   render();
   try {
-    const url = API+'/cruce' + (archivo ? ('?archivo=' + encodeURIComponent(archivo)) : '');
+    const qs = new URLSearchParams();
+    if (archivo) qs.set('archivo', archivo);
+    const anios = queryAnios();
+    if (anios) qs.set('anios', anios);
+    const url = API+'/cruce' + (qs.toString() ? '?' + qs.toString() : '');
     const r = await fetch(url);
     const j = await r.json();
     if (!r.ok){ _error = j.error || ('HTTP ' + r.status); _informe = null; }
@@ -385,5 +390,9 @@ function imprimirChequeo(){
   window.addEventListener('afterprint', limpiar);
   window.print();
 }
+
+/* Un informe cruzado con otros años ya no vale: se descarta y la pantalla
+ * vuelve al boton "Cruzar". */
+document.addEventListener('lotes:anios-cambiados', () => { _informe = null; _error = ''; });
 
 registrarVista('cruce', () => render());

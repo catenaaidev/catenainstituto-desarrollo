@@ -27,6 +27,7 @@ import { filaPapel, theadPapel, COLGROUP_PAPEL, COLUMNAS_PAPEL,
          INSTRUCCIONES_SOLUCION } from './orden-correccion-papel.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
          limpiarFiltrosMulti } from './tabla.js';
+import { queryAnios } from './selector-anios.js';
 
 /* Formateador local: usa toFixed y muestra '—' para null/Infinity.
  * nucleo.js no exporta fmt (es local en cada vista que lo necesita). */
@@ -461,7 +462,8 @@ function _ocPintarPaginas(){
 async function _ocCargar(){
   const msg = $('ocMsg');
   try {
-    const r = await fetch(API+'/orden-correccion');
+    const anios = queryAnios();
+    const r = await fetch(API+'/orden-correccion' + (anios ? '?anios=' + anios : ''));
     if (r.status === 503){
       const e = await r.json();
       /* Sin mapa no hay numeros de barril, que es el punto del subsistema. El
