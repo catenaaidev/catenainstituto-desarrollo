@@ -14,8 +14,10 @@
  */
 
 import { litrosDeEnvases } from './envases';
+import { normalizarLote } from './linaje';
 import {
   num,
+  filasDe,
   fechaDia as fecha,
   valorValido,
   ordenarPorFecha,
@@ -157,8 +159,40 @@ function aplicarOverride(
   const objetivo = normalizarVariedad(clave);
   for (const [nombre, override] of Object.entries(tabla ?? {})) {
     if (normalizarVariedad(nombre) === objetivo) {
-      Object.assign(base, (override as Record<string, unknown>) ?? {});
+      fusionarCriterios(base, override);
       break;
+    }
+  }
+}
+
+/** Claves cuyo valor de fabrica es un numero: lo que llegue se convierte con num(). */
+const CLAVES_NUMERICAS = new Set(
+  Object.keys(CRITERIOS_DEFAULT).filter((k) => typeof CRITERIOS_DEFAULT[k] === 'number'),
+);
+
+/**
+ * Copia sobre `base` las claves de `override` que traen un valor de verdad.
+ *
+ * Un null o un '' NO pisan: son la celda de la pantalla de criterios que se
+ * dejo en blanco, o sea "heredar". Con Object.assign pasaban tal cual, y en
+ * las comparaciones el null vale 0: un ph_max null ponia a todos en ph_no_ok,
+ * un av_max null a todos en AV alerta y una frecuencia null a todos vencidos.
+ *
+ * Las claves numericas pasan por num(), asi "3,8" o "15" (texto) valen igual
+ * que el numero. Si el texto no es un numero tampoco pisa: mejor el umbral
+ * heredado que uno inventado.
+ */
+function fusionarCriterios(base: Record<string, unknown>, override: unknown): void {
+  // Object.assign con un texto copia sus letras como claves "0", "1"...
+  if (!override || typeof override !== 'object' || Array.isArray(override)) return;
+  for (const [k, v] of Object.entries(override as Record<string, unknown>)) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === 'string' && v.trim() === '') continue;
+    if (CLAVES_NUMERICAS.has(k)) {
+      const n = num(v);
+      if (n !== null) base[k] = n;
+    } else {
+      base[k] = v;
     }
   }
 }
@@ -179,7 +213,7 @@ export function criteriosEfectivos(
 ): Criterios {
   const cfg = config ?? {};
   const base: Record<string, unknown> = { ...CRITERIOS_DEFAULT };
-  Object.assign(base, (cfg.default as Record<string, unknown>) ?? {});
+  fusionarCriterios(base, cfg.default);
   aplicarOverride(base, cfg.por_variedad as Record<string, unknown>, variedad);
   aplicarOverride(base, cfg.por_proyecto as Record<string, unknown>, proyecto);
   return base as Criterios;
@@ -575,19 +609,27 @@ export function evaluarLote(
 /**
  * Análisis agrupados por lote, salteando los que una excepción marcó como
  * "no usar".
+ *
+ * La clave es normalizarLote() (texto recortado), la misma que usan vistas,
+ * correccion y cruce. Con String() un "26217 " que vino del Excel no
+ * encontraba sus análisis: el lote salía "sin análisis válido" teniéndolos, y
+ * la excepción "no usar" de ese lote no se aplicaba.
+ *
+ * Las listas pasan por filasDe(): un excepciones_analisis que no es lista
+ * tiraba TypeError y se caían /dashboard, /orden-correccion y el reporte.
  */
 export function analisisPorLote(datos: Record<string, unknown>): Map<string, Fila[]> {
   const excl = new Set<string>();
-  for (const e of (datos.excepciones_analisis as Fila[]) ?? []) {
+  for (const e of filasDe(datos.excepciones_analisis)) {
     if (String(e.usar_registro ?? '').trim().toLowerCase() === 'no') {
-      excl.add(`${String(e.lote)}|${String(e.fecha_analisis ?? '').slice(0, 10)}`);
+      excl.add(`${normalizarLote(e.lote)}|${String(e.fecha_analisis ?? '').slice(0, 10)}`);
     }
   }
   const porLote = new Map<string, Fila[]>();
-  for (const a of (datos.analisis as Fila[]) ?? []) {
-    const clave = `${String(a.lote)}|${String(a.fecha_analisis ?? '').slice(0, 10)}`;
+  for (const a of filasDe(datos.analisis)) {
+    const k = normalizarLote(a.lote);
+    const clave = `${k}|${String(a.fecha_analisis ?? '').slice(0, 10)}`;
     if (excl.has(clave)) continue;
-    const k = String(a.lote);
     const lista = porLote.get(k);
     if (lista) lista.push(a);
     else porLote.set(k, [a]);
@@ -623,8 +665,8 @@ export function evaluar(datos: Record<string, unknown>, hoy: number): ResultadoE
   const porLote = analisisPorLote(datos);
 
   const resultados: ResultadoLote[] = [];
-  for (const lote of (datos.lotes as Fila[]) ?? []) {
-    const r = evaluarLote(lote, porLote.get(String(lote.lote)) ?? [], config, hoy);
+  for (const lote of filasDe(datos.lotes)) {
+    const r = evaluarLote(lote, porLote.get(normalizarLote(lote.lote)) ?? [], config, hoy);
     if (r.activo) resultados.push(r);
   }
 
@@ -637,7 +679,7 @@ export function evaluar(datos: Record<string, unknown>, hoy: number): ResultadoE
         accion: CONDICIONES[cond]?.accion ?? '',
       });
       a.cantidad += 1;
-      a.lotes.push(String(r.lote));
+      a.lotes.push(normalizarLote(r.lote));
     }
   }
 

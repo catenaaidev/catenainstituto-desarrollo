@@ -28,18 +28,49 @@ export function armarCorreccion({ so2Actual, so2Deseado, mbk, ml, ot, fecha }){
   };
 }
 
-/** Engancha la correccion al analisis del lote en esa fecha; si no hay ninguno,
- *  crea un registro nuevo. MUTA `analisis`.
+const _otDe = c => String((c && c.ot_n) ?? '').trim();
+const _tieneDosis = c => !!c && c.mbk_a_agregar != null && c.mbk_a_agregar !== '';
+
+/** ¿Se puede escribir `nueva` encima de la correccion que ya tiene `a`?
  *
- *  Devuelve { que, ref, anterior }:
+ *  Solo si no se pierde nada que la bitacora muestre:
+ *    - no tiene correccion, o es una cascara de la migracion (sin OT y sin
+ *      dosis: la bitacora ni la lista);
+ *    - o es la MISMA OT: volver a registrar la misma orden es corregir el dato.
+ *  Nunca una anulada: es el rastro de auditoria de que hubo un error y se
+ *  cancelo, y pisarla lo borraria en silencio.
+ *
+ *  Antes se pisaba siempre la primera de ese lote y fecha: registrar la OT B
+ *  el mismo dia que la OT A borraba A sin aviso, y con ella la supresion que
+ *  la regla de la orden calcula a partir de A. */
+function _pisable(a, nueva){
+  const c = a.correccion;
+  if (!c || typeof c !== 'object') return true;
+  if (esAnulada(c)) return false;
+  const ot = _otDe(c);
+  if (ot === _otDe(nueva)) return true;
+  return ot === '' && !_tieneDosis(c);
+}
+
+/** Engancha la correccion al analisis del lote en esa fecha; si no hay ninguno
+ *  que se pueda usar, crea un registro nuevo. MUTA `analisis`.
+ *
+ *  Devuelve { que, ref, anterior, lote, fecha, escrita, convive }:
  *    que      - 'creado' o 'actualizado'
  *    ref      - referencia directa al objeto de analisis afectado
  *    anterior - la correccion que tenia antes (puede ser undefined si no habia)
+ *    lote, fecha, escrita - la clave y el objeto escrito, para poder encontrar
+ *               el registro aunque `ref` haya quedado huerfano (ver
+ *               revertirCorrecciones)
+ *    convive  - si ya habia ese dia una correccion de OTRA OT (o anulada) y por
+ *               eso se creo un registro aparte: su N de OT ('' si no tenia).
+ *               null en los demas casos.
  *
- *  Devolver la referencia y el estado previo evita que los llamadores que
- *  necesitan hacer rollback repitan el mismo find(lote+fecha). La forma
- *  unica garantiza que un campo nuevo en el predicado no cree dos versiones
- *  distintas del lookup.
+ *  Dos correcciones del mismo lote y fecha conviven en dos registros: el
+ *  modelo ya lo admite (hay 16 claves asi en los datos reales), la bitacora
+ *  lista un renglon por registro y motor_correccion toma la ultima NO anulada.
+ *  Entre los registros de ese lote y fecha se prefiere el de la misma OT, y
+ *  despues cualquiera que se pueda pisar sin perder nada (_pisable).
  *
  *  El lote se compara como texto: en datos.json convive numerico y string.
  *
@@ -51,15 +82,78 @@ export function armarCorreccion({ so2Actual, so2Deseado, mbk, ml, ot, fecha }){
  *  orden lo multiplica por la cantidad de lotes de cada ejecucion. */
 export function aplicarCorreccion(analisis, lote, fecha, correccion){
   const L = String(lote ?? '');
-  const existente = (analisis || []).find(a =>
+  const mismos = (analisis || []).filter(a =>
     String(a.lote ?? '') === L && (a.fecha_analisis || '') === fecha);
+  const otNueva = _otDe(correccion);
+  const existente =
+    mismos.find(a => otNueva !== '' && a.correccion && !esAnulada(a.correccion) && _otDe(a.correccion) === otNueva)
+    || mismos.find(a => _pisable(a, correccion));
+  const base = { lote: L, fecha, escrita: correccion };
   if (existente){
     const anterior = existente.correccion;
     existente.correccion = correccion;
-    return { que: 'actualizado', ref: existente, anterior };
+    return { ...base, que: 'actualizado', ref: existente, anterior, convive: null };
   }
+  /* Si habia registros ese dia y ninguno se podia pisar, se avisa cual queda
+   * al lado: quien registra tiene que saber que ese lote ya tenia otra
+   * correccion ese dia (puede ser un error de tipeo en la OT). */
+  const otra = mismos.find(a => a.correccion && typeof a.correccion === 'object');
   analisis.push({ lote: L, fecha_analisis: fecha, correccion });
-  return { que: 'creado', ref: analisis[analisis.length - 1], anterior: undefined };
+  return { ...base, que: 'creado', ref: analisis[analisis.length - 1], anterior: undefined,
+           convive: otra ? _otDe(otra.correccion) : null };
+}
+
+/* Forma canonica de un valor para compararlo por contenido: claves ordenadas y
+ * las undefined afuera, que es como queda despues de pasar por JSON (la fusion
+ * del 409 arma el documento nuevo a partir del JSON del servidor). */
+function _canon(v){
+  if (Array.isArray(v)) return '[' + v.map(_canon).join(',') + ']';
+  if (v && typeof v === 'object'){
+    return '{' + Object.keys(v).filter(k => v[k] !== undefined).sort()
+      .map(k => JSON.stringify(k) + ':' + _canon(v[k])).join(',') + '}';
+  }
+  return JSON.stringify(v ?? null);
+}
+
+/** Deshace lo que escribieron varias llamadas a aplicarCorreccion, en orden
+ *  inverso. `snaps` son sus resultados ({que|tipo, ref, anterior|corrAnterior,
+ *  lote, fecha, escrita}). MUTA `analisis`. Devuelve cuantas pudo deshacer.
+ *
+ *  Si el guardado que fallo paso por un 409, nucleo.guardar() ya fusiono y
+ *  REEMPLAZO todos los objetos de DATOS(): `ref` quedo huerfano y revertir a
+ *  traves de el no tocaba nada, mientras la pantalla decia "no se registro
+ *  nada". Por eso, si `ref` ya no esta en el array, se busca el registro por
+ *  lote + fecha + el contenido exacto de la correccion escrita. */
+export function revertirCorrecciones(analisis, snaps){
+  const usados = new Set();
+  let n = 0;
+  for (let i = snaps.length - 1; i >= 0; i--){
+    const s = snaps[i];
+    const tipo = s.tipo || s.que;
+    const anterior = 'corrAnterior' in s ? s.corrAnterior : s.anterior;
+    let reg = analisis.includes(s.ref) ? s.ref : null;
+    if (!reg && s.escrita){
+      const L = String(s.lote ?? ''), clave = _canon(s.escrita);
+      reg = analisis.find(a => !usados.has(a) && String(a.lote ?? '') === L
+        && (a.fecha_analisis || '') === s.fecha && a.correccion && _canon(a.correccion) === clave) || null;
+    }
+    if (!reg) continue;   // ya no esta: no hay nada que revertir
+    usados.add(reg);
+    if (tipo === 'creado'){
+      /* El registro lo creo aplicarCorreccion solo para la correccion. Si
+       * mientras tanto alguien le cargo otra cosa (quimica), se saca la
+       * correccion y el registro queda. */
+      const soloCorreccion = Object.keys(reg).every(k => k === 'lote' || k === 'fecha_analisis' || k === 'correccion');
+      if (soloCorreccion) analisis.splice(analisis.indexOf(reg), 1);
+      else delete reg.correccion;
+    } else if (anterior === undefined){
+      delete reg.correccion;
+    } else {
+      reg.correccion = anterior;
+    }
+    n++;
+  }
+  return n;
 }
 
 /** Una correccion anulada es la que se registro por error y despues se cancelo.
@@ -140,11 +234,15 @@ export function anularCorreccion(analisis, lote, fecha, ot, quien){
   });
   if (!reg || !reg.correccion) return null;
   const anterior = reg.correccion.anulada;
-  reg.correccion.anulada = {
+  const marca = {
     fecha: (quien && quien.cuando) || '',
     por:   (quien && quien.por) || '',
   };
-  return { ref: reg, anterior };
+  reg.correccion.anulada = marca;
+  /* Ademas de la referencia va la clave (lote, OT, dia) y la marca escrita:
+   * con eso revertirAnulaciones encuentra el registro aunque `ref` haya
+   * quedado huerfano por una fusion. */
+  return { ref: reg, anterior, lote: L, ot: _otDe(reg.correccion), dia: F, marca: { ...marca } };
 }
 
 /** Deshace anularCorreccion(). Si antes no estaba anulada, saca el campo en vez
@@ -154,4 +252,39 @@ export function revertirAnulacion(snap){
   if (!snap || !snap.ref || !snap.ref.correccion) return;
   if (snap.anterior === undefined) delete snap.ref.correccion.anulada;
   else snap.ref.correccion.anulada = snap.anterior;
+}
+
+/** Deshace varias anularCorreccion() sobre el array ACTUAL. Devuelve cuantas
+ *  pudo deshacer.
+ *
+ *  Por que no alcanza con revertirAnulacion(snap): si el guardado fallo despues
+ *  de un 409, nucleo.guardar() ya fusiono y reemplazo todos los objetos de
+ *  DATOS(), asi que snap.ref es un huerfano. Revertir ahi no toca nada, la
+ *  pantalla dice "no se cancelo nada" y la anulacion sigue en memoria: el
+ *  proximo guardado la persiste, y reintentar anula OTRA correccion real (la
+ *  siguiente no anulada de esa clave). Por eso, si ref ya no esta, se busca
+ *  por lote + OT + dia y por la marca de anulacion que escribio esta llamada. */
+export function revertirAnulaciones(analisis, snaps){
+  const dia = s => String(s ?? '').slice(0, 10);
+  const usados = new Set();
+  let n = 0;
+  for (let i = (snaps || []).length - 1; i >= 0; i--){
+    const s = snaps[i];
+    if (!s) continue;
+    let reg = (analisis || []).includes(s.ref) ? s.ref : null;
+    if (!reg && s.marca){
+      const marca = _canon(s.marca);
+      reg = (analisis || []).find(a => {
+        if (usados.has(a) || String(a.lote ?? '') !== s.lote) return false;
+        const c = a.correccion;
+        if (!c || typeof c !== 'object') return false;
+        return _otDe(c) === s.ot && dia(c.fecha || a.fecha_analisis) === s.dia && _canon(c.anulada) === marca;
+      }) || null;
+    }
+    if (!reg || !reg.correccion) continue;
+    usados.add(reg);
+    revertirAnulacion({ ref: reg, anterior: s.anterior });
+    n++;
+  }
+  return n;
 }

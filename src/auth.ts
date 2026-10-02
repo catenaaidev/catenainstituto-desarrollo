@@ -43,6 +43,13 @@ const SESSION_DAYS = 30;
 // La cookie dura lo máximo que aceptan los navegadores; el vencimiento real lo
 // decide la tabla sesiones.
 const COOKIE_DAYS = 400;
+// Tras MAX_INTENTOS contraseñas mal seguidas, la cuenta queda frenada un rato.
+const MAX_INTENTOS = 5;
+const BLOQUEO_MINUTOS = 15;
+// El uso de la sesión se anota (y el vencimiento se corre) como mucho una vez
+// por este lapso: anotarlo en cada pedido eran decenas de miles de escrituras
+// por día con Barriles consultando cada 3 segundos.
+const RENOVAR_CADA_SEG = 3600;
 // Workers no acepta más de 100.000 iteraciones de PBKDF2: con más, deriveBits
 // tira una excepción y el login devuelve error 1101.
 const PBKDF2_ITERATIONS = 100_000;
@@ -175,6 +182,8 @@ export async function prepararAutenticacion(env: Env): Promise<void> {
       activo        INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0,1)),
       es_admin      INTEGER NOT NULL DEFAULT 0 CHECK (es_admin IN (0,1)),
       debe_cambiar  INTEGER NOT NULL DEFAULT 0 CHECK (debe_cambiar IN (0,1)),
+      intentos_fallidos INTEGER NOT NULL DEFAULT 0,
+      bloqueado_hasta   INTEGER NOT NULL DEFAULT 0,
       creado        TEXT NOT NULL DEFAULT (datetime('now')),
       actualizado   TEXT NOT NULL DEFAULT (datetime('now'))
     )`),
@@ -196,6 +205,8 @@ export async function prepararAutenticacion(env: Env): Promise<void> {
     ['activo', 'INTEGER NOT NULL DEFAULT 1'],
     ['es_admin', 'INTEGER NOT NULL DEFAULT 0'],
     ['debe_cambiar', 'INTEGER NOT NULL DEFAULT 0'],
+    ['intentos_fallidos', 'INTEGER NOT NULL DEFAULT 0'],
+    ['bloqueado_hasta', 'INTEGER NOT NULL DEFAULT 0'],
     ['creado', 'TEXT'],
     ['actualizado', 'TEXT'],
   ];
@@ -244,7 +255,8 @@ export async function login(
   }
 
   const usuario = await env.DB.prepare(
-    'SELECT email, password_hash, nombre, activo, es_admin, debe_cambiar FROM usuarios WHERE email = ?',
+    `SELECT email, password_hash, nombre, activo, es_admin, debe_cambiar, intentos_fallidos, bloqueado_hasta
+       FROM usuarios WHERE email = ?`,
   ).bind(usuarioNorm).first<{
     email: string;
     password_hash: string;
@@ -252,21 +264,43 @@ export async function login(
     activo: number;
     es_admin: number;
     debe_cambiar: number;
+    intentos_fallidos: number;
+    bloqueado_hasta: number;
   }>();
 
+  const ahora = Math.floor(Date.now() / 1000);
+
+  // Freno a la prueba de contraseñas: con la inicial 1234 conocida, una cuenta
+  // recién creada se podía adivinar a fuerza de intentos.
+  if (usuario && usuario.bloqueado_hasta > ahora) {
+    const minutos = Math.ceil((usuario.bloqueado_hasta - ahora) / 60);
+    return Response.json({
+      error: 'bloqueado',
+      detalles: [`Demasiados intentos fallidos. Probá de nuevo en ${minutos} minuto${minutos === 1 ? '' : 's'}.`],
+    }, { status: 429 });
+  }
+
   if (!usuario || usuario.activo !== 1 || !(await verificarPassword(password, usuario.password_hash))) {
+    if (usuario) {
+      const intentos = (usuario.intentos_fallidos ?? 0) + 1;
+      await env.DB.prepare('UPDATE usuarios SET intentos_fallidos = ?, bloqueado_hasta = ? WHERE email = ?')
+        .bind(intentos >= MAX_INTENTOS ? 0 : intentos, intentos >= MAX_INTENTOS ? ahora + BLOQUEO_MINUTOS * 60 : 0, usuario.email)
+        .run();
+    }
     return Response.json({ error: 'credenciales_invalidas' }, { status: 401 });
   }
 
   const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
   const token = bytesToB64(tokenBytes);
   const tokenHash = await sha256(token);
-  const ahora = Math.floor(Date.now() / 1000);
   const vence = ahora + SESSION_DAYS * 86400;
 
-  await env.DB.prepare(
-    'INSERT INTO sesiones (token_hash, email, creado, ultimo_uso, vence) VALUES (?, ?, ?, ?, ?)',
-  ).bind(tokenHash, usuario.email, ahora, ahora, vence).run();
+  await env.DB.batch([
+    env.DB.prepare(
+      'INSERT INTO sesiones (token_hash, email, creado, ultimo_uso, vence) VALUES (?, ?, ?, ?, ?)',
+    ).bind(tokenHash, usuario.email, ahora, ahora, vence),
+    env.DB.prepare('UPDATE usuarios SET intentos_fallidos = 0, bloqueado_hasta = 0 WHERE email = ?').bind(usuario.email),
+  ]);
 
   const headers = new Headers({
     'Content-Type': 'application/json; charset=utf-8',
@@ -367,11 +401,11 @@ async function buscarSesion(req: Request, env: Env): Promise<Sesion | null> {
 
   const tokenHash = await sha256(token);
   const ahora = Math.floor(Date.now() / 1000);
-  type Fila = { email: string; nombre: string | null; es_admin: number; debe_cambiar: number };
+  type Fila = { email: string; nombre: string | null; es_admin: number; debe_cambiar: number; ultimo_uso: number };
   let fila: Fila | null;
   try {
     fila = await env.DB.prepare(
-      `SELECT u.email, u.nombre, u.es_admin, u.debe_cambiar
+      `SELECT u.email, u.nombre, u.es_admin, u.debe_cambiar, s.ultimo_uso
          FROM sesiones s JOIN usuarios u ON u.email = s.email
         WHERE s.token_hash = ? AND s.vence > ? AND u.activo = 1`,
     ).bind(tokenHash, ahora).first<Fila>();
@@ -382,9 +416,12 @@ async function buscarSesion(req: Request, env: Env): Promise<Sesion | null> {
 
   if (!fila?.email) return null;
 
-  // Cada uso corre el vencimiento: la sesión vence por inactividad, no por edad.
-  await env.DB.prepare('UPDATE sesiones SET ultimo_uso = ?, vence = ? WHERE token_hash = ?')
-    .bind(ahora, ahora + SESSION_DAYS * 86400, tokenHash).run();
+  // El uso corre el vencimiento: la sesión vence por inactividad, no por edad.
+  // Se anota como mucho una vez por RENOVAR_CADA_SEG.
+  if (ahora - (fila.ultimo_uso ?? 0) >= RENOVAR_CADA_SEG) {
+    await env.DB.prepare('UPDATE sesiones SET ultimo_uso = ?, vence = ? WHERE token_hash = ?')
+      .bind(ahora, ahora + SESSION_DAYS * 86400, tokenHash).run();
+  }
 
   return {
     email: fila.email.toLowerCase(),

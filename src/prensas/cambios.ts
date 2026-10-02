@@ -118,5 +118,27 @@ export function resumenCambios(actual: Datos, nuevo: Datos): ResumenCambios {
     det[sec] = { altas, bajas };
   }
 
+  // Las demás secciones (Lotes tiene movimientos, órdenes de trabajo, mermas,
+  // vasijas, estado_lote, config…). Antes no se miraban y un guardado que solo
+  // tocaba esas quedaba en el historial como "sin cambios en los datos".
+  const vistas = new Set(['meta', 'lotes', ...secs.map(([s]) => s)]);
+  const otras = [...new Set([...Object.keys(actual || {}), ...Object.keys(nuevo || {})])]
+    .filter((k) => !vistas.has(k))
+    .sort();
+  for (const sec of otras) {
+    const a = actual?.[sec];
+    const b = nuevo?.[sec];
+    if (estable(a) === estable(b)) continue;
+    if (Array.isArray(a) || Array.isArray(b)) {
+      const { altas, bajas } = diffItems(Array.isArray(a) ? a : [], Array.isArray(b) ? b : []);
+      if (altas) partes.push(`+${altas} en ${sec}`);
+      if (bajas) partes.push(`−${bajas} en ${sec}`);
+      det[sec] = { altas, bajas };
+    } else {
+      partes.push(`${sec} modificado`);
+      det[sec] = { modificado: true };
+    }
+  }
+
   return { texto: partes.join('; ') || 'sin cambios en los datos', detalle: det };
 }

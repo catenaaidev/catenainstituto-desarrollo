@@ -117,6 +117,11 @@ export async function rutasPrensas(
           detalle: [],
           forzado: false,
         });
+      } else {
+        // Perdió la carrera: otro escribió en el medio. Devolver `d` mandaba la
+        // versión v+1 con el contenido viejo, y el próximo guardado de esa
+        // pantalla pasaba el chequeo de versión pisando lo del otro.
+        return json(200, await leerDocumento(env));
       }
     }
     return json(200, d);
@@ -137,6 +142,11 @@ export async function rutasPrensas(
     try {
       nuevo = (await req.json()) as Datos;
     } catch {
+      return json(400, { error: 'validacion', detalles: ['el guardado no es un objeto JSON válido'] });
+    }
+    // `null`, un número o una lista también son JSON válido, y reventaban más
+    // abajo al leer nuevo.meta (error 1101).
+    if (!nuevo || typeof nuevo !== 'object' || Array.isArray(nuevo)) {
       return json(400, { error: 'validacion', detalles: ['el guardado no es un objeto JSON válido'] });
     }
 

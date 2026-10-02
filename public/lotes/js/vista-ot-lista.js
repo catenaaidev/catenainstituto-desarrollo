@@ -92,10 +92,22 @@ export function renderOrdenesTrabajo(cont, callbacks){
   _pintarDer();
 }
 
+/* La OT `id` en el DATOS() de AHORA. Los listeners de la cabecera y de la hoja
+ * se cablean con la OT del momento del pintado, pero despues de un 409
+ * nucleo.guardar() fusiona y REEMPLAZA todos los objetos: escribir en la OT
+ * capturada seria escribir en un huerfano (se pierde sin aviso). Si ya no
+ * esta, se repinta la hoja y no se toca nada. */
+function _otViva(id){
+  const ot = _otPorId(id);
+  if (!ot) _pintarDer();
+  return ot;
+}
+
 function _pintarCab(ot){
   const cab = $('otlCab');
   if (!cab) return;
   const edit = esEditable(ot);
+  const id = ot.id;
   cab.innerHTML =
     `<span><b>${esc(ot.ot)}</b> · ${edit ? 'Escribí sobre la hoja para cambiar los pasos de esta OT.' : 'OT ejecutada: solo lectura.'}</span>` +
     '<span class="otl-botones">' +
@@ -103,11 +115,15 @@ function _pintarCab(ot){
       (edit ? '<button class="btn" id="otlConfirmar">✓ Confirmar</button>' : '') +
       '<button class="btn primary" id="otlImprimir">🖨 Imprimir</button>' +
     '</span>';
-  $('otlImprimir').addEventListener('click', () => _imprimir(ot));
-  if ($('otlConfirmar')) $('otlConfirmar').addEventListener('click', () => abrirConfirmarOT(ot, () => _cb.onCambio()));
+  $('otlImprimir').addEventListener('click', () => _imprimir(id));
+  if ($('otlConfirmar')) $('otlConfirmar').addEventListener('click', () => {
+    const o = _otViva(id);
+    if (o) abrirConfirmarOT(o, () => _cb.onCambio());
+  });
   if ($('otlPlantilla')) $('otlPlantilla').addEventListener('click', () => {
     if (!confirm('¿Descartar los cambios de texto de ' + ot.ot + ' y volver a los de la plantilla?')) return;
-    if (volverAPlantilla(ot)){ markDirty(); _pintarDer(); }
+    const o = _otViva(id);
+    if (o && volverAPlantilla(o)){ markDirty(); _pintarDer(); }
   });
 }
 
@@ -127,30 +143,40 @@ function _pintarDer(foco){
 }
 
 function _cablearHoja(hoja, ot){
+  const id = ot.id;
   hoja.addEventListener('input', e => {
     const t = e.target.closest('textarea.ot-texto');
     if (!t) return;
-    const tenia = tieneTextosPropios(ot);
-    if (!editarTexto(ot, +t.dataset.bloque, t.value)) return;
+    const o = _otViva(id);
+    if (!o) return;
+    const tenia = tieneTextosPropios(o);
+    if (!editarTexto(o, +t.dataset.bloque, t.value)) return;
     markDirty();
     // La primera edicion crea la copia: recien ahi aparece "↺ Textos de la plantilla".
-    if (!tenia) _pintarCab(ot);
+    if (!tenia) _pintarCab(o);
   });
   hoja.addEventListener('click', e => {
     const ins = e.target.closest('[data-insertar]');
-    if (ins){ const j = insertarPaso(ot, +ins.dataset.insertar); markDirty(); _pintarDer(j); return; }
     const q = e.target.closest('[data-quitar]');
-    if (q){
-      const i = +q.dataset.quitar;
-      if (quitarBloque(ot, i)){ markDirty(); _pintarDer(Math.max(i - 1, 0)); }
-    }
+    if (!ins && !q) return;
+    const o = _otViva(id);
+    if (!o) return;
+    if (ins){ const j = insertarPaso(o, +ins.dataset.insertar); markDirty(); _pintarDer(j); return; }
+    const i = +q.dataset.quitar;
+    if (quitarBloque(o, i)){ markDirty(); _pintarDer(Math.max(i - 1, 0)); }
   });
 }
 
 /* Guardar ANTES de imprimir, igual que al emitir: el papel sale a la bodega y
  * tiene que coincidir con lo guardado (numero de OT y textos). guardar() ya
- * avisa si algo falla. */
-async function _imprimir(ot){
+ * avisa si algo falla.
+ *
+ * La OT se busca por id DESPUES del await: si guardar() paso por un 409,
+ * fusiono y reemplazo los objetos, y la OT de antes del guardado puede no ser
+ * la guardada (otra PC le cambio textos). Lo que sale en papel es lo guardado. */
+async function _imprimir(id){
   if (!await guardar(false)) return;
+  const ot = _otPorId(id);
+  if (!ot){ alert('Esta OT ya no está en los datos guardados (¿la borraron desde otra PC?).'); _cb.onCambio(); return; }
   abrirImprimirOT(ot);
 }

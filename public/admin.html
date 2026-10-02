@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Usuarios · Plataforma CIW</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
   @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
   @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
@@ -234,7 +235,10 @@ function abrir(u) {
   const soyYo = u && yo && u.usuario === yo.email;
   $('f-activo').disabled = !!soyYo;
   $('f-admin').disabled = !!soyYo;
-  $('f-reset').hidden = !u;
+  // Tu propio usuario y tu contraseña no se cambian desde acá (te cerraría la
+  // sesión a mitad de camino): la contraseña, desde "Contraseña" en el portal.
+  $('f-usuario').disabled = !!soyYo;
+  $('f-reset').hidden = !u || !!soyYo;
   $('f-error').innerHTML = '';
   $('dlg').showModal();
   $(u ? 'f-nombre' : 'f-usuario').focus();

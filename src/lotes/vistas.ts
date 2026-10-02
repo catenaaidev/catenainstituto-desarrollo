@@ -8,6 +8,7 @@
 
 import {
   evaluar,
+  analisisPorLote,
   normalizarConfig,
   criteriosEfectivos,
   veredictosAnalisis,
@@ -45,7 +46,10 @@ export function datosDashboard(datos: Record<string, unknown>, hoy: number) {
   const config = (d.config as Record<string, unknown>) ?? {};
 
   const base = evaluar(normalizarConfig(d), hoy) as unknown as Record<string, unknown>;
-  const ans = porLote(d.analisis as Fila[]);
+  // analisisPorLote y no porLote(d.analisis): saltea los "no usar" de
+  // excepciones_analisis, igual que evaluar(). Si no, un análisis descartado
+  // seguía moviendo la etapa sugerida y los hitos de este mismo tablero.
+  const ans = analisisPorLote(d);
   const movs = porLote(d.movimientos as Fila[]);
 
   // OJO: evaluar() solo trae los ACTIVOS. La bandeja recorre TODOS los lotes,
@@ -114,10 +118,15 @@ export function datosFicha(
 
   const config = (d.config as Record<string, unknown>) ?? {};
   const ans = ((d.analisis as Fila[]) ?? []).filter((a) => normalizarLote((a ?? {}).lote) === clave);
+  // Para etapa, hitos y avance solo cuentan los análisis usables (sin los "no
+  // usar"), los mismos que ve el tablero. La línea de tiempo sigue recibiendo
+  // todos: es el registro de lo que pasó, y un análisis descartado puede
+  // llevar una corrección con OT que sí se ejecutó.
+  const ansUsables = analisisPorLote(d).get(clave) ?? [];
   const movsTodos = (d.movimientos as Fila[]) ?? [];
   const movsLote = movsTodos.filter((m) => normalizarLote((m ?? {}).lote) === clave);
 
-  const r = evaluarEtapa(fila, ans, movsLote, config, hoy, etapaForzada, {
+  const r = evaluarEtapa(fila, ansUsables, movsLote, config, hoy, etapaForzada, {
     tienePadre: lotesConPadre(movsTodos).has(clave),
   });
   const g = grafo(d);
@@ -150,10 +159,14 @@ export function datosFicha(
  */
 export function analisisConFlags(datos: Record<string, unknown>) {
   const config = ((datos.config as Fila)?.criterios_fml as Record<string, unknown>) ?? {};
-  const lotesPorNum = new Map(((datos.lotes as Fila[]) ?? []).map((l) => [String(l.lote), l]));
+  // normalizarLote de los dos lados: con String() el análisis de "26217" no
+  // encontraba al lote "26217 " y se juzgaba con los criterios de fábrica.
+  const lotesPorNum = new Map(
+    ((datos.lotes as Fila[]) ?? []).map((l) => [normalizarLote((l ?? {}).lote), l ?? {}]),
+  );
 
   return ((datos.analisis as Fila[]) ?? []).map((a, i) => {
-    const info = lotesPorNum.get(String(a.lote)) ?? {};
+    const info = lotesPorNum.get(normalizarLote((a ?? {}).lote)) ?? {};
     const eff = criteriosEfectivos(config, info.variedad, info.proyecto);
     /* El lote va entero y no solo su variedad: la decision de FML puede venir
      * de su propia ficha (hace_fml / fml_excluida) y pisar a la de config, y de

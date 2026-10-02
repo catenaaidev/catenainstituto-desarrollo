@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
   es_admin      INTEGER NOT NULL DEFAULT 0 CHECK (es_admin IN (0,1)),
   -- Tiene la contraseña inicial (1234): al entrar se le pide cambiarla.
   debe_cambiar  INTEGER NOT NULL DEFAULT 0 CHECK (debe_cambiar IN (0,1)),
+  -- Freno a la prueba de contraseñas: 5 fallidas seguidas = 15 minutos afuera.
+  intentos_fallidos INTEGER NOT NULL DEFAULT 0,
+  bloqueado_hasta   INTEGER NOT NULL DEFAULT 0,
   creado        TEXT NOT NULL DEFAULT (datetime('now')),
   actualizado   TEXT NOT NULL DEFAULT (datetime('now'))
 );

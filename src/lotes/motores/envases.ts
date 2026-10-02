@@ -12,6 +12,8 @@
  * número absurdo.
  */
 
+import { num } from './fml-condiciones';
+
 /** Orden descendente de capacidad, igual que en js/envases.js. */
 const CAPACIDADES: [string, number][] = [
   ['cap500', 500],
@@ -28,9 +30,10 @@ const CAPACIDADES: [string, number][] = [
  * el usuario tipea vive en el front, no acá.
  */
 function n0(x: unknown): number {
-  if (x === null || x === undefined || x === '') return 0;
-  const v = typeof x === 'number' ? x : Number(x);
-  return Number.isFinite(v) && v > 0 ? v : 0;
+  // num() es el parser compartido: acepta la coma decimal ("1500,5" de
+  // vasija_grande valia 0) y trata la celda vacia como sin dato.
+  const v = num(x);
+  return v !== null && v > 0 ? v : 0;
 }
 
 /** Litros que suman los envases del lote. */

@@ -19,13 +19,22 @@ function sigueIgual(lote, despues){
   return CAMPOS.every(k => igualCampo(ahora[k], despues[k]));
 }
 
-/* { aplicada, items: [{lote, accion: 'volver'|'cambiado'|'falta', antes, ahora}],
+/* { aplicada, corteParcial, items: [{lote, accion: 'volver'|'cambiado'|'falta', antes, ahora, porCorte?}],
  *   mermasBorrar: [id], mermasReabrir: [id] }
- * Las mermas de un lote cambiado o faltante tampoco se tocan. */
+ * Las mermas de un lote cambiado o faltante tampoco se tocan.
+ *
+ * Un CORTE se deshace entero o nada, igual que se aplica entero o nada (ver
+ * _paso2 en vista-ot-confirmar.js). Cada destino se juzga por separado, asi que
+ * si el lote del corte se edito despues y los de origen no, el plan devolvia
+ * los origenes a su `antes` (con su vino) mientras el lote del corte se quedaba
+ * con los litros que recibio: el mismo vino contado dos veces. Por eso, si en
+ * un corte algun destino no puede volver, ninguno vuelve: los que si podian
+ * quedan 'cambiado' con porCorte (para que la pantalla diga por que) y
+ * corteParcial avisa que "Borrar y deshacer" no tiene nada que hacer. */
 export function planDeshacer(datos, ot){
   const destinos = [...(ot.lotes || []), ...(ot.lote_corte ? [ot.lote_corte] : [])]
     .filter(d => d && d.aplicado && typeof d.aplicado === 'object');
-  const plan = { aplicada: destinos.length > 0, items: [], mermasBorrar: [], mermasReabrir: [] };
+  const plan = { aplicada: destinos.length > 0, corteParcial: false, items: [], mermasBorrar: [], mermasReabrir: [] };
   for (const d of destinos){
     const a = d.aplicado;
     const lote = (datos.lotes || []).find(l => String(l.lote) === String(d.lote));
@@ -35,6 +44,12 @@ export function planDeshacer(datos, ot){
     if (!volver) continue;
     plan.mermasBorrar.push(...(a.mermas_creadas || []));
     plan.mermasReabrir.push(...(a.mermas_cerradas || []));
+  }
+  if (ot.lote_corte && plan.items.some(it => it.accion !== 'volver')){
+    for (const it of plan.items) if (it.accion === 'volver'){ it.accion = 'cambiado'; it.porCorte = true; }
+    plan.corteParcial = true;
+    plan.mermasBorrar = [];
+    plan.mermasReabrir = [];
   }
   return plan;
 }

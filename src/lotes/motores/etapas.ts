@@ -7,6 +7,7 @@
  */
 
 import {
+  analisisPorLote,
   criteriosEfectivos,
   evaluarLote,
   ordenarPorFecha,
@@ -15,6 +16,8 @@ import {
   type Fila,
   type ResultadoLote,
 } from './fml';
+import { filasDe } from './fml-condiciones';
+import { lotesConPadre, normalizarLote } from './linaje';
 import { movimientosEjecutados } from './movimientos';
 
 export const ETAPAS = ['ingreso', 'fa', 'fml', 'crianza', 'cerrado'] as const;
@@ -204,9 +207,16 @@ export function hitos(
       descube ? `descube a ${descube.vasija_destino}` : 'falta el movimiento de descube con vasija destino',
       true,
     ],
+    // Al dia es estado_frecuencia === 'al_dia', no "no vencido": un lote sin
+    // ningun control de proceso queda 'sin_datos' con vencido=false, y con
+    // !e.vencido el hito salia cumplido justo en los lotes que nunca se
+    // analizaron. El detalle cuenta desde el CONTROL de proceso, que es lo que
+    // mide la frecuencia, y no desde cualquier analisis suelto.
     analisis_al_dia: [
-      !e.vencido,
-      `${e.dias_desde_analisis} dias desde el ultimo analisis (maximo ${e.frecuencia_max})`,
+      e.estado_frecuencia === 'al_dia',
+      e.estado_frecuencia === 'sin_datos'
+        ? `sin control de proceso (etanol, AV y malico en la misma fila; maximo ${e.frecuencia_max} dias)`
+        : `${e.dias_desde_control} dias desde el ultimo control de proceso (maximo ${e.frecuencia_max})`,
       true,
     ],
     // En un lote de vino, sin málico cargado se asume que la FML pasó en el
@@ -329,4 +339,39 @@ export function evaluarEtapa(
   }
 
   return { etapa, etapa_sugerida: sug, hitos: hs, avance: av };
+}
+
+/**
+ * {lote: etapa sugerida} de TODOS los lotes, con los mismos insumos que usa el
+ * tablero: análisis sin los "no usar" (analisisPorLote), movimientos del lote y
+ * el linaje para deducir si es lote de vino.
+ *
+ * Lo usa el cruce con el Mapa: un lote que nadie confirmó todavía tiene etapa
+ * '' y, sin esto, caía en "sin_envase" aunque estuviera fermentando. `datos`
+ * es el documento entero de Lotes (config con criterios_fml adentro).
+ */
+export function etapasSugeridas(datos: Record<string, unknown>, hoy: number): Map<string, Etapa> {
+  const d = datos ?? {};
+  const config = (d.config as Record<string, unknown>) ?? {};
+  const ans = analisisPorLote(d);
+  const movsTodos = filasDe(d.movimientos);
+  const movs = new Map<string, Fila[]>();
+  for (const m of movsTodos) {
+    const k = normalizarLote(m.lote);
+    const lista = movs.get(k);
+    if (lista) lista.push(m);
+    else movs.set(k, [m]);
+  }
+  const conPadre = lotesConPadre(movsTodos);
+
+  const out = new Map<string, Etapa>();
+  for (const l of filasDe(d.lotes)) {
+    const k = normalizarLote(l.lote);
+    if (!k) continue;
+    const r = evaluarEtapa(l, ans.get(k) ?? [], movs.get(k) ?? [], config, hoy, null, {
+      tienePadre: conPadre.has(k),
+    });
+    out.set(k, r.etapa_sugerida);
+  }
+  return out;
 }

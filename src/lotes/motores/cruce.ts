@@ -8,6 +8,7 @@
  */
 
 import { normalizarLote } from './linaje';
+import { num, filasDe } from './fml-condiciones';
 import type { Fila } from './fml';
 import type { Unidad, MapaNormalizado } from './mapa';
 
@@ -59,9 +60,9 @@ const SE_CAMINA = ['sin_barriles', 'sin_envase'];
  * envases (cantidades enteras), allá litros (donde el decimal es correcto).
  */
 function n0(v: unknown): number {
-  if (v === null || v === undefined || v === '') return 0;
-  const n = typeof v === 'number' ? v : Number(v);
-  if (!Number.isFinite(n) || n <= 0) return 0;
+  // num() acepta la coma: un "112,5" de litros en el Mapa sumaba 0 a huerfanos.
+  const n = num(v);
+  if (n === null || n <= 0) return 0;
   return Math.trunc(n);
 }
 
@@ -91,9 +92,10 @@ export function desgloseMapa(unidades: Unidad[]): { cont: Desglose; aproximadas:
     // Number() en vez de parseInt para aceptar '225.0': con parseInt de un
     // '225.0' se perdería la parte decimal en silencio y con int() de Python
     // levantaría error. Un lote al que se le caen unidades parece tener
-    // barricas faltantes.
-    const bruto = Number(u.cap);
-    if (!Number.isFinite(bruto)) continue;
+    // barricas faltantes. Va por num() y no por Number() directo para que una
+    // cap "225,0" (coma decimal) no se pierda igual.
+    const bruto = num(u.cap);
+    if (bruto === null) continue;
     let cap = Math.trunc(bruto);
     if (cap in EQUIV_CAP) {
       aproximadas++;
@@ -189,10 +191,20 @@ export interface Veredicto {
  * caería en la máxima prioridad y mandaría a alguien a buscar 2250 L que están
  * en su sitio.
  */
-export function veredictoDeLote(lote: Fila, unidades: Unidad[], tieneTanque = false): Veredicto {
+export function veredictoDeLote(
+  lote: Fila,
+  unidades: Unidad[],
+  tieneTanque = false,
+  etapaSugerida = '',
+): Veredicto {
   const declarado = desgloseDeclarado(lote);
   const vasijaGrande = n0(lote.vasija_grande);
   const etapa = String(lote.etapa ?? '');
+  // La ausencia se juzga con la etapa confirmada y, si nadie la confirmó
+  // todavía, con la sugerida: un lote recién ingresado tiene etapa '' y con
+  // eso caía en "sin_envase" y mandaba a buscar barricas de un vino que está
+  // fermentando en tanque. `etapa` sigue siendo la confirmada en la respuesta.
+  const etapaJuicio = etapa.trim() || etapaSugerida;
   const litrosDecl = litrosDe(declarado);
 
   const { cont: mapa, aproximadas } = desgloseMapa(unidades);
@@ -203,7 +215,7 @@ export function veredictoDeLote(lote: Fila, unidades: Unidad[], tieneTanque = fa
   let motivo: string;
 
   if (!unidades.length) {
-    [veredicto, sev, motivo] = ausencia(declarado, vasijaGrande, etapa, tieneTanque);
+    [veredicto, sev, motivo] = ausencia(declarado, vasijaGrande, etapaJuicio, tieneTanque);
   } else if (mismoDesglose(declarado, mapa)) {
     [veredicto, sev, motivo] = ['coincide', null, ''];
   } else if (
@@ -303,8 +315,18 @@ export interface InformeCruce {
   salteados_por_prensa: string[];
 }
 
-/** Informe completo del cruce entre los lotes y el mapa. */
-export function cruzar(lotes: Fila[], mapa: MapaNormalizado): InformeCruce {
+/**
+ * Informe completo del cruce entre los lotes y el mapa.
+ *
+ * `etapasSugeridas` ({lote: etapa}, ver etapasSugeridas() en etapas.ts) es
+ * opcional: sin ella los lotes sin etapa confirmada se juzgan con etapa '',
+ * como antes.
+ */
+export function cruzar(
+  lotes: Fila[],
+  mapa: MapaNormalizado,
+  etapasSugeridas: Map<string, string> | null = null,
+): InformeCruce {
   const unidadesPorLote = mapa.unidades_por_lote ?? new Map<string, Unidad[]>();
   const conTanque = mapa.lotes_con_tanque ?? new Set<string>();
   const posiciones = mapa.posiciones ?? new Map<string, string[]>();
@@ -315,7 +337,7 @@ export function cruzar(lotes: Fila[], mapa: MapaNormalizado): InformeCruce {
   const vistos = new Set<string>();
   const salteadosPorPrensa: string[] = [];
 
-  for (const l of lotes) {
+  for (const l of filasDe(lotes)) {
     const L = normalizarLote(l.lote);
     if (!L) continue;
     vistos.add(L);
@@ -327,7 +349,12 @@ export function cruzar(lotes: Fila[], mapa: MapaNormalizado): InformeCruce {
       continue;
     }
 
-    const v = veredictoDeLote(l, unidadesPorLote.get(L) ?? [], conTanque.has(L));
+    const v = veredictoDeLote(
+      l,
+      unidadesPorLote.get(L) ?? [],
+      conTanque.has(L),
+      etapasSugeridas?.get(L) ?? '',
+    );
     v.posiciones = posiciones.get(L) ?? [];
     // El lote se compara igual, pero queda advertido: si una de sus unidades
     // está en pugna, su conteo es dudoso y el operario tiene que saberlo.

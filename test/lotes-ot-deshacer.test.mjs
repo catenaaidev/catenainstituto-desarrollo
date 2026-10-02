@@ -41,7 +41,7 @@ describe('aplicarPropuesta registra qué mermas tocó', () => {
 describe('planDeshacer', () => {
   it('una OT pendiente no tiene nada que deshacer', () => {
     const o = ot('barricas-barricas', [{ lote: '26218' }]);
-    expect(planDeshacer({ lotes: [], mermas: [] }, o)).toEqual({ aplicada: false, items: [], mermasBorrar: [], mermasReabrir: [] });
+    expect(planDeshacer({ lotes: [], mermas: [] }, o)).toEqual({ aplicada: false, corteParcial: false, items: [], mermasBorrar: [], mermasReabrir: [] });
   });
 
   it('un lote sin cambios posteriores vuelve al antes', () => {
@@ -79,6 +79,56 @@ describe('planDeshacer', () => {
     aplicarPropuesta(datos, o, p, new Set(['25315', '26300']), 'ana', '2026-10-01');
     const plan = planDeshacer(datos, o);
     expect(plan.items.map(i => [i.lote, i.accion])).toEqual([['25315', 'volver'], ['26300', 'volver']]);
+    expect(plan.corteParcial).toBe(false);
+  });
+
+  /* Un corte se deshace entero o nada: si el lote del corte se tocó después,
+   * devolver los orígenes a su "antes" contaría el vino dos veces (en los
+   * orígenes y en el corte). */
+  function corteAplicado() {
+    const datos = { lotes: [{ lote: 26300, litros_actuales: 0 }, { lote: 25315, cap225: 5, litros_actuales: 1125, vasija_actual: 'Nave 1' }],
+      mermas: [{ id: 'mer-viejo', lote: '25315', barril: '10', cap: 225, litros: 200, desde: '2026-09-01',
+        ot: 'OT-2026-001', resuelta_el: '', resuelta_por: '', resuelta_como: '' }] };
+    const o = ot('barricas-tanque', [{ lote: '25315', barriles: [...DOCE.slice(0, 4), b('10')], litros_previstos: 1125 }],
+      { lote_corte: { lote: '26300', id_texto: 'Corte' } });
+    const p = proponer({ ot: o, lotes: datos.lotes, mermas: datos.mermas, padron: PADRON, hoy: '2026-10-01',
+      entradas: { por_lote: [{}], corte: { vasija: 'T 189', litros_manual: 1100 } } });
+    aplicarPropuesta(datos, o, p, new Set(['25315', '26300']), 'ana', '2026-10-01');
+    return { datos, o };
+  }
+
+  it('en un corte con el lote del corte cambiado no vuelve ningún lote', () => {
+    const { datos, o } = corteAplicado();
+    const corte = datos.lotes.find(l => String(l.lote) === '26300');
+    corte.litros_actuales = 900;   // alguien lo trasegó después
+    const plan = planDeshacer(datos, o);
+    expect(plan.corteParcial).toBe(true);
+    expect(plan.items.map(i => [i.lote, i.accion])).toEqual([['25315', 'cambiado'], ['26300', 'cambiado']]);
+    expect(plan.items[0].porCorte).toBe(true);
+    expect(plan.items[1].porCorte).toBeUndefined();
+    expect(plan.mermasBorrar).toEqual([]);
+    expect(plan.mermasReabrir).toEqual([]);
+    const origen = { ...datos.lotes.find(l => String(l.lote) === '25315') };
+    expect(aplicarDeshacer(datos, plan)).toBe(0);
+    expect(datos.lotes.find(l => String(l.lote) === '25315')).toEqual(origen);
+    expect(corte.litros_actuales).toBe(900);
+  });
+
+  it('en un corte con un origen cambiado tampoco vuelve el lote del corte', () => {
+    const { datos, o } = corteAplicado();
+    datos.lotes.find(l => String(l.lote) === '25315').vasija_actual = 'Nave 9';
+    const plan = planDeshacer(datos, o);
+    expect(plan.corteParcial).toBe(true);
+    expect(plan.items.every(i => i.accion === 'cambiado')).toBe(true);
+    expect(aplicarDeshacer(datos, plan)).toBe(0);
+  });
+
+  it('en un corte con un lote borrado no vuelve ninguno', () => {
+    const { datos, o } = corteAplicado();
+    datos.lotes = datos.lotes.filter(l => String(l.lote) !== '26300');
+    const plan = planDeshacer(datos, o);
+    expect(plan.corteParcial).toBe(true);
+    expect(plan.items.map(i => [i.lote, i.accion])).toEqual([['25315', 'cambiado'], ['26300', 'falta']]);
   });
 });
 

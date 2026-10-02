@@ -36,8 +36,12 @@ export const num  = v => { if (v===''||v==null) return null; const n=parseFloat(
 let _base = null;
 const FUSION = window.CIWFusion;
 const borradorActual = () => ({ base: _base, local: _datos });
+/* Cuenta las ediciones: si mientras viaja un guardado se edita algo más, al
+ * volver la respuesta la pantalla NO queda como guardada (eso no se envió). */
+let _ediciones = 0;
 
 export function markDirty(){
+  _ediciones++;
   dirty = true;
   invalidarVistas();
   $('btnGuardar').disabled = false;
@@ -181,7 +185,13 @@ export function registrarInit(fn){ _inits.push(fn); }
 export async function cargarDatos(){
   try {
     const r = await fetch(API+'/datos');
-    if (!r.ok){ $('statusBar').textContent = 'Error al cargar ('+r.status+')'; return; }
+    if (!r.ok){
+      if (r.status === 401){ location.replace('/login.html'); return; }
+      const j = await r.json().catch(() => ({}));
+      if (j.error === 'debe_cambiar_clave'){ location.replace('/cambiar-clave.html'); return; }
+      $('statusBar').textContent = 'Error al cargar ('+r.status+')' + (j.detalles && j.detalles[0] ? ': ' + j.detalles[0] : '');
+      return;
+    }
     setDatos(await r.json());
     completarSecciones();
     _base = FUSION ? FUSION.clonar(DATOS()) : null;
@@ -227,12 +237,16 @@ export async function guardar(forzar, intento = 0){
   }
   DATOS().meta.autor = usuarioActual() || pedirUsuario(true) || 'desconocido';
   if (FUSION) await FUSION.borrador.guardar('lotes', borradorActual);
+  // Lo que se envía es esta foto: si se sigue editando durante el viaje, eso
+  // queda pendiente para el próximo guardado.
+  const enviado = JSON.stringify(DATOS());
+  const edicionesAlEnviar = _ediciones;
   let r;
   try {
     r = await fetch(API+'/datos' + (forzar ? '?forzar=1' : ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(DATOS())
+      body: enviado
     });
   } catch(e) {
     alert('No se pudo guardar: no hay conexión con el servidor. Tus cambios siguen en pantalla y quedaron guardados en este equipo; probá de nuevo cuando vuelva la señal.');
@@ -267,9 +281,13 @@ export async function guardar(forzar, intento = 0){
       setDatos(FUSION.fusionarDocumento(_base, DATOS(), serv));
       completarSecciones();
       _base = FUSION.clonar(serv);
-      // Los objetos de DATOS() cambiaron: la grilla limpia sus pilas de deshacer.
+      // Los objetos de DATOS() cambiaron: la grilla limpia sus pilas de deshacer
+      // y la pestaña visible se redibuja YA, aunque el reintento falle. Si no,
+      // sus filas seguían apuntando a los objetos viejos: las ediciones se
+      // perdían y el ✕ de Lotes borraba otro lote (indexOf daba -1).
       document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
       invalidarVistas();
+      try { renderActivo(); } catch (e) { console.error('renderActivo tras fusionar:', e); }
       return guardar(forzar, intento + 1);
     }
     mostrarOverlay(
@@ -280,11 +298,25 @@ export async function guardar(forzar, intento = 0){
     );
     return false;
   }
+  if (r.status === 403){
+    const j = await r.json().catch(() => ({}));
+    alert('No se pudo guardar: ' + ((j.detalles && j.detalles[0]) || 'tu usuario no tiene permiso para guardar en Lotes.'));
+    return false;
+  }
   if (!r.ok){ alert('Error al guardar: ' + r.status + '. Tus cambios siguen en pantalla y guardados en este equipo.'); return false; }
   const j = await r.json();
   DATOS().meta.version = j.version;
   DATOS().meta.actualizado = j.actualizado;
-  if (FUSION){ _base = FUSION.clonar(DATOS()); FUSION.borrador.borrar('lotes'); }
+  // La base pasa a ser lo que efectivamente llegó al servidor, no la pantalla
+  // actual (que puede tener ediciones posteriores, todavía sin enviar).
+  if (FUSION){ _base = JSON.parse(enviado); _base.meta.version = j.version; _base.meta.actualizado = j.actualizado; }
+  if (_ediciones !== edicionesAlEnviar){
+    // Se editó durante el viaje: queda pendiente (y en el borrador del equipo).
+    markDirty();
+    if (cambioHook || intento > 0) renderActivo();
+    return true;
+  }
+  if (FUSION) FUSION.borrador.borrar('lotes');
   markSaved();
   if (cambioHook || intento > 0) renderActivo();
   if (intento > 0) $('statusBar').textContent = '✓ Guardado (v' + DATOS().meta.version + ') · combinado con lo que guardaron otros';

@@ -93,9 +93,19 @@ export async function rutasBarriles(
   }
 
   // ---------- GET /version ----------
+  // Lo consulta cada pestaña abierta cada 3 segundos. Antes parseaba el JSON
+  // entero (todo el inventario y el mapa) solo para devolver un número: con
+  // varias pestañas eso era la mayor parte del CPU del módulo. Se lee la
+  // columna, que escribir() mantiene igual a $.version del json en la misma
+  // sentencia (e importar.mjs también): es el mismo número que la pantalla
+  // recibe de GET /estado y de cada POST, y contra el que compara.
   if (ruta === '/version' && req.method === 'GET') {
-    const doc = await leer(env);
-    return json(200, { version: doc.version });
+    const fila = await env.DB.prepare('SELECT version FROM documento WHERE modulo = ?')
+      .bind(MODULO)
+      .first<{ version: number }>();
+    // Sin fila, leer() devuelve version 0: acá lo mismo, para que la pantalla
+    // no vea una diferencia que no existe.
+    return json(200, { version: fila?.version ?? 0 });
   }
 
   // ---------- GET /estado ----------
@@ -149,6 +159,12 @@ export async function rutasBarriles(
       return json(400, { error: 'JSON invalido' });
     }
 
+    // `null`, un número o un array son JSON válido: pasaban el try de arriba y
+    // `pedido.estado` tiraba TypeError (un 1101 del Worker en vez de un 400).
+    if (!pedido || typeof pedido !== 'object' || Array.isArray(pedido)) {
+      return json(400, { error: 'validacion', detalles: ['el pedido tiene que ser un objeto'] });
+    }
+
     // Sin esto, un POST sin `estado` reemplazaba el documento entero por {}.
     // La validación va ANTES del chequeo de versión: un POST malformado lo es
     // independientemente de la versión; si va después, devuelve 409 en vez de
@@ -158,6 +174,17 @@ export async function rutasBarriles(
         error: 'validacion',
         detalles: ['falta el estado: un guardado sin estado borraría todo'],
       });
+    }
+
+    // Boxes y palets son listas de contenedores. Si llegan como otra cosa el
+    // freno las cuenta como vacías (no revienta, ver comoLista en guardas.ts),
+    // pero guardarlas así dejaría el mapa roto para todas las pantallas: se
+    // rechaza acá, que es el único lugar donde se escribe.
+    for (const clave of ['boxes', 'palets'] as const) {
+      const v = pedido.estado[clave];
+      if (v !== undefined && !Array.isArray(v)) {
+        return json(400, { error: 'validacion', detalles: [`${clave} tiene que ser una lista`] });
+      }
     }
 
     const doc = await leer(env);

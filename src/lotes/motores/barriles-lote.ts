@@ -8,6 +8,7 @@
  * más pesada para dos consumidores que no los necesitan.
  */
 import { normalizarLote } from './linaje';
+import { num, filasDe } from './fml-condiciones';
 
 export interface BarrilOT {
   num: string;
@@ -25,14 +26,20 @@ export interface BarrilOT {
   ts: number | null;
 }
 
-/** Números que vienen del Excel como texto ('225') o vacíos. */
-function numero(v: unknown): number | null {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Number(String(v).replace(',', '.'));
-  return Number.isFinite(n) ? n : null;
-}
+/** Números que vienen del Excel como texto ('225'), con coma o vacíos. Es el
+ *  num() compartido: la copia local leia un '  ' como 0. */
+const numero = num;
 
 const txt = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim());
+
+/**
+ * Filas del inventario que se pueden leer. El Array.isArray solo no alcanzaba:
+ * el guardado de Barriles acepta entradas null, y un b.lote sobre null tira
+ * TypeError, el Worker cae con un 1101 y la OT de trasiego no abre.
+ */
+function filasInventario(estado: Record<string, unknown> | null | undefined): Record<string, unknown>[] {
+  return filasDe((estado ?? {}).inventario);
+}
 
 function aBarrilOT(b: Record<string, unknown>): BarrilOT {
   return {
@@ -59,8 +66,7 @@ export function barrilesDeLotes(
     const L = normalizarLote(l);
     if (L) out[L] = [];
   }
-  const inventario = Array.isArray(estado.inventario) ? (estado.inventario as Record<string, unknown>[]) : [];
-  for (const b of inventario) {
+  for (const b of filasInventario(estado)) {
     const L = normalizarLote(b.lote);
     if (!L || !(L in out)) continue;
     out[L].push(aBarrilOT(b));
@@ -82,8 +88,7 @@ export function barrilesPorNum(
     const k = txt(n);
     if (k) out[k] = null;
   }
-  const inventario = Array.isArray(estado.inventario) ? (estado.inventario as Record<string, unknown>[]) : [];
-  for (const b of inventario) {
+  for (const b of filasInventario(estado)) {
     const k = txt(b.num);
     if (k in out && out[k] === null) out[k] = aBarrilOT(b);
   }

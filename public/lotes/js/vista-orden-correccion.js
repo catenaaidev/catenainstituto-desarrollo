@@ -20,8 +20,8 @@
 
 import { $, esc, escA, registrarVista, DATOS, markDirty, guardar,
          mostrarOverlay, cerrarOverlay, usuarioActual } from './nucleo.js';
-import { armarCorreccion, aplicarCorreccion,
-         anularCorreccion, revertirAnulacion } from './so2-bitacora.js';
+import { armarCorreccion, aplicarCorreccion, revertirCorrecciones,
+         anularCorreccion, revertirAnulaciones } from './so2-bitacora.js';
 import { pintarHojas, HOJA_POR_PAGINA } from './orden-hoja.js';
 import { filaPapel, theadPapel, COLGROUP_PAPEL, COLUMNAS_PAPEL,
          INSTRUCCIONES_SOLUCION } from './orden-correccion-papel.js';
@@ -292,7 +292,14 @@ async function _ocAnularCorrecciones(objetivos, descripcion){
     let ok = false;
     try { ok = await guardar(); } catch (_) { ok = false; }
     if (!ok){
-      snaps.forEach(revertirAnulacion);
+      /* Sobre el DATOS() de AHORA, no a traves de las referencias de antes del
+       * await: si guardar() paso por un 409, fusiono y reemplazo todos los
+       * objetos, y revertir los viejos no deshacia nada (ver
+       * revertirAnulaciones). markDirty de nuevo para que el borrador local,
+       * que guardar() escribio CON las anulaciones, pase a ser el revertido:
+       * si no, "Recargar y recuperar" las traeria de vuelta. */
+      revertirAnulaciones(DATOS().analisis, snaps);
+      markDirty();
       const m2 = $('ocMsg');
       if (m2) m2.innerHTML = '<div class="msg err">No se pudo guardar. No se canceló nada.</div>';
       else alert('No se pudo guardar. No se canceló nada.');
@@ -1047,43 +1054,29 @@ function _ocEjecWire(){
  * lote+fecha garantiza que un campo nuevo no cree dos versiones distintas del
  * lookup: el riesgo descrito en el encabezado de so2-bitacora.js.
  *
- * El snapshot guarda una REFERENCIA al objeto, no su indice. Asi el rollback
- * funciona aunque otra pantalla haya hecho splice al array durante el await:
- * indexOf resuelve la posicion actual en el momento de revertir, no la que
- * tenia cuando se escribio. */
+ * El snapshot guarda una REFERENCIA al objeto, no su indice, y ademas la clave
+ * (lote, fecha) y la correccion escrita. La referencia sirve mientras DATOS()
+ * sea el mismo; si guardar() paso por un 409 y fusiono, todos los objetos se
+ * reemplazaron y el rollback encuentra el registro por clave y contenido (ver
+ * revertirCorrecciones en so2-bitacora.js). */
 export function _ocEscribirEntradas(analisis, entradas, fecha){
   const snaps = [];
   for (const e of entradas){
-    /* aplicarCorreccion busca, muta y devuelve { que, ref, anterior }.
-     * 'anterior' es la correccion que habia antes (undefined si no habia nada). */
-    const { que, ref, anterior } = aplicarCorreccion(analisis, e.lote, fecha, e.correccion);
-    snaps.push({ tipo: que, ref, corrAnterior: anterior });
+    /* aplicarCorreccion busca, muta y devuelve { que, ref, anterior, lote,
+     * fecha, escrita }. 'anterior' es la correccion que habia antes
+     * (undefined si no habia nada). */
+    const r = aplicarCorreccion(analisis, e.lote, fecha, e.correccion);
+    snaps.push({ tipo: r.que, ref: r.ref, corrAnterior: r.anterior,
+                 lote: r.lote, fecha: r.fecha, escrita: r.escrita, convive: r.convive });
   }
   return snaps;
 }
 
-/* Revierte lo que escribio _ocEscribirEntradas. Se aplica en orden inverso para
- * que el splice de los "creados" no corra los indices de los que siguen.
- * Si el objeto ya no esta en el array (otra pantalla lo borro durante el await),
- * no se hace nada: no hay nada que revertir. */
+/* Revierte lo que escribio _ocEscribirEntradas sobre el array que se le pase,
+ * que tiene que ser el DATOS().analisis de DESPUES del await. Si un registro
+ * ya no esta (otra pantalla lo borro), no hay nada que revertir. */
 export function _ocRevertirEntradas(analisis, snaps){
-  for (let i = snaps.length - 1; i >= 0; i--){
-    const s = snaps[i];
-    if (s.tipo === 'creado'){
-      const pos = analisis.indexOf(s.ref);
-      if (pos !== -1) analisis.splice(pos, 1);
-    } else {
-      /* El objeto sigue siendo el mismo; si esta en el array, restaurar */
-      const pos = analisis.indexOf(s.ref);
-      if (pos !== -1){
-        if (s.corrAnterior === undefined){
-          delete analisis[pos].correccion;
-        } else {
-          analisis[pos].correccion = s.corrAnterior;
-        }
-      }
-    }
-  }
+  return revertirCorrecciones(analisis, snaps);
 }
 
 /* Escribe, guarda y recarga. El guardado es PARTE de ejecutar: la supresion se
@@ -1143,8 +1136,12 @@ async function _ocEjecConfirmar(){
   }
 
   if (!ok){
-    /* B: revertir las correcciones en memoria: el array vuelve al estado anterior */
+    /* B: revertir las correcciones en memoria: el array vuelve al estado
+     * anterior. DATOS() se lee de nuevo aca, despues del await: tras un 409
+     * es otro documento (el fusionado). markDirty para que el borrador local,
+     * que guardar() escribio CON las correcciones, pase a ser el revertido. */
     _ocRevertirEntradas(DATOS().analisis, snaps);
+    markDirty();
 
     /* C: buscar ocEjecMsg de nuevo despues del await — si guardar() llamo a
      * mostrarOverlay (caso 409), el nodo anterior quedo desconectado y escribir
@@ -1180,9 +1177,17 @@ async function _ocEjecConfirmar(){
   await _ocCargar();
   _ocRenderTabla();
   _ocPintarPaginas();
+  /* Los lotes que ese dia ya tenian una correccion de OTRA OT (o una anulada)
+   * no se pisaron: quedaron las dos entradas. Se avisa porque puede ser un
+   * error de tipeo en el N de OT, y antes ese caso borraba la otra en silencio. */
+  const conviven = snaps.filter(s => s.convive != null).map(s => s.lote);
   const m = $('ocMsg');
   if (m) m.innerHTML = '<div class="msg ok">✓ Se registraron ' + entradas.length +
-    ' correcciones en la bitácora con la OT ' + esc(ot) + '.</div>';
+    ' correcciones en la bitácora con la OT ' + esc(ot) + '.</div>' +
+    (conviven.length ? '<div class="msg info">' + (conviven.length === 1
+      ? 'El lote ' + esc(conviven[0]) + ' ya tenía'
+      : 'Los lotes ' + esc(conviven.join(', ')) + ' ya tenían') +
+      ' otra corrección ese día con otra OT: no se pisó, quedaron las dos en la bitácora.</div>' : '');
 }
 
 registrarVista('ordencorr', () => renderOrdenCorreccion());

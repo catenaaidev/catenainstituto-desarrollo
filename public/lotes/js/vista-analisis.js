@@ -6,8 +6,7 @@ import { $, esc, escA, DATOS, markDirty, registrarVista, registrarInit, irALote,
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla } from './grilla.js';
-import { armarFilas, esQuimicaReal, esCorreccionReal,
-         indicesPorObjeto } from './analisis-filas.js';
+import { armarFilas, esQuimicaReal, esCorreccionReal } from './analisis-filas.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
 import { crearAnchos } from './anchos-cols.js';
@@ -113,12 +112,24 @@ function _columnaAplica(colKey, filaTipo){
 }
 
 /* Veredicto por fila de analisis:
- *   Map<idx(en DATOS.analisis) -> {fuera:Set<metric>, dentro:Set<metric>, molec:number|null}>
+ *   WeakMap<OBJETO de DATOS().analisis -> {fuera:Set<metric>, dentro:Set<metric>, molec:number|null}>
  *
  * Son DOS conjuntos y no uno con su complemento a proposito: una metrica que no
  * esta en ninguno es una que no tiene veredicto (sin medicion, o sin con que
  * juzgarla), y esa no se pinta de ningun color. Tratar "no esta en fuera" como
- * "esta bien" pintaria de verde una celda vacia. */
+ * "esta bien" pintaria de verde una celda vacia.
+ *
+ * Por que por OBJETO y no por posicion: la API los manda indexados por la
+ * posicion en el array GUARDADO. Antes se guardaban asi y se aplicaban por la
+ * posicion en el DATOS().analisis local, que deja de coincidir en cuanto se
+ * borra una fila sin guardar (todo lo de abajo corre un lugar) o una fusion
+ * tras un 409 rearma el array: los colores caian en filas equivocadas y "Solo
+ * fuera de criterio" filtraba otras. Ahora la posicion se traduce a objeto UNA
+ * vez, al llegar, y solo si el documento local es exactamente el guardado (ver
+ * cargarAnalisisFlags). Despues, borrar una fila no mueve el color de las
+ * demas, editar una medicion le saca el veredicto a ESA fila, y si DATOS() se
+ * reemplaza entero los objetos nuevos simplemente no tienen veredicto: se
+ * prefiere una celda sin color a una con el color de otra fila. */
 let _analisisFlags = null;  // null = no cargado aún
 let _analisisFlagsLoading = false;
 /* Version del documento con la que se calcularon los veredictos de arriba. Los
@@ -135,9 +146,35 @@ const SIN_VEREDICTO = Object.freeze({
   fuera: new Set(), dentro: new Set(), molec: null,
 });
 
+/* ¿Hay cambios sin guardar? nucleo no exporta su bandera `dirty`, pero la
+ * refleja sin excepciones en el boton Guardar: markDirty lo habilita y
+ * markSaved lo apaga. Con cambios sin guardar el array local no es el que
+ * juzgo el servidor, asi que sus veredictos no se pueden enganchar por
+ * posicion. */
+function _hayCambiosSinGuardar(){
+  const b = $('btnGuardar');
+  return !!b && !b.disabled;
+}
+
+/* El veredicto de un registro de analisis, o undefined si no tiene. */
+const _veredictoDe = a => (_analisisFlags && a) ? _analisisFlags.get(a) : undefined;
+
+/* Una edicion deja el veredicto de esa fila describiendo el valor anterior: se
+ * lo saca, y el proximo repintado la deja sin color en vez de con el viejo. */
+function _olvidarVeredicto(a){ if (_analisisFlags && a) _analisisFlags.delete(a); }
+
 async function cargarAnalisisFlags(){
   if (_analisisFlagsLoading) return;
+  /* Con cambios sin guardar no se piden: no habria forma de saber que fila
+   * local es cada posicion del servidor. Se piden solos al guardar (sube la
+   * version y registrarVista los da por vencidos). */
+  if (_hayCambiosSinGuardar()) return;
   _analisisFlagsLoading = true;
+  /* Lo que se tiene que mantener igual mientras viaja el pedido para poder
+   * traducir posicion -> objeto: el mismo array (una fusion o una recarga lo
+   * reemplazan), la misma version y nada editado en el medio. */
+  const arrPedido = DATOS().analisis;
+  const vPedido = (DATOS().meta || {}).version ?? null;
   try {
     const r = await fetch(API+'/analisis');
     if (!r.ok) return;
@@ -150,9 +187,25 @@ async function cargarAnalisisFlags(){
      * no excepcion — se veia igual que "no hay nada fuera de criterio".
      * Se aceptan las dos formas por si alguna vez la ruta pasa a envolverlo. */
     const filas = Array.isArray(j) ? j : (j.analisis || []);
-    _analisisFlags = new Map();
-    for (const row of filas){
-      _analisisFlags.set(row.idx, {
+    const arr = DATOS().analisis || [];
+    /* Solo se enganchan si el documento local sigue siendo el que se tenia al
+     * pedir, sin cambios, y si cada posicion del servidor cae en un registro
+     * del mismo lote y fecha. Si otra PC guardo en el medio, el array del
+     * servidor es otro: el chequeo de lote+fecha lo detecta y se descartan
+     * todos (sin colores) antes que pintar filas equivocadas. */
+    const mismoDoc = arr === arrPedido && ((DATOS().meta || {}).version ?? null) === vPedido
+      && !_hayCambiosSinGuardar() && filas.length === arr.length;
+    const calza = mismoDoc && filas.every(row => {
+      const a = arr[row.idx];
+      return !!a && String(a.lote ?? '') === String(row.lote ?? '')
+        && String(a.fecha_analisis ?? '') === String(row.fecha_analisis ?? '');
+    });
+    _flagsVersion = vPedido;
+    /* Si no calzan quedan en null, y el repintado de abajo saca los colores
+     * que hubiera: describian otra version. */
+    _analisisFlags = calza ? new WeakMap() : null;
+    if (calza) for (const row of filas){
+      _analisisFlags.set(arr[row.idx], {
         fuera:  new Set(row.fuera || []),
         dentro: new Set(row.dentro || []),
         /* El molecular calculado viaja con el veredicto y no se recalcula en el
@@ -162,7 +215,6 @@ async function cargarAnalisisFlags(){
         molec: row.so2_molec_calc ?? null,
       });
     }
-    _flagsVersion = (DATOS().meta || {}).version ?? null;
     /* Repintar con colores una vez que lleguen los flags, pero solo si la
      * pestaña se esta viendo: con los datos reales cada render de esta tabla
      * son ~3 s. Si esta oculta (el prefetch del arranque), queda marcada como
@@ -222,7 +274,7 @@ function _valorDeColumna(a, k){
   if (k === 'lote') return String(a.lote ?? '');
   if (CAMPOS_DEL_LOTE.has(k)) return _delLote(a, k);
   if (k === 'so2_molecular'){
-    const v = _analisisFlags && _analisisFlags.get(_ctxRender.idxDeAnalisis.get(a));
+    const v = _veredictoDe(a);
     return _fmtMolec(v ? v.molec : null);
   }
   if (CAMPOS_CORRECCION.has(k)) return (a.correccion || {})[k] ?? '';
@@ -395,22 +447,19 @@ export function renderAnalisis(){
   /* Contexto de ESTE render: lo lee _valorDeColumna, que corre una vez por
    * analisis y por columna.
    *
-   * idxDeAnalisis es un solo Map objeto->posicion por render, en lugar de un
-   * indexOf por fila. Lo necesitan los tres lugares que precisan la posicion
-   * del registro dentro de DATOS().analisis: el filtro de "solo fuera de
-   * criterio", el pintado y la columna SO2 molecular (los veredictos que
-   * devuelve la API vienen indexados por esa posicion).
+   * Ya no lleva el mapa objeto->posicion: los veredictos se guardan por
+   * OBJETO (ver _analisisFlags), asi que el filtro de "solo fuera de
+   * criterio", el pintado y la columna SO2 molecular los leen directo del
+   * registro, sin pasar por su posicion en DATOS().analisis.
    *
    * OJO: vale SOLO durante este render. El handler de borrado, que se cablea
    * una sola vez y sobrevive a todos los renders, sigue usando indexOf a
-   * proposito — capturar este mapa lo dejaria mirando un array viejo. */
+   * proposito — capturar este contexto lo dejaria mirando datos viejos. */
   _ctxRender = {
     loteObjMap: _buildLoteObjMap(),
-    idxDeAnalisis: indicesPorObjeto(DATOS().analisis),
   };
 
   const loteObjMap = _ctxRender.loteObjMap;
-  const idxDeAnalisis = _ctxRender.idxDeAnalisis;
 
   /* Los filtros se montan ANTES de armar el HTML, y no despues como cuando
    * vivian en la toolbar. Dos motivos: el <thead> necesita fltPorColAn para
@@ -457,11 +506,9 @@ export function renderAnalisis(){
   if (_filtAnalisisTipo === 'fuera' && _analisisFlags){
     filtroFilaVirtual = (fila) => {
       if (fila.tipo !== 'quimica') return false;
-      /* get() devuelve undefined donde indexOf devolvia -1; en los dos casos
-       * _analisisFlags.get(...) da undefined y la fila no pasa, asi que el
-       * resultado es el mismo. */
-      const idx = idxDeAnalisis.get(fila.analisis);
-      const v = _analisisFlags.get(idx);
+      /* Un registro sin veredicto (editado despues del ultimo Guardar, o de
+       * un DATOS() rearmado por una fusion) no pasa: no se sabe si esta fuera. */
+      const v = _veredictoDe(fila.analisis);
       return !!v && v.fuera.size > 0;
     };
   }
@@ -569,7 +616,7 @@ export function renderAnalisis(){
    * veredictos de ninguna. En los dos casos devuelve SIN_VEREDICTO, o sea los
    * dos conjuntos vacios, y el pintado no necesita preguntar por null. */
   const veredictoDe = (fila) => (fila.tipo === 'quimica' && _analisisFlags)
-    ? (_analisisFlags.get(idxDeAnalisis.get(fila.analisis)) || SIN_VEREDICTO)
+    ? (_veredictoDe(fila.analisis) || SIN_VEREDICTO)
     : SIN_VEREDICTO;
 
   /* Estado de cada lote, para pintar su separador.
@@ -749,7 +796,12 @@ export function renderAnalisis(){
        * Vuelve al guardar: ahi sube la version del documento y la pestaña
        * repide los veredictos (ver registrarVista al final del archivo). Se
        * prefiere una celda sin color a una celda con el color equivocado. */
-      if (METRICAS_CON_CRITERIO.has(el.dataset.k)) _descolorarFila(el.closest('tr'));
+      if (METRICAS_CON_CRITERIO.has(el.dataset.k)){
+        _descolorarFila(el.closest('tr'));
+        // Y fuera del DOM: si no, el proximo repintado (ordenar, filtrar) le
+        // devolvia el color viejo.
+        _olvidarVeredicto(fila.analisis);
+      }
       markDirty();
     });
     t.addEventListener('click', e => {
@@ -767,6 +819,7 @@ export function renderAnalisis(){
 
       if (esQuimica){
         for (const campo of CAMPOS_QUIMICA_A_VACIAR) o[campo] = null;
+        _olvidarVeredicto(o);
       } else if (o.correccion){
         /* Borrar el objeto entero, no campo por campo: la correccion trae
          * otras claves (so2_libre_actual, diferencia, fecha) que escribe
@@ -782,10 +835,14 @@ export function renderAnalisis(){
         if (idx !== -1) DATOS().analisis.splice(idx, 1);
       }
 
-      _analisisFlags = null;
+      /* Ya NO se vuelven a pedir los veredictos aca. Antes se pedian en el
+       * acto, pero el servidor los calcula sobre lo GUARDADO, donde esta fila
+       * todavia existe: indexados por posicion, todo lo que estaba debajo del
+       * borrado se pintaba con el color de la fila de al lado. Por objeto, las
+       * demas filas conservan el suyo, que sigue valiendo; los frescos llegan
+       * al guardar. */
       markDirty();
       renderAnalisis();
-      cargarAnalisisFlags();
     });
   }
 
@@ -866,10 +923,16 @@ export function renderAnalisis(){
     },
     escribir(fila, k, texto){
       if (!fila) return 'ro';
-      return _escribirColumnaAnalisis(fila.analisis, k, texto, fila.tipo);
+      const estado = _escribirColumnaAnalisis(fila.analisis, k, texto, fila.tipo);
+      /* Pegar o Ctrl+D sobre una medicion deja su veredicto viejo: mismo
+       * criterio que el tipeo a mano (ver el listener de 'input'). */
+      if (estado === 'ok' && METRICAS_CON_CRITERIO.has(k)) _olvidarVeredicto(fila.analisis);
+      return estado;
     },
     escribirCrudo(fila, k, valor){
       if (!fila) return;
+      // El Ctrl+Z tambien cambia la medicion: el veredicto ya no vale.
+      if (METRICAS_CON_CRITERIO.has(k)) _olvidarVeredicto(fila.analisis);
       if (CAMPOS_CORRECCION.has(k)){
         if (!fila.analisis.correccion) fila.analisis.correccion = {};
         fila.analisis.correccion[k] = valor;
@@ -918,6 +981,12 @@ registrarInit(() => {
   if (window.requestIdleCallback) requestIdleCallback(pedir, { timeout: 3000 });
   else setTimeout(pedir, 1500);
 });
+
+/* nucleo avisa cuando reemplaza todos los objetos de DATOS() (recarga, o
+ * fusion tras un 409). Los veredictos estan enganchados a los objetos viejos,
+ * asi que ya no le sirven a nadie: se sueltan para que registrarVista los de
+ * por vencidos y los vuelva a pedir en cuanto no haya cambios sin guardar. */
+document.addEventListener('lotes:datos-recargados', () => { _analisisFlags = null; });
 
 registrarVista('analisis', () => {
   renderAnalisis();

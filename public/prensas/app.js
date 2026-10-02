@@ -45,7 +45,10 @@ function nextAgregadoId(){ let mx=0; for(const a of DATOS.agregados){ const n=+a
 let BASE = null;
 const FUSION = window.CIWFusion;
 const borradorActual = () => ({ base: BASE, local: DATOS });
-function markDirty(){ dirty=true; $('btnGuardar').disabled=false; const s=$('status'); s.textContent='● Cambios sin guardar'; s.className='status dirty';
+/* Cuenta las ediciones: si mientras viaja un guardado se edita algo más, al
+   volver la respuesta la pantalla NO queda como guardada (eso no se envió). */
+let ediciones = 0;
+function markDirty(){ ediciones++; dirty=true; $('btnGuardar').disabled=false; const s=$('status'); s.textContent='● Cambios sin guardar'; s.className='status dirty';
   if(FUSION && DATOS) FUSION.borrador.programar('prensas', borradorActual); }
 function markSaved(){ dirty=false; $('btnGuardar').disabled=true; const s=$('status'); s.textContent='✓ Guardado (v'+DATOS.meta.version+')'; s.className='status saved'; }
 
@@ -84,7 +87,17 @@ function cerrarOverlay(){ $('overlay').classList.remove('show'); }
 
 /* ---------- API ---------- */
 async function cargar(){
-  const r = await fetch(API+'/datos'); DATOS = await r.json();
+  const r = await fetch(API+'/datos');
+  if(!r.ok){
+    // Sin esto, un 401/403/500 quedaba como DATOS={error…} y la pantalla se
+    // rompía a medio cargar sin decir nada.
+    if(r.status===401){ location.replace('/login.html'); return; }
+    const j=await r.json().catch(()=>({}));
+    if(j.error==='debe_cambiar_clave'){ location.replace('/cambiar-clave.html'); return; }
+    $('status').textContent='No se pudieron cargar los datos ('+r.status+'): '+((j.detalles&&j.detalles[0])||'probá recargar.');
+    return;
+  }
+  DATOS = await r.json();
   DATOS.meta = DATOS.meta || {version:0};
   DATOS.degustaciones = DATOS.degustaciones || [];
   DATOS.agregados = DATOS.agregados || [];
@@ -162,9 +175,13 @@ async function guardar(forzar, intento=0){
   if(!dirty) return true;
   DATOS.meta.autor = usuarioActual() || pedirUsuario(true) || 'desconocido';
   if(FUSION) await FUSION.borrador.guardar('prensas', borradorActual);
+  // Lo que se envía es esta foto: si se sigue editando durante el viaje, eso
+  // queda pendiente para el próximo guardado.
+  const enviado = JSON.stringify(DATOS);
+  const edicionesAlEnviar = ediciones;
   let r;
   try{
-    r = await fetch(API+'/datos'+(forzar?'?forzar=1':''), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(DATOS)});
+    r = await fetch(API+'/datos'+(forzar?'?forzar=1':''), {method:'POST', headers:{'Content-Type':'application/json'}, body:enviado});
   }catch(e){
     alert('No se pudo guardar: no hay conexión con el servidor. Tus cambios siguen en pantalla y quedaron guardados en este equipo; probá de nuevo cuando vuelva la señal.');
     return false;
@@ -205,10 +222,23 @@ async function guardar(forzar, intento=0){
       '<button class="btn primary" onclick="location.reload()">🔄 Recargar y recuperar</button>');
     return false;
   }
+  if(r.status===403){
+    const j=await r.json().catch(()=>({}));
+    alert('No se pudo guardar: '+((j.detalles&&j.detalles[0])||'tu usuario no tiene permiso para guardar en Prensas.'));
+    return false;
+  }
   if(!r.ok){ alert('Error al guardar: '+r.status+'. Tus cambios siguen en pantalla y guardados en este equipo.'); return false; }
   const j = await r.json();
   DATOS.meta.version = j.version; DATOS.meta.guardado = j.guardado;
-  if(FUSION){ BASE = FUSION.clonar(DATOS); FUSION.borrador.borrar('prensas'); }
+  // La base pasa a ser lo que efectivamente llegó al servidor, no la pantalla
+  // actual (que puede tener ediciones posteriores, todavía sin enviar).
+  if(FUSION){ BASE = JSON.parse(enviado); BASE.meta.version = j.version; BASE.meta.guardado = j.guardado; }
+  if(ediciones !== edicionesAlEnviar){
+    // Se editó durante el viaje: queda pendiente (y en el borrador del equipo).
+    markDirty();
+    return true;
+  }
+  if(FUSION) FUSION.borrador.borrar('prensas');
   markSaved();
   if(intento>0){ const s=$('status'); s.textContent='✓ Guardado (v'+DATOS.meta.version+') · combinado con lo que guardaron otros'; }
   try{ postGuardarDeg(); }catch(e){}
@@ -350,7 +380,10 @@ function sortRows(rows,st){ return [...rows].sort((a,b)=>{let x=a[st.key],y=b[st
 function tablaSimple(id,rows,cols,st,onSort){
   const sorted=sortRows(rows,st);
   let h='<thead><tr>'+cols.map(c=>{const ar=st.key===c.key?`<span class="arrow">${st.dir>0?'▲':'▼'}</span>`:''; return `<th data-k="${c.key}" class="${c.num?'num':''}">${c.label}${ar}</th>`;}).join('')+'</tr></thead>';
-  h+='<tbody>'+sorted.map(f=>'<tr>'+cols.map(c=>{let v=c.render?c.render(f):(f[c.key]==null?'—':f[c.key]); const cl=(c.num?'num ':'')+(c.bad&&c.bad(f)?'val-bad':''); return `<td class="${cl}">${v}</td>`;}).join('')+'</tr>').join('')+'</tbody>';
+  // Los valores crudos se escapan: los cargó cualquier editor y los ve todo el mundo,
+  // admins incluidos (un "<img onerror=…>" en la variedad corría en su sesión).
+  // Lo que viene de c.render ya es HTML armado por la app.
+  h+='<tbody>'+sorted.map(f=>'<tr>'+cols.map(c=>{let v=c.render?c.render(f):(f[c.key]==null?'—':esc(f[c.key])); const cl=(c.num?'num ':'')+(c.bad&&c.bad(f)?'val-bad':''); return `<td class="${cl}">${v}</td>`;}).join('')+'</tr>').join('')+'</tbody>';
   const t=$(id); t.innerHTML=h;
   t.querySelectorAll('th').forEach(th=>th.onclick=()=>onSort(th.dataset.k));
 }
@@ -452,7 +485,7 @@ function tablaEditable(id, cols, rows, sort, onSort, onDel, rowClass, flt){
     const rc = rowClass ? (rowClass(o)||'') : '';
     tb+=`<tr class="${rc}">`;
     for(const c of cols){
-      if(c.ro){ const v=c.compute?c.compute(o):o[c.k]; tb+=`<td class="ro ${c.num?'num':''}">${v==null?'':v}</td>`; }
+      if(c.ro){ const v=c.compute?c.compute(o):o[c.k]; tb+=`<td class="ro ${c.num?'num':''}">${v==null?'':esc(v)}</td>`; }
       else { const v=o[c.k]==null?'':o[c.k]; const bad=c.bad&&c.bad(o)?'bad2':''; tb+=`<td><input class="cell ${c.num?'num':''} ${bad}" type="${c.date?'date':'text'}" data-row="${ri}" data-k="${c.k}" value="${escA(v)}"></td>`; }
     }
     tb+=`<td><button class="rowbtn" data-del="${ri}" title="Eliminar">✕</button></td></tr>`;
@@ -856,7 +889,7 @@ function renderRiesgo(){
   filas=filas.filter(f=>pasaMulti(f,_descRiesgo));
   filas.sort((a,b)=>(+a.lote)-(+b.lote));
   const avBad=v=>v!=null&&v>REGLAS.AV_ATENCION, malBad=badMalico, glBad=badGluc;
-  const fmt=v=>(v==null||v==='')?'—':v;
+  const fmt=v=>(v==null||v==='')?'—':esc(v);
   const heads=['Lote','Variedad','Prensa','Análisis','Mes','Fecha','pH','AV','Gluc/Fruc','Málico','Motivo'];
   /* avAlerta resalta el AV del último análisis cuando hubo salto, aunque el valor
      esté por debajo de 0.85 y no sea "malo" por sí solo. */
@@ -869,7 +902,7 @@ function renderRiesgo(){
   let h='<thead><tr>'+heads.map(x=>`<th>${x}</th>`).join('')+'</tr></thead><tbody>';
   for(const f of filas){
     const rs=f.pen?2:1;
-    const ini=`<td class="num" rowspan="${rs}">${f.lote}</td><td rowspan="${rs}">${esc(f.variedad||'—')}</td><td rowspan="${rs}">${esc(f.prensa||'—')}</td>`;
+    const ini=`<td class="num" rowspan="${rs}">${esc(f.lote)}</td><td rowspan="${rs}">${esc(f.variedad||'—')}</td><td rowspan="${rs}">${esc(f.prensa||'—')}</td>`;
     const motivo=`<td rowspan="${rs}"><span class="pill bad">${esc(f.motivo)}</span></td>`;
     if(f.pen){
       h+=`<tr class="rg-top">${ini}<td class="ro">Penúlt.</td>${celdasAna(f.pen)}${motivo}</tr>`;
@@ -952,7 +985,7 @@ function renderDegustacion(){
       if(r.motivo==='Otro') mot+=`<input class="deg-otro" data-degotro="${escA(r.lote)}" placeholder="especificar…" value="${escA(r.motivo_detalle||'')}">`;
     }
     tb+=`<tr class="${r.estado==='nook'?'crit':''}">`
-      +`<td class="num">${r.lote==null?'':r.lote}</td>`
+      +`<td class="num">${r.lote==null?'':esc(r.lote)}</td>`
       +`<td>${r.id_origen==null||r.id_origen===''?dash:esc(r.id_origen)}</td>`
       +`<td class="num">${r.dias==null?dash:r.dias+' d'}</td>`
       +`<td><input class="cell deg-com" data-degcom="${escA(r.lote)}" value="${escA(r.comentario||'')}" placeholder="comentario sensorial…"></td>`
@@ -1097,7 +1130,8 @@ function analizarPegado(){
   let h='<thead><tr>'+cols.map(c=>`<th>${c[1]}</th>`).join('')+'</tr></thead><tbody>';
   h+=cargaPreview.map(p=>{
     const pill=p.estado==='ok'?'<span class="pill ok">✓</span>':p.estado==='warn'?'<span class="pill warn">!</span>':'<span class="pill bad">✕</span>';
-    return '<tr>'+`<td>${pill}</td><td class="num">${p.row.lote||'—'}</td><td>${p.row.fecha||'—'}</td><td class="num">${p.row.ph??'—'}</td><td class="num">${p.row.av??'—'}</td><td class="num">${p.row.gluc??'—'}</td><td class="num">${p.row.malico??'—'}</td><td class="num">${p.row.so2l??'—'}</td><td style="color:var(--muted)">${p.motivo}</td>`+'</tr>';
+    const e=v=>(v==null||v==='')?'—':esc(v);
+    return '<tr>'+`<td>${pill}</td><td class="num">${e(p.row.lote)}</td><td>${e(p.row.fecha)}</td><td class="num">${e(p.row.ph)}</td><td class="num">${e(p.row.av)}</td><td class="num">${e(p.row.gluc)}</td><td class="num">${e(p.row.malico)}</td><td class="num">${e(p.row.so2l)}</td><td style="color:var(--muted)">${esc(p.motivo)}</td>`+'</tr>';
   }).join('')+'</tbody>';
   $('tPreview').innerHTML=h;
   $('btnConfirmarCarga').style.display = okN>0?'inline-block':'none';
@@ -1160,7 +1194,8 @@ function analizarPegadoAgr(){
   let h='<thead><tr>'+cols.map(c=>`<th>${c[1]}</th>`).join('')+'</tr></thead><tbody>';
   h+=agrCargaPreview.map(p=>{
     const pill=p.estado==='ok'?'<span class="pill ok">✓</span>':p.estado==='warn'?'<span class="pill warn">!</span>':'<span class="pill bad">✕</span>';
-    return '<tr>'+`<td>${pill}</td><td class="num">${p.row.lote||'—'}</td><td>${p.row.fecha||'—'}</td><td>${esc(p.row.tipo)||'—'}</td><td class="num">${p.row.cantidad??'—'}</td><td>${esc(p.row.unidad)||'—'}</td><td style="color:var(--muted)">${esc(p.motivo)}</td>`+'</tr>';
+    const e=v=>(v==null||v==='')?'—':esc(v);
+    return '<tr>'+`<td>${pill}</td><td class="num">${e(p.row.lote)}</td><td>${e(p.row.fecha)}</td><td>${esc(p.row.tipo)||'—'}</td><td class="num">${e(p.row.cantidad)}</td><td>${esc(p.row.unidad)||'—'}</td><td style="color:var(--muted)">${esc(p.motivo)}</td>`+'</tr>';
   }).join('')+'</tbody>';
   $('tAgrPreview').innerHTML=h;
   $('btnConfirmarCargaAgr').style.display = okN>0?'inline-block':'none';
@@ -1190,9 +1225,9 @@ function miniLineSVG(pts, limit, color, labels, incl){
   if(limit>=ymin&&limit<=ymax){const ly=sy(limit); g+=`<line x1="${m.l}" y1="${ly}" x2="${W-m.r}" y2="${ly}" stroke="#c0473b" stroke-width="1" stroke-dasharray="4 3"/><text x="${W-m.r-2}" y="${ly-3}" fill="#c0473b" font-size="9" text-anchor="end">límite ${limit}</text>`;}
   const s=[...pts].sort((a,b)=>a.x-b.x);
   g+=`<polyline fill="none" stroke="${color}" stroke-width="2" points="${s.map(p=>sx(p.x).toFixed(1)+','+sy(p.y).toFixed(1)).join(' ')}"/>`;
-  g+=s.map(p=>{const lab=labels&&labels[p.x]!=null?labels[p.x]:p.x; return `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="3.5" fill="${((incl?p.y>=limit:p.y>limit)||p.y==-999)?'#c0473b':color}"><title>${lab}: ${p.y}</title></circle>`;}).join('');
+  g+=s.map(p=>{const lab=esc(labels&&labels[p.x]!=null?labels[p.x]:p.x); return `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="3.5" fill="${((incl?p.y>=limit:p.y>limit)||p.y==-999)?'#c0473b':color}"><title>${lab}: ${p.y}</title></circle>`;}).join('');
   const skip=labels&&labels.length>9?Math.ceil(labels.length/9):1;
-  g+=s.map((p,i)=>{ if(i%skip!==0) return ''; const lab=labels&&labels[p.x]!=null?labels[p.x]:p.x;
+  g+=s.map((p,i)=>{ if(i%skip!==0) return ''; const lab=esc(labels&&labels[p.x]!=null?labels[p.x]:p.x);
     return `<text x="${sx(p.x).toFixed(1)}" y="${H-m.b+12}" fill="#8c857b" font-size="8" text-anchor="middle" transform="rotate(-30 ${sx(p.x).toFixed(1)} ${H-m.b+12})">${lab}</text>`;}).join('');
   g+=`<text x="${m.l-4}" y="${H-m.b+3}" fill="#8c857b" font-size="9" text-anchor="end">${ymin.toFixed(1)}</text><text x="${m.l-4}" y="${m.t+8}" fill="#8c857b" font-size="9" text-anchor="end">${ymax.toFixed(1)}</text>`;
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${g}</svg>`;
@@ -1205,7 +1240,7 @@ const evoAbiertos=new Set();         // lotes con el detalle expandido
 let _evoModelCache=new Map();        // lote -> item, para el lazy-render/expand
 let _evoObserver=null;
 
-function initAgrLotes(){ const dl=$('agrLotes'); if(dl) dl.innerHTML=DATOS.lotes.map(l=>`<option value="${l.lote}">`).join(''); }
+function initAgrLotes(){ const dl=$('agrLotes'); if(dl) dl.innerHTML=DATOS.lotes.map(l=>`<option value="${escA(l.lote??'')}">`).join(''); }
 
 function initFiltrosEvo(){
   _descEvo=[
@@ -1275,7 +1310,7 @@ function evoChartsHTML(it){
 
 // Detalle estático (sin ordenar por columna) para mantenerlo simple por tarjeta.
 function evoDetalleHTML(it){
-  const cell=v=>v==null?'—':v;
+  const cell=v=>v==null?'—':esc(v);
   const cols=[['mes','Mes'],['fecha','Fecha'],['ph','pH'],['av','AV'],['gluc','Gluc/Fruc'],['malico','Málico'],['at','AT'],['so2l','SO2 L']];
   const meds=it.rows.map(a=>({mes:a._mes,fecha:a.fecha,ph:num(a.ph),av:num(a.av),gluc:num(a.gluc),malico:num(a.malico),at:num(a.at),so2l:num(a.so2l)}));
   let med=`<h4>Mediciones del lote</h4><div class="scroll"><table><thead><tr>`
@@ -1716,8 +1751,8 @@ function setup(){
       const bm=e.target.closest('[data-degmotivo]'); if(bm){ setDegMotivo(bm.dataset.degmotivo, bm.dataset.m); return; }
     });
     td.addEventListener('input',e=>{
-      const ci=e.target.closest('[data-degcom]'); if(ci){ const dg=getDegRow(ci.dataset.degcom,mesActual(),true); dg.comentario=ci.value; if(dg.estado&&!dg.fecha)dg.fecha=($('degFecha').value||null); podarDeg(dg); markDirty(); return; }
-      const oi=e.target.closest('[data-degotro]'); if(oi){ const dg=getDegRow(oi.dataset.degotro,mesActual(),true); dg.motivo_detalle=oi.value; markDirty(); return; }
+      const ci=e.target.closest('[data-degcom]'); if(ci){ const dg=getDegRow(ci.dataset.degcom,mesDeg(),true); dg.comentario=ci.value; if(dg.estado&&!dg.fecha)dg.fecha=($('degFecha').value||null); podarDeg(dg); markDirty(); return; }
+      const oi=e.target.closest('[data-degotro]'); if(oi){ const dg=getDegRow(oi.dataset.degotro,mesDeg(),true); dg.motivo_detalle=oi.value; markDirty(); return; }
     });
   })();
   // acción rápida (corrección SO2)

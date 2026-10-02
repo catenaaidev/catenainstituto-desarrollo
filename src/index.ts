@@ -29,6 +29,7 @@ import { PLANTILLA as PLANTILLA_PRENSAS } from './prensas/reporte-plantilla';
 import { construirReporte as construirReporteLotes } from './lotes/reporte';
 
 const MODULOS: Modulo[] = ['prensas', 'barriles', 'lotes'];
+const ICONO = '<link rel="icon" type="image/svg+xml" href="/favicon.svg">\n';
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -255,6 +256,9 @@ async function servirConIdentidad(
   const contexto = { email: id.email, nombre, rol: id.rol, modulo, modulos };
 
   const inyeccion =
+    // Ícono de la pestaña: sin él, el navegador muestra el globo genérico y
+    // parece que la página no terminó de cargar.
+    ICONO +
     `<script>/* Identidad de la cuenta de la plataforma y contexto de la plataforma, puestos por el servidor. */\n` +
     // Prensas y Lotes preguntan el nombre por prompt y lo guardan acá; se lo
     // dejamos puesto para que no lo pregunten.
@@ -327,20 +331,48 @@ async function servirReporte(
   } else {
     // La plantilla de Prensas trae su propio JS y renderiza en el navegador:
     // solo hay que inyectarle los datos, igual que hacía generar() en Python.
-    const datosJson = JSON.stringify(datos).replace(/<\//g, '<\/');
+    //
+    // Los datos van dentro de un <script>: cualquier "<" se pasa a < para que
+    // un texto cargado por un editor ("</script><script>…") no pueda cerrar el
+    // bloque y correr en la sesión de quien abre el reporte. (El viejo
+    // .replace(/<\//g, '<\/') no hacía nada: '<\/' y '</' son el mismo string.)
+    // Los reemplazos van con función: con un string, `$&` o `$'` en los datos se
+    // expandirían como patrones de replace.
+    //
+    // Además, la plantilla (copia de reporte.py) arma sus tablas con innerHTML sin
+    // escapar nada: los textos se escapan acá, antes de entrar. El reporte solo
+    // muestra, así que se ven igual.
+    const datosJson = JSON.stringify(escaparTextos(datos))
+      .replace(/</g, '\\u003c')
+      .split(String.fromCharCode(0x2028)).join('\\u2028')
+      .split(String.fromCharCode(0x2029)).join('\\u2029');
     const meta = (datos.meta ?? {}) as Record<string, unknown>;
     const mes = Number(meta.mes_actual) || 1;
-    html = PLANTILLA_PRENSAS.replace('__DATOS__', datosJson)
-      .replace('__MES_ACTUAL__', String(mes))
-      .replace('__REF_FECHA__', ahora.slice(0, 10))
-      .replace('__VERSION__', String(fila.version))
-      .replace('__GENERADO__', ahora);
+    html = PLANTILLA_PRENSAS.replace('__DATOS__', () => datosJson)
+      .replace('__MES_ACTUAL__', () => String(mes))
+      .replace('__REF_FECHA__', () => ahora.slice(0, 10))
+      .replace('__VERSION__', () => String(fila.version))
+      .replace('__GENERADO__', () => ahora);
   }
+
+  html = html.replace('</head>', () => ICONO + '</head>');
 
   return new Response(html, {
     status: 200,
     headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
   });
+}
+
+/** Copia profunda con todos los strings escapados para HTML. */
+function escaparTextos(v: unknown): unknown {
+  if (typeof v === 'string') {
+    return v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+  }
+  if (Array.isArray(v)) return v.map(escaparTextos);
+  if (v && typeof v === 'object') {
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, escaparTextos(x)]));
+  }
+  return v;
 }
 
 /** Fecha y hora en la bodega: YYYY-MM-DD HH:MM */

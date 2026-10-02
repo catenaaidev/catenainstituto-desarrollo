@@ -22,6 +22,7 @@
  */
 
 import { normalizarLote } from './linaje';
+import { filasDe } from './fml-condiciones';
 import type { Fila } from './fml';
 
 export interface Unidad {
@@ -45,6 +46,11 @@ export interface MapaNormalizado {
   lotes_con_tanque: Set<string>;
   conflictos: Conflicto[];
 }
+
+// Las listas del estado pasan por filasDe(): el guardado de Barriles acepta
+// `inventario: {}` o entradas null, y el cast `as Fila[]` no las frenaba. Un
+// for...of sobre {} o un b.lote sobre null tiraban TypeError y el Worker caia
+// con un 1101 en /cruce y en /orden-correccion.
 
 /** {lote: [unidad, ...]}. Las unidades sin lote no entran. */
 function unidades(inventario: Fila[]): Map<string, Unidad[]> {
@@ -79,7 +85,10 @@ function posiciones(boxes: Fila[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const box of boxes) {
     const nombre = box.nombre || box.id || '?';
-    for (const [clave, valor] of Object.entries((box.celdas as Record<string, unknown>) ?? {})) {
+    // celdas tiene que ser un objeto: Object.entries de un texto daria una
+    // "posicion" por cada letra.
+    const celdas = box.celdas && typeof box.celdas === 'object' ? (box.celdas as Record<string, unknown>) : {};
+    for (const [clave, valor] of Object.entries(celdas)) {
       const L = normalizarLote(valor);
       if (!L) continue;
       const pos = `${nombre}/${clave}`;
@@ -131,8 +140,8 @@ export function normalizarMapa(documento: { version?: unknown; estado?: Fila } |
     throw new MapaNoDisponible('el estado del Mapa de Barriles no es un objeto');
   }
 
-  const inventario = (estado.inventario as Fila[]) ?? [];
-  const tanques = (estado.tanques as Fila[]) ?? [];
+  const inventario = filasDe(estado.inventario);
+  const tanques = filasDe(estado.tanques);
 
   return {
     procedencia: {
@@ -142,7 +151,7 @@ export function normalizarMapa(documento: { version?: unknown; estado?: Fila } |
       fecha_inventario: String(estado.fechaInventario ?? ''),
     },
     unidades_por_lote: unidades(inventario),
-    posiciones: posiciones((estado.boxes as Fila[]) ?? []),
+    posiciones: posiciones(filasDe(estado.boxes)),
     // Desde el inventario simple de Barriles (2026-09-28) el lote de un tanque
     // vive en su fila del inventario y `tanques` desaparece al migrar. Mientras
     // no se migre, se siguen leyendo los dos.
@@ -155,6 +164,6 @@ export function normalizarMapa(documento: { version?: unknown; estado?: Fila } |
           .map((b) => b.lote),
       ].map((l) => normalizarLote(l)).filter((l): l is string => Boolean(l)),
     ),
-    conflictos: conflictos(inventario, tanques, (estado.revisiones as Fila[]) ?? []),
+    conflictos: conflictos(inventario, tanques, filasDe(estado.revisiones)),
   };
 }

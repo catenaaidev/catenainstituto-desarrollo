@@ -180,6 +180,47 @@ describe('fusionar documentos de módulo', () => {
     expect(fusionarDocumento(b, yo, otro).lotes[0].litros).toBe(900);
   });
 
+  it('dos agregados nuevos con el mismo id (el mayor + 1) quedan los dos, con ids distintos', () => {
+    const b = { meta: { version: 1 }, agregados: [{ id: 10, lote: 101, tipo: 'SO2' }] };
+    const yo = clonar(b); yo.agregados.push({ id: 11, lote: 101, tipo: 'TH2', cantidad: 5 });
+    const otro = clonar(b); otro.agregados.push({ id: 11, lote: 102, tipo: 'SO2', cantidad: 3 });
+    const r = fusionarDocumento(b, yo, otro).agregados;
+    expect(r).toHaveLength(3);
+    expect(r).toContainEqual({ id: 11, lote: 102, tipo: 'SO2', cantidad: 3 });
+    expect(r.find((a) => a.tipo === 'TH2')).toMatchObject({ id: 12, lote: 101 });
+    expect(new Set(r.map((a) => a.id)).size).toBe(3);
+  });
+
+  it('si un guardado llegó pero se perdió la respuesta, reintentar no duplica filas', () => {
+    const b = base();
+    const yo = base(); yo.analisis.push({ lote: 102, fecha: '2026-10-01', ph: 3.7 });
+    // El servidor ya tiene esa fila (el guardado anterior entró) y una de otro.
+    const serv = base(); serv.analisis.push({ lote: 102, fecha: '2026-10-01', ph: 3.7 });
+    serv.analisis.push({ lote: 101, fecha: '2026-10-02', ph: 3.3 });
+    yo.analisis.push({ lote: 101, fecha: '2026-10-05', ph: 3.2 });   // y sigo cargando
+    const r = fusionarDocumento(b, yo, serv).analisis;
+    expect(r.filter((a) => a.lote === 102 && a.fecha === '2026-10-01')).toHaveLength(1);
+    expect(r).toHaveLength(5);
+  });
+
+  it('un lote con número en blanco no hace que se dupliquen los demás al editarlos', () => {
+    const b = base(); b.lotes.push({ lote: null, variedad: '' });
+    const yo = clonar(b); yo.lotes[0].comentario = 'trasegar';
+    const otro = clonar(b); otro.lotes[0].litros = 950;
+    const r = fusionarDocumento(b, yo, otro).lotes;
+    expect(r.filter((l) => l.lote === 101)).toHaveLength(1);
+    expect(r.find((l) => l.lote === 101)).toMatchObject({ comentario: 'trasegar', litros: 950 });
+    expect(r).toHaveLength(3);
+  });
+
+  it('degustaciones: una por lote y mes, se combinan campo por campo', () => {
+    const b = { meta: { version: 1 }, degustaciones: [{ lote: 101, mes: 9, estado: null, comentario: '' }] };
+    const yo = clonar(b); yo.degustaciones[0].comentario = 'reducido';
+    const otro = clonar(b); otro.degustaciones[0].estado = 'nook';
+    const r = fusionarDocumento(b, yo, otro).degustaciones;
+    expect(r).toEqual([{ lote: 101, mes: 9, estado: 'nook', comentario: 'reducido' }]);
+  });
+
   it('no muta los documentos que recibe', () => {
     const b = base(); const yo = base(); yo.lotes[0].litros = 1; const otro = base(); otro.lotes[1].litros = 2;
     const copia = JSON.stringify([b, yo, otro]);

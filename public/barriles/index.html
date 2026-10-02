@@ -27,6 +27,11 @@ const API='/barriles/api';</script>
      porque el arranque de la página corre durante el parseo: un type="module"
      llegaría tarde. Se testea en test/barriles-altas.test.mjs. -->
 <script src="js/altas.js"></script>
+<!-- La sincronización con el servidor: cómo leer cada respuesta (401 no es
+     "sin conexión"), el límite de tiempo de los pedidos y la fusión de boxes,
+     palets y valores sueltos al reintentar un 409. Va acá, como script clásico,
+     por lo mismo que los de arriba. Se testea en test/barriles-sync.test.mjs. -->
+<script src="js/sync.js"></script>
 <style>
   :root {
     --vino: #6b1f3a; --vino-osc: #4a1428; --crema: #faf6f0;
@@ -111,6 +116,19 @@ const API='/barriles/api';</script>
   #veloSinConexion .titulo { font-size: 1.3rem; font-weight: 800; color: var(--error); margin-bottom: 10px; }
   #veloSinConexion p { margin-top: 8px; font-size: .95rem; }
   #veloSinConexion .pend { background: #fdecea; border-radius: 8px; padding: 8px; }
+  #veloSinConexion .login { display: inline-block; margin-top: 12px; background: var(--vino); color: #fff; padding: 10px 18px; border-radius: 8px; text-decoration: none; font-weight: 700; }
+  /* Solo lectura (rol lector, o el servidor dejó de aceptar cambios de este
+     usuario): se esconden las puertas de carga más visibles. Lo que quede
+     igual pasa por guardar(), que no encola nada y avisa. */
+  #avisoSoloLectura { display: none; background: #fff4e5; color: #7a4100; border-bottom: 2px solid var(--warn); padding: 8px 16px; font-size: .9rem; text-align: center; }
+  body.solo-lectura #avisoSoloLectura { display: block; }
+  body.solo-lectura #barBtnCamara, body.solo-lectura #barBtnAsociar, body.solo-lectura #barBtnVacia,
+  body.solo-lectura #btnImportar, body.solo-lectura #btnAltaVasijas, body.solo-lectura #btnBajaVasijas,
+  body.solo-lectura #btnImportarJSON, body.solo-lectura #btnAgregarBox, body.solo-lectura #btnAgregarPalet,
+  body.solo-lectura .esc-tipo, body.solo-lectura #escZona, body.solo-lectura #toggleModoLote,
+  body.solo-lectura #btnModoLibre, body.solo-lectura #btnModoLibre2d, body.solo-lectura .cam-btn-rotulo,
+  body.solo-lectura button[data-hecho], body.solo-lectura #btnQuitarBarril, body.solo-lectura #btnQuitarTanque,
+  body.solo-lectura #escHistorial [onclick^="escEditarOrden"], body.solo-lectura #escHistorial [onclick^="escBorrarOrden"] { display: none !important; }
   .btn-rev { padding: 3px 10px; font-size: .8rem; }
   .link-rev { background: none; border: 0; padding: 0; color: #777; font-size: .78rem; text-decoration: underline; cursor: pointer; }
   .tanda-alta { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
@@ -434,6 +452,7 @@ const API='/barriles/api';</script>
   <span class="estado-datos" id="estadoDatos">Sin inventario cargado</span>
   <label id="toggleModoLote" title="Cargar el mapa solo con el número de lote, sin inventario"><input type="checkbox" id="chkModoLote"> 🏷️ Modo por lote</label>
 </header>
+<div id="avisoSoloLectura" role="status">👁 <b>Solo lectura:</b> tu usuario puede consultar el mapa, el inventario y las órdenes, pero no cargar cambios. Si necesitás cargar, pedile a un administrador permiso de edición.</div>
 <nav id="navProgramador">
   <button data-panel="inventario" class="activo">📥 Inventario</button>
   <button data-panel="boxes">📦 Boxes y Palets</button>
@@ -536,15 +555,18 @@ const API='/barriles/api';</script>
     </div>
     <div class="tarjeta solo-prog">
       <h2>Copia de seguridad del trabajo</h2>
-      <p class="nota">El mapa se guarda automáticamente en este navegador. Para llevarlo a otra máquina o resguardarlo, exportá/importá un respaldo.</p>
+      <p class="nota">El mapa se guarda automáticamente en el servidor, y el servidor guarda una copia de cada versión. Esto es para tener además una copia propia en un archivo, o para volver a una.</p>
       <div class="fila-flex" style="margin-top:8px;">
         <button class="btn sec" id="btnExportarJSON">⬇ Exportar respaldo</button>
         <input type="file" id="archivoJSON" accept=".json" style="display:none;">
         <button class="btn sec" id="btnImportarJSON">⬆ Restaurar respaldo</button>
-        <button class="btn sec" id="btnDescargarDB">⬇ Descargar copia de la base (.db)</button>
-        <button class="btn peligro" id="btnBorrarTodo">🗑 Borrar todo</button>
+        <button class="btn sec" id="btnDescargarDB">⬇ Descargar copia del servidor (.json)</button>
       </div>
-      <p class="nota">La copia .db (base completa con historial) se descarga <b>solo desde esta computadora</b>, por seguridad. El respaldo .json y los Excel se pueden bajar desde cualquier dispositivo.</p>
+      <p class="nota">«Exportar respaldo» baja lo que ves en esta pantalla. «Descargar copia del servidor» baja lo que tiene guardado el servidor, con su número de versión; solo para administradores.</p>
+      <!-- Acá había un «🗑 Borrar todo». Decía "de este navegador", pero el mapa
+           vive en el servidor y es de todos; además recargaba la página antes de
+           que el guardado saliera, así que en la práctica no hacía nada. Se sacó:
+           vaciar el mapa compartido no es algo que deba estar a un botón. -->
     </div>
   </section>
 
@@ -830,7 +852,7 @@ const API='/barriles/api';</script>
         </ul>
         <ul data-modo="web">
           <li>Abrí la cámara del teléfono y escaneá el <b>código QR</b> de abajo.</li>
-          <li>La primera vez pide el <b>mail de la bodega</b> y un código de 6 dígitos que llega a ese mail.</li>
+          <li>La primera vez pide tu <b>usuario y contraseña</b> de la plataforma.</li>
           <li>Se abre la app en el celular. Listo — y anda desde cualquier conexión, no hace falta estar en el WiFi de la bodega.</li>
         </ul>
       </div>
@@ -983,11 +1005,15 @@ const API='/barriles/api';</script>
 </div>
 
 <div id="modal"><div id="modalContenido"></div></div>
-<!-- Sin conexión la app no acepta cambios: este velo tapa todo hasta que vuelva. -->
+<!-- Sin conexión (o sin sesión) la app no acepta cambios: este velo tapa todo
+     hasta que vuelva. Los textos cambian según el motivo (ver entrarSinConexion):
+     con la sesión cerrada ofrece iniciar sesión en OTRA pestaña, porque recargar
+     esta perdería lo que todavía no subió. -->
 <div id="veloSinConexion" role="alertdialog" aria-live="assertive">
   <div class="caja">
-    <div class="titulo">⛔ Sin conexión con el servidor</div>
-    <p>No se pueden cargar cambios hasta que vuelva la conexión. La app lo intenta sola cada 3 segundos.</p>
+    <div class="titulo" id="veloSinConexionTitulo">⛔ Sin conexión con el servidor</div>
+    <p id="veloSinConexionTexto">No se pueden cargar cambios hasta que vuelva la conexión. La app lo intenta sola cada 3 segundos.</p>
+    <a id="veloSinConexionLogin" class="login" href="/login.html" target="_blank" rel="noopener" style="display:none;">Iniciar sesión (se abre en otra pestaña)</a>
     <p id="veloSinConexionPend" class="pend">⚠ Tu último cambio todavía <b>no llegó</b> al servidor. <b>No cierres ni recargues esta página</b>: se sube solo cuando vuelva la conexión.</p>
   </div>
 </div>
@@ -1010,8 +1036,9 @@ const API='/barriles/api';</script>
 try { ['mapaBarriles_v1', 'mapaBarriles_base_v1', 'mapaBarriles_pendiente_v1'].forEach(k => localStorage.removeItem(k)); } catch (e) {}
 
 // Hay algo escrito en esta pestaña que el servidor todavía no confirmó. Vive en
-// memoria a propósito: sin copia local, recargar la página lo pierde, y el velo
-// de "sin conexión" lo avisa mientras pasa.
+// memoria a propósito: sin copia local, recargar la página lo pierde. Por eso,
+// mientras está en true, la insignia dice "guardando…", el velo lo avisa y el
+// navegador pregunta antes de cerrar o recargar (beforeunload, más abajo).
 let pendienteLocal = false;
 // Sello de "cuánto se escribió en esta pestaña": distingue, cuando vuelve el 200
 // de un POST, "esto es todo lo que mandé" de "entró trabajo nuevo mientras viajaba".
@@ -1028,19 +1055,40 @@ let hojasLibro = null;          // workbook al elegir archivo
 // --- sincronización con el servidor ---
 let modoServidor = false, versionServidor = 0, pushTimer = null, pushEnCurso = false, sincronizando = false;
 let sinConexion = false;
-// Dónde corre la app: 'local' es el servidor.py de la bodega, 'web' la plataforma.
-// Lo dice el servidor en /info y cambia dos cosas: cómo se conecta el celular y
-// qué aconsejar cuando el navegador niega la cámara. Arranca en 'local' a
-// propósito: si /info no contesta, se dice lo de siempre y no algo nuevo y
-// equivocado.
-let modoConexion = 'local';
+// La sesión de la plataforma se cerró (el servidor respondió 401). No es lo
+// mismo que sin conexión: no hay que esperar a que vuelva la red sino iniciar
+// sesión, y eso se hace en OTRA pestaña (la cookie es la misma), sin recargar
+// esta. sondear() sigue preguntando y, cuando la sesión vuelve, sube lo pendiente.
+let sesionCerrada = false;
+// Solo lectura: el rol en Barriles es lector, o el servidor rechazó una
+// escritura con 403. Antes eso se leía como "sin conexión" y los cambios
+// quedaban pendientes para siempre; ahora guardar() no los encola y avisa.
+let soloLectura = !!(window.CIW && window.CIW.rol === 'lector');
+// Dónde corre la app: 'web' es la plataforma; 'local' era el servidor.py de la
+// bodega, congelado desde el corte del 2026-09-09. Lo dice el servidor en /info
+// y cambia dos cosas: cómo se conecta el celular y qué aconsejar cuando el
+// navegador niega la cámara. Arranca en 'web': si /info no contesta, lo que hay
+// que decir es lo de la plataforma, no mandar a prender un servidor que ya no
+// existe.
+let modoConexion = 'web';
 
 // Pregunta el modo (y, en la bodega, las direcciones de red para el QR).
 async function pedirInfo() {
-  const info = await (await fetch(API+'/info')).json();
-  modoConexion = info.modo === 'web' ? 'web' : 'local';
+  const r = await pedirJson(API+'/info', { cache: 'no-store' });
+  const info = (r.ok && r.datos) || {};
+  modoConexion = info.modo === 'local' ? 'local' : 'web';
   return info;
 }
+
+// Órdenes del escáner que se guardaron y el servidor todavía no confirmó.
+// Antes, guardar una orden borraba el borrador del escáner en el acto: si la
+// página se cerraba antes de la confirmación, la orden ya no estaba en ningún
+// lado. Esta lista se borra recién con el 200 (confirmadoPorServidor) y, al
+// abrir la app, escRecuperarPendientes vuelve a cargar las que el servidor no
+// tiene. No es la copia local de antes (la que empujaba un estado viejo): solo
+// guarda órdenes sueltas, y solo agrega las que faltan, por id. Una lista por
+// usuario: en una PC compartida, lo de uno no se le carga a otro.
+const CLAVE_ESC_PEND = 'mapaBarriles_escPendientes_v1|' + ((window.CIW && window.CIW.email) || '');
 
 // El navegador niega la cámara por motivos distintos según dónde corra la app.
 // En la bodega casi siempre es que entraron por http:// y la cámara pide
@@ -1056,10 +1104,11 @@ function msgSinCamara() {
 // La pestaña vuelve al frente: hay que bajar el estado fresco ANTES de escribir.
 let necesitaResync = false;
 
-// Base de la fusión: cómo estaba todo en la última sincronización. Las celdas del
-// mapa y los palets se comparan casillero por casillero (diffBoxesLocal); las
-// listas con clave, elemento por elemento (fusionar3).
-let baseBoxes = '[]', basePalets = '[]', baseListas = {};
+// Base de la fusión: cómo estaba todo en la última sincronización. Boxes y
+// palets se comparan contenedor por contenedor y casillero por casillero
+// (fusionarContenedores, en js/sync.js); las listas con clave, elemento por
+// elemento (fusionar3); los valores sueltos, uno por uno (fusionarEscalares).
+let baseBoxes = '[]', basePalets = '[]', baseListas = {}, baseEscalares = {};
 const LISTAS_FUSION = {
   inventario: r => String(r.num),
   escaneos: o => String(o.id),
@@ -1071,16 +1120,92 @@ function snapBoxes() {
   try { basePalets = JSON.stringify(estado.palets || []); } catch (e) { basePalets = '[]'; }
   baseListas = {};
   for (const [k, clave] of Object.entries(LISTAS_FUSION)) baseListas[k] = fotoPorClave(estado[k] || [], clave);
+  baseEscalares = fotoEscalares(estado);
 }
 
 // Toda escritura pasa por acá. Sin conexión la pantalla está tapada por el velo,
 // así que no deberían llegar escrituras; si alguna se cuela, queda pendiente en
 // memoria y sube sola cuando vuelva la conexión.
 function guardar() {
+  if (soloLectura) { descartarPorSoloLectura(); return; }
   pendienteLocal = true;
   selloGuardado++;
+  refrescarInsignia();
   if (modoServidor) programarPush();
 }
+
+const MSG_SOLO_LECTURA = 'Tu usuario es de solo lectura en el Mapa de Barriles: podés consultar, pero los cambios no se guardan.\n\nSi necesitás cargar, pedile a un administrador permiso de edición.';
+
+// Un cambio que este usuario no puede guardar no se encola: quedaría
+// "pendiente" para siempre y la pantalla mostraría algo que el servidor no
+// tiene. Se avisa y se vuelve a la copia del servidor. El aviso no se repite en
+// ráfaga (una acción puede llamar a guardar() varias veces seguidas).
+let avisoLecturaTs = 0;
+async function descartarPorSoloLectura() {
+  if (Date.now() - avisoLecturaTs > 4000) { avisoLecturaTs = Date.now(); alert(MSG_SOLO_LECTURA); }
+  await bajarYAdoptar();
+}
+
+function aplicarSoloLectura() {
+  document.body.classList.toggle('solo-lectura', soloLectura);
+  refrescarInsignia();
+}
+
+// El servidor rechazó una escritura con 403: el rol cambió mientras la pestaña
+// estaba abierta. Lo pendiente no va a entrar nunca con este usuario, así que
+// se dice y se vuelve a la copia del servidor. Las órdenes del escáner sin
+// confirmar se quedan en su lista: si más adelante le dan permiso y recarga,
+// escRecuperarPendientes las vuelve a cargar.
+async function pasarASoloLectura() {
+  const habiaPendiente = pendienteLocal;
+  soloLectura = true;
+  aplicarSoloLectura();
+  alert('El servidor no acepta cambios de tu usuario: quedó de solo lectura en el Mapa de Barriles.' +
+    (habiaPendiente ? '\n\nLo que cargaste desde la última sincronización NO se guardó. Pedile a un administrador permiso de edición.' : ''));
+  await bajarYAdoptar();
+}
+
+// Baja la copia del servidor y la adopta (descarta lo que esta pestaña no subió).
+async function bajarYAdoptar() {
+  try {
+    const r = await pedirJson(API+'/estado', { cache: 'no-store' });
+    const tipo = clasificarRespuesta(r.status);
+    if (tipo === 'ok' && esDocumento(r.datos)) adoptar(r.datos);
+    else manejarFalla(tipo === 'ok' ? 'error' : tipo, false);
+  } catch (e) { entrarSinConexion(); }
+}
+
+// Una respuesta de /estado que se puede adoptar. No se exige que la versión sea
+// un número (un documento sembrado sin `version` existe, ver rutas.ts); sí que
+// sea un objeto: una página de error o un {error} no es el estado del servidor.
+function esDocumento(d) { return !!d && typeof d === 'object' && !Array.isArray(d) && !d.error; }
+
+// Qué hacer con una respuesta que no es la esperada. `escritura`: si fue un POST
+// (un 403 ahí es "solo lectura"; en un GET es que ni siquiera puede leer).
+function manejarFalla(tipo, escritura) {
+  if (tipo === 'sesion') entrarSinConexion('sesion');
+  else if (tipo === 'permiso' && escritura) pasarASoloLectura();
+  else entrarSinConexion(tipo === 'permiso' ? 'acceso' : 'red');
+}
+
+// El servidor confirmó TODO lo que había escrito esta pestaña.
+function confirmadoPorServidor() {
+  pendienteLocal = false;      // el servidor lo confirmó: recién ahora
+  migreYo = false;
+  snapBoxes();
+  escOlvidarPendientes();
+  refrescarInsignia();
+}
+
+// Cerrar o recargar con algo sin confirmar lo pierde (no hay copia local): el
+// navegador pregunta antes. El texto lo pone el navegador; no se puede cambiar.
+window.addEventListener('beforeunload', e => {
+  if (!pendienteLocal) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+function dormir(ms) { return new Promise(ok => setTimeout(ok, ms)); }
 
 // Texto del aviso cuando el servidor frena un borrado grande (respuesta 412).
 function msgPerdidas(info) {
@@ -1103,9 +1228,22 @@ function msgPerdidas(info) {
 }
 function programarPush() { clearTimeout(pushTimer); pushTimer = setTimeout(push, 400); }
 
+// El POST del estado. Todos los caminos miran el código de respuesta: antes
+// todo lo que no era 409, 412 u ok era "sin conexión", así que una sesión
+// vencida tapaba la pantalla para siempre y un lector encolaba escrituras.
+function postEstado(version, est, confirmarBorrado) {
+  return pedirJson(API+'/estado', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version, estado: est, confirmarBorrado: !!confirmarBorrado }) });
+}
+
 async function push(confirmar) {
   pushTimer = null;
-  if (pushEnCurso || sincronizando || sinConexion) { if (!sinConexion) programarPush(); return; }
+  // Sin conexión o sin sesión no se reprograma: sondear() lo sube solo cuando vuelve.
+  if (pushEnCurso || sincronizando || sinConexion || sesionCerrada) {
+    if (!sinConexion && !sesionCerrada) programarPush();
+    return;
+  }
+  if (soloLectura) return;
   if (necesitaResync) {
     await sondear();
     if (necesitaResync) { programarPush(); return; }
@@ -1113,193 +1251,151 @@ async function push(confirmar) {
   pushEnCurso = true;
   try {
     const sello = selloGuardado;
-    const r = await fetch(API+'/estado', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ version: versionServidor, estado, confirmarBorrado: !!confirmar }) });
-    if (r.status === 409) {
+    const r = await postEstado(versionServidor, estado, confirmar);
+    const tipo = clasificarRespuesta(r.status);
+    if (tipo === 'conflicto') {
       pushEnCurso = false;
       await sincronizar();      // otro escribió: fusionar lo nuestro sobre lo del servidor
       return;
-    } else if (r.status === 412) {
-      const info = await r.json();
+    } else if (tipo === 'freno') {
       pushEnCurso = false;
-      if (confirm(msgPerdidas(info))) await push(true);
-      else adoptar(await (await fetch(API+'/estado', { cache: 'no-store' })).json());
+      if (confirm(msgPerdidas(r.datos || {}))) await push(true);
+      else { escOlvidarPendientes(); await bajarYAdoptar(); }   // eligió descartar lo no subido
       return;
-    } else if (r.ok) {
-      versionServidor = (await r.json()).version;
-      if (sello === selloGuardado) {
-        pendienteLocal = false;      // el servidor lo confirmó: recién ahora
-        migreYo = false;
-        snapBoxes();
-        ponerInsignia('ok');
-      } else {
-        programarPush();             // entró trabajo mientras el POST viajaba
-      }
+    } else if (tipo === 'ok' && versionDe(r.datos) !== null) {
+      versionServidor = r.datos.version;
+      if (sello === selloGuardado) confirmadoPorServidor();
+      else programarPush();          // entró trabajo mientras el POST viajaba
     } else {
-      entrarSinConexion();
+      manejarFalla(tipo === 'ok' ? 'error' : tipo, true);
     }
-  } catch (e) { entrarSinConexion(); }
+  } catch (e) { entrarSinConexion(); }   // red caída o el servidor no respondió a tiempo
   pushEnCurso = false;
 }
 
 async function sondear() {
   if (pushTimer || pushEnCurso || sincronizando) return;
   if (!modoServidor) { await cargarDelServidor(); return; }
-  let d;
-  try { d = await (await fetch(API+'/version', { cache: 'no-store' })).json(); }
+  let r;
+  try { r = await pedirJson(API+'/version', { cache: 'no-store' }); }
   catch (e) { entrarSinConexion(); return; }
-  const volvio = sinConexion;
+  // Solo un 200 con una versión numérica es la versión. Un 401 trae
+  // {error:'sin_sesion'}: tomarlo como versión hacía parpadear el velo cada 3
+  // segundos y, sin nada pendiente, dejaba versionServidor en undefined con la
+  // insignia diciendo "sincronizado".
+  const tipo = clasificarRespuesta(r.status);
+  const version = versionDe(r.datos);
+  if (tipo !== 'ok' || version === null) { manejarFalla(tipo === 'ok' ? 'error' : tipo, false); return; }
+  const volvio = sinConexion || sesionCerrada;
   salirSinConexion();
   if (pendienteLocal) {
     // Lo que no llegó a subir (o lo que otro escribió mientras tanto): fusionar.
-    if (volvio || d.version !== versionServidor) await sincronizar();
+    if (volvio || version !== versionServidor) await sincronizar();
     else programarPush();
-  } else if (d.version !== versionServidor) {
+  } else if (version !== versionServidor) {
     // El sello se captura antes del GET: si alguien guarda mientras viaja, no se pisa.
     const selloAntes = selloGuardado;
-    try {
-      const remoto = await (await fetch(API+'/estado', { cache: 'no-store' })).json();
-      if (selloAntes === selloGuardado && !pendienteLocal) adoptar(remoto);
-      else await sincronizar();
-    } catch (e) { entrarSinConexion(); return; }
+    let re;
+    try { re = await pedirJson(API+'/estado', { cache: 'no-store' }); }
+    catch (e) { entrarSinConexion(); return; }
+    const t2 = clasificarRespuesta(re.status);
+    if (t2 !== 'ok' || !esDocumento(re.datos)) { manejarFalla(t2 === 'ok' ? 'error' : t2, false); return; }
+    if (selloAntes === selloGuardado && !pendienteLocal) adoptar(re.datos);
+    else await sincronizar();
   }
-  necesitaResync = false;
-  if (!sinConexion) ponerInsignia('ok');
+  if (!sinConexion && !sesionCerrada) necesitaResync = false;
+  refrescarInsignia();
 }
 
-// ¿Hay celdas cargadas en esta pestaña que el servidor todavía no tiene?
-function diffBoxesLocal() {
-  let base = [];
-  try { base = JSON.parse(baseBoxes); } catch (e) {}
-  const basePorId = new Map(base.map(b => [b.id, b]));
-  const cambios = [];
-  for (const b of estado.boxes || []) {
-    const bb = basePorId.get(b.id);
-    const baseCeldas = (bb && bb.celdas) || {};
-    const celdas = b.celdas || {};
-    const sets = {}, dels = [];
-    for (const [k, v] of Object.entries(celdas))
-      if (JSON.stringify(baseCeldas[k]) !== JSON.stringify(v)) sets[k] = v;
-    for (const k of Object.keys(baseCeldas))
-      if (!(k in celdas)) dels.push(k);
-    if (!bb || Object.keys(sets).length || dels.length)
-      cambios.push({ box: b, baseCeldas, sets, dels, nuevo: !bb });
-  }
-  return cambios;
-}
-function diffPaletsLocal() {
-  let base = [];
-  try { base = JSON.parse(basePalets); } catch (e) {}
-  const basePorId = new Map(base.map(p => [p.id, p]));
-  const cambios = [];
-  for (const p of estado.palets || []) {
-    const pb = basePorId.get(p.id);
-    const baseCeldas = (pb && pb.celdas) || {};
-    const celdas = p.celdas || {};
-    const sets = {}, dels = [];
-    for (const [k, v] of Object.entries(celdas))
-      if (JSON.stringify(baseCeldas[k]) !== JSON.stringify(v)) sets[k] = v;
-    for (const k of Object.keys(baseCeldas))
-      if (!(k in celdas)) dels.push(k);
-    if (!pb || Object.keys(sets).length || dels.length)
-      cambios.push({ palet: p, sets, dels, nuevo: !pb });
-  }
-  return cambios;
+// Pone encima del estado fresco del servidor (`serv`, se muta) lo que cambió
+// esta pestaña desde la última sincronización.
+//
+//   boxes y palets             contenedor por contenedor (alta, baja, nombre,
+//                              tamaño) y casillero por casillero; un casillero
+//                              borrado acá solo se borra allá si nadie le puso
+//                              otra cosa (fusionarContenedores, js/sync.js)
+//   inventario                 fila por fila; si los dos tocaron la misma fila,
+//                              el hecho (estado/lote/…) por ts y la ficha (marca,
+//                              capacidad…) campo por campo (fusionarFilaInv)
+//   escaneos, pedidos,         elemento por elemento con fusionar3: gana lo que
+//   carteles                   cambió acá; si los dos lo cambiaron, el ts más nuevo
+//   altas, bajas               sus propias reglas, en js/altas.js
+//   valores sueltos            uno por uno contra la base (fechaInventario,
+//                              inventarioCorte, modoLote): antes venían siempre
+//                              del servidor y se perdía lo de acá
+// Las secciones viejas tanques/ediciones/revisiones vienen tal cual del
+// servidor: esas solo las borra la migración, nunca una pestaña que todavía las
+// tiene en memoria.
+function fusionarSobreServidor(serv) {
+  let bBoxes = [], bPalets = [];
+  try { bBoxes = JSON.parse(baseBoxes); } catch (e) {}
+  try { bPalets = JSON.parse(basePalets); } catch (e) {}
+  serv.boxes = fusionarContenedores(bBoxes, estado.boxes || [], serv.boxes || []);
+  if (serv.palets || estado.palets || bPalets.length)
+    serv.palets = fusionarContenedores(bPalets, estado.palets || [], serv.palets || []);
+  for (const [k, clave] of Object.entries(LISTAS_FUSION))
+    serv[k] = fusionar3(baseListas[k], estado[k] || [], serv[k] || [], clave,
+      k === 'inventario' ? fusionarFilaInv : undefined);
+  serv.altas = fusionarAltas(serv.altas, estado.altas);
+  serv.bajas = fusionarBajas(serv.bajas, estado.bajas);
+  fusionarEscalares(baseEscalares, estado, serv);
+  return serv;
 }
 
-// Fusiona las celdas que cambió esta pestaña sobre el estado del servidor. Gana
-// lo de acá para las celdas que tocó. Devuelve cuántas también había cambiado el
-// servidor.
-function aplicarDiffEnServidor(serv, cambios) {
-  if (!serv.boxes) serv.boxes = [];
-  const porId = new Map(serv.boxes.map(b => [b.id, b]));
-  let conflictos = 0;
-  for (const c of cambios) {
-    let sb = porId.get(c.box.id);
-    if (!sb) {
-      sb = { id: c.box.id, nombre: c.box.nombre, cols: c.box.cols, filas: c.box.filas, celdas: {} };
-      serv.boxes.push(sb); porId.set(sb.id, sb);
-    }
-    if (!sb.celdas) sb.celdas = {};
-    for (const [k, v] of Object.entries(c.sets)) {
-      const servVal = sb.celdas[k];
-      const baseVal = c.baseCeldas[k];
-      if (servVal !== undefined && JSON.stringify(servVal) !== JSON.stringify(baseVal)
-          && JSON.stringify(servVal) !== JSON.stringify(v)) conflictos++;
-      sb.celdas[k] = v;
-    }
-    for (const k of c.dels) delete sb.celdas[k];
-  }
-  return conflictos;
-}
+// Cuántas vueltas de "bajar, fusionar, subir" se intentan seguidas. Antes eran
+// 4 y, al agotarlas (alguien escaneando rápido en otro celular), la pantalla
+// entraba en "sin conexión" y el velo tapaba al operario sin que hubiera ningún
+// error. Ahora se sigue mientras haya progreso, con una pausa creciente tras
+// cada 409; si igual se agotan, lo pendiente queda en memoria y sondear() lo
+// retoma a los 3 segundos, sin velo.
+const MAX_VUELTAS_SYNC = 25;
 
 // Trae el estado del servidor, le aplica encima lo que cambió esta pestaña y lo
 // sube. Reintenta si otro escribió en el medio (409).
-//
-// Qué se fusiona y cómo:
-//   celdas de boxes y palets   casillero por casillero (gana lo de acá)
-//   inventario, escaneos,      elemento por elemento con fusionar3: gana lo que
-//   pedidos, carteles          cambió acá; si los dos lo cambiaron, el ts más nuevo
-//   altas, bajas               sus propias reglas, en js/altas.js
-// Lo demás viene tal cual del servidor (fechaInventario, inventarioCorte,
-// modoLote, y las secciones viejas tanques/ediciones/revisiones: esas solo las
-// borra la migración, nunca una pestaña que todavía las tiene en memoria).
 async function sincronizar() {
   if (sincronizando) return;
   sincronizando = true;
   let confirmar = false;
   try {
-    for (let intento = 0; intento < 4; intento++) {
-      const rEst = await fetch(API+'/estado', { cache: 'no-store' });
+    for (let vuelta = 1; vuelta <= MAX_VUELTAS_SYNC; vuelta++) {
+      const rEst = await pedirJson(API+'/estado', { cache: 'no-store' });
+      const tEst = clasificarRespuesta(rEst.status);
       // Sesión cerrada u otro error: no es el estado del servidor. Se queda lo
-      // de esta pantalla (pendiente incluido) y se reintenta más tarde.
-      if (!rEst.ok) break;
-      const d = await rEst.json();
+      // de esta pantalla (pendiente incluido) y se reintenta cuando vuelva.
+      if (tEst !== 'ok' || !esDocumento(rEst.datos)) { manejarFalla(tEst === 'ok' ? 'error' : tEst, false); return; }
+      const d = rEst.datos;
       if (!pendienteLocal) {
         if (d.version !== versionServidor) adoptar(d); else versionServidor = d.version;
-        ponerInsignia('ok'); sincronizando = false; return;
+        refrescarInsignia(); return;
       }
       const serv = d.estado || { inventario: [], boxes: [], escaneos: [], palets: [], carteles: [] };
       // la migración de esta pestaña chocó con otra escritura: se migra también la
       // copia fresca del servidor, y la fusión de abajo pone lo de acá encima
       if (migreYo && necesitaMigracion(serv)) { migrarEstado(serv, { cosechaDe: l => invCosechaDeLote(l, serv.inventario) }); confirmar = true; }
-      aplicarDiffEnServidor(serv, diffBoxesLocal());
-      const paletsSrv = new Map((serv.palets || []).map(p => [p.id, p]));
-      for (const c of diffPaletsLocal()) {
-        let sp = paletsSrv.get(c.palet.id);
-        if (!sp) { sp = { id: c.palet.id, nombre: c.palet.nombre, cols: c.palet.cols, celdas: {} };
-          (serv.palets = serv.palets || []).push(sp); paletsSrv.set(sp.id, sp); }
-        sp.nombre = c.palet.nombre; sp.cols = c.palet.cols;
-        for (const [k, v] of Object.entries(c.sets)) sp.celdas[k] = v;
-        for (const k of c.dels) delete sp.celdas[k];
-      }
-      for (const [k, clave] of Object.entries(LISTAS_FUSION))
-        serv[k] = fusionar3(baseListas[k], estado[k] || [], serv[k] || [], clave);
-      serv.altas = fusionarAltas(serv.altas, estado.altas);
-      serv.bajas = fusionarBajas(serv.bajas, estado.bajas);
+      fusionarSobreServidor(serv);
       const sello = selloGuardado;
-      const r = await fetch(API+'/estado', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version: d.version, estado: serv, confirmarBorrado: confirmar }) });
-      if (r.status === 409) continue;              // alguien escribió justo: reintentar
-      if (r.status === 412) {
-        const info = await r.json();
-        if (confirm(msgPerdidas(info))) { confirmar = true; continue; }
-        adoptar(d); ponerInsignia('ok'); sincronizando = false; return;
+      const r = await postEstado(d.version, serv, confirmar);
+      const t = clasificarRespuesta(r.status);
+      if (t === 'conflicto') { await dormir(esperaReintento(vuelta)); continue; }   // alguien escribió justo
+      if (t === 'freno') {
+        if (confirm(msgPerdidas(r.datos || {}))) { confirmar = true; continue; }
+        escOlvidarPendientes();                    // eligió descartar lo no subido
+        adoptar(d); refrescarInsignia(); return;
       }
-      if (r.ok) {
-        versionServidor = (await r.json()).version;
+      if (t === 'ok' && versionDe(r.datos) !== null) {
+        versionServidor = r.datos.version;
         if (sello !== selloGuardado) continue;     // entró trabajo durante el viaje: otra vuelta
-        pendienteLocal = false; migreYo = false;
-        estado = serv; reindexar(); snapBoxes();
+        estado = serv; reindexar();
+        confirmadoPorServidor();
         redibujarTodo();
-        ponerInsignia('ok');
-        sincronizando = false; return;
+        return;
       }
-      break;                                       // 500 u otro error
+      manejarFalla(t === 'ok' ? 'error' : t, true);   // 401, 403, 500…
+      return;
     }
-    entrarSinConexion();
-  } catch (e) { entrarSinConexion(); }
-  sincronizando = false;
+    refrescarInsignia();   // vueltas agotadas sin error: sigue "guardando…"
+  } catch (e) { entrarSinConexion(); }   // red caída o el servidor no respondió a tiempo
+  finally { sincronizando = false; }
 }
 
 // Lo que se redibuja cuando el estado cambia desde afuera (otro dispositivo).
@@ -1319,28 +1415,70 @@ function redibujarTodo() {
 
 function adoptar(d) {
   versionServidor = d.version;
-  if (d.estado) { estado = d.estado; reindexar(); }
+  if (d.estado) {
+    estado = d.estado;
+    // Un documento recién creado llega como estado {} (rutas.ts, sin fila) y
+    // reindexar() reventaba con "inventario is not iterable": la pantalla
+    // quedaba a medio arrancar. Las listas que se recorren siempre, vacías.
+    for (const k of ['inventario', 'boxes', 'escaneos']) if (!Array.isArray(estado[k])) estado[k] = [];
+    reindexar();
+  }
   pendienteLocal = false;
   snapBoxes();
   redibujarTodo();
+  refrescarInsignia();
 }
 
-// Sin conexión: un velo tapa la pantalla y no deja cargar nada. Si quedó algo sin
-// subir, se dice, porque recargar la página lo perdería.
-function entrarSinConexion() {
-  sinConexion = true;
+// Los textos del velo según el motivo. Con la sesión cerrada no sirve "esperá a
+// que vuelva la conexión": hay que iniciar sesión, y en otra pestaña, porque
+// recargar esta perdería lo pendiente. La cookie es la misma para las dos, así
+// que sondear() ve la sesión nueva sola y sube lo que quedó.
+const TEXTOS_VELO = {
+  red: {
+    titulo: '⛔ Sin conexión con el servidor',
+    texto: 'No se pueden cargar cambios hasta que vuelva la conexión. La app lo intenta sola cada 3 segundos.',
+    pend: '⚠ Tu último cambio todavía <b>no llegó</b> al servidor. <b>No cierres ni recargues esta página</b>: se sube solo cuando vuelva la conexión.',
+  },
+  sesion: {
+    titulo: '🔒 Tu sesión se cerró',
+    texto: 'Para seguir, iniciá sesión de nuevo con el botón de abajo: se abre en otra pestaña. Cuando termines, volvé a esta: se reconecta sola en unos segundos, sin recargar.',
+    pend: '⚠ Tu último cambio todavía <b>no llegó</b> al servidor. <b>No cierres ni recargues esta página</b>: se sube solo apenas vuelvas a iniciar sesión.',
+  },
+  acceso: {
+    titulo: '⛔ Sin acceso al Mapa de Barriles',
+    texto: 'El servidor dice que tu usuario no tiene acceso a este módulo. Pedíselo a un administrador; la app vuelve a probar cada 3 segundos.',
+    pend: '⚠ Tu último cambio <b>no llegó</b> al servidor y no va a entrar hasta que te den acceso.',
+  },
+};
+
+// Sin conexión (o sin sesión, o sin acceso): un velo tapa la pantalla y no deja
+// cargar nada. Si quedó algo sin subir, se dice, porque recargar la página lo
+// perdería. motivo: 'red' (por defecto) | 'sesion' | 'acceso'.
+function entrarSinConexion(motivo) {
+  motivo = TEXTOS_VELO[motivo] ? motivo : 'red';
+  if (motivo === 'sesion') sesionCerrada = true; else sinConexion = true;
   necesitaResync = true;
-  ponerInsignia('offline');
+  refrescarInsignia();
   const v = $('veloSinConexion');
   if (!v) return;
+  const t = TEXTOS_VELO[motivo];
+  $('veloSinConexionTitulo').textContent = t.titulo;
+  $('veloSinConexionTexto').textContent = t.texto;
+  $('veloSinConexionLogin').style.display = motivo === 'sesion' ? '' : 'none';
+  $('veloSinConexionPend').innerHTML = t.pend;
   $('veloSinConexionPend').style.display = pendienteLocal ? '' : 'none';
   v.classList.add('abierto');
 }
 function salirSinConexion() {
-  if (!sinConexion) return;
+  if (!sinConexion && !sesionCerrada) return;
+  const eraSesion = sesionCerrada;
   sinConexion = false;
+  sesionCerrada = false;
   const v = $('veloSinConexion');
   if (v) v.classList.remove('abierto');
+  // El aviso de /shared/fusion.js ya no aplica. Se cierra con su propio botón
+  // (no con remove()) para que vuelva a aparecer si la sesión se cierra otra vez.
+  if (eraSesion) { const x = document.querySelector('#ciw-sesion button'); if (x) x.click(); }
 }
 
 document.addEventListener('visibilitychange', () => {
@@ -1350,30 +1488,47 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+const INSIGNIAS = {
+  ok: ['🔗 sincronizado', 'Conectado al servidor: laptop y celular comparten el mapa.'],
+  // Antes la insignia decía "sincronizado" aunque hubiera cambios sin confirmar.
+  pendiente: ['⏫ guardando…', 'Hay cambios de esta pantalla que el servidor todavía no confirmó. No cierres ni recargues hasta que diga "sincronizado".'],
+  offline: ['⛔ sin conexión', 'Sin conexión con el servidor: no se pueden cargar cambios hasta que vuelva.'],
+  sesion: ['🔒 sesión cerrada', 'Tu sesión se cerró: iniciá sesión en otra pestaña y esta se reconecta sola.'],
+  lectura: ['👁 solo lectura', 'Tu usuario puede consultar el mapa, pero no cargar cambios.'],
+};
 function ponerInsignia(tipo) {
   const i = $('insigniaSync');
-  if (tipo === 'ok') { i.textContent = '🔗 sincronizado'; i.title = 'Conectado al servidor: laptop y celular comparten el mapa.'; }
-  else { i.textContent = '⛔ sin conexión'; i.title = 'Sin conexión con el servidor: no se pueden cargar cambios hasta que vuelva.'; }
+  if (!i) return;
+  const [texto, titulo] = INSIGNIAS[tipo] || INSIGNIAS.offline;
+  i.textContent = texto; i.title = titulo;
+}
+// La insignia sale del estado, no de quién la llamó último: así no puede decir
+// "sincronizado" con algo pendiente.
+function refrescarInsignia() {
+  ponerInsignia(sesionCerrada ? 'sesion' : sinConexion ? 'offline' : pendienteLocal ? 'pendiente'
+    : soloLectura ? 'lectura' : 'ok');
 }
 
 // Arranque: el estado sale SIEMPRE del servidor. Sin conexión no hay app; el velo
 // lo dice y sondear() reintenta cada 3 segundos.
 async function cargarDelServidor() {
-  try {
-    const r = await fetch(API+'/estado', { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    modoServidor = true;
-    pedirInfo().catch(() => {});   // solo decide textos; si falla queda 'local'
-    salirSinConexion();
-    adoptar(d);
-    ponerInsignia('ok');
-    return true;
-  } catch (e) {
+  let r;
+  try { r = await pedirJson(API+'/estado', { cache: 'no-store' }); }
+  catch (e) { reindexar(); entrarSinConexion(); return false; }
+  const tipo = clasificarRespuesta(r.status);
+  if (tipo !== 'ok' || !esDocumento(r.datos)) {
     reindexar();
-    entrarSinConexion();
+    manejarFalla(tipo === 'ok' ? 'error' : tipo, false);
     return false;
   }
+  modoServidor = true;
+  pedirInfo().catch(() => {});   // solo decide textos; si falla queda 'web'
+  salirSinConexion();
+  adoptar(r.datos);
+  // En una tarea aparte: al arrancar, que primero termine de dibujarse la
+  // pantalla (y se aplique el rol) y después aparezca el aviso, si lo hay.
+  setTimeout(escRecuperarPendientes, 0);
+  return true;
 }
 async function iniciar() { await cargarDelServidor(); }
 
@@ -1466,7 +1621,7 @@ function confirmarMigracion(usarEscaneo) {
   $('modal').classList.remove('abierto');
   // El servidor frena (412) un borrado grande de escaneos, correcciones y
   // pendientes. Acá es a propósito y ya se bajó el respaldo: se confirma de una.
-  pendienteLocal = true; selloGuardado++;
+  pendienteLocal = true; selloGuardado++; refrescarInsignia();
   clearTimeout(pushTimer); pushTimer = null;
   push(true);
   dibujarResumenInv(); barSetContador();
@@ -1676,6 +1831,14 @@ function buscarUbicacion(num) {
   return null;
 }
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+// Un valor como argumento dentro de un onclick="…" armado con texto.
+// JSON.stringify lo vuelve un literal de JS (comillas y barras escapadas) y
+// escapeHtml lo hace seguro dentro del atributo; el navegador deshace el
+// escape HTML antes de correr el JS. Antes el id iba entre comillas simples sin
+// escapar: un id con una
+// comilla (un POST armado a mano) cerraba el string y corría lo que siguiera,
+// en la pantalla de todos los que abrieran el historial.
+function argJs(v) { return escapeHtml(JSON.stringify(v === undefined ? null : v)); }
 
 // ================== NAVEGACIÓN ==================
 function activarPanel(nombre) {
@@ -1809,6 +1972,8 @@ let rol = null, opVistaActual = 'mapa';
 // Clase puesta ya, antes de que termine de cargar: si no, un editor vería un
 // instante la barra del programador.
 document.body.classList.add(rolDeLaPlataforma() === 'programador' ? 'rol-programador' : 'rol-operario');
+// Lo mismo con el solo lectura: que el lector no vea un instante los botones de carga.
+if (soloLectura) document.body.classList.add('solo-lectura');
 try { localStorage.removeItem('mapaBarriles_rol'); } catch (e) {}   // el rol que se elegía a mano
 
 function aplicarRol(r) {
@@ -2083,6 +2248,10 @@ function aplicarOpcionCartel(id, i) {
 function guardarCelda(num, campo, val) {
   const r = indiceInv.get(String(num));
   if (!r) return;
+  // La marca no lleva ts nuevo a propósito: planDeshacer usa el ts para saber si
+  // una orden sigue siendo lo último en esa vasija. Que no la pise un escaneo
+  // simultáneo en otro celular lo resuelve la fusión campo por campo de la ficha
+  // (fusionarFilaInv, js/inventario.js).
   if (campo === 'marca') { r.marca = val; guardar(); dibujarResumenInv(); return; }
   let cambio;
   if (campo === 'estado') {
@@ -2530,11 +2699,11 @@ function dibujarTablaBoxes() {
     estado.boxes.map(b => {
       const ocup = Object.values(b.celdas).filter(v => v !== 'HUECO').length;
       return `<tr>
-        <td><input type="text" value="${escapeHtml(b.nombre)}" data-id="${b.id}" data-campo="nombre" style="width:130px;"></td>
-        <td><input type="number" value="${b.cols}" min="1" max="60" data-id="${b.id}" data-campo="cols" style="width:65px;"></td>
-        <td><input type="number" value="${b.filas}" min="1" max="10" data-id="${b.id}" data-campo="filas" style="width:60px;"> <span class="nota">×2 barriles</span></td>
+        <td><input type="text" value="${escapeHtml(b.nombre)}" data-id="${escapeHtml(b.id)}" data-campo="nombre" style="width:130px;"></td>
+        <td><input type="number" value="${escapeHtml(b.cols)}" min="1" max="60" data-id="${escapeHtml(b.id)}" data-campo="cols" style="width:65px;"></td>
+        <td><input type="number" value="${escapeHtml(b.filas)}" min="1" max="10" data-id="${escapeHtml(b.id)}" data-campo="filas" style="width:60px;"> <span class="nota">×2 barriles</span></td>
         <td>${ocup} / ${b.cols * b.filas * 2} barriles</td>
-        <td><button class="btn peligro" data-borrar="${b.id}" style="padding:5px 10px;">Borrar</button></td></tr>`;
+        <td><button class="btn peligro" data-borrar="${escapeHtml(b.id)}" style="padding:5px 10px;">Borrar</button></td></tr>`;
     }).join('');
   t.querySelectorAll('input[data-id]').forEach(inp => inp.addEventListener('change', () => {
     const b = estado.boxes.find(x => x.id === inp.dataset.id); if (!b) return;
@@ -3486,12 +3655,6 @@ $('archivoJSON').addEventListener('change', async e => {
     alert('✅ Respaldo restaurado.');
   } catch (err) { alert('El archivo no parece un respaldo válido.'); }
 });
-$('btnBorrarTodo').addEventListener('click', () => {
-  if (!confirm('⚠️ Esto borra el inventario cargado Y el mapa completo de este navegador.\n(No toca tus archivos Excel.)\n\n¿Seguro?')) return;
-  if (!confirm('Última confirmación: ¿borrar todo?')) return;
-  estado = { inventario: [], boxes: [], fechaInventario: null };
-  reindexar(); guardar(); location.reload();
-});
 
 // ================== CÁMARA (celular) ==================
 let capturaManualAbierta = false;   // hay un form de tipeo/pedido abierto: pausar detección
@@ -3681,7 +3844,7 @@ function dibujarQRWeb(cont) {
       <div style="min-width:250px; flex:1;">
         <p style="margin-bottom:6px;">Escaneá este QR con la cámara del celular (o escribí la dirección en Chrome):</p>
         <p class="url-grande" id="urlSel"></p>
-        <p class="nota" style="margin-top:8px;">🔑 La primera vez pide el <b>mail de la bodega</b> y un código de 6 dígitos que llega a ese mail. Después el teléfono queda recordado.</p>
+        <p class="nota" style="margin-top:8px;">🔑 La primera vez pide tu <b>usuario y contraseña</b> de la plataforma. Después el teléfono queda recordado mientras lo uses.</p>
         <p class="nota">📶 No hace falta el WiFi de la bodega: entra desde cualquier conexión, también con datos móviles.</p>
       </div>
     </div>`;
@@ -3692,9 +3855,12 @@ async function dibujarQR() {
   const cont = $('contenidoQR');
   const panel = $('panel-celular');
   if (!modoServidor) {
-    // Sin servidor solo se puede estar en la bodega: la web no se abre con doble clic.
-    panel.dataset.modo = 'local';
-    cont.innerHTML = '<p class="nota">⚠ La app está abierta <b>sin el servidor local</b>, así que el celular no puede conectarse.<br>Cerrá esta ventana y abrí la app con <b>«Iniciar servidor.bat»</b> (carpeta mapa-barriles) y después entrá a <b>http://localhost:8766</b>.</p>';
+    // Todavía no se pudo bajar el estado (sin señal o sin sesión). La dirección
+    // para el celular igual se sabe —sale de location—, así que se muestra. Antes
+    // este caso mandaba a abrir «Iniciar servidor.bat» y http://localhost:8766,
+    // que desde el corte del 2026-09-09 ya no existen.
+    panel.dataset.modo = 'web';
+    dibujarQRWeb(cont);
     return;
   }
   try {
@@ -3995,7 +4161,7 @@ const Vista3D = (() => {
       const u = obj.userData;
       if (u.num) {
         const lote = loteDeCelda(u.num);
-        const etiqueta = estado.modoLote ? `Lote <b>${escapeHtml(u.num)}</b>` : `<b>${escapeHtml(u.num)}</b> · Lote ${lote || '—'}`;
+        const etiqueta = estado.modoLote ? `Lote <b>${escapeHtml(u.num)}</b>` : `<b>${escapeHtml(u.num)}</b> · Lote ${escapeHtml(lote || '—')}`;
         tip.innerHTML = `${etiqueta}<br>Col ${u.col} · ${LADO_CORTO[u.lado]} · Fila ${u.fila}`;
       } else {
         tip.innerHTML = `Hueco libre<br>Col ${u.col} · ${LADO_CORTO[u.lado]} · Fila ${u.fila}`;
@@ -4048,7 +4214,7 @@ const Vista3D = (() => {
   function poblarSelector() {
     const sel = $('box3d');
     const previo = sel.value;
-    sel.innerHTML = estado.boxes.map(b => `<option value="${b.id}">${escapeHtml(b.nombre)}</option>`).join('')
+    sel.innerHTML = estado.boxes.map(b => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.nombre)}</option>`).join('')
       || '<option value="">— sin boxes —</option>';
     if (estado.boxes.some(b => b.id === previo)) sel.value = previo;
   }
@@ -4226,7 +4392,7 @@ function escMotivoNoEditable(o, motivo) {
     'Deshacer para volver atrás con exactitud. Si le cambiáramos el lote o los barriles ahora, esa foto ' +
     'pasaría a describir una orden que ya no existe.</p>' +
     '<p>Deshacé la aplicación primero y después editala.</p>' +
-    `<div class="acciones-modal"><button class="btn" onclick="escPreviewInventario('${o.id}')">Ir a deshacer</button>` +
+    `<div class="acciones-modal"><button class="btn" onclick="escPreviewInventario(${argJs(o.id)})">Ir a deshacer</button>` +
     '<button class="btn sec" onclick="document.getElementById(\'modal\').classList.remove(\'abierto\')">Cerrar</button></div>';
 }
 
@@ -4278,6 +4444,8 @@ function escEditarOrden(id) {
 }
 
 function escGuardar() {
+  // Antes de mostrar "✅ orden guardada": el servidor no la va a aceptar.
+  if (soloLectura) { alert(MSG_SOLO_LECTURA); return; }
   if (!escSesion.tipo) { alert('Elegí el tipo de operación.'); return; }
   if (!escSesion.codigos.length) { alert('No escaneaste ningún barril todavía.'); return; }
   // avisar si falta completar algún casillero de información
@@ -4306,6 +4474,7 @@ function escGuardar() {
         'Lo que cargaste sigue acá. Si lo querés conservar, tocá "Cancelar edición" y guardalo como orden nueva.');
       return;
     }
+    const antes = camposDeOrden(o);
     o.fecha = fecha || hoyISO();
     o.ot = ot;
     o.lote = lote;
@@ -4315,6 +4484,7 @@ function escGuardar() {
     // orden al mes equivocado en el listado de trasegados
     delete o.mes;
     guardar();
+    escRecordarPendiente(o, antes);   // hasta que el servidor la confirme
     escMostrarResumen(o, true);
     escLimpiarSesion();
     escDibujarHistorial();
@@ -4330,6 +4500,7 @@ function escGuardar() {
   };
   estado.escaneos.push(orden);
   guardar();
+  escRecordarPendiente(orden, null);   // hasta que el servidor la confirme
   escMostrarResumen(orden);
   escLimpiarSesion();
   escDibujarHistorial();
@@ -4401,6 +4572,9 @@ function escLimpiarSesion() {
   $('escTabla').innerHTML = '';
   escPintarModoEdicion();   // salir de la edición devuelve los botones a su nombre
   escSetContador();
+  // El borrador de la carga en curso se puede borrar: si se llegó acá desde
+  // escGuardar, la orden ya quedó en la lista de pendientes (escRecordarPendiente)
+  // hasta que el servidor la confirme.
   escBorrarBorrador();
 }
 
@@ -4433,7 +4607,9 @@ function escPoblarFiltros() {
   const tipos = [...new Set(todos.map(o => o.tipo).filter(Boolean))].sort();
   const selM = $('escFiltroMes');
   selM.innerHTML = '<option value="">Todos</option>' +
-    meses.map(m => `<option value="${m}">${m}</option>`).join('');
+    // el mes puede venir tal cual del campo `mes` de la orden (texto libre del
+    // import, o de un POST armado a mano): se escapa como cualquier otro dato
+    meses.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
   selM.value = escFiltro.mes;
   const selT = $('escFiltroTipo');
   selT.innerHTML = '<option value="">Todas</option>' +
@@ -4475,7 +4651,7 @@ function escDibujarHistorial() {
   t.innerHTML = '<tr><th>Fecha</th><th>N° OT</th><th>Operación</th><th>Lote</th><th>Barriles</th>' + (verMarcas ? '<th>Trazabilidad</th>' : '') + '<th></th></tr>' +
     arr.map(o => {
       const m = escMarcasDe(o);
-      const btnMarca = (cual, txt) => `<button class="btn marca ${m[cual] ? 'marca-on' : 'marca-off'}" onclick="escToggleMarca('${o.id}','${cual}')">${txt}</button>`;
+      const btnMarca = (cual, txt) => `<button class="btn marca ${m[cual] ? 'marca-on' : 'marca-off'}" onclick="escToggleMarca(${argJs(o.id)},${argJs(cual)})">${txt}</button>`;
       const celdaMarcas = verMarcas
         ? `<td style="white-space:nowrap;">${btnMarca('lotes', 'Lotes')} ${btnMarca('inventario', 'Inventario')} ${btnMarca('sistema', 'Sistema')}</td>`
         : '';
@@ -4491,11 +4667,11 @@ function escDibujarHistorial() {
       <td style="text-align:center; font-weight:700;">${o.codigos.length}</td>
       ${celdaMarcas}
       <td style="white-space:nowrap;">
-        <button class="btn sec" style="padding:4px 9px;" onclick="escVerOrden('${o.id}')">👁</button>
-        <button class="btn sec${gris}" style="padding:4px 9px;" title="${tituloEditar}" onclick="escEditarOrden('${o.id}')">✏️</button>
+        <button class="btn sec" style="padding:4px 9px;" onclick="escVerOrden(${argJs(o.id)})">👁</button>
+        <button class="btn sec${gris}" style="padding:4px 9px;" title="${tituloEditar}" onclick="escEditarOrden(${argJs(o.id)})">✏️</button>
         <button class="btn peligro${gris}" style="padding:4px 9px;" title="${vencida
           ? `pasaron más de ${ESC_MINUTOS_EDICION} minutos: sólo la puede borrar el programador`
-          : 'borrar esta orden'}" onclick="escBorrarOrden('${o.id}')">🗑</button></td>
+          : 'borrar esta orden'}" onclick="escBorrarOrden(${argJs(o.id)})">🗑</button></td>
     </tr>`;
     }).join('');
   escDibujarTrasegados();
@@ -4541,7 +4717,7 @@ function escVerOrden(id) {
   $('modalContenido').innerHTML = `<h3>Orden ${escapeHtml(o.ot || '(sin OT)')} · ${escapeHtml(ESC_TIPO_EXCEL[o.tipo] || '')}</h3>
     <p class="nota">${escapeHtml(o.fecha)} · Lote ${escapeHtml(o.lote || '—')} · <b>${o.codigos.length}</b> barriles</p>
     <div class="fila-flex" style="margin:10px 0 6px;">
-      <button class="btn" onclick="escCopiarNumeros('${o.id}', this)">📋 Copiar los ${o.codigos.length} números</button>
+      <button class="btn" onclick="escCopiarNumeros(${argJs(o.id)}, this)">📋 Copiar los ${o.codigos.length} números</button>
       <span class="nota" style="margin:0;">o tocá el cuadro para seleccionarlos a mano</span>
     </div>
     <textarea id="escNumerosArea" readonly onclick="this.select()" style="width:100%; height:110px; font-family:monospace; font-size:.95rem; resize:vertical;">${escapeHtml(o.codigos.join('\n'))}</textarea>
@@ -4720,8 +4896,8 @@ function escPreviewInventario(id) {
     if (!o.aplicado) {
       cuerpo = '<p class="nota">Esta orden está marcada a mano, sin cambios registrados. ' +
         'Sacar la marca no modifica el inventario.</p>' +
-        '<div class="acciones-modal"><button class="btn peligro" onclick="invConfirmarRevertir(\'' + o.id +
-        '\')">Sacar la marca</button>' + cerrar + '</div>';
+        '<div class="acciones-modal"><button class="btn peligro" onclick="invConfirmarRevertir(' + argJs(o.id) +
+        ')">Sacar la marca</button>' + cerrar + '</div>';
     } else {
       const p = planDeshacer(o, estado.inventario);
       const lista = p.quedan.slice(0, 8).map(q => escapeHtml(q.num + ' (' + q.motivo + ')')).join(', ') +
@@ -4731,8 +4907,8 @@ function escPreviewInventario(id) {
         (p.quedan.length
           ? '<p style="color:#ffd180;">⚠ ' + p.quedan.length + ' no se tocan porque pasó algo después ' +
             '(otra orden, un escaneo o una corrección): ' + lista + '</p>' : '') +
-        '<div class="acciones-modal"><button class="btn peligro" onclick="invConfirmarRevertir(\'' + o.id +
-        '\')">Deshacer</button>' + cerrar + '</div>';
+        '<div class="acciones-modal"><button class="btn peligro" onclick="invConfirmarRevertir(' + argJs(o.id) +
+        ')">Deshacer</button>' + cerrar + '</div>';
     }
     $('modalContenido').innerHTML = cab + cuerpo;
     $('modal').classList.add('abierto');
@@ -4753,12 +4929,12 @@ function escPreviewInventario(id) {
     cuerpo = '<p style="color:#ffd180;">Esta orden es anterior al inventario unificado del ' +
       escapeHtml(estado.inventarioCorte || INV_CORTE_DEFECTO) +
       '; sus cambios ya están reflejados. No se aplica.</p>' +
-      '<div class="acciones-modal"><button class="btn" onclick="invSoloMarcar(\'' + o.id +
-      '\')">Solo marcar, sin aplicar</button>' + cerrar + '</div>';
+      '<div class="acciones-modal"><button class="btn" onclick="invSoloMarcar(' + argJs(o.id) +
+      ')">Solo marcar, sin aplicar</button>' + cerrar + '</div>';
   } else {
     cuerpo = invResumenHtml(plan) +
-      '<div class="acciones-modal"><button class="btn" onclick="invConfirmarAplicar(\'' + o.id +
-      '\')">Aplicar</button>' + cerrar + '</div>';
+      '<div class="acciones-modal"><button class="btn" onclick="invConfirmarAplicar(' + argJs(o.id) +
+      ')">Aplicar</button>' + cerrar + '</div>';
   }
   $('modalContenido').innerHTML = cab + cuerpo;
   $('modal').classList.add('abierto');
@@ -4831,6 +5007,48 @@ function escGuardarBorrador() {
   } catch (e) {}
 }
 function escBorrarBorrador() { try { localStorage.removeItem(CLAVE_ESC_DRAFT); } catch (e) {} }
+
+// --- órdenes guardadas que el servidor todavía no confirmó (ver CLAVE_ESC_PEND) ---
+function escLeerPendientes() {
+  try { const v = JSON.parse(localStorage.getItem(CLAVE_ESC_PEND)); return Array.isArray(v) ? v : []; }
+  catch (e) { return []; }
+}
+// `antes`: los datos de la orden antes de editarla (null si es nueva). Al
+// recuperar, la edición solo se vuelve a aplicar si en el servidor la orden
+// sigue como estaba: si otro la cambió después, no se le pisa.
+function escRecordarPendiente(o, antes) {
+  const lista = escLeerPendientes().filter(p => !(p && p.orden && p.orden.id === o.id));
+  lista.push({ orden: JSON.parse(JSON.stringify(o)), antes: antes || null });
+  try { localStorage.setItem(CLAVE_ESC_PEND, JSON.stringify(lista)); } catch (e) {}
+}
+function escOlvidarPendientes() { try { localStorage.removeItem(CLAVE_ESC_PEND); } catch (e) {} }
+
+// Al abrir la app (con el estado ya bajado del servidor): las órdenes que se
+// guardaron acá pero no llegaron —se cerró o recargó la página antes de la
+// confirmación— se vuelven a cargar. El operario ya vio "✅ orden guardada":
+// dejarla perdida sería peor que volver a subirla. Qué entra lo decide
+// planRecuperarOrdenes (js/sync.js), que no duplica las que sí llegaron.
+function escRecuperarPendientes() {
+  const lista = escLeerPendientes();
+  if (!lista.length || soloLectura) return;
+  const plan = planRecuperarOrdenes(lista, estado.escaneos || []);
+  if (!plan.agregar.length && !plan.editar.length) { escOlvidarPendientes(); return; }
+  if (!estado.escaneos) estado.escaneos = [];
+  for (const o of plan.agregar) estado.escaneos.push(o);
+  for (const e of plan.editar) {
+    const o = estado.escaneos.find(x => x.id === e.id);
+    if (!o) continue;
+    Object.assign(o, e.campos);
+    delete o.mes;   // igual que al editar: el mes sale de la fecha
+  }
+  guardar();
+  escDibujarHistorial();
+  const ots = plan.agregar.concat(plan.editar.map(e => e.campos))
+    .map(o => o.ot || '(sin OT)').join(', ');
+  alert(`En este equipo quedaron ${plan.agregar.length + plan.editar.length} orden(es) del escáner que se ` +
+    `guardaron pero no llegaron al servidor (la página se cerró o recargó antes de que confirmara): ${ots}.\n\n` +
+    'Ya se volvieron a cargar. Revisalas en el historial del escáner.');
+}
 function escRestaurarBorrador() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(CLAVE_ESC_DRAFT)); } catch (e) {}
@@ -5707,17 +5925,19 @@ $('barBtnConfirmarLote').addEventListener('click', barConfirmarLote);
 $('barBtnVaciaCam').addEventListener('click', barVaciaCam);
 $('barBtnCancelarPar').addEventListener('click', () => barFaseTanque(false));
 
-// ================== DESCARGA DE LA BASE (.db) ==================
-// Pide al servidor un backup fresco y lo baja. El servidor solo lo permite desde
-// la propia computadora (localhost), para que la base no quede expuesta al WiFi.
+// ================== COPIA DEL SERVIDOR (.json) ==================
+// Baja el documento tal como lo tiene guardado el servidor (GET /backup, solo
+// admin). Era la descarga del .db del servidor.py, que solo andaba desde la PC
+// de la bodega; los textos de entonces mandaban a http://localhost:8766.
 $('btnDescargarDB').addEventListener('click', async () => {
-  if (!modoServidor) { alert('La app está abierta sin el servidor local: no hay base para descargar.\nUsá "⬇ Exportar respaldo" (.json) en su lugar.'); return; }
+  if (!modoServidor) { alert('Todavía no hay conexión con el servidor.\nMientras tanto podés usar "⬇ Exportar respaldo", que baja lo que ves en esta pantalla.'); return; }
   const btn = $('btnDescargarDB');
   btn.disabled = true;
   try {
     const r = await fetch(API+'/backup');
+    if (r.status === 401) return;   // el aviso de sesión cerrada ya lo muestra /shared/fusion.js
     if (r.status === 403) {
-      alert('Por seguridad, la base solo se descarga desde la computadora donde corre el servidor.\nEn esta compu abrí http://localhost:8766 y descargala desde ahí.\n\nDesde el celular podés usar los exports a Excel o el respaldo .json.');
+      alert('La copia del servidor solo la puede bajar un administrador.\n\nPodés usar "⬇ Exportar respaldo" o los exports a Excel, que bajan lo que ves en esta pantalla.');
       return;
     }
     if (!r.ok) { alert('No pude generar la copia (error ' + r.status + ').'); return; }
@@ -5726,7 +5946,7 @@ $('btnDescargarDB').addEventListener('click', async () => {
     const m = /filename="([^"]+)"/.exec(cd);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = m ? m[1] : 'mapa.db';
+    a.download = m ? m[1] : 'mapa.json';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   } catch (e) {
@@ -5760,6 +5980,7 @@ $('pedInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.prev
   dibujarTablaBoxes();
   aplicarModoLote();   // aplicar el interruptor por lote según lo guardado
   aplicarRol(rolDeLaPlataforma());
+  aplicarSoloLectura();
   setInterval(sondear, 3000);
 })();
 </script>

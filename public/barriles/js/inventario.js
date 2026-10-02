@@ -306,9 +306,12 @@ function planImportacion(filasExcel, inventario) {
  * el de `ts` más nuevo.
  *
  * base: Map clave -> JSON del elemento en la última sincronización.
+ * fusionarElemento (opcional): (base, local, serv) -> elemento, para cuando los
+ * dos cambiaron el mismo elemento y el ts solo no alcanza (las filas del
+ * inventario, ver fusionarFilaInv).
  * Devuelve el array nuevo (no muta `serv`).
  */
-function fusionar3(base, local, serv, clave) {
+function fusionar3(base, local, serv, clave, fusionarElemento) {
   const b = base || new Map();
   const loc = new Map((local || []).map(x => [clave(x), x]));
   const out = [];
@@ -325,7 +328,10 @@ function fusionar3(base, local, serv, clave) {
     }
     const cambieYo = enBase === undefined || JSON.stringify(l) !== enBase;
     const cambioServ = enBase === undefined || JSON.stringify(s) !== enBase;
-    if (cambieYo && cambioServ) out.push((Number(l.ts) || 0) >= (Number(s.ts) || 0) ? l : s);
+    if (cambieYo && cambioServ) {
+      if (fusionarElemento && enBase !== undefined) out.push(fusionarElemento(JSON.parse(enBase), l, s));
+      else out.push((Number(l.ts) || 0) >= (Number(s.ts) || 0) ? l : s);
+    }
     else out.push(cambieYo ? l : s);
   }
   for (const [k, l] of loc) {
@@ -334,6 +340,40 @@ function fusionar3(base, local, serv, clave) {
     // cambié, o sí); si no estaba, es nuevo mío.
     const enBase = b.get(k);
     if (enBase === undefined || JSON.stringify(l) !== enBase) out.push(l);
+  }
+  return out;
+}
+
+// Los campos que dicen en qué estado está la vasija y de qué hecho salió. Van
+// juntos siempre: mezclar el estado de un lado con el lote del otro armaría una
+// fila que nadie escribió (VACIO con lote, LLENO sin lote).
+const CAMPOS_HECHO = ['estado', 'lote', 'cosecha', 'litros', 'fecha', 'ts', 'por'];
+
+/**
+ * Una fila del inventario que cambiaron los dos lados a la vez. Elegir la fila
+ * entera por `ts` perdía datos: la marca (o la ficha que trae el Excel) se edita
+ * sin tocar `ts` —a propósito: planDeshacer usa el ts para saber si la orden
+ * sigue siendo lo último—, así que un escaneo en otro celular, con ts más nuevo,
+ * se llevaba puesta la corrección de la marca.
+ *
+ * Ahora:
+ *  - el hecho (CAMPOS_HECHO) va en bloque: si lo cambió un solo lado, el de ese
+ *    lado; si los dos, el de ts más nuevo (la regla de siempre);
+ *  - lo demás (marca, capacidad, año, alta…), campo por campo: lo que cambié yo
+ *    respecto de la base gana; lo que no toqué, queda como en el servidor.
+ */
+function fusionarFilaInv(base, local, serv) {
+  const b = base || {}, l = local || {}, s = serv || {};
+  const mismo = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  const hecho = f => CAMPOS_HECHO.map(k => f[k]);
+  const cambieHecho = !mismo(hecho(l), hecho(b));
+  const cambioHecho = !mismo(hecho(s), hecho(b));
+  const deHecho = cambieHecho && (!cambioHecho || (Number(l.ts) || 0) >= (Number(s.ts) || 0)) ? l : s;
+  const out = {};
+  const claves = new Set(Object.keys(b).concat(Object.keys(l), Object.keys(s)));
+  for (const k of claves) {
+    const v = CAMPOS_HECHO.includes(k) ? deHecho[k] : (mismo(l[k], b[k]) ? s[k] : l[k]);
+    if (v !== undefined) out[k] = v;
   }
   return out;
 }
@@ -504,6 +544,8 @@ globalThis.planDeshacer = planDeshacer;
 globalThis.CAMPOS_FICHA = CAMPOS_FICHA;
 globalThis.planImportacion = planImportacion;
 globalThis.fusionar3 = fusionar3;
+globalThis.CAMPOS_HECHO = CAMPOS_HECHO;
+globalThis.fusionarFilaInv = fusionarFilaInv;
 globalThis.fotoPorClave = fotoPorClave;
 globalThis.SECCIONES_VIEJAS = SECCIONES_VIEJAS;
 globalThis.necesitaMigracion = necesitaMigracion;

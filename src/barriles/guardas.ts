@@ -56,7 +56,10 @@ function llenas(
   coleccion: 'boxes' | 'palets',
 ): Map<string, Set<string>> {
   const m = new Map<string, Set<string>>();
-  for (const c of estado?.[coleccion] ?? []) {
+  // comoLista y no `?? []`: un documento viejo (o un POST armado a mano) con
+  // `boxes` como objeto o string hacía que el for…of tirara TypeError, y el
+  // freno —que corre ANTES de escribir— tumbaba el Worker con un 1101.
+  for (const c of comoLista(estado?.[coleccion]) as (Contenedor | null | undefined)[]) {
     const id = String(c?.id ?? '');
     const celdas = c?.celdas ?? {};
     const set = new Set<string>();

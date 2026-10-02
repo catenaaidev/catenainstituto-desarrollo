@@ -53,8 +53,16 @@ existen todavía. Para que varias personas editen a la vez sin perder nada:
   análisis distintos del mismo lote.
 - Lo no guardado vive también en IndexedDB (borrador por módulo y usuario) y se
   ofrece recuperar al reabrir. Barriles tiene su propia fusión y cola.
-- La sesión dura 30 días **desde el último uso** (se estira con cada pedido) y
-  las APIs de módulo sin sesión responden 401, que la pantalla avisa.
+- La sesión dura 30 días **desde el último uso** (se anota como mucho una vez
+  por hora) y las APIs de módulo sin sesión responden 401, que la pantalla avisa.
+- Login: 5 contraseñas mal seguidas frenan la cuenta 15 minutos (429);
+  resetear la contraseña desde /admin.html la destraba.
+- Barriles: la vista sale del rol del módulo (admin → programador; editor y
+  lector → operario; el lector queda en solo lectura). No hay selector ni
+  contraseña de programador.
+- Todo dato cargado por un usuario se escapa antes de ir a innerHTML: lo ven
+  todos, admins incluidos (un `<img onerror>` en una variedad corría en su
+  sesión). El reporte de Prensas escapa los textos en el servidor.
 
 ## Comandos
 

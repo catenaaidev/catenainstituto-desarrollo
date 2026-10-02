@@ -28,7 +28,9 @@ import {
   valorValido,
   type Fila,
 } from './fml';
+import { num, filasDe } from './fml-condiciones';
 import { cruzar, esSeriePrensa } from './cruce';
+import { etapasSugeridas } from './etapas';
 import { normalizarLote } from './linaje';
 import type { MapaNormalizado, Unidad } from './mapa';
 
@@ -62,12 +64,9 @@ const VEREDICTOS_MARCADOS = ['difiere', 'sin_envase'];
 
 const DIA_MS = 86_400_000;
 
-/** Número finito o null. Descarta NaN e infinitos. */
-function num(x: unknown): number | null {
-  if (x === null || x === undefined || x === '') return null;
-  const v = typeof x === 'number' ? x : Number(x);
-  return Number.isFinite(v) ? v : null;
-}
+// El parser es el compartido (num de fml-condiciones). La copia local cortaba
+// el '' pero no el '  ' (Number('  ') es 0) ni aceptaba la coma: un "112,5" de
+// litros en el Mapa caia a null y la barrica se dosificaba por su capacidad.
 
 function fechaMs(iso: unknown): number | null {
   if (!iso) return null;
@@ -247,7 +246,10 @@ function ultimaCorreccion(analisisDelLote: Fila[]): Correccion | null {
     if (verazPython(cc.anulada)) continue;
     const ot = String(cc.ot_n ?? '').trim();
     if (!ot) continue;
-    const f = fechaMs(cc.fecha ?? a.fecha_analisis);
+    // || y no ??: la cascara de correccion trae fecha '' cuando nadie la
+    // completo, y con ?? ese '' ganaba, fechaMs daba null y la correccion con
+    // OT se descartaba (el lote volvia a la orden y se dosificaba dos veces).
+    const f = fechaMs(String(cc.fecha ?? '').trim() || a.fecha_analisis);
     if (f === null) continue;
     if (mejor === null || f > mejor.fecha) {
       mejor = { fecha: f, fecha_iso: aIso(f), ot, so2_prev: valorValido(cc.so2_libre_actual) };
@@ -340,10 +342,13 @@ export interface Orden {
  * `hoy` en milisegundos UTC del día.
  */
 export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado, hoy: number): Orden {
-  const lotes = (datos.lotes as Fila[]) ?? [];
+  // filasDe: una entrada null en lotes tiraba TypeError en l.lote (1101).
+  const lotes = filasDe(datos.lotes);
   const config = ((datos.config as Fila)?.criterios_fml as Record<string, unknown>) ?? {};
 
-  const informe = cruzar(lotes, mapa);
+  // Con la etapa sugerida, un lote sin etapa confirmada no sale "sin_envase"
+  // en la orden mientras todavía fermenta (ver veredictoDeLote).
+  const informe = cruzar(lotes, mapa, etapasSugeridas(datos, hoy));
   const porLoteCruce = new Map(informe.lotes.map((v) => [v.lote, v]));
   const posiciones = mapa.posiciones ?? new Map<string, string[]>();
   const unidadesPorLote = mapa.unidades_por_lote ?? new Map<string, Unidad[]>();

@@ -167,8 +167,14 @@ function _abrirBorrarOTAplicada(ot, plan){
     (f.vasija_actual ? ' · ' + esc(f.vasija_actual) : '') : '—';
   const filas = plan.items.map(it => `<tr><td><b>${esc(it.lote)}</b></td><td>${env(it.ahora)}</td>
     <td>${it.accion === 'volver' ? '→ ' + env(it.antes)
+      : it.porCorte ? '<span class="otc-aviso">⚠ no se toca: el corte se deshace entero o nada</span>'
       : it.accion === 'cambiado' ? '<span class="otc-aviso">⚠ se cambió después de la OT: no se toca</span>'
       : '<span class="otc-aviso">⚠ el lote ya no existe</span>'}</td></tr>`).join('');
+  /* planDeshacer ya bajo todos los lotes del corte a "no se toca" (ver
+   * ot-deshacer.js): devolver solo una parte contaria el vino dos veces. Se
+   * explica y se apaga "Borrar y deshacer", que no tendria nada que hacer. */
+  const avisoCorte = plan.corteParcial
+    ? `<div class="msg err" style="margin-top:10px">Esta OT es un corte y algún lote se cambió (o se borró) después de aplicarla. Un corte se deshace entero o nada: volver solo una parte contaría el vino dos veces. No se puede deshacer automáticamente; corregí los lotes a mano.</div>` : '';
   const nm = plan.mermasBorrar.length, nr = plan.mermasReabrir.length;
   const mermas = (nm || nr) ? `<p style="margin:10px 0 0;font-size:13px;color:var(--muted)">${
     nm ? (nm === 1 ? 'Se borra 1 barrica merma que creó esta OT. ' : `Se borran ${nm} barricas merma que creó esta OT. `) : ''}${
@@ -179,18 +185,54 @@ function _abrirBorrarOTAplicada(ot, plan){
 <h3 style="margin:0 0 4px">🗑 Borrar ${esc(ot.ot)}</h3>
 <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Esta OT ya se aplicó a los lotes. Podés volverlos a como estaban antes de la OT.</p>
 <div class="otc-scroll"><table class="otc-tabla"><thead><tr><th>Lote</th><th>Ahora</th><th>Vuelve a</th></tr></thead>
-<tbody>${filas}</tbody></table></div>${mermas}${corte}
+<tbody>${filas}</tbody></table></div>${mermas}${corte}${avisoCorte}
 <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
   <button class="btn" id="otbCancelar">Cancelar</button>
   <button class="btn danger" id="otbSolo">Solo borrar la OT</button>
-  <button class="btn primary" id="otbDeshacer">Borrar y deshacer</button>
+  <button class="btn primary" id="otbDeshacer"${plan.corteParcial ? ' disabled title="Un corte se deshace entero o nada"' : ''}>Borrar y deshacer</button>
 </div></div>`);
-  const fin = () => { eliminarOT(DATOS(), ot); markDirty(); cerrarOverlay(); renderMovimientos(); };
+  /* La OT y el plan se vuelven a buscar al hacer clic, en el DATOS() de ese
+   * momento: si entre que se abrio esto y el clic termino un guardado con
+   * fusion (409), `ot` es un huerfano (eliminarOT no lo encontraria y borraria
+   * los movimientos pero dejaria la OT) y el plan juzgo lotes que ya son otros. */
+  const vigente = () => (DATOS().ordenes_trabajo || []).find(o => o.id === ot.id) || null;
+  const fin = otV => { eliminarOT(DATOS(), otV); markDirty(); cerrarOverlay(); renderMovimientos(); };
+  const sinOT = () => { cerrarOverlay(); alert('La ' + ot.ot + ' ya no está en los datos actuales (¿la borraron desde otra PC?). No se cambió nada.'); renderMovimientos(); };
   $('otbCancelar').addEventListener('click', () => cerrarOverlay());
   $('otbSolo').addEventListener('click', () => {
-    if (confirm('Los lotes quedan como los dejó la OT. ¿Borrar solo la OT?')) fin();
+    if (!confirm('Los lotes quedan como los dejó la OT. ¿Borrar solo la OT?')) return;
+    const otV = vigente();
+    if (!otV) return sinOT();
+    fin(otV);
   });
-  $('otbDeshacer').addEventListener('click', () => { aplicarDeshacer(DATOS(), plan); fin(); });
+  $('otbDeshacer').addEventListener('click', () => {
+    const otV = vigente();
+    if (!otV) return sinOT();
+    const nuevo = planDeshacer(DATOS(), otV);
+    const firma = p => p.items.map(it => it.lote + ':' + it.accion).join('|') + '|' + p.corteParcial;
+    if (firma(nuevo) !== firma(plan)){
+      // Lo que se mostro ya no es lo que pasaria: se vuelve a mostrar.
+      alert('Los lotes de esta OT cambiaron mientras mirabas esta ventana. Revisá de nuevo qué vuelve atrás.');
+      _abrirBorrarOTAplicada(otV, nuevo);
+      return;
+    }
+    aplicarDeshacer(DATOS(), nuevo);
+    fin(otV);
+  });
+}
+
+/* Posicion en DATOS().movimientos del movimiento `m`, o -1.
+ *
+ * Despues de un 409, nucleo.guardar() fusiona y REEMPLAZA todos los objetos de
+ * DATOS(): una fila pintada o un modal abierto antes de eso tienen un
+ * huerfano. Si `m` sigue en el array es el; si no, se busca por id (los
+ * movimientos cargados por la app lo tienen; los 338 historicos no, y esos no
+ * se pueden identificar con seguridad). */
+function _idxMovVivo(m){
+  const movs = DATOS().movimientos || [];
+  const i = movs.indexOf(m);
+  if (i !== -1) return i;
+  return (m && m.id) ? movs.findIndex(x => x.id === m.id) : -1;
 }
 
 /* --- renderMovimientos --- */
@@ -474,8 +516,13 @@ export function renderMovimientos(){
           return;
         }
         if (confirm('¿Eliminar el movimiento del lote ' + esc(o.lote || '(sin lote)') + ' (' + esc(o.tipo || '') + ' ' + esc(fmtFecha(o.fecha)) + ')?')){
-          const idx = DATOS().movimientos.indexOf(o);
-          if (idx !== -1) DATOS().movimientos.splice(idx, 1);
+          const idx = _idxMovVivo(o);
+          if (idx === -1){
+            alert('No se encontró ese movimiento en los datos actuales (puede que se hayan recargado). No se borró nada.');
+            renderMovimientos();
+            return;
+          }
+          DATOS().movimientos.splice(idx, 1);
           markDirty();
           renderMovimientos();
         }
@@ -813,7 +860,10 @@ async function _aceptarModalOT(mov){
       return;
     }
     if (confirm('OT emitida y guardada. ¿Imprimir la hoja para el operario?')){
-      _imprimirOT(nuevoMov);
+      // Lo que se imprime es lo GUARDADO: si guardar() fusiono (409), el
+      // movimiento vivo es otro objeto que el que se armo aca.
+      const i = _idxMovVivo(nuevoMov);
+      _imprimirOT(i !== -1 ? DATOS().movimientos[i] : nuevoMov);
     }
     return;
   }
@@ -828,6 +878,23 @@ async function _aceptarModalOT(mov){
   }
   if (litros == null && !confirm('Vas a confirmar el trabajo sin litros reales. ¿Seguro?')) return;
 
+  /* Se confirma el movimiento VIVO, no el que se capturo al abrir el modal: si
+   * en el medio termino un guardado con fusion, ese es un huerfano y el
+   * movimiento quedaria PENDIENTE en los datos con la pantalla diciendo que no. */
+  const iVivo = _idxMovVivo(mov);
+  if (iVivo === -1){
+    alert('No se encontró ese movimiento en los datos actuales (puede que se hayan recargado). No se confirmó nada.');
+    cerrarOverlay();
+    renderMovimientos();
+    return;
+  }
+  mov = DATOS().movimientos[iVivo];
+  if (esEjecutado(mov)){
+    alert('Este movimiento ya figura como ejecutado (¿lo confirmaron desde otra PC?). No se cambió nada.');
+    cerrarOverlay();
+    renderMovimientos();
+    return;
+  }
   Object.assign(mov, datos);
   mov.operario = operario;
   mov.estado = EJECUTADO;

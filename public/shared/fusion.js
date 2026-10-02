@@ -50,48 +50,112 @@
   // (CLAVES_DE_SECCION), como hace validacion.ts del servidor.
   var CLAVES = ['id', 'uid'];
 
-  // Secciones del documento con clave natural. Las demás no la tienen: cada
-  // fila se identifica por su contenido entero.
-  var CLAVES_DE_SECCION = { lotes: 'lote' };
+  // Secciones del documento con clave natural (un campo o varios). Las demás no
+  // la tienen: cada fila se identifica por su contenido entero.
+  //  - lotes: el número de lote (como en validacion.ts del servidor).
+  //  - degustaciones: hay una por lote y mes; la pantalla edita "la" de ese mes.
+  var CLAVES_DE_SECCION = { lotes: ['lote'], degustaciones: ['lote', 'mes'] };
 
-  function claveDeLista(listas, forzada) {
-    var candidatos = forzada ? [forzada] : CLAVES;
-    for (var c = 0; c < candidatos.length; c++) {
-      var campo = candidatos[c];
-      var sirve = true;
-      var hayAlguno = false;
-      for (var i = 0; i < listas.length && sirve; i++) {
-        var vistos = new Set();
-        var lista = listas[i];
-        for (var j = 0; j < lista.length; j++) {
-          var x = lista[j];
-          if (!esObjeto(x) || x[campo] === undefined || x[campo] === null || x[campo] === '') { sirve = false; break; }
-          var k = String(x[campo]);
-          if (vistos.has(k)) { sirve = false; break; }
-          vistos.add(k);
-          hayAlguno = true;
-        }
-      }
-      if (sirve && hayAlguno) return campo;
+  /** La clave de un elemento con esos campos, o null si le falta alguno. */
+  function claveDe(x, campos) {
+    if (!esObjeto(x)) return null;
+    var partes = [];
+    for (var i = 0; i < campos.length; i++) {
+      var v = x[campos[i]];
+      if (v === undefined || v === null || String(v).trim() === '') return null;
+      partes.push(String(v).trim());
+    }
+    return partes.join('\u0001');
+  }
+
+  /**
+   * Las claves que sirven para identificar: presentes y sin repetirse dentro de
+   * cada lista. Un lote en blanco o duplicado no tiene identidad; esos elementos
+   * se combinan por contenido, sin arrastrar a los demás.
+   */
+  function clavesValidas(listas, campos) {
+    var malas = new Set();
+    var todas = new Set();
+    listas.forEach(function (lista) {
+      var vistos = new Set();
+      lista.forEach(function (x) {
+        var k = claveDe(x, campos);
+        if (k === null) return;
+        if (vistos.has(k)) malas.add(k);
+        vistos.add(k);
+        todas.add(k);
+      });
+    });
+    var ok = new Set();
+    todas.forEach(function (k) { if (!malas.has(k)) ok.add(k); });
+    return ok;
+  }
+
+  /** Para listas sin clave declarada: id/uid solo si TODOS lo tienen y no se repite. */
+  function claveAutomatica(listas) {
+    for (var c = 0; c < CLAVES.length; c++) {
+      var campos = [CLAVES[c]];
+      var validas = clavesValidas(listas, campos);
+      var hay = false;
+      var todosTienen = listas.every(function (lista) {
+        return lista.every(function (x) { var k = claveDe(x, campos); if (k !== null) hay = true; return k !== null && validas.has(k); });
+      });
+      if (todosTienen && hay) return campos;
     }
     return null;
   }
 
-  /** Listas cuyos elementos tienen una clave: elemento por elemento, y dentro de cada uno, campo por campo. */
-  function fusionarPorClave(b, l, s, campo) {
-    var idx = function (arr) { var m = new Map(); arr.forEach(function (x) { m.set(String(x[campo]), x); }); return m; };
+  /** Un id libre para un elemento nuevo que chocó con otro nuevo del servidor. */
+  function idLibre(campo, original, usados) {
+    var numericos = true, max = 0;
+    usados.forEach(function (k) { var n = Number(k); if (!isFinite(n) || String(k).trim() === '') numericos = false; else if (n > max) max = n; });
+    if (numericos && isFinite(Number(original))) {
+      var nuevo = max + 1;
+      return typeof original === 'number' ? nuevo : String(nuevo);
+    }
+    var i = 2, cand;
+    do { cand = String(original) + '-' + i++; } while (usados.has(cand));
+    return cand;
+  }
+
+  /**
+   * Listas con clave: elemento por elemento, y dentro de cada uno, campo por
+   * campo. Los elementos sin clave válida se combinan por contenido.
+   */
+  function fusionarPorClave(b, l, s, campos, renumerar) {
+    var validas = clavesValidas([b, l, s], campos);
+    var clave = function (x) { var k = claveDe(x, campos); return k !== null && validas.has(k) ? k : null; };
+    var idx = function (arr) { var m = new Map(); arr.forEach(function (x) { var k = clave(x); if (k !== null) m.set(k, x); }); return m; };
+    var sueltos = function (arr) { return arr.filter(function (x) { return clave(x) === null; }); };
     var mb = idx(b), ml = idx(l), ms = idx(s);
+    var usados = new Set();
+    ml.forEach(function (x) { usados.add(String(x[campos[0]])); });
+    ms.forEach(function (x) { usados.add(String(x[campos[0]])); });
     var out = [];
     var hechos = new Set();
     // Orden: el del servidor, y al final lo nuevo de esta pantalla.
     s.concat(l).forEach(function (x) {
-      var k = String(x[campo]);
-      if (hechos.has(k)) return;
+      var k = clave(x);
+      if (k === null || hechos.has(k)) return;
       hechos.add(k);
-      var v = fusionar(mb.get(k), ml.get(k), ms.get(k));
+      var eb = mb.get(k), el = ml.get(k), es = ms.get(k);
+      // Los dos agregaron, cada uno por su lado, un elemento nuevo con el mismo
+      // id (pasa con ids "el mayor + 1", como los agregados de Prensas): son dos
+      // cosas distintas. Quedan las dos; la de esta pantalla, con un id libre.
+      // Solo con ids técnicos (id/uid): un número de lote es real, y dos
+      // personas cargando el mismo lote hablan del mismo lote.
+      if (renumerar && eb === undefined && el !== undefined && es !== undefined && !igual(el, es)) {
+        out.push(clonar(es));
+        var mio = clonar(el);
+        mio[campos[0]] = idLibre(campos[0], el[campos[0]], usados);
+        usados.add(String(mio[campos[0]]));
+        out.push(mio);
+        return;
+      }
+      var v = fusionar(eb, el, es);
       if (v !== undefined) out.push(v);
     });
-    return out;
+    return out.concat(fusionarPorContenido(sueltos(b), sueltos(l), sueltos(s)));
   }
 
   /**
@@ -100,6 +164,10 @@
    * que borró, se resta del servidor. Editar una fila es borrar la vieja y
    * agregar la nueva: si dos personas editan la MISMA fila a la vez quedan las
    * dos versiones, que es preferible a perder una.
+   *
+   * De lo agregado acá se suma solo lo que el servidor no tenga ya: si un
+   * guardado llegó pero su respuesta se perdió (corte de señal), al reintentar
+   * esas filas ya están en el servidor y no se duplican.
    */
   function fusionarPorContenido(b, l, s) {
     var contar = function (arr) {
@@ -107,7 +175,7 @@
       arr.forEach(function (x) { var k = estable(x); m.set(k, (m.get(k) || 0) + 1); });
       return m;
     };
-    var cb = contar(b), cl = contar(l);
+    var cb = contar(b), cl = contar(l), cs = contar(s);
     var quitar = new Map();
     cb.forEach(function (n, k) { var q = n - (cl.get(k) || 0); if (q > 0) quitar.set(k, q); });
     var out = [];
@@ -118,7 +186,7 @@
       out.push(x);
     });
     var agregar = new Map();
-    cl.forEach(function (n, k) { var a = n - (cb.get(k) || 0); if (a > 0) agregar.set(k, a); });
+    cl.forEach(function (n, k) { var a = n - Math.max(cb.get(k) || 0, cs.get(k) || 0); if (a > 0) agregar.set(k, a); });
     l.forEach(function (x) {
       var k = estable(x);
       var a = agregar.get(k) || 0;
@@ -158,8 +226,9 @@
     }
     if (Array.isArray(l) && Array.isArray(s)) {
       var ba = Array.isArray(b) ? b : [];
-      var campo = claveDeLista([ba, l, s], claveLista);
-      return campo ? fusionarPorClave(ba, l, s, campo) : fusionarPorContenido(ba, l, s);
+      if (claveLista) return fusionarPorClave(ba, l, s, claveLista, false);
+      var auto = claveAutomatica([ba, l, s]);
+      return auto ? fusionarPorClave(ba, l, s, auto, true) : fusionarPorContenido(ba, l, s);
     }
     return clonar(l);
   }
@@ -207,11 +276,41 @@
     });
   }
 
-  // Un borrador por módulo y por usuario: en una PC compartida, lo de una
-  // persona no se le ofrece a otra.
-  function claveBorrador(modulo) {
+  // Un borrador por módulo, usuario y PESTAÑA: en una PC compartida lo de una
+  // persona no se le ofrece a otra, y con dos pestañas abiertas el guardado de
+  // una no le borra el borrador a la otra. El id de pestaña vive en
+  // sessionStorage, así que sobrevive a recargar esa misma pestaña.
+  var PESTANA = (function () {
+    var id = null;
+    try { id = g.sessionStorage.getItem('ciw-pestana'); } catch (e) {}
+    if (!id) {
+      id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      try { g.sessionStorage.setItem('ciw-pestana', id); } catch (e) {}
+    }
+    return id;
+  })();
+
+  function prefijoBorrador(modulo) {
     var quien = (g.CIW && g.CIW.email) || '';
-    return modulo + '|' + quien;
+    return modulo + '|' + quien + '|';
+  }
+  function claveBorrador(modulo) { return prefijoBorrador(modulo) + PESTANA; }
+
+  // Mientras esta pestaña está abierta, retiene un "lock" con el nombre de su
+  // borrador: así otra pestaña sabe que ese borrador tiene dueño vivo y no se
+  // lo ofrece para recuperar.
+  var locksTomados = {};
+  function retenerBorrador(modulo) {
+    var nombre = 'ciw-borrador:' + claveBorrador(modulo);
+    if (locksTomados[nombre] || !g.navigator || !g.navigator.locks) return;
+    locksTomados[nombre] = true;
+    g.navigator.locks.request(nombre, function () { return new Promise(function () {}); }).catch(function () {});
+  }
+  function locksVivos() {
+    if (!g.navigator || !g.navigator.locks || !g.navigator.locks.query) return Promise.resolve(new Set());
+    return g.navigator.locks.query()
+      .then(function (q) { return new Set((q.held || []).map(function (l) { return l.name; })); })
+      .catch(function () { return new Set(); });
   }
 
   var pendientes = {};
@@ -219,10 +318,14 @@
   var borrador = {
     /** Guarda ya. obtener() devuelve {base, local}. */
     guardar: function (modulo, obtener) {
+      // Un lector no puede guardar en el servidor: guardarle borradores solo
+      // hacía que se le ofreciera "recuperar" en cada recarga.
+      if (g.CIW && g.CIW.rol === 'lector') return Promise.resolve();
       var datos;
       try { datos = obtener(); } catch (e) { return Promise.resolve(); }
       if (!datos || !datos.local) return Promise.resolve();
       var registro = { base: clonar(datos.base), local: clonar(datos.local), ts: Date.now() };
+      retenerBorrador(modulo);
       return tx('readwrite', function (st) { return st.put(registro, claveBorrador(modulo)); })
         .catch(function (e) { console.warn('No se pudo guardar el borrador:', e); });
     },
@@ -235,28 +338,74 @@
       return tx('readonly', function (st) { return st.get(claveBorrador(modulo)); })
         .catch(function () { return undefined; });
     },
+    /** Los borradores de este módulo y usuario, de cualquier pestaña: [{clave, valor}]. */
+    leerTodos: function (modulo) {
+      var pref = prefijoBorrador(modulo);
+      return abrir().then(function (db) {
+        return new Promise(function (ok) {
+          var out = [];
+          var t = db.transaction(TIENDA, 'readonly');
+          var cur = t.objectStore(TIENDA).openCursor();
+          cur.onsuccess = function () {
+            var c = cur.result;
+            if (!c) return;
+            if (String(c.key).indexOf(pref) === 0) out.push({ clave: String(c.key), valor: c.value });
+            c.continue();
+          };
+          t.oncomplete = function () { db.close(); ok(out); };
+          t.onerror = function () { db.close(); ok(out); };
+        });
+      }).catch(function () { return []; });
+    },
     borrar: function (modulo) {
       clearTimeout(pendientes[modulo]);
       return tx('readwrite', function (st) { return st.delete(claveBorrador(modulo)); })
         .catch(function () {});
     },
+    borrarClaves: function (claves) {
+      if (!claves.length) return Promise.resolve();
+      return tx('readwrite', function (st) { claves.forEach(function (k) { st.delete(k); }); })
+        .catch(function () {});
+    },
   };
 
   /**
-   * Al abrir el módulo: si quedó un borrador con cambios, ofrece recuperarlo.
-   * Devuelve el documento combinado (borrador encima de lo que hay hoy en el
-   * servidor) o null si no hay nada o la persona no lo quiere.
+   * Al abrir el módulo: si quedaron borradores con cambios (de esta pestaña o de
+   * otras ya cerradas), ofrece recuperarlos. Devuelve el documento combinado
+   * (los borradores, del más viejo al más nuevo, encima de lo que hay hoy en el
+   * servidor) o null si no hay nada o la persona no los quiere.
    */
   function recuperar(modulo, servidor) {
-    return borrador.leer(modulo).then(function (r) {
-      if (!r || !r.local || igual(r.local, r.base)) return null;
-      var cuando = new Date(r.ts).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
+    retenerBorrador(modulo);
+    return Promise.all([borrador.leerTodos(modulo), locksVivos()]).then(function (res) {
+      var todos = res[0], vivos = res[1];
+      var propia = claveBorrador(modulo);
+      var candidatos = todos.filter(function (b) {
+        if (!b.valor || !b.valor.local || igual(b.valor.local, b.valor.base)) return false;
+        // El de otra pestaña que sigue abierta es de ella: no se toca.
+        return b.clave === propia || !vivos.has('ciw-borrador:' + b.clave);
+      }).sort(function (a, b) { return (a.valor.ts || 0) - (b.valor.ts || 0); });
+      // Los vacíos (sin cambios) se limpian sin preguntar.
+      var vacios = todos.filter(function (b) { return !b.valor || !b.valor.local || igual(b.valor.local, b.valor.base); })
+        .map(function (b) { return b.clave; });
+      borrador.borrarClaves(vacios);
+      if (!candidatos.length) return null;
+
+      var ultimo = candidatos[candidatos.length - 1].valor.ts;
+      var cuando = new Date(ultimo).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
       var si = g.confirm(
-        'En este equipo quedaron cambios SIN GUARDAR del ' + cuando + '.\n\n' +
+        'En este equipo quedaron cambios SIN GUARDAR' +
+        (candidatos.length > 1 ? ' (de ' + candidatos.length + ' pestañas)' : '') + ', el último del ' + cuando + '.\n\n' +
         'Aceptar = recuperarlos (se combinan con lo que cargaron los demás; después tocá Guardar).\n' +
         'Cancelar = descartarlos.');
-      if (!si) { borrador.borrar(modulo); return null; }
-      return fusionarDocumento(r.base, r.local, servidor);
+      var claves = candidatos.map(function (b) { return b.clave; });
+      if (!si) { borrador.borrarClaves(claves); return null; }
+      var doc = servidor;
+      candidatos.forEach(function (b) { doc = fusionarDocumento(b.valor.base, b.valor.local, doc); });
+      // Los de pestañas cerradas pasan a ser de esta: el de esta pestaña se
+      // reescribe con todo junto en cuanto la app marque los cambios.
+      borrador.borrarClaves(claves.filter(function (k) { return k !== propia; }));
+      return doc;
     });
   }
 
@@ -279,9 +428,14 @@
     var caja = g.document.createElement('div');
     caja.id = 'ciw-sesion';
     caja.setAttribute('role', 'alert');
+    // Barriles sincroniza solo: no tiene botón Guardar y lo pendiente se sube
+    // en cuanto vuelve la sesión.
+    var esBarriles = g.CIW && g.CIW.modulo === 'barriles';
     caja.innerHTML = '<button title="Cerrar" aria-label="Cerrar">&times;</button>' +
-      '<b>Tu sesión se cerró.</b> Lo que cargaste sigue en esta pantalla y guardado en este equipo: no se perdió.<br>' +
-      'Iniciá sesión en la otra pestaña, volvé acá y tocá <b>Guardar</b> de nuevo.<br>' +
+      '<b>Tu sesión se cerró.</b> Lo que cargaste sigue en esta pantalla: no se perdió.<br>' +
+      (esBarriles
+        ? 'Iniciá sesión en la otra pestaña y volvé acá: lo pendiente se sube solo.<br>'
+        : 'Iniciá sesión en la otra pestaña, volvé acá y tocá <b>Guardar</b> de nuevo.<br>') +
       '<a href="/login.html" target="_blank" rel="noopener">Iniciar sesión</a>';
     caja.querySelector('button').onclick = function () { caja.remove(); avisando = false; };
     g.document.body.appendChild(caja);

@@ -162,6 +162,28 @@ ${_dlVasijas()}${corte}
 
 function _entradaDe(st, id){ return id === 'c' ? st.entradas.corte : st.entradas.por_lote[+id]; }
 
+/* Vuelve a enganchar st.ot con la OT del DATOS() de AHORA. Devuelve un texto
+ * de error si no se puede seguir, o '' si st.ot quedo al dia.
+ *
+ * El overlay captura la OT al abrirse, pero un guardado que termina mientras
+ * esta abierto puede pasar por un 409: nucleo.guardar() fusiona y REEMPLAZA
+ * todos los objetos de DATOS(). Confirmar sobre la OT capturada aplicaba los
+ * litros a los lotes nuevos (aplicarPropuesta los busca por numero) pero
+ * escribia estado y `aplicado` en el huerfano: la OT seguia PENDIENTE en los
+ * datos y se podia confirmar dos veces (envases restados dos veces, mermas
+ * duplicadas). */
+function _engancharOT(st){
+  const viva = (DATOS().ordenes_trabajo || []).find(o => o.id === st.ot.id);
+  if (!viva) return 'Esta OT ya no está en los datos (¿la borraron desde otra PC?). Cerrá esta ventana: no se aplicó nada.';
+  if (esEjecutado(viva)) return 'Esta OT ya figura como confirmada (¿la confirmaron desde otra PC?). Cerrá esta ventana: no se aplicó nada.';
+  // Las entradas del paso 1 van por posicion de lote: si la OT cambio de
+  // lotes, ya no se corresponden con lo que se cargo.
+  const lotes = o => (o.lotes || []).map(l => String(l.lote)).join('|') + '#' + String((o.lote_corte && o.lote_corte.lote) || '');
+  if (lotes(viva) !== lotes(st.ot)) return 'Los lotes de esta OT cambiaron mientras la confirmabas. Cerrá esta ventana y volvé a abrirla: no se aplicó nada.';
+  st.ot = viva;
+  return '';
+}
+
 function _leerCampo(st, el){
   const f = el.dataset.f;
   if (!f) return;
@@ -229,6 +251,10 @@ async function _irAPaso2(st){
   // si cancelaron (Cancelar/Escape/click afuera) mientras se leia el Mapa, no
   // hay que resucitar el paso 2.
   if (!$('overlay').classList.contains('show') || !$('otcRaiz')) return;
+
+  // La propuesta se arma con la OT viva (ver _engancharOT).
+  const errOT = _engancharOT(st);
+  if (errOT) return err(errOT);
 
   // Una barrica merma tiene que existir en el Mapa (mismo criterio que el escáner).
   if (nums.length){
@@ -356,6 +382,11 @@ async function _aplicar(st){
   const reactivar = () => { $('otcAplicar').disabled = false; $('otcVolver').disabled = false; };
 
   if (!st.aplicada){
+    // Confirmar y aplicar sobre la OT VIVA, nunca sobre la capturada al abrir:
+    // ver _engancharOT. Sin reactivar: la ventana ya no sirve, hay que cerrarla.
+    const errOT = _engancharOT(st);
+    if (errOT) return err2(errOT);
+
     const habilitados = [...document.querySelectorAll('#otcRaiz .otc-check:not(:disabled)')];
     const marcados = habilitados.filter(c => c.checked);
     // I1: un corte no puede quedar aplicado a medias (el vino se contaria dos

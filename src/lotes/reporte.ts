@@ -11,6 +11,7 @@
  */
 
 import { evaluar, normalizarConfig, CONDICIONES, type Fila } from './motores/fml';
+import { normalizarLote } from './motores/linaje';
 
 const ETIQUETAS_ALARMA: Record<string, string> = Object.fromEntries(
   Object.entries(CONDICIONES).map(([k, v]) => [k, v.etiqueta]),
@@ -46,7 +47,9 @@ function filtrar(){var q=document.getElementById('q').value.toLowerCase();
 export function construirReporte(datos: Record<string, unknown>, version: number, ahora: string, hoy: number): string {
   const res = evaluar(normalizarConfig(datos), hoy);
   const { kpis, alarmas } = res;
-  const evPorLote = new Map(res.lotes.map((r) => [String(r.lote), r]));
+  // La misma clave que usa evaluar() (normalizarLote): con String() de un lado
+  // y del otro andaba solo mientras los dos vinieran escritos igual.
+  const evPorLote = new Map(res.lotes.map((r) => [normalizarLote(r.lote), r]));
 
   const kpiHtml =
     '<div class="kpis">' +
@@ -69,7 +72,7 @@ export function construirReporte(datos: Record<string, unknown>, version: number
   // Solo los activos: evaluar() ya filtró los de litros 0.
   const filasLo = ((datos.lotes as Fila[]) ?? [])
     .map((l) => {
-      const ev = evPorLote.get(String(l.lote));
+      const ev = evPorLote.get(normalizarLote((l ?? {}).lote));
       if (!ev) return '';
       return (
         `<tr class="${ev.vencido ? 'venc' : ''}">` +

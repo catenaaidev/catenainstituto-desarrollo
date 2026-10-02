@@ -75,7 +75,13 @@ export async function rutasAdmin(req: Request, env: Env, sub: string): Promise<R
 
   const m = sub.match(/^\/usuarios\/([^/]+)$/);
   if (m) {
-    const usuario = normalizarUsuario(decodeURIComponent(m[1]));
+    let crudo: string;
+    try {
+      crudo = decodeURIComponent(m[1]);
+    } catch {
+      return json(400, { error: 'usuario_invalido', detalles: ['El usuario de la dirección está mal escrito.'] });
+    }
+    const usuario = normalizarUsuario(crudo);
     if (req.method === 'PUT') return editar(req, env, yo, usuario);
     if (req.method === 'DELETE') return eliminar(env, yo, usuario);
   }
@@ -168,6 +174,15 @@ async function editar(req: Request, env: Env, yo: Sesion, usuario: string): Prom
   const esAdmin = body.es_admin === undefined ? actual.es_admin : body.es_admin ? 1 : 0;
   const esUnoMismo = usuario === yo.email;
 
+  // Renombrarse o resetearse la contraseña cierra las propias sesiones: el admin
+  // quedaba afuera a mitad de la operación, sin explicación. Para eso está
+  // "Contraseña" en el portal, y el nombre de usuario lo cambia otro admin.
+  if (esUnoMismo && (nuevoUsuario !== usuario || body.resetear_clave === true)) {
+    return json(400, {
+      error: 'no_permitido',
+      detalles: ['No podés cambiar tu propio usuario ni resetear tu contraseña desde acá. Usá "Contraseña" en el portal.'],
+    });
+  }
   if (esUnoMismo && (activo === 0 || esAdmin === 0)) {
     return json(400, {
       error: 'no_permitido',
@@ -208,7 +223,10 @@ async function editar(req: Request, env: Env, yo: Sesion, usuario: string): Prom
   );
   if (resetear) {
     sentencias.push(
-      env.DB.prepare('UPDATE usuarios SET password_hash = ?, debe_cambiar = 1 WHERE email = ?')
+      // Resetear también destraba una cuenta frenada por intentos fallidos.
+      env.DB.prepare(
+        'UPDATE usuarios SET password_hash = ?, debe_cambiar = 1, intentos_fallidos = 0, bloqueado_hasta = 0 WHERE email = ?',
+      )
         .bind(await crearHashPassword(CLAVE_INICIAL), nuevoUsuario),
     );
   }

@@ -202,7 +202,13 @@ describe('hitos y avance', () => {
       fecha_ingreso: '2026-02-01', kilos: 7580, vasija_fa: 'T120',
       descube_fa: '2026-02-10', litros_actuales: 1000, mermo: 'no',
     };
-    const an = [{ lote: '26916', fecha_analisis: HOY_ISO, ph: 3.2, so2_libre: 35, azucar_reductor: 1.0 }];
+    // Trae la corrida completa del FOSS (etanol, AV y malico): "Analisis al dia"
+    // se mide desde el control de proceso. Sin ella el lote queda 'sin_datos' y
+    // ese hito no se cumple (antes salia cumplido por error).
+    const an = [{
+      lote: '26916', fecha_analisis: HOY_ISO, ph: 3.2, so2_libre: 35, azucar_reductor: 1.0,
+      etanol: 13.0, av: 0.3, malico: 2.0,
+    }];
     const movs = [
       { id: 'm1', lote: '26916', tipo: 'descube', fecha: '2026-02-10', vasija_destino: 'B225-1' },
       { id: 'm2', lote: '26916', tipo: 'trasiego', fecha: '2026-05-01', vasija_destino: 'B225-2' },

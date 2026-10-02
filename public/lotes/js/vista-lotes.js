@@ -354,6 +354,23 @@ function rowClass(o){
   return cls.join(' ');
 }
 
+/* El objeto de DATOS().lotes que corresponde a `o` AHORA, o null.
+ *
+ * Despues de un 409, nucleo.guardar() fusiona y REEMPLAZA todos los objetos de
+ * DATOS(): una fila pintada antes (t._rows) o un overlay abierto antes quedan
+ * apuntando a un huerfano. Si `o` sigue en el array es el; si no, se lo busca
+ * por numero de lote, pero solo si hay UNO con ese numero: un lote nuevo sin
+ * numero, o un numero repetido, no identifica nada y es mejor no tocar que
+ * tocar el equivocado. */
+function _loteVivo(o){
+  const lotes = DATOS().lotes || [];
+  if (lotes.includes(o)) return o;
+  const k = String((o && o.lote) ?? '');
+  if (!k) return null;
+  const iguales = lotes.filter(l => String(l.lote ?? '') === k);
+  return iguales.length === 1 ? iguales[0] : null;
+}
+
 /* --- overlay de edicion del desglose de envases ---
  * Escribe sobre el objeto vivo de DATOS().lotes, igual que la edicion inline de
  * la tabla, asi que el boton Guardar y el historial funcionan sin cambios. */
@@ -443,6 +460,17 @@ ${faltanteMermas > 0 ? `<div style="text-align:right;font-size:13px;color:var(--
   $('envAceptar').addEventListener('click', () => {
     const { vals, malos } = leer();
     if (malos.length) return;
+    /* Se escribe en el lote VIVO: si mientras el overlay estaba abierto
+     * termino un guardado con fusion (409), `o` es un huerfano y lo escrito
+     * ahi no llegaria nunca al documento. */
+    const vivo = _loteVivo(o);
+    if (!vivo){
+      alert('No se encontró el lote ' + (o.lote ?? '') + ' en los datos actuales (puede que se hayan recargado). No se cambió nada.');
+      cerrarOverlay();
+      renderLotes();
+      return;
+    }
+    o = vivo;
     for (const c of CAPACIDADES) o[c.k] = vals[c.k];
     o.vasija_grande = vals.vasija_grande;
     /* litros_actuales va en 0 y NUNCA en null cuando el desglose queda vacio:
@@ -735,8 +763,17 @@ export function renderLotes(){
       const o = t._rows[+b.dataset.del];
       if (!o) return;
       if (confirm('¿Eliminar el lote ' + o.lote + '?')){
-        DATOS().lotes.splice(DATOS().lotes.indexOf(o), 1);
-        _fijos = _fijos.filter(x => x !== o);
+        /* Nunca splice(indexOf(o)) a secas: si o quedo huerfano (una fusion
+         * tras un 409 reemplazo los objetos de DATOS()), indexOf da -1 y
+         * splice(-1, 1) borra el ULTIMO lote, uno que nadie eligio. */
+        const vivo = _loteVivo(o);
+        if (!vivo){
+          alert('No se encontró el lote ' + (o.lote ?? '') + ' en los datos actuales (puede que se hayan recargado). No se borró nada.');
+          renderLotes();
+          return;
+        }
+        DATOS().lotes.splice(DATOS().lotes.indexOf(vivo), 1);
+        _fijos = _fijos.filter(x => x !== o && x !== vivo);
         guardarFijos();
         markDirty();
         refrescarOpcionesFiltros();   // el lote borrado sale de las casillas

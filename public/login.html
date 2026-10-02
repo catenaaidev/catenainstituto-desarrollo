@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Iniciar sesión · Catena Institute</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
 @font-face{font-family:Fraunces;src:url('/prensas/fonts/fraunces-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
 @font-face{font-family:Hanken;src:url('/prensas/fonts/hanken-grotesk-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
@@ -45,6 +46,7 @@ button{width:100%;margin-top:22px;padding:12px;border:0;border-radius:8px;backgr
       if(r.ok){location.replace(destino(await r.json().catch(()=>({}))));return;}
       const j=await r.json().catch(()=>({}));
       err.textContent=r.status===401?'El usuario o la contraseña no son correctos.'
+        :r.status===429?((j.detalles&&j.detalles[0])||'Demasiados intentos fallidos. Probá de nuevo en unos minutos.')
         :j.error==='base_sin_inicializar'?'El sistema todavía no está configurado.'
         :'Error del servidor ('+r.status+')'+(j.detalles&&j.detalles[0]?': '+j.detalles[0]:'')+'. Avisá a quien administra la plataforma.';
       err.style.display='block';

@@ -17,11 +17,42 @@ export const DIA_MS = 86_400_000;
 
 // ----------------------------------------------------------------- numeros
 
+/**
+ * Numero finito o null. Es EL parser de los motores: todos los demas lo reusan.
+ *
+ * La celda vacia es "sin dato", no 0. Number('') y Number('  ') dan 0, y con
+ * eso un malico en blanco daba la FML por finalizada, un pH en blanco era pH 0,
+ * un litros_actuales en blanco cerraba el lote y un SO2 libre en blanco pedia
+ * la dosis completa. Por eso el texto vacio se corta ANTES de convertir.
+ *
+ * La coma decimal ("3,5") es como tipea la bodega y como viene del Excel en
+ * castellano; Number('3,5') es NaN y el dato se perdia. Se acepta igual que en
+ * barriles-lote.ts. Infinito tampoco es un valor: no hay medicion que lo de.
+ */
 export function num(x: unknown): number | null {
   if (x === null || x === undefined) return null;
   if (typeof x === 'boolean') return null;
-  const v = typeof x === 'number' ? x : Number(String(x).trim());
-  return Number.isNaN(v) ? null : v;
+  if (typeof x === 'number') return Number.isFinite(x) ? x : null;
+  const s = String(x).trim();
+  if (s === '') return null;
+  const v = Number(s.replace(',', '.'));
+  return Number.isFinite(v) ? v : null;
+}
+
+// ------------------------------------------------------------------ listas
+
+/**
+ * Las filas de una lista del documento que se pueden leer: lo que no es lista
+ * vale lista vacia y lo que no es un objeto se saltea.
+ *
+ * Los guardados aceptan formas que el cast `as Fila[]` no frena (un
+ * `inventario: {}` de Barriles, una entrada null, un `excepciones_analisis`
+ * que no es lista). Un for...of sobre {} o un `.lote` sobre null tiran
+ * TypeError, y en un Worker eso es una pagina 1101 en vez de un tablero.
+ */
+export function filasDe(x: unknown): Fila[] {
+  if (!Array.isArray(x)) return [];
+  return x.filter((f): f is Fila => f !== null && typeof f === 'object' && !Array.isArray(f));
 }
 
 // ------------------------------------------------------------------ fechas

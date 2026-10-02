@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#8a3340"/>
+  <!-- Copa: el cáliz con vino, el pie y la base -->
+  <path d="M20 12h24c0 13-3.5 22-12 23.5C23.5 34 20 25 20 12z" fill="#fff"/>
+  <path d="M21.6 21h20.8c-1 7.6-4.4 12.6-10.4 13.4-6-.8-9.4-5.8-10.4-13.4z" fill="#d99aa8"/>
+  <rect x="30.5" y="35" width="3" height="11" rx="1.5" fill="#fff"/>
+  <rect x="22" y="46" width="20" height="4" rx="2" fill="#fff"/>
+</svg>

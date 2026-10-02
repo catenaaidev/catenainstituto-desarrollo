@@ -14,7 +14,7 @@ import { datosDashboard, datosFicha, analisisConFlags } from './vistas';
 import { normalizarMapa, MapaNoDisponible } from './motores/mapa';
 import { cruzar } from './motores/cruce';
 import { armarOrden } from './motores/correccion';
-import { ETAPAS } from './motores/etapas';
+import { ETAPAS, etapasSugeridas } from './motores/etapas';
 import { barrilesDeLotes, barrilesPorNum } from './motores/barriles-lote';
 
 const MODULO = 'lotes';
@@ -117,6 +117,11 @@ export async function rutasLotes(
     try {
       nuevo = (await req.json()) as Datos;
     } catch {
+      return json(400, { error: 'validacion', detalles: ['el guardado no es un objeto JSON válido'] });
+    }
+    // `null`, un número o una lista también son JSON válido, y reventaban más
+    // abajo al leer nuevo.meta (error 1101).
+    if (!nuevo || typeof nuevo !== 'object' || Array.isArray(nuevo)) {
       return json(400, { error: 'validacion', detalles: ['el guardado no es un objeto JSON válido'] });
     }
 
@@ -250,7 +255,9 @@ export async function rutasLotes(
     try {
       const mapa = normalizarMapa(await leerMapaBarriles(env));
       const d = await leerDocumento(env);
-      return json(200, cruzar((d.lotes as Record<string, unknown>[]) ?? [], mapa));
+      // Con la etapa sugerida: un lote que nadie confirmó en la bandeja de
+      // etapas no se marca "sin envase" mientras todavía está fermentando.
+      return json(200, cruzar((d.lotes as Record<string, unknown>[]) ?? [], mapa, etapasSugeridas(d, hoy)));
     } catch (e) {
       if (e instanceof MapaNoDisponible) return json(503, { error: e.message });
       throw e;

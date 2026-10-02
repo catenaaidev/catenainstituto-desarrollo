@@ -252,11 +252,26 @@ function _registrarCorreccionSO2(){
     ot: ot_n, fecha: fecha,
   });
 
-  const { que } = aplicarCorreccion(DATOS().analisis, loteStr, fecha, correccion);
+  /* Si ese lote ya tiene ese dia una correccion de OTRA OT, aplicarCorreccion
+   * no la pisa: crea una entrada aparte (ver _pisable en so2-bitacora.js). Se
+   * pregunta antes porque lo mas probable es un error en el N de OT o en la
+   * fecha, y despues de registrar ya no se ve que habia otra. */
+  const otNueva = String(ot_n || '').trim();
+  const otraOt = (DATOS().analisis || []).find(a =>
+    String(a.lote ?? '') === loteStr && (a.fecha_analisis || '') === fecha &&
+    a.correccion && typeof a.correccion === 'object' && !esAnulada(a.correccion) &&
+    String(a.correccion.ot_n ?? '').trim() !== '' && String(a.correccion.ot_n).trim() !== otNueva);
+  if (otraOt && !confirm('El lote ' + loteStr + ' ya tiene una corrección el ' + fmtFecha(fecha) +
+      ' con la OT ' + String(otraOt.correccion.ot_n).trim() + '.\n\n' +
+      'Aceptar = registrar esta también (quedan las dos en la bitácora; no se pisa la anterior).\n' +
+      'Cancelar = no registrar nada y revisar la OT o la fecha.')) return;
+
+  const { que, convive } = aplicarCorreccion(DATOS().analisis, loteStr, fecha, correccion);
 
   msgEl.innerHTML = (que === 'actualizado')
     ? `<div class="msg ok">✓ Corrección actualizada en el análisis del ${esc(fmtFecha(fecha))} (lote ${esc(loteStr)}). <b>Acordate de Guardar.</b></div>`
-    : `<div class="msg ok">✓ Nueva entrada de corrección creada para lote ${esc(loteStr)}, fecha ${esc(fmtFecha(fecha))}. <b>Acordate de Guardar.</b></div>`;
+    : `<div class="msg ok">✓ Nueva entrada de corrección creada para lote ${esc(loteStr)}, fecha ${esc(fmtFecha(fecha))}${
+        convive != null ? ` (la que ya había ese día${convive ? ' con la OT ' + esc(convive) : ''} queda también)` : ''}. <b>Acordate de Guardar.</b></div>`;
 
   markDirty();
 
