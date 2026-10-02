@@ -48,6 +48,9 @@ export function abrirConfirmarOT(ot, onListo){
     if (st.mapa) return;   // el paso 2 ya leyo uno mas nuevo
     st.mapa = m;
     if (st.paso !== 1) return;
+    // M4: cerrarOverlay() solo saca la clase 'show' (#otcRaiz sigue en el DOM):
+    // si cancelaron/cerraron mientras se leia el Mapa, no hay que tocar nada.
+    if (!$('overlay').classList.contains('show') || !$('otcRaiz')) return;
     ot.lotes.forEach((_, i) => { const dl = $('otcBarr' + i); if (dl) dl.outerHTML = _dlBarriles(st, i); });
   });
 }
@@ -86,6 +89,10 @@ function _bloqueBarricas(st, i, e){
 }
 
 function _paso1(st){
+  // Critico: una vez aplicada la propuesta (st.aplicada), la OT ya quedo
+  // confirmada en memoria; "Volver" queda deshabilitado para siempre (ver
+  // _aplicar) y esto es el freno defensivo si algo lo llamara igual.
+  if (st.aplicada) return;
   const { ot } = st;
   const filas = ot.lotes.map((l, i) => {
     const e = st.entradas.por_lote[i];
@@ -183,8 +190,10 @@ async function _irAPaso2(st){
   const lotes = st.ot.lotes.map(l => l.lote).concat(st.corte ? [st.ot.lote_corte.lote] : []);
   const nums = st.entradas.por_lote.flatMap(e => (e.mermas || []).map(m => String(m.barril || '').trim())).filter(Boolean);
   st.mapa = await leerMapa(lotes, nums);
-  // M4: cancelaron o cerraron el overlay mientras se leia el Mapa.
-  if (!$('otcRaiz')) return;
+  // M4: cerrarOverlay() solo saca la clase 'show' (#otcRaiz sigue en el DOM):
+  // si cancelaron (Cancelar/Escape/click afuera) mientras se leia el Mapa, no
+  // hay que resucitar el paso 2.
+  if (!$('overlay').classList.contains('show') || !$('otcRaiz')) return;
 
   // Una barrica merma tiene que existir en el Mapa (mismo criterio que el escáner).
   if (nums.length){
@@ -288,11 +297,16 @@ ${avisoCorte}
   $('otcAplicar').addEventListener('click', () => _aplicar(st));
 }
 
-/* M3: si guardar() falla (sin llegar a un 409, que ya muestra su propio
- * overlay), el cambio ya esta aplicado en memoria y marcado dirty: un segundo
- * clic en "Aplicar y guardar" NO debe volver a aplicar la propuesta (duplicaria
- * mermas nuevas, etc.), solo reintentar el guardado. st.aplicada distingue
- * los dos casos. */
+/* M3/Critico: si guardar() falla (sin llegar a un 409, que ya muestra su
+ * propio overlay), el cambio ya esta aplicado en memoria y marcado dirty: un
+ * segundo clic en "Aplicar y guardar" NO debe volver a aplicar la propuesta
+ * (duplicaria mermas nuevas, etc.), solo reintentar el guardado. st.aplicada
+ * distingue los dos casos. Y una vez aplicada, "Volver" queda deshabilitado
+ * PARA SIEMPRE: la OT ya esta confirmada en memoria, volver al paso 1 y
+ * re-confirmar armaria una propuesta nueva que aplicarPropuesta ignoraria
+ * (su freno de idempotencia), dejando el reintento silenciosamente sin
+ * efecto. Solo "Aplicar y guardar" se reactiva, renombrado, para reintentar
+ * el guardado. */
 async function _aplicar(st){
   $('otcAplicar').disabled = true; $('otcVolver').disabled = true;
   const err2 = m => { const el = $('otcErr2'); if (el){ el.textContent = m; el.style.display = ''; } };
@@ -353,10 +367,13 @@ async function _aplicar(st){
   const ok = await guardar();
   if (!ok){
     // guardar() ya mostro su propio error o el overlay de conflicto (409); si
-    // lo segundo, #otcRaiz ya no esta: no hay botones que reactivar.
+    // lo segundo, #otcRaiz ya no esta: no hay botones que reactivar. Si sigue
+    // ahi, la OT ya quedo aplicada en memoria: "Volver" queda deshabilitado
+    // para siempre y solo se reactiva (renombrado) "Aplicar y guardar".
     if ($('otcRaiz')){
-      reactivar();
-      err2('No se guardó. Los cambios siguen en pantalla: probá Guardar de nuevo.');
+      $('otcAplicar').disabled = false;
+      $('otcAplicar').textContent = 'Reintentar guardar';
+      err2('No se guardó. La OT ya quedó confirmada en pantalla: probá Reintentar guardar, o cerrá y usá 💾 Guardar.');
     }
     return;
   }
