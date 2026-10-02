@@ -346,9 +346,15 @@
   .segm button:hover{color:var(--txt)}
   .segm button[aria-pressed="true"]{background:var(--panel);color:var(--accent);font-weight:600}
   /* Selector de años: a la derecha de la barra de pestañas, mismo look que
-     el filtro Todos | Llenos | Vacíos. */
+     el filtro Todos | Llenos | Vacíos. El [hidden] va aparte porque .segm (y
+     .tabs button mas abajo) le ganan en especificidad al [hidden] del user
+     agent: sin esto, antes de montar (o con un solo año) se veía una astilla
+     vacía en vez de desaparecer. */
+  .tabs .sel-anios[hidden]{display:none}
   .tabs .sel-anios{margin-left:auto;align-self:center}
-  .tabs .sel-anios button{padding:5px 12px}
+  .tabs .sel-anios button{padding:5px 12px;border-radius:0;border-bottom:none}
+  .tabs .sel-anios button[aria-pressed="true"],
+  .tabs .sel-anios button[aria-pressed="true"]:hover{background:var(--panel);color:var(--accent);font-weight:600}
   .mfilt-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:280px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;display:none}
   .mfilt-panel.open{display:block}
   /* ---- panel en modo anclado (embudos de la cabecera de Lotes) ----

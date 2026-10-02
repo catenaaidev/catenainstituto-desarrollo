@@ -20,11 +20,22 @@ function _leerGuardada(){
 function _guardar(){
   try { localStorage.setItem(CLAVE_LS, JSON.stringify(_sel)); } catch(e) {}
 }
+function _esArrayDeAnios(v){ return Array.isArray(v) && v.every(Number.isInteger); }
 
 export function aniosActivos(){ return _sel; }
 export function visible(lote){ return loteVisible(lote, _sel); }
 export function otVisibleAhora(ot){ return otVisible(ot, _sel); }
-export function queryAnios(){ return claveAnios(_sel); }
+
+/* Antes de montar (_sel===null) no hay filtro client-side (aniosActivos()
+ * sigue devolviendo null, visible() sigue devolviendo true): pero para no
+ * pedir el dashboard entero en el arranque y volver a pedirlo filtrado apenas
+ * se monta, esta funcion sí adelanta la clave guardada en localStorage, si es
+ * una seleccion valida. */
+export function queryAnios(){
+  if (_sel !== null) return claveAnios(_sel);
+  const g = _leerGuardada();
+  return _esArrayDeAnios(g) ? claveAnios(g) : '';
+}
 
 function _pintar(){
   const cont = document.getElementById('selAnios');
