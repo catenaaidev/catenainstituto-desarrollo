@@ -10,6 +10,7 @@ import { renderVasijas } from './vista-vasijas.js';
 const COLS_CONFIG = [
   { k:'hace_fml',               label:'Hace FML',              sel:['si','no'] },
   { k:'fa_azucar_reductor_max', label:'FA azúcar red. máx',    num:true },
+  { k:'gluc_fruc_max',          label:'Gluc+Fruc máx',          num:true },
   { k:'fml_malico_finalizada',  label:'FML málico finalizado',  num:true },
   { k:'fml_malico_2ultimas',    label:'FML málico 2 últimas',   num:true },
   { k:'so2_molecular_objetivo',  label:'SO₂ molecular objetivo', num:true },
