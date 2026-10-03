@@ -164,13 +164,12 @@ function so2LibreConCorreccion(a: Fila): number | null {
  * El pH sale de la misma muestra que el SO2 cuando la trae, porque el molecular
  * es una propiedad del par (libre, pH).
  *
- * Tres divergencias conocidas con la alarma so2_no_ok del motor FML (decisión
+ * Dos divergencias conocidas con la alarma so2_no_ok del motor FML (decisión
  * de producto pendiente, no tocar sin revisión):
  *  1. Esta función no descarta el placeholder 0 (so2LibreDe() de fml-condiciones sí).
- *  2. El borde del piso difiere: el motor da no_ok con libre <= piso; la orden
- *     dosifica cuando so2 < objetivo, o sea que libre == piso puede producir
- *     corrección aquí pero no alarma allá.
- *  3. La orden ignora so2_aplica: dosifica aunque el proyecto tenga so2_aplica=no.
+ *  2. La orden ignora so2_aplica: dosifica aunque el proyecto tenga so2_aplica=no.
+ * (El borde del piso ya coincide: desde el 2026-10-02 el piso es inclusive en
+ * el motor, igual que aquí, donde solo se dosifica con so2 < objetivo.)
  */
 function ultimaMedicion(analisisDelLote: Fila[]): [number | null, number | null] {
   const ordenados = ordenarPorFecha(analisisDelLote);
