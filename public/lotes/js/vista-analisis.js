@@ -5,11 +5,12 @@ import { $, esc, escA, DATOS, markDirty, registrarVista, registrarInit, irALote,
          vistaActiva, invalidarVista } from './nucleo.js';
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti, limpiarFiltrosMulti } from './tabla.js';
-import { activarGrilla } from './grilla.js';
+import { activarGrilla, repintarGrilla } from './grilla.js';
+import { montarVirtual } from './tabla-virtual.js';
 import { armarFilas, esQuimicaReal, esCorreccionReal, estadoCartelLote } from './analisis-filas.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
-import { crearAnchos } from './anchos-cols.js';
+import { crearAnchos, anchoDeTexto } from './anchos-cols.js';
 import { fmtFecha, fmtMes } from './fechas.js';
 import { visible } from './selector-anios.js';
 
@@ -217,10 +218,11 @@ async function cargarAnalisisFlags(){
       });
     }
     /* Repintar con colores una vez que lleguen los flags, pero solo si la
-     * pestaña se esta viendo: con los datos reales cada render de esta tabla
-     * son ~3 s. Si esta oculta (el prefetch del arranque), queda marcada como
-     * vieja y se dibuja UNA vez, ya con colores, cuando alguien la abre. */
-    if (vistaActiva() === 'analisis') renderAnalisis();
+     * pestaña se esta viendo. Si esta oculta (el prefetch del arranque), queda
+     * marcada como vieja y se dibuja UNA vez, ya con colores, cuando alguien la
+     * abre. (Con la tabla virtual el render cuesta ~0,1 s y no los ~3 s de
+     * antes, pero no hay por que dibujar algo que nadie mira.) */
+    if (vistaActiva() === 'analisis') renderAnalisis({ conservarScroll: true });
     else invalidarVista('analisis');
   } catch(e) { /* sin flags: los colores se omiten */ }
   finally { _analisisFlagsLoading = false; }
@@ -444,7 +446,70 @@ function cerrarPanelesAn(){
  * con el render que lo creo y no acumula nada. */
 window.addEventListener('resize', cerrarPanelesAn);
 
-export function renderAnalisis(){
+/* La columna por clave, para no buscarla con find() en cada celda. */
+const COL_POR_K = new Map(COLS_ANALISIS.map(c => [c.k, c]));
+
+/* Estado del cartel de cada lote en el ultimo render ('ok'|'mal'). Ver el
+ * listener de tipeo. */
+let _estadoDeLote = new Map();
+
+/** Lo que se lee en la celda (k) de una fila de dato: el valor formateado, o ''
+ *  si la columna no corresponde a ese tipo de fila. Es lo que copia la grilla
+ *  y lo que mide el autoajuste de anchos para las filas que no estan en el DOM. */
+function _textoCelda(fila, k){
+  if (!fila || !_columnaAplica(k, fila.tipo)) return '';
+  const c = COL_POR_K.get(k);
+  const v = _valorDeColumna(fila.analisis, k);
+  const vista = c && c.fmt ? c.fmt(v) : v;
+  return vista == null ? '' : String(vista);
+}
+
+/* Ancho medido de cada texto, para no medir dos veces el mismo valor: hay
+ * miles de filas pero pocos cientos de textos distintos por columna. */
+const _anchoTxt = new Map();
+const _medir = t => {
+  let w = _anchoTxt.get(t);
+  if (w === undefined){ w = anchoDeTexto(t, false); _anchoTxt.set(t, w); }
+  return w;
+};
+
+/** Una fila invisible con el texto mas ancho de cada columna de solo lectura,
+ *  y un input en cada editable.
+ *
+ *  La tabla virtual tiene en el DOM solo las filas que se ven, y una tabla de
+ *  layout automatico mide cada columna por su celda mas ancha: sin esto las
+ *  columnas de texto (Variedad, Vasija, Proyecto) cambiaban de ancho mientras
+ *  se scrolleaba, segun que filas tocaran. visibility:collapse (ver index.html,
+ *  .vmedidor) la saca de la vista y del alto, pero sus celdas siguen contando
+ *  para el ancho: la tabla queda medida como si tuviera todas sus filas. */
+function _filaMedidora(filasDeDatos){
+  let tr = `<tr><td class="ggutter">${filasDeDatos.length}</td>`;
+  for (const c of COLS_ANALISIS){
+    if (!c.ro){
+      tr += `<td data-k="${escA(c.k)}"><input class="cell${c.num ? ' num' : ''}" type="text" tabindex="-1"></td>`;
+      continue;
+    }
+    let mejor = '', ancho = -1;
+    const vistos = new Set();
+    for (const fila of filasDeDatos){
+      const t = _textoCelda(fila, c.k);
+      if (t === '' || vistos.has(t)) continue;
+      vistos.add(t);
+      const w = _medir(t);
+      if (w > ancho){ ancho = w; mejor = t; }
+    }
+    tr += `<td class="ro${c.num ? ' num' : ''}" data-k="${escA(c.k)}">${esc(mejor)}</td>`;
+  }
+  return `<tfoot class="vmedidor" aria-hidden="true">${tr}<td><button class="rowbtn" tabindex="-1">✕</button></td></tr></tfoot>`;
+}
+
+/* opciones.conservarScroll: repintar sin volver arriba de todo. Para los
+ * repintados que no cambian QUE filas se muestran (borrar una, llegada de los
+ * colores, volver a la pestaña con datos nuevos). Los filtros y el orden no lo
+ * pasan: ahi la lista es otra y lo natural es empezar desde arriba. Se compara
+ * con === true porque renderAnalisis tambien se usa como callback y puede
+ * recibir un evento. */
+export function renderAnalisis(opciones){
   const sec = $('tab-analisis'); if (!sec) return;
 
   /* Contexto de ESTE render: lo lee _valorDeColumna, que corre una vez por
@@ -580,6 +645,9 @@ export function renderAnalisis(){
   const focoEnBusca = !!buscaPrevio && document.activeElement === buscaPrevio;
   const buscaCrudo  = focoEnBusca ? buscaPrevio.value : null;
   const buscaCaret  = focoEnBusca ? buscaPrevio.selectionStart : null;
+  const contPrevio  = sec.querySelector('.scroll');
+  const scrollPrevio = (opciones && opciones.conservarScroll === true && contPrevio)
+    ? contPrevio.scrollTop : 0;
 
   sec.innerHTML = html;
 
@@ -652,13 +720,29 @@ export function renderAnalisis(){
     const e = estadoCartelLote(veredictos);
     if (e) estadoDeLote.set(lote, e);
   }
+  /* El listener de tipeo le saca el color al cartel del lote que se edita: lo
+   * tiene que poder borrar de aca, o el cartel lo recuperaria la proxima vez
+   * que la tabla virtual lo vuelva a dibujar al scrollear. */
+  _estadoDeLote = estadoDeLote;
 
-  /* filas: se recorre filasVirtuales COMPLETO (con separadores), pero el
-   * contador `ri` de data-row solo avanza en las filas de dato — tiene que
-   * coincidir exactamente con la posicion de cada fila dentro de t._rows. */
-  let tb = '<tbody>';
-  let ri = -1;
-  for (const fila of filasVirtuales){
+  /* Posicion de cada fila de dato en filasVirtuales (separadores incluidos) y
+   * al reves. La grilla habla en filas de dato (`ri`, el indice de t._rows);
+   * la tabla virtual, en filas dibujables. */
+  const itemDe = [];                                   // ri -> i
+  const riDe = new Int32Array(filasVirtuales.length);  // i -> ri, -1 en separadores
+  filasVirtuales.forEach((fila, i) => {
+    if (fila.tipo === 'separador'){ riDe[i] = -1; return; }
+    riDe[i] = itemDe.length;
+    itemDe.push(i);
+  });
+
+  /* El <tr> de la fila i de filasVirtuales. Lo llama la tabla virtual solo
+   * para las filas que se ven, a medida que se scrollea: el modelo se lee en
+   * ese momento, asi que una fila que vuelve a la vista sale con lo ultimo que
+   * se tipeo. Cada fila trae su celda de gutter (ver tabla-virtual.js); la de
+   * dato, ademas, su numero de fila en data-f. */
+  const htmlFila = (i) => {
+    const fila = filasVirtuales[i];
     if (fila.tipo === 'separador'){
       const lote = loteObjMap.get(String(fila.lote));
       const variedadDelLote = lote ? (lote.variedad ?? '') : '';
@@ -668,19 +752,18 @@ export function renderAnalisis(){
          sirve tal cual aca. */
       const clsSep = 'analisis-separador'
         + (esVacio(fila.lote) ? ' vacio' : '')
-        + (estadoDeLote.has(fila.lote) ? ' ' + estadoDeLote.get(fila.lote) : '');
-      tb += `<tr class="${clsSep}"><td colspan="${COLSPAN_TOTAL}">` +
+        + (_estadoDeLote.has(fila.lote) ? ' ' + _estadoDeLote.get(fila.lote) : '');
+      return `<tr class="${clsSep}"><td class="ggutter"></td><td colspan="${COLSPAN_TOTAL}">` +
             `<button class="alarm-lote-link" data-iralote="${escA(fila.lote)}">${esc(fila.lote)}</button>` +
             (variedadDelLote ? ` — ${esc(variedadDelLote)}` : '') +
             `</td></tr>`;
-      continue;
     }
 
-    ri++;
+    const ri = riDe[i];
     const o = fila.analisis;
     const ver = veredictoDe(fila);
 
-    tb += esVacio(o.lote) ? '<tr class="vacio">' : '<tr>';
+    let tb = `<tr data-f="${ri}"${esVacio(o.lote) ? ' class="vacio"' : ''}><td class="ggutter">${ri + 1}</td>`;
     for (const c of COLS_ANALISIS){
       const metric = c.k;
       const attrs = `data-row="${ri}" data-k="${escA(metric)}"`;
@@ -721,9 +804,22 @@ export function renderAnalisis(){
     }
     const etiquetaBoton = fila.tipo === 'quimica' ? 'Eliminar medición' : 'Eliminar corrección';
     tb += `<td><button class="rowbtn" data-del="${ri}" title="${escA(etiquetaBoton)}">✕</button></td></tr>`;
-  }
-  tb += '</tbody>';
-  t.innerHTML = h + tb;
+    return tb;
+  };
+
+  t.innerHTML = h + '<tbody></tbody>' + _filaMedidora(filasDeDatos);
+  /* Mismo lugar en la tabla que antes del repintado, si quien lo pidio no
+   * cambio QUE se muestra (borrar una fila, llegada de los colores): volver
+   * arriba de todo cada vez era perder el lugar donde se estaba trabajando. */
+  const virtual = montarVirtual({
+    scrollInicial: scrollPrevio,
+    tabla: t,
+    n: filasVirtuales.length,
+    tipoDe: i => filasVirtuales[i].tipo === 'separador' ? 'separador' : 'dato',
+    html: htmlFila,
+    columnas: COLSPAN_TOTAL + 1,
+    alPintar: () => repintarGrilla(t),
+  });
 
   $('analisisCount').textContent = filasDeDatos.length + ' filas / ' + delAnio.length + ' análisis';
 
@@ -779,8 +875,10 @@ export function renderAnalisis(){
       if (METRICAS_CON_CRITERIO.has(el.dataset.k)){
         _descolorarFila(el.closest('tr'));
         // Y fuera del DOM: si no, el proximo repintado (ordenar, filtrar) le
-        // devolvia el color viejo.
+        // devolvia el color viejo. El cartel del lote tambien: la tabla virtual
+        // lo vuelve a dibujar cuando se scrollea de vuelta hasta el.
         _olvidarVeredicto(fila.analisis);
+        _estadoDeLote.delete(String(fila.analisis.lote ?? ''));
       }
       markDirty();
     });
@@ -822,7 +920,7 @@ export function renderAnalisis(){
        * demas filas conservan el suyo, que sigue valiendo; los frescos llegan
        * al guardar. */
       markDirty();
-      renderAnalisis();
+      renderAnalisis({ conservarScroll: true });
     });
   }
 
@@ -921,6 +1019,20 @@ export function renderAnalisis(){
       }
     },
     onCambio: markDirty,
+    /* La tabla es virtual: la grilla lee y decide sobre las filas que no estan
+     * en el DOM a traves de esto (ver geo() en grilla.js). texto() tiene que
+     * dar EXACTAMENTE lo que muestra la celda, que es lo que se copia. */
+    virtual: {
+      total: () => filasDeDatos.length,
+      tr: f => (f >= 0 && f < itemDe.length) ? virtual.trDe(itemDe[f]) : null,
+      irA: f => { if (f >= 0 && f < itemDe.length) virtual.irA(itemDe[f]); },
+      texto: (f, k) => _textoCelda(filasDeDatos[f], k),
+      esRO: (f, k) => {
+        const fila = filasDeDatos[f];
+        const c = COL_POR_K.get(k);
+        return !fila || !c || c.ro || !_columnaAplica(k, fila.tipo);
+      },
+    },
   });
 
   /* Anchos de columna. La toolbar se rehace en cada render (sec.innerHTML), asi
@@ -930,7 +1042,7 @@ export function renderAnalisis(){
   anchosAnalisis.activar(t, hay => {
     const b = $('btnResetAnchosAn');
     if (b) b.style.display = hay ? '' : 'none';
-  });
+  }, { textos: k => [...new Set(filasDeDatos.map(f => _textoCelda(f, k)))] });
 
   const btnAjAn = $('btnAjustarAnchosAn');
   if (btnAjAn) btnAjAn.addEventListener('click', () => anchosAnalisis.autoajustarTodas());
@@ -969,7 +1081,7 @@ registrarInit(() => {
 document.addEventListener('lotes:datos-recargados', () => { _analisisFlags = null; });
 
 registrarVista('analisis', () => {
-  renderAnalisis();
+  renderAnalisis({ conservarScroll: true });
   /* Se vuelven a pedir tambien cuando la version del documento avanzo: los
    * veredictos los calcula el servidor sobre lo guardado, asi que despues de un
    * Guardar los que estan en memoria son de la version anterior y pintarian una

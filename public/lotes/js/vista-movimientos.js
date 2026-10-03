@@ -5,7 +5,9 @@ import { $, esc, escA, num, DATOS, markDirty, guardar, mostrarTab, registrarVist
          usuarioActual, irALote, mostrarOverlay, cerrarOverlay } from './nucleo.js';
 import { toggleSort, sortRows, opcionesValores, matchValor,
          initFiltrosMulti, pasaMulti, limpiarFiltrosMulti } from './tabla.js';
-import { activarGrilla, adaptadorCols } from './grilla.js';
+import { activarGrilla, adaptadorCols, repintarGrilla } from './grilla.js';
+import { montarVirtual, soltarVirtual } from './tabla-virtual.js';
+import { anchoDeTexto } from './anchos-cols.js';
 import { esEjecutado, PENDIENTE, EJECUTADO, proximoNumeroOT } from './ot-movimientos.js';
 import { fmtFecha } from './fechas.js';
 import { abrirEmitirOT } from './vista-ot-emitir.js';
@@ -241,11 +243,24 @@ function _idxMovVivo(m){
 }
 
 /* --- renderMovimientos --- */
-export function renderMovimientos(){
+/* opciones.conservarScroll: repintar sin volver arriba de todo, para los
+ * repintados que no cambian QUE movimientos se muestran (una edicion en la
+ * grilla, un cambio de tipo, borrar uno, volver a la pestaña). Los filtros y el
+ * orden no lo pasan. Se compara con === true porque renderMovimientos tambien
+ * se usa como callback. */
+export function renderMovimientos(opciones){
   /* garantizar que la seccion movimientos existe en los datos */
   if (!DATOS().movimientos) DATOS().movimientos = [];
 
   const sec = $('tab-movimientos'); if (!sec) return;
+  const tPrevio = $('tMov');   // la tabla del historial, no la de otra sub-pestaña
+  const contPrevio = tPrevio ? tPrevio.closest('.scroll') : null;
+  const scrollPrevio = (opciones && opciones.conservarScroll === true && contPrevio) ? contPrevio.scrollTop : 0;
+  /* El buscador se rehace con la seccion: si tenia el foco se le devuelve al
+   * final, con el cursor donde estaba. Antes cada letra te sacaba del campo. */
+  const buscaPrevio = $('buscaMov');
+  const focoEnBusca = !!buscaPrevio && document.activeElement === buscaPrevio;
+  const buscaCaret = focoEnBusca ? buscaPrevio.selectionStart : null;
 
   if (_sub === 'mermas'){
     sec.innerHTML = _selectorSub() + '<div id="movMermas"></div>';
@@ -396,15 +411,14 @@ export function renderMovimientos(){
     return btnConfirmar + btnImprimir + btnBorrar;
   }
 
-  /* --- filas --- */
-  let tb = '';
-  rows.forEach((m, ri) => {
-    const o       = m._orig;
+  /* --- filas ---
+   * Tabla virtual (tabla-virtual.js): se dibujan las que se ven, a medida que
+   * se scrollea. Cada fila sale del movimiento VIVO (t._rows), asi que una que
+   * vuelve a la vista muestra lo ultimo que se tipeo. */
+  const celdasFila = (o, ri, acciones) => {
     const tipo    = o.tipo || 'trasiego';
     const at      = k => `data-row="${ri}" data-k="${k}"`;
-    const clsFila = esEjecutado(o) ? '' : ' class="fila-pendiente"';
-    tb += `<tr${clsFila}>
-  <td class="num" ${at('lote')}><button class="alarm-lote-link" data-iralote="${escA(o.lote ?? '')}">${esc(o.lote ?? '')}</button></td>
+    return `<td class="num" ${at('lote')}><button class="alarm-lote-link" data-iralote="${escA(o.lote ?? '')}">${esc(o.lote ?? '')}</button></td>
   <td ${at('fecha')}>${cellDate('fecha', o.fecha, ri)}</td>
   <td ${at('tipo')}>${cellTipoSelect(tipo, ri)}</td>
   <td ${at('vasija_origen')}>${cellInput(tipo, 'vasija_origen',   o.vasija_origen,   ri, false)}</td>
@@ -416,12 +430,50 @@ export function renderMovimientos(){
   <td ${at('ot')}>${cellInput(tipo, 'ot',        o.ot,        ri, false)}</td>
   <td ${at('operario')}>${cellInput(tipo, 'operario',  o.operario,  ri, false)}</td>
   <td ${at('comentario')}>${cellInput(tipo, 'comentario',o.comentario,ri, false)}</td>
-  <td>${cellAcciones(o, ri)}</td>
-</tr>`;
-  });
+  <td>${acciones}</td>`;
+  };
+  const htmlFila = ri => {
+    const o = t._rows[ri];
+    return `<tr data-f="${ri}"${esEjecutado(o) ? '' : ' class="fila-pendiente"'}><td class="ggutter">${ri + 1}</td>`
+         + celdasFila(o, ri, cellAcciones(o, ri)) + '</tr>';
+  };
 
-  $('tMovBody').innerHTML = tb ||
-    '<tr><td colspan="13" style="color:var(--muted)">Sin movimientos con los filtros actuales.</td></tr>';
+  if (!t._rows.length){
+    soltarVirtual(t);
+    $('tMovBody').innerHTML =
+      '<tr><td colspan="13" style="color:var(--muted)">Sin movimientos con los filtros actuales.</td></tr>';
+  } else {
+    /* Fila invisible con la celda mas ancha de cada columna (ver _filaMedidora
+     * en vista-analisis.js). En las editables el ancho no depende del valor;
+     * los que cambian son el lote, el chip de estado (PENDIENTE es mas ancho
+     * que ejecutado) y los botones de la ultima columna, que van los tres. */
+    let loteAncho = '', w = -1;
+    for (const o of t._rows){
+      const txt = String(o.lote ?? '');
+      const a = txt ? anchoDeTexto(txt, false) : 0;
+      if (a > w){ w = a; loteAncho = txt; }
+    }
+    const muestra = { ...t._rows[0], lote: loteAncho, estado: PENDIENTE, ot: 'x' };
+    const acciones = ['✓', '🖨️', '✕'].map(x => `<button class="rowbtn" tabindex="-1">${x}</button>`).join('');
+    const medidora = `<tr><td class="ggutter">${t._rows.length}</td>`
+      + celdasFila(muestra, -1, acciones).replace(/<(input|select|button)/g, '<$1 tabindex="-1"') + '</tr>';
+    const pie = t.createTFoot();
+    pie.className = 'vmedidor';
+    pie.setAttribute('aria-hidden', 'true');
+    pie.innerHTML = medidora;
+
+    t._virtual = montarVirtual({
+      tabla: t,
+      n: t._rows.length,
+      /* El pendiente lleva fondo pero no cambia el alto; igual va como tipo
+       * aparte por si algun dia lo cambia. */
+      tipoDe: ri => esEjecutado(t._rows[ri]) ? 'hecho' : 'pendiente',
+      html: htmlFila,
+      columnas: 1 + 13,
+      alPintar: () => repintarGrilla(t),
+      scrollInicial: scrollPrevio,
+    });
+  }
 
   $('movCount').textContent = rows.length + ' / ' + (DATOS().movimientos || []).filter(_movVisible).length + ' movimientos';
 
@@ -453,7 +505,7 @@ export function renderMovimientos(){
         if (habViejo.lote_destino    && !habNuevo.lote_destino)    o.lote_destino    = '';
         if (habViejo.destino_externo && !habNuevo.destino_externo) o.destino_externo = '';
         markDirty();
-        renderMovimientos();
+        renderMovimientos({ conservarScroll: true });
       } else {
         o[k] = v;
         markDirty();
@@ -516,7 +568,7 @@ export function renderMovimientos(){
               + '¿Eliminar la OT completa con ' + (n === 1 ? 'su movimiento' : 'sus ' + n + ' movimientos') + '?' + corte)){
             eliminarOT(DATOS(), ot);
             markDirty();
-            renderMovimientos();
+            renderMovimientos({ conservarScroll: true });
           }
           return;
         }
@@ -529,7 +581,7 @@ export function renderMovimientos(){
           }
           DATOS().movimientos.splice(idx, 1);
           markDirty();
-          renderMovimientos();
+          renderMovimientos({ conservarScroll: true });
         }
         return;
       }
@@ -605,8 +657,38 @@ export function renderMovimientos(){
    *    "trasiego" anterior mostraria una linea de historial enganosa.
    */
   const adBase = adaptadorCols(t, COLS_MOV, null);
+  /* Lo que muestra cada celda de un movimiento, para las filas que no estan en
+   * el DOM: lo mismo que leeria la grilla del <td> (el .value del control, ya
+   * saneado como lo sanea el navegador, o el texto de la celda). */
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const NUMERO = /^-?\d+(\.\d+)?(e[+-]?\d+)?$/i;
+  const textoMov = (o, k) => {
+    if (!o) return '';
+    const tipo = o.tipo || 'trasiego';
+    switch (k){
+      case 'lote':   return String(o.lote ?? '');
+      case 'fecha':  return ISO.test(String(o.fecha || '')) ? String(o.fecha) : '';
+      case 'tipo':   return TIPOS_MOV.includes(tipo) ? tipo : TIPOS_MOV[0];
+      case 'estado': return esEjecutado(o) ? 'ejecutado' : '● PENDIENTE';
+      case 'litros': return (o.litros != null && NUMERO.test(String(o.litros))) ? String(o.litros) : '';
+      case 'destino_externo': return destExt.includes(o.destino_externo) ? String(o.destino_externo) : '';
+      default:       return o[k] != null ? String(o[k]) : '';
+    }
+  };
   activarGrilla(t, {
     ...adBase,
+    virtual: t._rows.length ? {
+      total: () => t._rows.length,
+      tr: f => t._virtual.trDe(f),
+      irA: f => t._virtual.irA(f),
+      texto: (f, k) => textoMov(t._rows[f], k),
+      esRO: (f, k) => {
+        if (k === 'lote' || k === 'estado') return true;
+        if (k === 'fecha' || k === 'tipo') return false;
+        const o = t._rows[f];
+        return !o || !habilitado(o.tipo || 'trasiego', k);
+      },
+    } : null,
     escribir(obj, k, texto){
       if (k === 'destino_externo'){
         const v = String(texto ?? '').trim();
@@ -644,8 +726,13 @@ export function renderMovimientos(){
       }
       return adBase.escribir(obj, k, texto);
     },
-    onCambio(){ markDirty(); renderMovimientos(); },
+    onCambio(){ markDirty(); renderMovimientos({ conservarScroll: true }); },
   });
+
+  if (focoEnBusca){
+    const b = $('buscaMov');
+    if (b){ b.focus(); if (buscaCaret != null) b.setSelectionRange(buscaCaret, buscaCaret); }
+  }
 }
 
 /* Hoja de papel de UNA orden de trabajo. Reusa las clases .orden-hoja que
@@ -909,4 +996,4 @@ async function _aceptarModalOT(mov){
   renderMovimientos();
 }
 
-registrarVista('movimientos', () => renderMovimientos());
+registrarVista('movimientos', () => renderMovimientos({ conservarScroll: true }));

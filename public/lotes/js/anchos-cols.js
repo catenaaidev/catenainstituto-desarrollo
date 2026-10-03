@@ -138,7 +138,7 @@ let fuente = '';            // font del medidor, cacheada
 /* --- medicion de texto ---
  * Con un canvas y no con un span de prueba: measureText no toca el DOM, asi que
  * autoajustar las 28 columnas de una no dispara 28 reflows. */
-function anchoDeTexto(txt, negrita){
+export function anchoDeTexto(txt, negrita){
   if (!medidor){
     medidor = document.createElement('canvas').getContext('2d');
     /* La misma fuente de las celdas: font-size 13px de la regla `table` de
@@ -305,6 +305,10 @@ export function crearAnchos({ tablaId, claveStorage, filaEncabezado }){
    *  Las columnas ro son <td> de texto plano y las editables tienen un input; las
    *  dos ramas hacen falta. */
   function textosDeColumna(k){
+    /* Una tabla virtual (Analisis) tiene en el DOM solo las filas que se ven:
+     * medir ahi ajustaria la columna a una pantalla y no a la tabla. La vista
+     * pasa los textos de TODAS las filas (ver activar). */
+    if (inst.textosDe) return inst.textosDe(k);
     const textos = [];
     for (const td of inst.tabla.querySelectorAll(`tbody td[data-k="${CSS.escape(k)}"]`)){
       const ctrl = td.querySelector('input.cell, select.cell');
@@ -378,9 +382,12 @@ export function crearAnchos({ tablaId, claveStorage, filaEncabezado }){
    *  <table> NUEVA en cada render (sec.innerHTML la recrea) y eso esta bien: lo
    *  unico que se cuelga por tabla es el mousemove del cursor, y la tabla vieja
    *  se va con su listener. */
-  inst.activar = function(tabla, onCambio){
+  inst.activar = function(tabla, onCambio, opciones){
     inst.tabla = tabla;
     if (onCambio) inst.onCambio = onCambio;
+    /* opciones.textos(k): los textos de la columna k en todas las filas, para
+     * las tablas que no tienen todas sus filas en el DOM. */
+    inst.textosDe = (opciones && opciones.textos) || null;
 
     ponerListenersDocumento();
     if (!instancias.includes(inst)) instancias.push(inst);

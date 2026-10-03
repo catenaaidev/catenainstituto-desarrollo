@@ -63,7 +63,12 @@ function _avisar(){ document.dispatchEvent(new CustomEvent('lotes:anios-cambiado
 /* Se llama despues de cargar DATOS (y otra vez si se recargan): un lote 27xxx
  * nuevo agrega su boton solo. */
 export function montarSelectorAnios(lotes){
-  const antes = claveAnios(_sel);
+  /* "Antes" de la primera vez es la clave con que ya se adelanto el /dashboard
+   * (queryAnios), no la seleccion vacia: comparar contra '' avisaba un cambio
+   * en CADA carga de la pagina, y el aviso volvia a pedir el /dashboard (720 KB
+   * y el calculo mas caro del servidor) con la misma clave que el que ya venia
+   * en camino. */
+  const antes = queryAnios();
   _disponibles = aniosDisponibles(lotes);
   _sel = seleccionInicial(_sel || _leerGuardada(), _disponibles);
   _guardarUltima();

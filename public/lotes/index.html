@@ -111,17 +111,23 @@
    * se pinta, no se enfoca, no ocupa lugar) pero conserva ese layout, y
    * volver a ella pasa a costar un par de cientos de ms.
    *
-   * Solo en las cuatro pestañas pesadas, no en todas: lo oculto con
-   * content-visibility no es gratis, cada cambio de layout de la pagina paga un
-   * poco por cada nodo guardado. Medido: con las trece asi, pasar entre dos
-   * pestañas livianas costaba ~100 ms; con estas cuatro, ~20 ms, igual que con
-   * display:none.
+   * Solo en algunas pestañas, no en todas: lo oculto con content-visibility no
+   * es gratis, cada cambio de layout de la pagina paga un poco por cada nodo
+   * guardado. Medido: con las trece asi, pasar entre dos pestañas livianas
+   * costaba ~100 ms.
+   *
+   * Desde que Analisis, Lotes, Movimientos y la bitacora de SO2 son tablas
+   * virtuales (tabla-virtual.js) esas cuatro tienen pocos nodos, y las que mas
+   * pesan al volver son Dashboard y Tablero: medido con los dos años, volver al
+   * Dashboard bajo de ~140 a ~55 ms y al Tablero de ~75 a ~20 ms, y la suma de
+   * todos los cambios de pestaña bajo un 30 %. Sacar las cuatro de la lista
+   * resulto peor (Lotes y Movimientos volvian a ~45 ms).
    *
    * Solo en screen: las reglas body.printing-* de abajo cuentan con que las
    * pestañas que no se imprimen esten en display:none. */
   @media screen{
-    #tab-analisis,#tab-lotes,#tab-movimientos,#tab-so2{display:block;content-visibility:hidden}
-    #tab-analisis.active,#tab-lotes.active,#tab-movimientos.active,#tab-so2.active{content-visibility:visible}
+    #tab-analisis,#tab-lotes,#tab-movimientos,#tab-so2,#tab-dashboard,#tab-tablero{display:block;content-visibility:hidden}
+    #tab-analisis.active,#tab-lotes.active,#tab-movimientos.active,#tab-so2.active,#tab-dashboard.active,#tab-tablero.active{content-visibility:visible}
   }
   @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   /* ---- controles ---- */
@@ -263,9 +269,19 @@
    * El id le gana por especificidad a la regla del separador de mas arriba
    * (1,0,2 contra 0,1,2), asi que el separador necesita su propia linea o se
    * queda tambien con el padding de las filas. */
-  #tAnalisis tbody td{padding:2px 9px}
-  #tAnalisis tbody td input.cell{padding:2px 6px}
+  #tAnalisis tbody td,#tAnalisis tfoot td{padding:2px 9px}
+  #tAnalisis tbody td input.cell,#tAnalisis tfoot td input.cell{padding:2px 6px}
   #tAnalisis tbody tr.analisis-separador td{padding:4px 9px}
+  /* ---- tabla virtual (tabla-virtual.js) ----
+   * Las dos filas de relleno ocupan el alto de las filas que no estan
+   * dibujadas: sin padding ni borde, para que midan exactamente lo que dice su
+   * style.height, y sin el gris del hover. */
+  tr.vrelleno td{padding:0 !important;border:0 !important}
+  tbody tr.vrelleno:hover{background:transparent}
+  /* La fila medidora: no se ve ni ocupa alto, pero sus celdas cuentan para el
+   * ancho de cada columna (es lo que hace visibility:collapse en una fila de
+   * tabla). Ver _filaMedidora en vista-analisis.js. */
+  tfoot.vmedidor tr{visibility:collapse}
   .rowbtn{background:none;border:none;color:#ff8a7a;cursor:pointer;font-size:15px;padding:2px 6px}
   .rowbtn:hover{color:var(--nook)}
   /* ---- scroll ---- */
