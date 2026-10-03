@@ -3,7 +3,9 @@
 
 import { $, esc, escA, num, DATOS, markDirty, registrarVista } from './nucleo.js';
 import { armarCorreccion, aplicarCorreccion, esAnulada } from './so2-bitacora.js';
-import { activarGrilla } from './grilla.js';
+import { activarGrilla, repintarGrilla } from './grilla.js';
+import { montarVirtual, soltarVirtual } from './tabla-virtual.js';
+import { anchoDeTexto } from './anchos-cols.js';
 import { pasaMulti, opcionesValores,
          initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
 import { fmtFecha } from './fechas.js';
@@ -33,6 +35,14 @@ function calcCorreccionSO2(actual, deseado, litros, ph){
 const filtSo2 = { variedad: new Set() };
 let _descSo2 = [], _instSo2 = [];
 let _so2FiltBusca = '';
+/* La bitacora es una tabla virtual (tabla-virtual.js): con los dos años son
+ * ~2.200 correcciones, y dibujarlas todas eran 24.000 nodos que la pagina
+ * cargaba en cada cambio de pestaña aunque esta no se estuviera viendo. */
+let _virtualBit = null;
+/* El mapa lote -> lote de la pasada en curso, para el filtro de variedad: su
+ * match corre una vez por correccion, y rearmar el mapa en cada llamada era
+ * O(correcciones x lotes) en cada tecla del buscador. */
+let _loteMapFiltro = null;
 
 export function renderCorrecciones(){
   const sec = $('tab-so2'); if (!sec) return;
@@ -191,11 +201,16 @@ export function renderCorrecciones(){
     limpiarFiltrosMulti(_descSo2, 'so2BuscaBit', _instSo2, _so2RepintarBitacora);
   });
 
-  /* ---- imprimir ---- */
+  /* ---- imprimir ----
+   * La hoja sale con TODAS las correcciones: la tabla virtual tiene en el DOM
+   * solo las que se ven, asi que se dibujan todas para imprimir y despues se
+   * vuelve a lo visible. */
   $('btnSo2Imprimir').addEventListener('click', () => {
     document.body.classList.add('printing-so2');
+    if (_virtualBit) _virtualBit.todo();
     window.print();
     document.body.classList.remove('printing-so2');
+    if (_virtualBit) _virtualBit.actualizar(true);
   });
 }
 
@@ -313,7 +328,7 @@ function initFiltrosSo2(){
       return opcionesValores(_so2FilasConCorreccion(), variedadDe(m));
     },
     match: (fila, set) => {
-      const m = loteMapDe();
+      const m = _loteMapFiltro || loteMapDe();
       return set.has(variedadDe(m)(fila));
     },
   }];
@@ -344,7 +359,9 @@ function _renderBitacoraSO2(loteMap){
   let rows = _so2FilasConCorreccion();
 
   /* filtros */
+  _loteMapFiltro = loteMap;
   rows = rows.filter(a => pasaMulti(a, _descSo2));
+  _loteMapFiltro = null;
   if (_so2FiltBusca){
     const q = _so2FiltBusca.toLowerCase();
     rows = rows.filter(a => {
@@ -364,8 +381,9 @@ function _renderBitacoraSO2(loteMap){
   const fmt2 = v => (v != null && isFinite(v)) ? Number(v).toFixed(2) : '—';
   const fmt1 = v => (v != null && isFinite(v)) ? Number(v).toFixed(1) : '—';
 
-  let tb = '';
-  for (const a of rows){
+  /* Las celdas de una correccion: {k, cls, html, texto}. `texto` es lo que se
+   * lee en la celda (lo que copia la grilla); `html`, como se pinta. */
+  const celdas = (a) => {
     const c       = a.correccion;
     const loteStr = String(a.lote ?? '');
     const lObj    = loteMap.get(loteStr);
@@ -374,31 +392,88 @@ function _renderBitacoraSO2(loteMap){
     /* Las anuladas NO se ocultan: quedan tachadas y con quien las anulo. Ese es
      * el punto de anular en vez de borrar — si alguien audita la bitacora, ve
      * que hubo un error y que se corrigio, en vez de encontrarse un hueco. */
-    const anulada = esAnulada(c);
-    const sello = anulada
-      ? ` <span class="so2-anulada-sello" title="Esta corrección se canceló: no cuenta para la orden">ANULADA${
-          c.anulada.por ? ' por ' + esc(c.anulada.por) : ''}${
-          c.anulada.fecha ? ' el ' + esc(fmtFecha(c.anulada.fecha)) : ''}</span>`
+    const selloTxt = esAnulada(c)
+      ? 'ANULADA' + (c.anulada.por ? ' por ' + c.anulada.por : '')
+        + (c.anulada.fecha ? ' el ' + fmtFecha(c.anulada.fecha) : '')
       : '';
-    tb += `<tr${anulada ? ' class="so2-anulada"' : ''}>
-      <td>${esc(loteStr)}</td>
-      <td>${esc(variedad)}</td>
-      <td>${esc(fmtFecha(fecha))}</td>
-      <td class="num">${fmt1(c.so2_libre_actual)}</td>
-      <td class="num">${fmt1(c.so2_deseado)}</td>
-      <td class="num">${fmt1(c.diferencia)}</td>
-      <td class="num">${fmt2(c.mbk_a_agregar)}</td>
-      <td class="num">${fmt1(c.ml_exactos)}</td>
-      <td>${esc(c.ot_n || '—')}${sello}</td>
-    </tr>`;
+    const ot = String(c.ot_n || '—');
+    const simple = (k, txt, num) => ({ k, cls: num ? 'num' : '', html: esc(txt), texto: txt });
+    return [
+      simple('lote', loteStr),
+      simple('variedad', variedad),
+      simple('fecha', fmtFecha(fecha)),
+      simple('so2_actual', fmt1(c.so2_libre_actual), true),
+      simple('so2_deseado', fmt1(c.so2_deseado), true),
+      simple('diferencia', fmt1(c.diferencia), true),
+      simple('mbk', fmt2(c.mbk_a_agregar), true),
+      simple('ml', fmt1(c.ml_exactos), true),
+      { k: 'ot_n', cls: '',
+        html: esc(ot) + (selloTxt
+          ? ` <span class="so2-anulada-sello" title="Esta corrección se canceló: no cuenta para la orden">${esc(selloTxt)}</span>`
+          : ''),
+        texto: selloTxt ? ot + ' ' + selloTxt : ot },
+    ];
+  };
+  const tdHtml = x => `<td${x.cls ? ` class="${x.cls}"` : ''}>${x.html}</td>`;
+
+  const tabla = $('so2Bitacora');
+  if (countEl) countEl.textContent = rows.length + (rows.length !== 1 ? ' correcciones' : ' corrección');
+
+  if (!rows.length){
+    _virtualBit = null;
+    soltarVirtual(tabla);
+    const pie = tabla.tFoot; if (pie) pie.remove();
+    tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted)">Sin correcciones registradas aún.</td></tr>';
+    /* null y no undefined: activarGrilla conserva el adaptador anterior si no
+     * se le pasa ninguno, y el de la tabla virtual ya no vale. */
+    activarGrilla(tabla, null);
+    return;
   }
 
-  tbody.innerHTML = tb || '<tr><td colspan="9" style="color:var(--muted)">Sin correcciones registradas aún.</td></tr>';
-  if (countEl) countEl.textContent = rows.length + ' corrección' + (rows.length !== 1 ? 'es' : '');
+  /* Fila invisible con la celda mas ancha de cada columna (ver
+   * _filaMedidora en vista-analisis.js): sin ella las columnas cambiarian de
+   * ancho al scrollear, segun que correcciones esten dibujadas. */
+  const todas = rows.map(celdas);
+  const anchos = new Map();
+  const medir = t => { let w = anchos.get(t); if (w === undefined){ w = anchoDeTexto(t, false); anchos.set(t, w); } return w; };
+  let medidora = `<tr><td class="ggutter">${rows.length}</td>`;
+  for (let k = 0; k < 9; k++){
+    let mejor = todas[0][k], ancho = -1;
+    for (const fila of todas){
+      const w = medir(fila[k].texto);
+      if (w > ancho){ ancho = w; mejor = fila[k]; }
+    }
+    medidora += tdHtml(mejor);
+  }
+  let pie = tabla.tFoot;
+  if (!pie){ pie = tabla.createTFoot(); pie.className = 'vmedidor'; pie.setAttribute('aria-hidden', 'true'); }
+  pie.innerHTML = medidora + '</tr>';
+
+  _virtualBit = montarVirtual({
+    tabla,
+    n: rows.length,
+    tipoDe: i => esAnulada(rows[i].correccion) ? 'anulada' : 'normal',
+    html: i => `<tr data-f="${i}"${esAnulada(rows[i].correccion) ? ' class="so2-anulada"' : ''}>`
+      + `<td class="ggutter">${i + 1}</td>` + todas[i].map(tdHtml).join('') + '</tr>',
+    columnas: 1 + 9,
+    alPintar: () => repintarGrilla(tabla),
+  });
+  const virtual = _virtualBit;
 
   /* Grilla tipo planilla, solo copiar: la bitacora es un historial, no se
-   * edita en bloque (cada fila se registra desde la calculadora de arriba). */
-  activarGrilla($('so2Bitacora'));
+   * edita en bloque (cada fila se registra desde la calculadora de arriba). El
+   * adaptador no tiene escribir(): solo le da a la grilla las filas que no
+   * estan en el DOM. */
+  const colDe = new Map(todas[0].map((x, k) => [x.k, k]));
+  activarGrilla(tabla, {
+    virtual: {
+      total: () => rows.length,
+      tr: f => virtual.trDe(f),
+      irA: f => virtual.irA(f),
+      texto: (f, k) => { const i = colDe.get(k); return (i == null || !todas[f]) ? '' : todas[f][i].texto; },
+      esRO: () => true,
+    },
+  });
 }
 
 registrarVista('so2', () => renderCorrecciones());

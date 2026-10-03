@@ -314,6 +314,29 @@
   }
 
   var pendientes = {};
+  /* Cuenta los programar()/borrar() de cada modulo: un guardado que quedo
+   * esperando el ocio y para cuando le toca ya hubo otro pedido (o se guardo en
+   * el servidor y se borro el borrador), no escribe nada. */
+  var turno = {};
+
+  /* El borrador se guarda como TEXTO ({v:2, base:'{...}', local:'{...}'}) y no
+   * como objeto: IndexedDB copia lo que se le da, y copiar objeto por objeto dos
+   * documentos de 4 MB (Lotes con dos años) trababa la pantalla ~150 ms en cada
+   * pausa al tipear. Un string se copia de una. Lo que se guarda es lo mismo que
+   * antes (clonar() ya era un ida y vuelta por JSON). Los borradores viejos, en
+   * objeto, se siguen leyendo. */
+  function desempacar(v) {
+    if (!v || v.v !== 2) return v;
+    try { return { base: JSON.parse(v.base), local: JSON.parse(v.local), ts: v.ts }; }
+    catch (e) { return undefined; }
+  }
+
+  /* Corre fn cuando el navegador esta ocioso (o a lo sumo en 2 s): el borrador
+   * no apura, y asi no le compite a la persona que esta tipeando o scrolleando. */
+  function enOcio(fn) {
+    if (g.requestIdleCallback) g.requestIdleCallback(fn, { timeout: 2000 });
+    else fn();
+  }
 
   var borrador = {
     /** Guarda ya. obtener() devuelve {base, local}. */
@@ -324,7 +347,10 @@
       var datos;
       try { datos = obtener(); } catch (e) { return Promise.resolve(); }
       if (!datos || !datos.local) return Promise.resolve();
-      var registro = { base: clonar(datos.base), local: clonar(datos.local), ts: Date.now() };
+      var registro;
+      try {
+        registro = { v: 2, base: JSON.stringify(datos.base), local: JSON.stringify(datos.local), ts: Date.now() };
+      } catch (e) { return Promise.resolve(); }
       retenerBorrador(modulo);
       return tx('readwrite', function (st) { return st.put(registro, claveBorrador(modulo)); })
         .catch(function (e) { console.warn('No se pudo guardar el borrador:', e); });
@@ -332,10 +358,14 @@
     /** Guarda en un momento, juntando varios cambios seguidos en una sola escritura. */
     programar: function (modulo, obtener) {
       clearTimeout(pendientes[modulo]);
-      pendientes[modulo] = setTimeout(function () { borrador.guardar(modulo, obtener); }, 800);
+      var mio = turno[modulo] = (turno[modulo] || 0) + 1;
+      pendientes[modulo] = setTimeout(function () {
+        enOcio(function () { if (turno[modulo] === mio) borrador.guardar(modulo, obtener); });
+      }, 800);
     },
     leer: function (modulo) {
       return tx('readonly', function (st) { return st.get(claveBorrador(modulo)); })
+        .then(desempacar)
         .catch(function () { return undefined; });
     },
     /** Los borradores de este módulo y usuario, de cualquier pestaña: [{clave, valor}]. */
@@ -349,7 +379,7 @@
           cur.onsuccess = function () {
             var c = cur.result;
             if (!c) return;
-            if (String(c.key).indexOf(pref) === 0) out.push({ clave: String(c.key), valor: c.value });
+            if (String(c.key).indexOf(pref) === 0) out.push({ clave: String(c.key), valor: desempacar(c.value) });
             c.continue();
           };
           t.oncomplete = function () { db.close(); ok(out); };
@@ -359,6 +389,7 @@
     },
     borrar: function (modulo) {
       clearTimeout(pendientes[modulo]);
+      turno[modulo] = (turno[modulo] || 0) + 1;
       return tx('readwrite', function (st) { return st.delete(claveBorrador(modulo)); })
         .catch(function () {});
     },

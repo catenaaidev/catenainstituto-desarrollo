@@ -6,9 +6,10 @@ import { $, esc, escA, num, DATOS, markDirty, registrarVista,
          mostrarOverlay, cerrarOverlay, usuarioActual } from './nucleo.js';
 import { toggleSort, sortRows, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti } from './tabla.js';
-import { activarGrilla, adaptadorCols, limpiarSeleccion } from './grilla.js';
+import { activarGrilla, adaptadorCols, limpiarSeleccion, repintarGrilla } from './grilla.js';
 import { colsVisibles, bandasVisibles, alternar } from './grupos-cols.js';
-import { crearAnchos } from './anchos-cols.js';
+import { crearAnchos, anchoDeTexto } from './anchos-cols.js';
+import { montarVirtual } from './tabla-virtual.js';
 import { CAPACIDADES, resumenEnvases, contarEnvases,
          tiposDeEnvase, estaVacio, esOrganico } from './envases.js';
 import { litrosDelLote, faltanteDeLote } from './mermas.js';
@@ -675,19 +676,37 @@ export function renderLotes(){
   }
   h += '<th></th></tr></thead>';
 
-  /* filas */
-  let tb = '<tbody>';
-  rows.forEach((o, ri)=>{
-    tb += `<tr class="${rowClass(o)}${esFijo.has(t._rows[ri]) ? ' nuevo' : ''}">`;
+  /* filas: tabla virtual (tabla-virtual.js). Con los dos años son ~700 lotes x
+   * 29 columnas y 14.000 inputs: dibujarlos todos costaba 1,4 s en cada
+   * repintado y cada clic o flecha pagaba el layout entero. Ahora se dibujan
+   * las que se ven, a medida que se scrollea.
+   *
+   * Cada fila se arma con el lote VIVO de t._rows y no con la copia de `rows`:
+   * una fila que sale de la vista y vuelve se rearma en ese momento, y tiene
+   * que mostrar lo que se tipeo despues del render. De la copia solo hacia
+   * falta la etapa, que sale del propio lote. */
+  const htmlFila = (ri) => {
+    const o = t._rows[ri];
+    let tr = `<tr data-f="${ri}" class="${rowClass(o)}${esFijo.has(o) ? ' nuevo' : ''}"><td class="ggutter">${ri + 1}</td>`;
     for (const b of bandas){
-      if (b.testigo){ tb += '<td class="colstub"></td>'; continue; }
-      if (b.id === 'estado'){ tb += celdasEstado(o, ri); continue; }
-      for (const c of colsDe(b)) tb += celdaDeCol(c, o, ri);
+      if (b.testigo){ tr += '<td class="colstub"></td>'; continue; }
+      if (b.id === 'estado'){ tr += celdasEstado({ _etapa: o.etapa || '', lote: o.lote }, ri); continue; }
+      for (const c of colsDe(b)) tr += celdaDeCol(c, o, ri);
     }
-    tb += `<td><button class="alarm-lote-link" data-iralote="${escA(o.lote ?? '')}" title="Ver ficha">${esc(o.lote ?? '')}</button> <button class="rowbtn" data-del="${ri}" title="Eliminar lote">✕</button></td></tr>`;
+    return tr + celdaAcciones(o, ri) + '</tr>';
+  };
+  const nCeldas = bandas.reduce((n, b) => n + (b.testigo ? 1 : b.id === 'estado' ? 2 : colsDe(b).length), 0);
+  t.innerHTML = h + '<tbody></tbody>' + _filaMedidoraLotes(t._rows, bandas, colsDe);
+  const virtual = montarVirtual({
+    tabla: t,
+    n: t._rows.length,
+    /* Los lotes recien creados llevan borde arriba y abajo (tr.nuevo): miden
+     * distinto, asi que son otro tipo de fila. */
+    tipoDe: ri => esFijo.has(t._rows[ri]) ? 'nuevo' : 'lote',
+    html: htmlFila,
+    columnas: 1 + nCeldas + 1,   // gutter + columnas + acciones
+    alPintar: () => repintarGrilla(t),
   });
-  tb += '</tbody>';
-  t.innerHTML = h + tb;
 
   /* sort por clic en encabezado */
   t.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => {
@@ -799,14 +818,102 @@ export function renderLotes(){
   pintarBotonOrdenar(fijos.length);
   /* Grilla tipo planilla. El adaptador se arma en cada render porque t._rows
      cambia; activarGrilla es idempotente y restaura la seleccion por identidad. */
-  activarGrilla(t, adaptadorCols(t, COLS_LOTES, markDirty));
+  const adaptador = adaptadorCols(t, COLS_LOTES, markDirty);
+  /* La tabla es virtual: la grilla pregunta por las filas que no estan en el
+   * DOM a traves de esto (ver geo() en grilla.js). texto() tiene que dar lo
+   * mismo que leeria del <td>: el .value del input o del select, o el texto de
+   * la celda. */
+  adaptador.virtual = {
+    total: () => t._rows.length,
+    tr: f => virtual.trDe(f),
+    irA: f => virtual.irA(f),
+    texto: (f, k) => _textoCeldaLote(t._rows[f], k),
+    esRO: (f, k) => {
+      const c = COL_LOTE_POR_K.get(k);
+      return !c || !!c.ro || k === 'envases';
+    },
+  };
+  activarGrilla(t, adaptador);
   /* Anchos de columna. Tambien idempotente: los anchos se aplican como CSS por
      [data-k], asi que este innerHTML no los borro y no hay nada que reponer en
      las celdas nuevas. */
   anchosLotes.activar(t, hay => {
     const b = $('btnResetAnchos');
     if (b) b.style.display = hay ? '' : 'none';
+  }, {
+    /* Etapa no se autoajusta (su <td> no lleva data-k, ver autoajustarTh): sin
+     * textos queda como esta, igual que antes de la tabla virtual. */
+    textos: k => k === 'etapa' ? [] : [...new Set(t._rows.map(o => _textoCeldaLote(o, k)))],
   });
+}
+
+const COL_LOTE_POR_K = new Map(COLS_LOTES.map(c => [c.k, c]));
+
+/* Ultima columna: link a la ficha y boton de borrar. */
+function celdaAcciones(o, ri){
+  return `<td><button class="alarm-lote-link" data-iralote="${escA(o.lote ?? '')}" title="Ver ficha">${esc(o.lote ?? '')}</button>`
+       + ` <button class="rowbtn" data-del="${ri}" title="Eliminar lote">✕</button></td>`;
+}
+
+/** Lo que la grilla leeria de la celda (k) del lote `o` si estuviera en el DOM:
+ *  el .value del input/select (las fechas en ISO, como el input date), o el
+ *  texto de las de solo lectura. Es lo que se copia con Ctrl+C. */
+function _textoCeldaLote(o, k){
+  if (!o) return '';
+  if (k === 'etapa') return o.etapa || '—';
+  if (k === 'envases') return resumenEnvases(o) || '—';
+  const c = COL_LOTE_POR_K.get(k);
+  if (!c) return '';
+  const v = o[k];
+  if (c.ro) return v == null ? '—' : String(v);
+  return v == null ? '' : String(v);
+}
+
+/* Ancho medido de cada texto, para no medir dos veces el mismo. */
+const _anchoTxtLotes = new Map();
+function _medirLotes(t){
+  let w = _anchoTxtLotes.get(t);
+  if (w === undefined){ w = anchoDeTexto(t, false); _anchoTxtLotes.set(t, w); }
+  return w;
+}
+
+/** Una fila invisible (tfoot.vmedidor, visibility:collapse) con la celda mas
+ *  ancha de cada columna. La tabla virtual tiene en el DOM solo las filas que
+ *  se ven, y sin esto las columnas cuyo ancho depende del texto (Envases,
+ *  Litros, Etapa, el lote de la ultima columna) cambiarian de ancho al
+ *  scrollear. En las editables el ancho no depende del valor, asi que alcanza
+ *  con la celda de cualquier lote. */
+function _filaMedidoraLotes(lotes, bandas, colsDe){
+  if (!lotes.length) return '';
+  const masAncho = (txtDe) => {
+    let mejor = lotes[0], ancho = -1;
+    const vistos = new Set();
+    for (const o of lotes){
+      const t = txtDe(o);
+      if (vistos.has(t)) continue;
+      vistos.add(t);
+      const w = _medirLotes(t);
+      if (w > ancho){ ancho = w; mejor = o; }
+    }
+    return mejor;
+  };
+  let tr = `<tr><td class="ggutter">${lotes.length}</td>`;
+  for (const b of bandas){
+    if (b.testigo){ tr += '<td class="colstub"></td>'; continue; }
+    if (b.id === 'estado'){
+      const o = masAncho(x => x.etapa || '—');
+      tr += celdasEstado({ _etapa: o.etapa || '', lote: o.lote }, -1);
+      continue;
+    }
+    for (const c of colsDe(b)){
+      const o = (c.ro || c.k === 'envases') ? masAncho(x => _textoCeldaLote(x, c.k)) : lotes[0];
+      tr += celdaDeCol(c, o, -1);
+    }
+  }
+  tr += celdaAcciones(masAncho(x => String(x.lote ?? '')), -1);
+  /* tabindex: que el Tab no caiga en un control que no se ve. Los data-row="-1"
+   * no apuntan a ningun lote: los listeners de la tabla los ignoran. */
+  return `<tfoot class="vmedidor" aria-hidden="true">${tr.replace(/<(input|select|button)/g, '<$1 tabindex="-1"')}</tr></tfoot>`;
 }
 
 /* --- anchos de columna: los dos botones de la toolbar ---
@@ -976,6 +1083,10 @@ function abrirAsistente(padre){
     markDirty();
     cerrarOverlay();
     refrescarOpcionesFiltros();   // para que el lote nuevo se pueda tildar
+    /* Los fijos van arriba de todo: con la tabla virtual, si se estaba abajo,
+     * la fila nueva ni siquiera estaria en el DOM para darle el foco. */
+    const cont = $('tLotes').closest('.scroll');
+    if (cont) cont.scrollTop = 0;
     renderLotes();
     // foco en la primera celda del nuevo lote: los fijos van arriba de todo
     const inp = $('tLotes').querySelector('input.cell[data-row="0"]');

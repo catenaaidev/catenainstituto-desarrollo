@@ -4,8 +4,9 @@
  * (fila, columna) de lo que se ve en pantalla, o sea despues de ordenar y
  * filtrar.
  *
- * NO importa nucleo.js y no conoce DATOS(). Copiar sale del DOM; escribir pasa
- * siempre por el adaptador que da la vista. Asi un bug de grilla no puede
+ * NO importa nucleo.js y no conoce DATOS(). Copiar sale del DOM (o, en una
+ * tabla virtual, de lo que el adaptador dice que muestra cada celda); escribir
+ * pasa siempre por el adaptador que da la vista. Asi un bug de grilla no puede
  * corromper datos por su cuenta.
  */
 'use strict';
@@ -26,6 +27,12 @@ const _estados = new Map();
 
 export function estadoDe(idTabla){ return _estados.get(idTabla) || null; }
 
+/* Una tabla se puede escribir si su adaptador sabe escribir. Una tabla virtual
+ * de solo lectura (la bitacora de SO2) igual trae adaptador, para que la
+ * grilla pueda leer las filas que no estan en el DOM: por eso no alcanza con
+ * preguntar si hay adaptador. */
+function puedeEscribir(st){ return !!(st.adaptador && st.adaptador.escribir); }
+
 function nuevoEstado(id){
   return {
     id,
@@ -43,6 +50,20 @@ function nuevoEstado(id){
 /* ---------- geometria, leida del DOM en cada uso ----------
  * No se cachea: el DOM cambia bajo los pies (ordenar, filtrar, llegada del
  * dashboard). Recalcular es barato y siempre correcto.
+ *
+ * TABLAS VIRTUALES (Analisis, Lotes, Movimientos, bitacora de SO2): el
+ * adaptador trae `virtual` y en el DOM solo
+ * estan las filas que se ven (ver tabla-virtual.js). Ahi la grilla sigue
+ * pensando en TODAS las filas — n, la seleccion, copiar, pegar — pero las lee
+ * del modelo: `texto` y `esRO` van al adaptador en vez de al <td>, y `tr(f)`
+ * devuelve null para una fila que no esta dibujada. Por eso el resto del archivo
+ * no usa trs[f] sino estas funciones:
+ *   n        cuantas filas tiene la grilla
+ *   tr(f)    el <tr> de la fila f, o null si no esta en el DOM
+ *   trs/fs   las filas DIBUJADAS y su numero de fila, para pintar
+ *   fDe(tr)  el numero de fila de un <tr>, o -1
+ *   texto/esRO(f,c)  lo que muestra la celda y si se puede escribir
+ *   irA(f)   (solo virtual) dibuja la fila f y la trae a la vista
  */
 export function geo(tabla){
   const cols = [];
@@ -52,20 +73,42 @@ export function geo(tabla){
     // todas las vistas, sin listas de excepciones.
     if (th.dataset.k) cols.push({ k: th.dataset.k, th });
   }
+  const st = _estados.get(tabla.id);
+  const virt = st && st.tabla === tabla && st.adaptador ? st.adaptador.virtual : null;
+  if (virt){
+    const trs = [...tabla.querySelectorAll('tbody tr[data-f]')];
+    const g = {
+      cols, trs, fs: trs.map(tr => +tr.dataset.f), n: virt.total(), virt,
+      tr: f => virt.tr(f),
+      fDe: tr => (tr && tr.dataset && tr.dataset.f != null) ? +tr.dataset.f : -1,
+      texto: (f, c) => cols[c] ? String(virt.texto(f, cols[c].k) ?? '') : '',
+      esRO: (f, c) => !cols[c] || virt.esRO(f, cols[c].k),
+      irA: f => virt.irA(f),
+    };
+    return g;
+  }
   const trs = [];
   for (const tr of tabla.querySelectorAll('tbody tr')){
     // Las filas placeholder ("Sin lotes con los filtros actuales") tienen una
     // sola celda con colspan y no son datos.
     if (!tr.querySelector('td[colspan]')) trs.push(tr);
   }
-  return { cols, trs };
+  const g = {
+    cols, trs, fs: trs.map((tr, f) => f), n: trs.length, virt: null,
+    tr: f => trs[f] || null,
+    fDe: tr => trs.indexOf(tr),
+    texto: (f, c) => textoDe(celdaDe(g, f, c)),
+    esRO: (f, c) => { const td = celdaDe(g, f, c); return !td || esRO(td); },
+    irA: null,
+  };
+  return g;
 }
 
 /** El <td> de la coordenada (f,c). Se ubica por th.cellIndex, asi la columna
  *  de gutter inyectada no desalinea nada: al insertarse en el thead y en cada
  *  fila, los cellIndex se corren juntos. */
 export function celdaDe(g, f, c){
-  const tr = g.trs[f];
+  const tr = g.tr(f);
   const col = g.cols[c];
   if (!tr || !col) return null;
   return tr.cells[col.th.cellIndex] || null;
@@ -139,24 +182,37 @@ function marcarCelda(g, f, c, on){
   if (td) td.classList.toggle('gsel', on);
 }
 
-/** Repinta desde cero. Se usa al activar y despues de restaurar. */
+/** Saca las marcas de seleccion de la tabla. Busca las celdas marcadas en vez
+ *  de recorrer todas: en Lotes son ~20.000 celdas, y esto corre en cada clic. */
+function despintar(tabla){
+  for (const td of tabla.querySelectorAll('td.gsel, td.gact, td.gselfila'))
+    td.classList.remove('gsel', 'gact', 'gselfila');
+}
+
+/** Repinta desde cero. Se usa al activar, despues de restaurar y cuando una
+ *  tabla virtual dibuja filas nuevas. Recorre solo las filas DIBUJADAS que caen
+ *  en el rango, no el rango entero: "seleccionar todo" en Analisis son 7.000
+ *  filas, de las que en el DOM hay un centenar. */
 export function pintar(st, g){
-  for (const tr of g.trs){
-    for (const td of tr.cells) td.classList.remove('gsel', 'gact');
-    if (tr.cells[0] && tr.cells[0].classList.contains('ggutter'))
-      tr.cells[0].classList.remove('gselfila');
-  }
+  despintar(st.tabla);
   for (const col of g.cols) col.th.classList.remove('gselcol');
   if (!st.sel) return;
 
-  for (const cel of rectCeldas(st.sel)) marcarCelda(g, cel.f, cel.c, true);
-  for (let c = st.sel.c1; c <= st.sel.c2; c++)
-    if (g.cols[c]) g.cols[c].th.classList.add('gselcol');
-  for (let f = st.sel.f1; f <= st.sel.f2; f++){
-    const tr = g.trs[f];
-    if (tr && tr.cells[0] && tr.cells[0].classList.contains('ggutter'))
+  const s = st.sel;
+  for (let i = 0; i < g.trs.length; i++){
+    const f = g.fs[i];
+    if (f < s.f1 || f > s.f2) continue;
+    const tr = g.trs[i];
+    for (let c = s.c1; c <= s.c2; c++){
+      const col = g.cols[c];
+      const td = col ? tr.cells[col.th.cellIndex] : null;
+      if (td) td.classList.add('gsel');
+    }
+    if (tr.cells[0] && tr.cells[0].classList.contains('ggutter'))
       tr.cells[0].classList.add('gselfila');
   }
+  for (let c = s.c1; c <= s.c2; c++)
+    if (g.cols[c]) g.cols[c].th.classList.add('gselcol');
   if (st.activa){
     const td = celdaDe(g, st.activa.f, st.activa.c);
     if (td) td.classList.add('gact');
@@ -164,8 +220,11 @@ export function pintar(st, g){
 }
 
 /** Repinta SOLO la diferencia. Es lo que hace usable el arrastre: marcar las
- *  ~3.200 celdas de Lotes en cada mousemove se notaria. */
+ *  ~3.200 celdas de Lotes en cada mousemove se notaria. En una tabla virtual
+ *  se repinta entera: tiene pocas filas en el DOM, y la diferencia entre dos
+ *  rangos de miles de filas seria mas larga que eso. */
 function pintarDiff(st, g, viejo, nuevo){
+  if (g.virt){ pintar(st, g); return; }
   const d = rectDiferencia(viejo, nuevo);
   for (const cel of d.quitar)  marcarCelda(g, cel.f, cel.c, false);
   for (const cel of d.agregar) marcarCelda(g, cel.f, cel.c, true);
@@ -173,14 +232,20 @@ function pintarDiff(st, g, viejo, nuevo){
   for (const col of g.cols) col.th.classList.remove('gselcol');
   for (let c = nuevo.c1; c <= nuevo.c2; c++)
     if (g.cols[c]) g.cols[c].th.classList.add('gselcol');
-  for (const tr of g.trs)
-    if (tr.cells[0] && tr.cells[0].classList.contains('ggutter'))
-      tr.cells[0].classList.remove('gselfila');
+  for (const td of st.tabla.querySelectorAll('td.gselfila')) td.classList.remove('gselfila');
   for (let f = nuevo.f1; f <= nuevo.f2; f++){
-    const tr = g.trs[f];
+    const tr = g.tr(f);
     if (tr && tr.cells[0] && tr.cells[0].classList.contains('ggutter'))
       tr.cells[0].classList.add('gselfila');
   }
+}
+
+/** Vuelve a pintar la seleccion de una tabla. La llama tabla-virtual.js cada
+ *  vez que dibuja filas nuevas al scrollear: llegan sin marcas. */
+export function repintarGrilla(tabla){
+  const st = tabla && _estados.get(tabla.id);
+  if (!st || st.tabla !== tabla) return;
+  pintar(st, geo(tabla));
 }
 
 /* ---------- seleccion ---------- */
@@ -194,7 +259,7 @@ export function seleccionar(st, g, f, c, extender){
     st.sel = rect(f, c, f, c);
     st.activa = { f, c };
   }
-  st.sel = rectRecortar(st.sel, g.trs.length, g.cols.length);
+  st.sel = rectRecortar(st.sel, g.n, g.cols.length);
   if (!st.sel){ st.activa = null; pintar(st, g); return; }
 
   if (viejo) pintarDiff(st, g, viejo, st.sel);
@@ -205,8 +270,7 @@ export function seleccionar(st, g, f, c, extender){
 /** La celda activa se repinta aparte: pintarDiff no la toca, porque es una sola
  *  celda y no vale meterla en la aritmetica del rectangulo. */
 function marcarActiva(st, g){
-  for (const tr of g.trs)
-    for (const td of tr.cells) td.classList.remove('gact');
+  for (const td of st.tabla.querySelectorAll('td.gact')) td.classList.remove('gact');
   if (!st.activa) return;
   const td = celdaDe(g, st.activa.f, st.activa.c);
   if (td) td.classList.add('gact');
@@ -215,22 +279,22 @@ function marcarActiva(st, g){
 function seleccionarFila(st, g, f, extender){
   const desde = (extender && st.activa) ? st.activa.f : f;
   st.sel = rectRecortar(rect(desde, 0, f, g.cols.length - 1),
-                        g.trs.length, g.cols.length);
+                        g.n, g.cols.length);
   if (!extender || !st.activa) st.activa = { f, c: 0 };
   pintar(st, g);   // pintar ya marca la celda activa
 }
 
 function seleccionarColumna(st, g, c, extender){
   const desde = (extender && st.activa) ? st.activa.c : c;
-  st.sel = rectRecortar(rect(0, desde, g.trs.length - 1, c),
-                        g.trs.length, g.cols.length);
+  st.sel = rectRecortar(rect(0, desde, g.n - 1, c),
+                        g.n, g.cols.length);
   if (!extender || !st.activa) st.activa = { f: 0, c };
   pintar(st, g);
 }
 
 function seleccionarTodo(st, g){
-  st.sel = rectRecortar(rect(0, 0, g.trs.length - 1, g.cols.length - 1),
-                        g.trs.length, g.cols.length);
+  st.sel = rectRecortar(rect(0, 0, g.n - 1, g.cols.length - 1),
+                        g.n, g.cols.length);
   st.activa = st.sel ? { f: 0, c: 0 } : null;
   pintar(st, g);
 }
@@ -239,7 +303,7 @@ function seleccionarTodo(st, g){
 /** Mueve la celda activa df filas y dc columnas, recortando contra los limites.
  *  Con extender=true no mueve el ancla: estira el rango (Shift+flechas). */
 export function moverActiva(st, g, df, dc, extender){
-  if (!g.trs.length || !g.cols.length) return;
+  if (!g.n || !g.cols.length) return;
   if (!st.activa){ seleccionar(st, g, 0, 0, false); asegurarVisible(st, g); return; }
 
   /* Al extender, el borde que se mueve es el opuesto al ancla. */
@@ -248,7 +312,7 @@ export function moverActiva(st, g, df, dc, extender){
         c: (st.sel.c1 === st.activa.c ? st.sel.c2 : st.sel.c1) + dc }
     : { f: st.activa.f + df, c: st.activa.c + dc };
 
-  const f = Math.max(0, Math.min(g.trs.length - 1, destino.f));
+  const f = Math.max(0, Math.min(g.n - 1, destino.f));
   const c = Math.max(0, Math.min(g.cols.length - 1, destino.c));
 
   if (extender){
@@ -267,6 +331,9 @@ export function asegurarVisible(st, g, f, c){
   const fila = f != null ? f : (st.activa ? st.activa.f : null);   // != null es intencional: cubre null y undefined
   const col  = c != null ? c : (st.activa ? st.activa.c : null);
   if (fila == null || col == null) return;
+  /* En una tabla virtual la fila puede no estar en el DOM: irA la dibuja y
+   * hace el scroll vertical; lo de abajo queda para el horizontal. */
+  if (g.irA) g.irA(fila);
   const td = celdaDe(g, fila, col);
   if (!td) return;
 
@@ -292,6 +359,10 @@ export function asegurarVisible(st, g, f, c){
  *  Devuelve false si la celda es de solo lectura. */
 export function entrarAEditar(st, g){
   if (!st.activa) return false;
+  /* La celda activa puede haber quedado fuera de la vista con la ruedita: en
+   * una tabla virtual eso es fuera del DOM. Tipear la trae de vuelta, como
+   * Excel. */
+  if (g.irA && !celdaDe(g, st.activa.f, st.activa.c)) g.irA(st.activa.f);
   const td = celdaDe(g, st.activa.f, st.activa.c);
   if (!td || esRO(td)) return false;
   const el = controlDe(td);
@@ -324,12 +395,12 @@ export function tablaVisible(tabla){
 function clavesDe(st, g){
   const ad = st.adaptador;
   if (!ad) return null;
-  if (ad.claveFila) return g.trs.map((tr, f) => ad.claveFila(f));
+  if (ad.claveFila) return Array.from({ length: g.n }, (_, f) => ad.claveFila(f));
   if (!ad.objetoDe) return null;
   /* La referencia al objeto vivo de la fila: el mismo objeto que el adaptador
    * usa como destino de escritura. Un solo concepto sirve de identidad Y de
    * destino, y no hay que inventar ni mantener ningun campo id. */
-  const claves = g.trs.map((tr, f) => ad.objetoDe(f));
+  const claves = Array.from({ length: g.n }, (_, f) => ad.objetoDe(f));
   return claves.some(x => x == null) ? null : claves;
 }
 
@@ -343,9 +414,16 @@ function restaurarSeleccion(st, g){
 
   if (!st.sel) return;
 
+  /* Posicion nueva de cada clave. Un Map y no un indexOf por fila: seleccionar
+   * todo en Analisis son miles de filas y el indexOf lo volvia cuadratico.
+   * Gana la PRIMERA posicion, igual que indexOf. */
+  const posDe = new Map();
+  nuevas.forEach((k, i) => { if (!posDe.has(k)) posDe.set(k, i); });
+  const pos = k => { const i = posDe.get(k); return i === undefined ? -1 : i; };
+
   const indices = [];
   for (let f = st.sel.f1; f <= st.sel.f2 && f < previas.length; f++){
-    const i = nuevas.indexOf(previas[f]);
+    const i = pos(previas[f]);
     if (i >= 0) indices.push(i);
   }
   if (!indices.length){ st.sel = null; st.activa = null; return; }
@@ -364,11 +442,11 @@ function restaurarSeleccion(st, g){
 
   const min = Math.min(...indices), max = Math.max(...indices);
   st.sel = rectRecortar(rect(min, st.sel.c1, max, st.sel.c2),
-                        g.trs.length, g.cols.length);
+                        g.n, g.cols.length);
 
   if (!st.sel){ st.activa = null; return; }
 
-  const fActiva = claveActiva != null ? nuevas.indexOf(claveActiva) : -1;
+  const fActiva = claveActiva != null ? pos(claveActiva) : -1;
   st.activa = (fActiva >= 0 && st.activa)
     ? { f: fActiva, c: Math.min(st.activa.c, g.cols.length - 1) }
     : { f: st.sel.f1, c: st.sel.c1 };
@@ -401,7 +479,7 @@ function cablearMouse(tabla, st){
     /* Numero de fila: la fila entera */
     const gut = e.target.closest('td.ggutter');
     if (gut){
-      const f = g.trs.indexOf(gut.parentElement);
+      const f = g.fDe(gut.parentElement);
       if (f >= 0){ e.preventDefault(); seleccionarFila(st, g, f, e.shiftKey); }
       return;
     }
@@ -431,7 +509,7 @@ function cablearMouse(tabla, st){
     const td = e.target.closest('td');
     if (!td || td.classList.contains('ggutter')) return;
     const tr = td.parentElement;
-    const f = g.trs.indexOf(tr);
+    const f = g.fDe(tr);
     const c = g.cols.findIndex(x => x.th.cellIndex === td.cellIndex);
     if (f < 0 || c < 0) return;
 
@@ -457,12 +535,12 @@ function cablearMouse(tabla, st){
     const td = e.target.closest('td');
     if (!td || td.classList.contains('ggutter')) return;
     const g = geo(tabla);
-    const f = g.trs.indexOf(td.parentElement);
+    const f = g.fDe(td.parentElement);
     const c = g.cols.findIndex(x => x.th.cellIndex === td.cellIndex);
     if (f < 0 || c < 0) return;
     const viejo = st.sel;
     st.sel = rectRecortar(rect(st.activa.f, st.activa.c, f, c),
-                          g.trs.length, g.cols.length);
+                          g.n, g.cols.length);
     if (st.sel && !rectIguales(viejo, st.sel)) pintarDiff(st, g, viejo, st.sel);
   });
 
@@ -577,7 +655,7 @@ function _manejarTecla(st, e){
     asegurarVisible(st, g); return true;
   }
   if (e.key === 'End'){
-    if (e.ctrlKey) seleccionar(st, g, g.trs.length - 1, g.cols.length - 1, e.shiftKey);
+    if (e.ctrlKey) seleccionar(st, g, g.n - 1, g.cols.length - 1, e.shiftKey);
     else           seleccionar(st, g, st.activa.f, g.cols.length - 1, e.shiftKey);
     asegurarVisible(st, g); return true;
   }
@@ -624,7 +702,7 @@ export function matrizDe(g, r){
   if (!r) return out;
   for (let f = r.f1; f <= r.f2; f++){
     const fila = [];
-    for (let c = r.c1; c <= r.c2; c++) fila.push(textoDe(celdaDe(g, f, c)));
+    for (let c = r.c1; c <= r.c2; c++) fila.push(g.texto(f, c));
     out.push(fila);
   }
   return out;
@@ -793,10 +871,10 @@ export function escribirCeldas(st, g, items){
     const col = g.cols[it.c];
     if (!col){ res.salteadas++; continue; }
 
-    const td = celdaDe(g, it.f, it.c);
     // esRO cubre las celdas sin control editable Y las que tienen uno disabled,
-    // que es como Movimientos apaga los campos que no aplican al tipo.
-    if (!td || esRO(td)){ res.salteadas++; continue; }
+    // que es como Movimientos apaga los campos que no aplican al tipo. En una
+    // tabla virtual lo contesta el modelo: la fila puede no estar en el DOM.
+    if (g.esRO(it.f, it.c)){ res.salteadas++; continue; }
 
     const obj = ad.objetoDe(it.f);
     if (!obj){ res.salteadas++; continue; }
@@ -839,7 +917,7 @@ export function reportar(st, titulo, res, extra){
 
 /* ---------- pegar ---------- */
 export function pegar(st, g, texto){
-  if (!st.adaptador){
+  if (!puedeEscribir(st)){
     mensaje(st.tabla, 'Esta tabla es de solo lectura: se puede copiar, no pegar.', 'info');
     return;
   }
@@ -863,7 +941,7 @@ export function pegar(st, g, texto){
      * mucho peor que un pegado incompleto. */
     for (let i = 0; i < m.length; i++){
       const f = st.activa.f + i;
-      if (f >= g.trs.length){ filasFuera++; continue; }
+      if (f >= g.n){ filasFuera++; continue; }
       for (let j = 0; j < m[i].length; j++){
         const c = st.activa.c + j;
         if (c >= g.cols.length){ colsFueraSet.add(c); continue; }
@@ -883,7 +961,7 @@ export function pegar(st, g, texto){
 
 /* ---------- borrar ---------- */
 export function borrarRango(st, g){
-  if (!st.adaptador || !st.sel) return;
+  if (!puedeEscribir(st) || !st.sel) return;
   const items = rectCeldas(st.sel).map(cel => ({ f: cel.f, c: cel.c, texto: '' }));
   const res = escribirCeldas(st, g, items);
   reportar(st, 'Borrado', res);
@@ -892,8 +970,8 @@ export function borrarRango(st, g){
 /* ---------- editar en bloque ---------- */
 /** Ctrl+Enter: el valor de la celda activa se aplica a todo el rango. */
 export function aplicarAlRango(st, g){
-  if (!st.adaptador || !st.sel || !st.activa) return;
-  const texto = textoDe(celdaDe(g, st.activa.f, st.activa.c));
+  if (!puedeEscribir(st) || !st.sel || !st.activa) return;
+  const texto = g.texto(st.activa.f, st.activa.c);
   const items = [];
   for (const cel of rectCeldas(st.sel)){
     // La celda activa ya tiene el valor: no se reescribe ni se cuenta.
@@ -906,14 +984,14 @@ export function aplicarAlRango(st, g){
 
 /** Ctrl+D: la primera fila del rango se copia hacia abajo, columna por columna. */
 export function rellenarAbajo(st, g){
-  if (!st.adaptador || !st.sel) return;
+  if (!puedeEscribir(st) || !st.sel) return;
   if (st.sel.f1 === st.sel.f2){
     mensaje(st.tabla, 'Seleccioná al menos dos filas para rellenar hacia abajo.', 'info');
     return;
   }
   const items = [];
   for (let c = st.sel.c1; c <= st.sel.c2; c++){
-    const texto = textoDe(celdaDe(g, st.sel.f1, c));
+    const texto = g.texto(st.sel.f1, c);
     for (let f = st.sel.f1 + 1; f <= st.sel.f2; f++) items.push({ f, c, texto });
   }
   const res = escribirCeldas(st, g, items);
@@ -935,7 +1013,7 @@ function aplicarCambios(st, cambios, usarAntes){
   const g = geo(st.tabla);
   // Objeto de fila -> indice visible, para refrescar solo lo que se ve.
   const filaDe = new Map();
-  for (let f = 0; f < g.trs.length; f++){
+  for (let f = 0; f < g.n; f++){
     const obj = ad.objetoDe(f);
     if (obj) filaDe.set(obj, f);
   }
@@ -954,7 +1032,7 @@ function aplicarCambios(st, cambios, usarAntes){
 }
 
 export function deshacer(st){
-  if (!st.adaptador) return;
+  if (!puedeEscribir(st)) return;
   const cambios = st.pila.deshacer();
   if (!cambios){ mensaje(st.tabla, 'No hay nada para deshacer.', 'info'); return; }
   const n = aplicarCambios(st, cambios, true);
@@ -962,7 +1040,7 @@ export function deshacer(st){
 }
 
 export function rehacer(st){
-  if (!st.adaptador) return;
+  if (!puedeEscribir(st)) return;
   const cambios = st.pila.rehacer();
   if (!cambios){ mensaje(st.tabla, 'No hay nada para rehacer.', 'info'); return; }
   const n = aplicarCambios(st, cambios, false);
