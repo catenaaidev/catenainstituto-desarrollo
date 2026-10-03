@@ -489,17 +489,18 @@ describe('so2_ok mira la última medición, no la mejor', () => {
     expect(ev.alarmas).toContain('so2_no_ok');
   });
 
-  it('el SO2 justo en el piso es no OK', () => {
-    // Verificado contra el tablero: sus lotes 26008 y 26011, con 20,0 clavado,
-    // son no_ok. Antes 20,0 >= objetivo daba OK.
+  it('el SO2 justo en el piso es OK: el piso es inclusive', () => {
+    // Decision de la bodega (2026-10-02): el libre igual al piso todavia esta
+    // bien. El tablero aprobado marcaba no_ok a 26008 y 26011 con 20,0 clavado;
+    // la web deja de hacerlo a proposito. pH 3,5: molecular 0,391 >= 0,38.
     const ev = evaluarLote(
       lote225('26008'),
       [{ lote: '26008', fecha_analisis: '2026-07-15', so2_libre: 20.0, ph: 3.5 }],
       cfg(),
       d('2026-08-24'),
     );
-    expect(ev.so2_estado).toBe('no_ok');
-    expect(ev.so2_ok).toBe(false);
+    expect(ev.so2_estado).toBe('ok');
+    expect(ev.so2_ok).toBe(true);
   });
 });
 
@@ -689,9 +690,14 @@ describe('flagsAnalisis y estadoSo2 juzgan el SO2 con el mismo criterio', () => 
       d('2026-08-24'),
     );
 
-  it('el SO2 clavado en el piso se marca, igual que el lote es no_ok', () => {
-    expect(marca({ so2_libre: 20.0, ph: 3.5 })).toBe(true);
-    expect(delLote({ so2_libre: 20.0, ph: 3.5 }).so2_estado).toBe('no_ok');
+  it('el SO2 clavado en el piso no se marca, igual que el lote es ok', () => {
+    expect(marca({ so2_libre: 20.0, ph: 3.5 })).toBe(false);
+    expect(delLote({ so2_libre: 20.0, ph: 3.5 }).so2_estado).toBe('ok');
+  });
+
+  it('el SO2 apenas debajo del piso se marca aunque no haya pH', () => {
+    expect(marca({ so2_libre: 19.9 })).toBe(true);
+    expect(delLote({ so2_libre: 19.9 }).so2_estado).toBe('no_ok');
   });
 
   it('bajo el piso y sin pH se marca igual: el piso no necesita pH', () => {

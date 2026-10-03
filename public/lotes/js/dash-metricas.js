@@ -22,6 +22,8 @@
  *     existen (motor_fml._analisis_por_lote).
  * Si alguna de esas reglas cambia en el motor, cambiala tambien aca o el
  * dashboard va a contradecir a la tabla de alarmas de la misma pantalla.
+ * test/lotes-dash-metricas.test.mjs corre el motor y este archivo juntos y
+ * exige que la tarjeta "SO₂ bajo objetivo" cuente lo mismo que so2_no_ok.
  */
 'use strict';
 
@@ -101,21 +103,25 @@ export function analisisPorLote(datos){
 }
 
 /**
- * SO2 libre de UNA muestra, con el fallback al bloque correccion.
- *
- * Divergencia con so2LibreDe() de fml-condiciones.ts (decisión de producto
- * pendiente, no tocar sin revisión): esta función no descarta el placeholder 0.
- * so2LibreDe() del motor lo descarta para que un lote sin medición real no
- * quede como "SO2 no OK"; aquí se conserva el comportamiento anterior.
+ * SO2 libre de UNA muestra, con el fallback al bloque correccion. Espejo de
+ * so2LibreDe() de fml-condiciones.ts, placeholder 0 incluido: un 0 no es una
+ * medicion. Antes esta copia lo tomaba como dato y la tarjeta "SO₂ bajo
+ * objetivo" contaba en deficit a un lote que la alarma so2_no_ok de la misma
+ * pantalla (y el Tablero FML) daban por bien.
  */
 export function so2LibreDe(a){
   const fila = a || {};
   const corr = (fila.correccion && typeof fila.correccion === 'object') ? fila.correccion : {};
   for (const campo of ['so2_libre_actual', 'so2_libre']){
     const v = valido(fila[campo]) ?? valido(corr[campo]);
-    if (v !== null) return v;
+    if (v !== null && v !== 0) return v;
   }
   return null;
+}
+
+/** ¿El proyecto del lote lleva SO2? Espejo de so2Aplica() del motor. */
+export function so2Aplica(eff){
+  return String((eff || {}).so2_aplica ?? 'si').trim().toLowerCase() !== 'no';
 }
 
 /** Ultimo valor valido de una metrica, con su fecha. Espejo de _ultimo_valido. */
@@ -229,7 +235,11 @@ export function metricasPorLote(dash, datos){
       if (so2LibreDe(ans[i]) !== null){ phDeLaMuestra = valido(ans[i].ph); break; }
     }
     const phParaObjetivo = phDeLaMuestra ?? ph.valor;
-    const so2Objetivo = objetivoSo2Libre(phParaObjetivo, eff);
+    /* Un proyecto sin adicion de SO2 (El Amiguito) no tiene objetivo: no es
+     * deficit ni "sin datos", queda fuera de la cuenta. Manda el motor si ya lo
+     * dijo, y si no, la misma regla que usa el motor. */
+    const so2NoAplica = fila.so2_estado === 'no_aplica' || !so2Aplica(eff);
+    const so2Objetivo = so2NoAplica ? null : objetivoSo2Libre(phParaObjetivo, eff);
     const so2Delta = (so2.valor !== null && so2Objetivo !== null) ? so2.valor - so2Objetivo : null;
 
     filas.push({
@@ -245,6 +255,7 @@ export function metricasPorLote(dash, datos){
       ph:       ph.valor,
       phLimite: nm(eff.ph_max),
       so2:         so2.valor,
+      so2NoAplica: so2NoAplica,
       so2Objetivo: so2Objetivo,
       so2Delta:    so2Delta,
       so2Banda:    so2Delta === null ? null : bandaSo2(so2Delta),
@@ -374,6 +385,6 @@ export function resumen(filas){
      * traen SO2 libre desde una correccion pero nunca un pH, y sin pH no hay
      * objetivo contra el cual compararlos: contarlos como evaluados dejaria al
      * KPI diciendo "todo en objetivo" sobre lotes que nadie midio. */
-    sinDatoSo2: filas.filter(f => f.so2Delta === null).length,
+    sinDatoSo2: filas.filter(f => f.so2Delta === null && !f.so2NoAplica).length,
   };
 }

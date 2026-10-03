@@ -291,8 +291,10 @@ export interface VeredictoSo2 {
  * LA regla de SO2: la usan estadoSo2 (veredicto del lote) y flagsAnalisis (la
  * celda roja de la tabla de Analisis), asi que no pueden contradecirse.
  *
- * Dos tramos, como el tablero: en el piso o por debajo es fuera de criterio sin
- * mirar nada mas; por encima decide el molecular. Devuelve `fuera: null` cuando
+ * Dos tramos: por debajo del piso es fuera de criterio sin mirar nada mas; en
+ * el piso o por encima decide el molecular. El piso es INCLUSIVE: con piso 25,
+ * 25 ppm todavia esta bien (decision de la bodega del 2026-10-02; el tablero
+ * aprobado en Python marcaba no OK el valor clavado en el piso). Devuelve `fuera: null` cuando
  * no hay con que pronunciarse (proyecto sin SO2, fila sin medicion, o sin
  * ningun pH por encima del piso).
  *
@@ -316,12 +318,12 @@ export function veredictoSo2(
     return { ...vacio, fuera: null, motivo: 'sin medicion de SO2 libre' };
   }
 
-  if (libre <= eff.so2_libre_piso) {
+  if (libre < eff.so2_libre_piso) {
     return {
       ...vacio,
       fuera: true,
       libre,
-      motivo: `SO2 libre ${libre} ppm, en o por debajo del piso de ${eff.so2_libre_piso}`,
+      motivo: `SO2 libre ${libre} ppm, por debajo del piso de ${eff.so2_libre_piso}`,
     };
   }
 

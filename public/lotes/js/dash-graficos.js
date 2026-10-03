@@ -263,7 +263,10 @@ export function graficoAV(filas){
  * del pH de la propia muestra, asi que dos lotes con el mismo SO2 libre pueden
  * estar uno sobrado y el otro en deficit.
  */
-export function graficoSO2(filas){
+export function graficoSO2(todas){
+  /* Los proyectos sin SO2 no van ni a una barra ni a "sin datos": no hay nada
+   * que evaluar, igual que en la tarjeta y en la alarma so2_no_ok. */
+  const filas = todas.filter(f => !f.so2NoAplica);
   const { grupos, sinDato } = agrupar(filas, BANDAS_SO2, 'so2Banda');
   const conDato = filas.length - sinDato.length;
 
@@ -345,7 +348,7 @@ const factorHH = ph => 1 + Math.pow(10, ph - 1.8);
  * de cada punto.
  */
 export function graficoDispersion(filas, eff){
-  const pts = filas.filter(f => f.phSo2 !== null && f.so2Molec !== null);
+  const pts = filas.filter(f => !f.so2NoAplica && f.phSo2 !== null && f.so2Molec !== null);
   const pie = document.getElementById('chNubePie');
 
   if (pts.length < 2){

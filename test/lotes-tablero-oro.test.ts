@@ -39,13 +39,16 @@ const CASOS: Array<{ nombre: string; lote: Record<string, unknown>; analisis: Re
     espera: { so2_estado: 'no_ok', ph_estado: 'ok', fml_estado: 'excluida', fml_excluida_origen: 'variedad_blanca', estado_frecuencia: 'al_dia', alarmas: ['so2_no_ok'] },
   },
   {
-    nombre: '26008 Pinot Noir: SO2 en 20 clavado es no OK, y la caida de 14 alarma',
+    // El tablero aprobado lo daba no_ok. Desde el 2026-10-02 el piso es
+    // inclusive por decision de la bodega: 20 clavado en el piso de 20 esta
+    // bien (molecular 0,49 a pH 3,4). La caida de 14 ppm sigue alarmando.
+    nombre: '26008 Pinot Noir: SO2 en 20 clavado es OK (piso inclusive), y la caida de 14 alarma',
     lote: { lote: '26008', variedad: 'Pinot Noir', proyecto: 'Domaine Nico', litros_actuales: 1575, mermo: 'no', hace_fml: 'si' },
     analisis: [
       proc('2026-08-10', { ph: 3.4, so2_libre: 34 }),
       proc('2026-09-11', { ph: 3.4, so2_libre: 20, av: 0.58 }),
     ],
-    espera: { so2_estado: 'no_ok', fml_estado: 'finalizada', alarmas: ['so2_caida_alerta', 'so2_no_ok'] },
+    espera: { so2_estado: 'ok', fml_estado: 'finalizada', alarmas: ['so2_caida_alerta'] },
   },
   {
     nombre: '26003 Semillon: 24 ppm es OK con el piso nuevo',
@@ -86,10 +89,12 @@ const CASOS: Array<{ nombre: string; lote: Record<string, unknown>; analisis: Re
     espera: { fml_estado: 'no_finalizada', fml_excluida_origen: 'lote', frecuencia_max: 15, estado_frecuencia: 'al_dia', alarmas: ['fml_no_finalizada'] },
   },
   {
+    // Igual que 26008: el tablero aprobado daba el SO2 no_ok; con el piso
+    // inclusive (2026-10-02) 20 en el piso de 20 a pH 3,25 esta bien.
     nombre: '26011 Chardonnay: sin mermo cargado, datos incompletos',
     lote: { lote: '26011', variedad: 'Chardonnay', proyecto: 'White Colluvium', litros_actuales: 100 },
     analisis: [proc('2026-09-09', { ph: 3.25, so2_libre: 20, av: 0.02 })],
-    espera: { so2_estado: 'no_ok', estado_llenado: 'desconocido', alarmas: ['so2_no_ok', 'datos_operativos_incompletos'] },
+    espera: { so2_estado: 'ok', estado_llenado: 'desconocido', alarmas: ['datos_operativos_incompletos'] },
   },
   {
     nombre: '26280 Syrah: sin ningun analisis, y la FML sin dato no afloja la frecuencia',

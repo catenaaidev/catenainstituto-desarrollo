@@ -234,7 +234,7 @@ export function textoCriterios(eff){
     { titulo: 'Caída de SO₂ libre', regla: String(eff.so2_aplica) === 'no' ? 'No se evalúa en este proyecto.' : `Entre las dos últimas fechas con SO₂ hay una caída mayor a ${eff.so2_caida_max} ppm.` },
     { titulo: 'FA no finalizada', regla: `Último azúcar reductor > ${eff.fa_azucar_reductor_max}.` },
     { titulo: 'FML no finalizada', regla: `Último málico ≥ ${eff.fml_malico_finalizada}, y no hay dos últimas mediciones por debajo de ${eff.fml_malico_2ultimas}.` },
-    { titulo: 'SO2 no OK', regla: String(eff.so2_aplica) === 'no' ? 'No se evalúa en este proyecto.' : `Libre ≤ ${eff.so2_libre_piso} ppm, o molecular < ${eff.so2_molecular_objetivo}.` },
+    { titulo: 'SO2 no OK', regla: String(eff.so2_aplica) === 'no' ? 'No se evalúa en este proyecto.' : `Libre < ${eff.so2_libre_piso} ppm (el piso todavía está bien), o molecular < ${eff.so2_molecular_objetivo}.` },
     { titulo: 'pH no OK', regla: `Último pH ${phSigno} ${eff.ph_max}.` },
     { titulo: 'No lleno', regla: 'El mermo del lote dice que no está lleno.' },
     { titulo: 'Datos operativos incompletos', regla: 'Falta el mermo o falta la decisión de FML (del lote o de la variedad).' },

@@ -198,8 +198,15 @@ describe('frecuencia', () => {
 describe('SO2', () => {
   const base = { ...CRITERIOS_DEFAULT, so2_libre_piso: 20 };
 
-  it('en el piso exacto es no OK', () => {
+  it('en el piso exacto es OK: el piso es inclusive', () => {
+    // Decision de la bodega (2026-10-02): con piso 25, 25 ppm todavia esta bien.
+    // pH 3.4: molecular = 20 / (1 + 10^1.6) = 0.49 >= 0.38
     const r = estadoSo2([{ fecha_analisis: '2026-08-01', so2_libre: 20, ph: 3.4 }], base);
+    expect(r.estado).toBe('ok');
+  });
+
+  it('apenas debajo del piso es no OK', () => {
+    const r = estadoSo2([{ fecha_analisis: '2026-08-01', so2_libre: 19.9, ph: 3.4 }], base);
     expect(r.estado).toBe('no_ok');
   });
 
