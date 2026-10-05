@@ -81,3 +81,45 @@ describe('snapshotLotes cada 5 minutos', () => {
     expect(await respaldos()).toHaveLength(1);
   });
 });
+
+describe('guardado forzado: respalda también lo que pisa', () => {
+  beforeEach(async () => {
+    const l = await env.RESPALDOS.list({ prefix: 'lotes/' });
+    for (const o of l.objects) await env.RESPALDOS.delete(o.key);
+  });
+
+  async function postear(cuerpo: unknown, forzar: boolean) {
+    const req = new Request('https://catenainstitute.example/lotes/api/datos' + (forzar ? '?forzar=1' : ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Cf-Access-Authenticated-User-Email': EDITOR },
+      body: JSON.stringify(cuerpo),
+    });
+    const ctx = createExecutionContext();
+    const res = await rutasLotes(req, env, ctx, '/datos');
+    await waitOnExecutionContext(ctx);
+    return res!;
+  }
+
+  it('deja un respaldo con el documento de la versión anterior', async () => {
+    const antes = {
+      meta: { version: 70 },
+      lotes: [{ lote: '26001', variedad: 'Malbec' }, { lote: '26002', variedad: 'Syrah' }],
+      analisis: [], movimientos: [],
+    };
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO documento (modulo, version, json, autor, guardado)
+       VALUES ('lotes', 70, ?, 'Oriana', '2026-10-05 10:00')`,
+    ).bind(JSON.stringify(antes)).run();
+
+    const r = await postear({ meta: { version: 70 }, lotes: [], analisis: [], movimientos: [] }, true);
+    expect(r.status).toBe(200);
+
+    const claves = await respaldos();
+    const viejo = claves.find((k) => k.startsWith('lotes/datos-v00070-'));
+    const nuevo = claves.find((k) => k.startsWith('lotes/datos-v00071-'));
+    expect(viejo).toBeDefined();
+    expect(nuevo).toBeDefined();
+    const contenido = JSON.parse(await (await env.RESPALDOS.get(viejo!))!.text());
+    expect(contenido.lotes.map((l: { lote: string }) => l.lote)).toEqual(['26001', '26002']);
+  });
+});

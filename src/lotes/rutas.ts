@@ -186,7 +186,13 @@ export async function rutasLotes(
       )
       .run();
 
-    ctx.waitUntil(snapshotLotes(env, nuevo, Number(meta.version), forzar));
+    /* Un guardado forzado es el que el freno de borrado masivo dejo pasar:
+     * se respalda tambien el documento que pisa (la version anterior), que
+     * es justo lo que se querria recuperar si el forzado fue un error. */
+    ctx.waitUntil(
+      (forzar ? snapshotLotes(env, actual, va, true) : Promise.resolve(true))
+        .then(() => snapshotLotes(env, nuevo, Number(meta.version), forzar)),
+    );
 
     return json(200, {
       ok: true,
