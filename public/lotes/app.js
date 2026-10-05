@@ -5,7 +5,7 @@
 import { cargarDatos, mostrarTab, refrescarAvisos, refrescarInfo,
          guardarAhora, deshacer, rehacer, pedirUsuario, usuarioActual, verHistorial, cerrarOverlay,
          cargarDashboard, $, registrarInit, invalidarVistas, invalidarDashMap,
-         renderActivo, DATOS } from './js/nucleo.js';
+         renderActivo, DATOS, arrancarEnVivo } from './js/nucleo.js';
 import { limpiarFiltrosMulti } from './js/tabla.js';
 import { montarSelectorAnios } from './js/selector-anios.js';
 
@@ -144,6 +144,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   refrescarAvisos();
   refrescarInfo();
   await dash;
+
+  /* ver en vivo lo que guardan los demas (cada 15 s, con la pestaña a la vista) */
+  arrancarEnVivo();
 
   /* refrescar avisos cada 60 s */
   setInterval(refrescarAvisos, 60000);

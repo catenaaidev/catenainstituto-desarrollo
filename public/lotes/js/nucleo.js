@@ -4,6 +4,7 @@
 import { queryAnios } from './selector-anios.js';
 import { crearAutoguardado } from './autoguardado.js';
 import { tomarFoto, diferencia, aplicar, crearHistorial, describirPaso, describirCambio } from './deshacer.js';
+import { CADA_MS, decidirActualizacion, ocupadoSegun } from './en-vivo.js';
 
 /* ---------- estado global ----------
  * DATOS es una variable mutable que comparten todas las vistas. Los modulos ES
@@ -122,6 +123,7 @@ export function markSaved(){
   dirty = false;
   invalidarVistas();
   _estado('✓ Guardado (v' + DATOS().meta.version + ')', 'saved');
+  _vivoParado = false;
 }
 
 /* ---------- deshacer / rehacer de toda la pagina ----------
@@ -187,6 +189,72 @@ export function deshacer(){ _mover('deshacer'); }
 export function rehacer(){ _mover('rehacer'); }
 document.addEventListener('lotes:deshacer', deshacer);
 document.addEventListener('lotes:rehacer', rehacer);
+
+/* ---------- en vivo: lo que guardan los demas ----------
+ * Cada 15 s, con la pestaña a la vista, se pregunta la version (consulta
+ * minima). Si otro guardo y esta pantalla esta libre, se baja el documento y
+ * se redibuja. Lo que llega no entra al deshacer (_nuevaFoto). */
+let _vivoParado = false, _vivoMirando = false;
+
+function _leerActivo(){
+  const a = document.activeElement;
+  if (!a || a === document.body) return null;
+  return {
+    tag: a.tagName, tipo: a.type || '', enTabla: !!a.closest('table'),
+    valor: a.value, valorOriginal: a.defaultValue, editable: !!a.isContentEditable,
+  };
+}
+
+async function _mirarVersion(){
+  if (_vivoParado || _vivoMirando || !_datos || document.visibilityState !== 'visible') return;
+  _vivoMirando = true;
+  try {
+    let info;
+    try {
+      const r = await fetch(API + '/version', { cache: 'no-store' });
+      if (r.status === 401){ _vivoParado = true; return; }
+      if (!r.ok) return;
+      info = await r.json();
+    } catch (e) { return; }
+    const decision = decidirActualizacion({
+      versionServidor: info.version,
+      versionLocal: (_datos.meta || {}).version,
+      pendiente: hayCambiosSinGuardar(),
+      ocupado: ocupadoSegun({ overlayAbierto: $('overlay').classList.contains('show'), activo: _leerActivo() }),
+    });
+    if (decision === 'adoptar') await _adoptarDelServidor(info);
+  } finally { _vivoMirando = false; }
+}
+
+async function _adoptarDelServidor(info){
+  const edicionesAntes = _ediciones;
+  let nuevo;
+  try {
+    const r = await fetch(API + '/datos', { cache: 'no-store' });
+    if (!r.ok) return;
+    nuevo = await r.json();
+  } catch (e) { return; }
+  // Se edito mientras bajaba: se descarta, lo combina el 409 del autoguardado.
+  if (_ediciones !== edicionesAntes || hayCambiosSinGuardar()) return;
+  _antesDeCambioAjeno();
+  setDatos(nuevo);
+  completarSecciones();
+  _base = FUSION ? FUSION.clonar(DATOS()) : null;
+  _despuesDeCambioAjeno();
+  document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
+  invalidarVistas();
+  cargarDashboard();
+  renderActivo();
+  _estado('↻ Actualizado con cambios de ' + (info.autor || 'otro usuario') + ' (v' + DATOS().meta.version + ')', 'saved');
+}
+
+/** Arranca la consulta periodica. La llama app.js despues de cargar. */
+export function arrancarEnVivo(){
+  setInterval(_mirarVersion, CADA_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _mirarVersion();
+  });
+}
 
 window.addEventListener('beforeunload', e => {
   if (hayCambiosSinGuardar()){ e.preventDefault(); e.returnValue = ''; }
