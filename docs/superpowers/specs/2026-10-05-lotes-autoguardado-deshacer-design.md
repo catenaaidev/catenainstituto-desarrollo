@@ -1,4 +1,4 @@
-# Lotes web: autoguardado y deshacer con Ctrl+Z
+# Lotes web: autoguardado, deshacer con Ctrl+Z y cambios ajenos en vivo
 
 Fecha: 2026-10-05 · Estado: diseño aprobado en el chat, implementación en
 `feat/lotes-autoguardado-deshacer` (worktree `repos\catenainstitute-autoguardado`).
@@ -27,6 +27,9 @@ Decisiones del usuario (2026-10-05):
   guardado).
 - La cuenta ya está en **Workers Paid**: el límite de 10 ms de CPU dejó de ser
   el freno (ver `plataforma-error-1102`).
+- Los cambios de otras personas se ven **en vivo, sin refrescar**, como en
+  Barriles. Hoy Lotes no pregunta nunca si hubo cambios: lo ajeno solo aparece
+  al recargar o al combinarse en un 409.
 
 Datos medidos (respaldo v75, 2026-10-02): el documento pesa **3,9 MB** (683
 lotes, 7.438 análisis, 363 movimientos, 78 vasijas). `JSON.parse(JSON.stringify())`
@@ -198,6 +201,45 @@ vida en el bucket que borre `lotes/` de más de 60 días.
 
 Prensas y Barriles no se tocan.
 
+### 4. Ver en vivo lo que cambian los demás (`nucleo.js` + `src/lotes/rutas.ts`)
+
+**Servidor.** Nuevo `GET /lotes/api/version`, copia del de Barriles: lee solo las
+columnas `version`, `autor` y `guardado` de la fila de `documento`, sin tocar el
+JSON de 3,9 MB. Responde `{version, autor, guardado}`.
+
+**Página.** Cada **15 s**, solo si la pestaña está a la vista
+(`document.visibilityState === 'visible'`), y también apenas vuelve a la vista,
+pregunta la versión. Si la del servidor es mayor que la local:
+
+| Situación de esta pantalla | Qué hace |
+|---|---|
+| Tiene cambios sin subir o un guardado en vuelo | Nada: el autoguardado va a recibir un 409 y combinar, como en la sección 1. |
+| Hay una celda en edición, el foco está en un campo de un formulario o hay un overlay abierto | Espera: vuelve a probar en el próximo ciclo. Así nunca se te mueve lo que estás escribiendo. |
+| Nada de lo anterior | Baja `GET /datos` y lo adopta. |
+
+**Adoptar** = lo mismo que hoy hace la carga inicial, sin el borrador:
+
+1. se cierra el paso de deshacer abierto (no debería haber, pero por las dudas);
+2. `setDatos(nuevo)`, `completarSecciones()`, `_base` = copia del nuevo;
+3. la foto del deshacer se vuelve a tomar **sin apilar**: lo ajeno no entra a tu
+   historial. Tus pasos viejos siguen valiendo, porque se aplican fila por fila
+   solo donde la fila sigue como la dejaste (sección 2);
+4. `lotes:datos-recargados`, `invalidarVistas()`, `cargarDashboard()` y se
+   repinta la pestaña visible **conservando el scroll** (`conservarScroll`) y
+   los filtros (viven en el estado de cada vista, no se tocan). La selección de
+   celdas de la grilla se limpia;
+5. el `statusBar` dice por 5 s: *"↻ Actualizado con cambios de Oriana (v124)"*.
+
+Si mientras baja `/datos` editás algo, la respuesta se descarta (la cuenta de
+`_ediciones` cambió) y lo resuelve el 409 del autoguardado.
+
+Con 401 deja de preguntar hasta que vuelva la sesión (lo mismo que el
+autoguardado).
+
+**Costo.** La consulta de versión es mínima (4 por minuto por pantalla abierta).
+Lo pesado es bajar el documento: ~400 KB comprimido, solo cuando otro guardó. Si
+alguien edita sin parar, quien mira baja como mucho uno cada 15 s.
+
 ## Fuera de alcance
 
 - Mandar solo los cambios en vez del documento entero (el POST sigue siendo de
@@ -216,13 +258,17 @@ Prensas y Barriles no se tocan.
 - `test/lotes-autoguardado.test.mjs`: el programador de guardados como máquina
   de estados con reloj falso (espera de 2 s, nunca dos en vuelo, reintentos 5 →
   15 → 30 → 60 s, 401/403 paran, Ctrl+S corta la espera).
-- `test/lotes-guardado.test.ts`: respaldo solo con 5 min o forzado.
+- `test/lotes-guardado.test.ts`: respaldo solo con 5 min o forzado;
+  `GET /version` devuelve versión, autor y fecha sin leer el JSON.
+- La decisión de "adoptar / esperar / no hacer nada" de la sección 4 como
+  función pura, con sus tres casos.
 
 **En el navegador** (servidor local, ver `catenainstitute-verificar-en-navegador`):
 editar celdas, pegar un bloque, borrar un lote, confirmar una OT, cambiar Config;
 deshacer y rehacer cada una; confirmar que se autoguarda sin botón; cortar la red
 (reintento y recuperación); simular otro dispositivo que guarda en el medio (el
-deshacer no pisa lo ajeno).
+deshacer no pisa lo ajeno). Dos pestañas a la vez: lo que se edita en una
+aparece solo en la otra en ≤ 15 s, sin mover una celda en edición.
 
 ## Puesta en marcha
 
