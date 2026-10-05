@@ -138,7 +138,7 @@ export function cargarConfirmar(){
 
   // feedback
   const msgEl = $('cargarMsg');
-  msgEl.innerHTML = `<div class="msg ok">✓ Se agregaron <b>${limpias.length} análisis</b> a la memoria. <b>Acordate de Guardar</b> (botón arriba a la derecha) para que queden grabados.</div>`;
+  msgEl.innerHTML = `<div class="msg ok">✓ Se agregaron <b>${limpias.length} análisis</b> a la memoria. Se guardan solos en unos segundos.</div>`;
   $('btnAgregarAnalisis').disabled = true;
   $('cargarErrNote').style.display = 'none';
 }

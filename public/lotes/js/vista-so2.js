@@ -285,9 +285,9 @@ function _registrarCorreccionSO2(){
   const { que, convive } = aplicarCorreccion(DATOS().analisis, loteStr, fecha, correccion);
 
   msgEl.innerHTML = (que === 'actualizado')
-    ? `<div class="msg ok">✓ Corrección actualizada en el análisis del ${esc(fmtFecha(fecha))} (lote ${esc(loteStr)}). <b>Acordate de Guardar.</b></div>`
+    ? `<div class="msg ok">✓ Corrección actualizada en el análisis del ${esc(fmtFecha(fecha))} (lote ${esc(loteStr)}). Se guarda solo en unos segundos.</div>`
     : `<div class="msg ok">✓ Nueva entrada de corrección creada para lote ${esc(loteStr)}, fecha ${esc(fmtFecha(fecha))}${
-        convive != null ? ` (la que ya había ese día${convive ? ' con la OT ' + esc(convive) : ''} queda también)` : ''}. <b>Acordate de Guardar.</b></div>`;
+        convive != null ? ` (la que ya había ese día${convive ? ' con la OT ' + esc(convive) : ''} queda también)` : ''}. Se guarda solo en unos segundos.</div>`;
 
   markDirty();
 

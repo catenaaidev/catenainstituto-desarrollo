@@ -181,7 +181,7 @@ function cablearOverlay(){
     /* Mermo y hace_fml cambian condiciones que calcula el servidor, asi que los
      * chips quedarian viejos. Se guarda y se vuelve a pedir el dashboard para
      * que el lote se repinte solo. Comentario e inoculado no mueven ninguna
-     * condicion: alcanza con markDirty y el boton Guardar de siempre. */
+     * condicion: alcanza con markDirty, que el autoguardado se encarga solo. */
     if (el.dataset.campo === 'mermo' || el.dataset.campo === 'hace_fml'){
       if (await guardar()){ await cargarDashboard(); renderPanel(); renderLista(); abrirFicha(lote); }
     }

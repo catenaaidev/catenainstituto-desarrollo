@@ -107,7 +107,7 @@ const BANDAS_LOTES = [
 /* --- estado del colapsado de columnas ---
  * Vive en localStorage y no en datos.json: es una preferencia de pantalla de
  * cada persona, no un dato de la bodega, y guardarla en datos.json obligaria a
- * apretar Guardar y le pisaria la vista a los demas.
+ * un guardado (ahora automatico) que le pisaria la vista a los demas.
  *
  * Mismo try/catch que usuarioActual() en nucleo.js:49: si el navegador bloquea
  * el storage la pestana funciona igual y lo unico que se pierde es la memoria de
@@ -380,7 +380,7 @@ function _loteVivo(o){
 
 /* --- overlay de edicion del desglose de envases ---
  * Escribe sobre el objeto vivo de DATOS().lotes, igual que la edicion inline de
- * la tabla, asi que el boton Guardar y el historial funcionan sin cambios. */
+ * la tabla, asi que el autoguardado y el historial funcionan sin cambios. */
 function abrirOverlayEnvases(o){
   /* Soltar la seleccion ANTES de abrir. Si queda una celda seleccionada,
    * grilla.js consume el Escape en fase de captura y el overlay no se podria

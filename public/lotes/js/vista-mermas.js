@@ -55,7 +55,7 @@ export function renderMermas(cont, { onCambio }){
     // A diferencia de la lectura automatica al cargar (registrarInit en
     // mermas-mapa.js), apretar este boton SI puede cerrar mermas: el click es
     // el pedido explicito que "la web no guarda sola" exige. markDirty deja
-    // el cierre esperando el Guardar de siempre.
+    // el cierre para que el autoguardado de siempre lo suba solo.
     if (cerrarMermasLlenas(DATOS())) markDirty();
     onCambio();
   });

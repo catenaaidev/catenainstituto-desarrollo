@@ -383,7 +383,7 @@ async function _otRegistrarMuestreo(){
   const ok = await guardar();
   if (msg) msg.textContent = ok
     ? `✓ ${nuevos.length} barril${nuevos.length !== 1 ? 'es' : ''} anotado${nuevos.length !== 1 ? 's' : ''} como muestreado${nuevos.length !== 1 ? 's' : ''}: la próxima orden no los repite.`
-    : 'Los barriles quedaron anotados pero NO se guardaron: apretá Guardar.';
+    : 'Los barriles quedaron anotados pero NO se guardaron todavía: se van a guardar solos cuando vuelva la conexión (o apretá Ctrl+S).';
 }
 
 function initFiltrosOt(){
