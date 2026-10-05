@@ -15,6 +15,25 @@ acá es porque el código no lo hace.
 
 ---
 
+## Guardado y deshacer
+
+- **Se guarda solo.** Dos segundos después de cada cambio, sin botón. Arriba a
+  la derecha dice si está guardando, guardado o sin conexión. **Ctrl+S** guarda
+  en el momento.
+- **Sin señal** no se pierde nada: queda en la compu y se reintenta solo.
+- **Ctrl+Z deshace** lo último que hiciste, en cualquier pestaña (celdas,
+  pegados, borrar un lote, cargar análisis, confirmar una OT, Config). **Ctrl+Y**
+  lo rehace. Si estás escribiendo dentro de un campo, Ctrl+Z deshace lo que
+  tipeaste, como siempre.
+- El deshacer **nunca pisa lo de otra persona**: si alguien cambió esa fila
+  después, no se toca y te avisa.
+- **Lo que guardan los demás aparece solo** en tu pantalla (cada 15 s), salvo
+  mientras estás escribiendo.
+- Al recargar la página, el historial de Ctrl+Z arranca vacío. Para volver más
+  atrás: 🕘 Historial y los respaldos (uno cada 5 minutos).
+
+---
+
 ## Índice
 
 1. [Quién entra y qué puede hacer](#1-quién-entra-y-qué-puede-hacer)
