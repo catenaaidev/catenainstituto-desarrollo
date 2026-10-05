@@ -334,8 +334,8 @@ diferencia, MBK (g), mL de solución y SO₂ molecular.
 > para evitar.
 
 Al registrar, la corrección se pega al análisis de `(lote, fecha)`; si no existe
-ese registro, se crea uno nuevo con solo esos campos. **Queda en memoria: hay que
-apretar 💾 Guardar.**
+ese registro, se crea uno nuevo con solo esos campos. **Se guarda solo** a los
+dos segundos, como cualquier otro cambio (Ctrl+S para guardarlo ya).
 
 ---
 
@@ -580,10 +580,23 @@ Aplica por separado a `lotes`, `analisis` y `movimientos`.
 > • se perderían {N} de {M} {sección} en un solo guardado
 >
 > ¿Era tu intención? Aceptar = guardar igual (queda registrado como FORZADO en el
-> historial). Cancelar = no guardar nada y revisar.
+> historial). Cancelar = deshacer lo que hiciste desde el último guardado.
 
 **Qué hacer:** casi siempre, cancelar y revisar. Aceptar guarda igual, pero el
-guardado queda marcado `[FORZADO]` en el historial, con tu nombre.
+guardado queda marcado `[FORZADO]` en el historial, con tu nombre, y se sube un
+respaldo del documento **de antes** (el que el forzado pisó) además del nuevo.
+
+**Cancelar deshace todo lo de este guardado**, no solo el último paso: todo lo
+que hiciste desde el último ✓ Guardado, incluido lo que hayas tocado en los dos
+segundos de espera o mientras viajaba el guardado. Es como apretar Ctrl+Z varias
+veces seguidas, con las mismas reglas: una fila que otra persona cambió después
+no se toca y te avisa. Abajo aparece *«Deshecho lo de este guardado (N pasos)»*
+y el autoguardado sigue solo con lo que quedó.
+
+Si no había nada para deshacer (por ejemplo, recargaste la página después de
+borrar), arriba a la derecha queda **⚠ Guardado frenado: hay cambios sin
+guardar** y no se reintenta solo. Revisá, y después o hacés un cambio o apretás
+Ctrl+S: el freno vuelve a preguntar.
 
 ### 7.2 Errores que NO se pueden forzar
 
@@ -604,29 +617,38 @@ Son de estructura: el archivo está roto, no es una decisión tuya
 
 **Cuándo:** otra persona guardó mientras vos editabas. La app manda su número de
 versión y el servidor lo compara con el que tiene; si no coinciden, responde
-**409** y no escribe nada (`rutas.ts:95-97`).
+**409** y no escribe nada (`rutas.ts`, POST `/datos`).
+
+**Casi siempre no ves nada.** La app combina sola lo tuyo con lo del otro
+(`shared/fusion.js`) y vuelve a guardar: cada uno conserva lo que cambió. La
+pestaña se redibuja con lo combinado; si estabas tipeando en una celda, el cursor
+vuelve a la misma celda con lo que habías escrito. El estado dice *«✓ Guardado
+(vN) · combinado con lo que guardaron otros»*.
+
+Solo si no se pudo combinar (los dos cambiaron lo mismo de formas que no se
+pueden juntar, o falló cuatro veces seguidas) aparece:
 
 > **Conflicto de versión**
-> Otra PC guardó cambios mientras editabas. Para no pisar su trabajo, recargá la
-> última versión.
-> ⚠️ Tus cambios sin guardar se perderán al recargar.
+> Otra PC guardó cambios mientras editabas y no se pudieron combinar solos.
+> Tus cambios quedaron guardados en este equipo: al recargar se te ofrece
+> recuperarlos.
 
-**Qué hacer:** no hay merge automático. Antes de recargar, copiá a mano lo que
-estabas cargando (o sacale una foto a la pantalla). Después recargá y volvé a
-cargarlo.
+**Qué hacer:** apretá **🔄 Recargar y recuperar** y aceptá recuperar tus cambios.
+El autoguardado queda parado hasta que recargues.
 
 ### 7.4 El servidor no responde
 
-> No se pudo guardar: el servidor no responde. Revisá que esté abierto y probá de
-> nuevo. Tus cambios siguen en pantalla.
+**No hay cartel.** Arriba a la derecha dice **⚠ Sin conexión — reintentando en
+N s** y la app vuelve a probar sola a los 5, 15 y 30 segundos y después cada
+minuto (`public/lotes/js/autoguardado.js`). Lo que tenés en pantalla queda
+también guardado en la compu: aunque se cierre la pestaña, al volver a abrir
+Lotes se te ofrece recuperarlo.
 
-`public/lotes/js/nucleo.js:172`. La parte importante es la última frase: **no
-cierres la pestaña**. Lo que tenés en pantalla sigue ahí; probá guardar de nuevo
-en un rato.
+La única excepción son los botones que imprimen (órdenes, rótulos): esos
+necesitan que esté guardado antes de imprimir, y si no hay conexión te lo dicen
+con un cartel.
 
-> 📝 *Nota:* el texto habla de "revisá que esté abierto", herencia de cuando el
-> servidor era un programa en una PC de la bodega. Hoy el servidor está en la
-> nube; si no responde, es la conexión o Cloudflare.
+Hoy el servidor está en la nube; si no responde, es la conexión o Cloudflare.
 
 ### 7.5 El objetivo tiene que ser mayor que el actual
 
@@ -654,11 +676,22 @@ Ojo con dos de ellas:
 
 ### 7.7 Estado del guardado (arriba a la derecha)
 
-- **● Cambios sin guardar** (ámbar) — tenés ediciones en memoria que todavía no
-  viajaron. Si cerrás la pestaña, se pierden.
+- **● Cambios sin guardar** (ámbar) — hiciste un cambio y en dos segundos se
+  guarda solo. Ya quedó en la compu (borrador), así que no se pierde.
+- **⟳ Guardando…** (ámbar) — el guardado está viajando.
 - **✓ Guardado (v{N})** (verde) — todo escrito, y ese es el número de versión.
+- **⚠ Sin conexión — reintentando en N s** (ámbar) — no hay señal o el
+  servidor no respondió; se reintenta solo (ver §7.4).
+- **↻ Actualizado con cambios de {nombre} (v{N})** (verde) — otra persona
+  guardó y tu pantalla se puso al día sola. Pasa cada 15 s, solo si no tenés
+  nada sin guardar, no estás tipeando y no hay una ventana abierta.
+- **⚠ Guardado frenado: hay cambios sin guardar** (ámbar) — el freno de §7.1
+  preguntó, cancelaste y no había nada para deshacer. No se reintenta solo:
+  hacé un cambio o apretá Ctrl+S.
+- **⚠ Sesión cerrada**, **⚠ Solo lectura**, **⚠ No se pudo combinar** — el
+  autoguardado se paró; el texto dice qué hacer.
 
-`public/lotes/js/nucleo.js:36-43`
+`public/lotes/js/nucleo.js` (`crearAutoguardado({… avisar …})` y `_estado`)
 
 ### 7.8 Banner de avisos
 
@@ -691,8 +724,10 @@ como clave, así que distingue agregados / eliminados / editados. Para análisis
 movimientos no hay clave natural: **una edición cuenta como −1 y +1**
 (`src/prensas/cambios.ts:62-85`).
 
-**Respaldos.** Cada guardado dispara un snapshot a R2, sin bloquear la respuesta
-(`rutas.ts:264-270`):
+**Respaldos.** Los guardados suben un snapshot a R2 como máximo **uno cada 5
+minutos** (con autoguardado serían cientos por día), sin bloquear la respuesta.
+Un guardado **forzado** sube siempre, y además respalda el documento que pisó
+(`snapshotLotes` en `rutas.ts`):
 
 ```
 lotes/datos-v00123-2026-09-10-14-35-22.json
