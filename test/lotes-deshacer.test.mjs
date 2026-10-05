@@ -1,7 +1,7 @@
 /* Deshacer de toda la página de Lotes: la foto por fila y la diferencia
  * (spec 2026-10-05, sección 2). */
 import { describe, it, expect } from 'vitest';
-import { tomarFoto, diferencia } from '../public/lotes/js/deshacer.js';
+import { tomarFoto, diferencia, aplicar, crearHistorial, describirPaso, describirCambio } from '../public/lotes/js/deshacer.js';
 
 const doc = () => ({
   meta: { version: 7, autor: 'x' },
@@ -112,5 +112,134 @@ describe('diferencia', () => {
     d.lotes[0].litros = 1;
     const { foto } = diferencia(f, d);
     expect(diferencia(foto, d).cambios).toEqual([]);
+  });
+});
+
+/* Helper: hace algo sobre d, devuelve los cambios como los apilaria nucleo. */
+function paso(d, fn){
+  const f = tomarFoto(d);
+  fn(d);
+  return diferencia(f, d).cambios;
+}
+
+describe('aplicar', () => {
+  it('deshacer y rehacer una edición, en el mismo objeto', () => {
+    const d = doc(); const obj = d.lotes[1];
+    const c = paso(d, x => { x.lotes[1].litros = 150; });
+    expect(aplicar(d, c, 'deshacer')).toEqual({ aplicados: 1, salteados: [] });
+    expect(d.lotes[1]).toBe(obj);
+    expect(obj.litros).toBe(200);
+    aplicar(d, c, 'rehacer');
+    expect(obj.litros).toBe(150);
+  });
+  it('deshacer una baja la devuelve a su lugar', () => {
+    const d = doc();
+    const c = paso(d, x => { x.lotes.splice(0, 1); });
+    aplicar(d, c, 'deshacer');
+    expect(d.lotes.map(l => l.lote)).toEqual(['26001', '26002']);
+  });
+  it('deshacer un alta la saca', () => {
+    const d = doc();
+    const c = paso(d, x => { x.lotes.push({ lote: '26009' }); });
+    aplicar(d, c, 'deshacer');
+    expect(d.lotes.map(l => l.lote)).toEqual(['26001', '26002']);
+  });
+  it('deshacer un reordenamiento', () => {
+    const d = doc();
+    const c = paso(d, x => { x.lotes.reverse(); });
+    aplicar(d, c, 'deshacer');
+    expect(d.lotes.map(l => l.lote)).toEqual(['26001', '26002']);
+  });
+  it('análisis: agregar tres y deshacer', () => {
+    const d = doc();
+    const c = paso(d, x => { x.analisis.push({ lote: 'a' }, { lote: 'b' }, { lote: 'c' }); });
+    aplicar(d, c, 'deshacer');
+    expect(d.analisis).toEqual(doc().analisis);
+  });
+  it('análisis editado en su lugar vuelve en el mismo objeto', () => {
+    const d = doc(); const obj = d.analisis[1];
+    const c = paso(d, x => { x.analisis[1].ph = 9; });
+    aplicar(d, c, 'deshacer');
+    expect(d.analisis[1]).toBe(obj);
+    expect(obj.ph).toBe(3.6);
+  });
+  it('objetos: estado_lote y config', () => {
+    const d = doc();
+    const c = paso(d, x => { x.estado_lote['26001'].etapa = 'Crianza'; delete x.config.destinos_externos; });
+    aplicar(d, c, 'deshacer');
+    expect(d.estado_lote).toEqual(doc().estado_lote);
+    expect(d.config).toEqual(doc().config);
+  });
+  it('una fila que otro cambió después no se toca y se informa', () => {
+    const d = doc();
+    const c = paso(d, x => { x.lotes[0].litros = 1; x.lotes[1].litros = 2; });
+    d.lotes[0].litros = 999;   // llega lo de otra persona (409 o en vivo)
+    const r = aplicar(d, c, 'deshacer');
+    expect(r.aplicados).toBe(1);
+    expect(r.salteados.map(s => s.clave)).toEqual(['26001']);
+    expect(d.lotes[0].litros).toBe(999);
+    expect(d.lotes[1].litros).toBe(200);
+  });
+  it('deshacer una baja no duplica si otro ya volvió a crear esa clave', () => {
+    const d = doc();
+    const c = paso(d, x => { x.lotes.splice(0, 1); });
+    d.lotes.push({ lote: '26001', litros: 7 });
+    const r = aplicar(d, c, 'deshacer');
+    expect(r.salteados).toHaveLength(1);
+    expect(d.lotes.filter(l => l.lote === '26001')).toHaveLength(1);
+  });
+  it('sección entera que apareció: deshacer la quita', () => {
+    const d = doc();
+    const c = paso(d, x => { x.mermas = [{ id: 'x' }]; });
+    aplicar(d, c, 'deshacer');
+    expect('mermas' in d).toBe(false);
+  });
+});
+
+describe('crearHistorial', () => {
+  const p = n => ({ cambios: [{ n }], etiqueta: 'p' + n, vista: 'lotes' });
+  it('un paso vacío no se apila', () => {
+    const h = crearHistorial();
+    expect(h.apilar({ cambios: [], etiqueta: '', vista: null })).toBe(false);
+    expect(h.deshacer()).toBeNull();
+  });
+  it('deshacer y rehacer en orden', () => {
+    const h = crearHistorial();
+    h.apilar(p(1)); h.apilar(p(2));
+    expect(h.deshacer().etiqueta).toBe('p2');
+    expect(h.rehacer().etiqueta).toBe('p2');
+    expect(h.rehacer()).toBeNull();
+  });
+  it('algo nuevo después de deshacer descarta el rehacer', () => {
+    const h = crearHistorial();
+    h.apilar(p(1)); h.deshacer(); h.apilar(p(2));
+    expect(h.rehacer()).toBeNull();
+  });
+  it('tope', () => {
+    const h = crearHistorial(3);
+    [1, 2, 3, 4].forEach(n => h.apilar(p(n)));
+    expect(h.tamano()).toEqual({ atras: 3, adelante: 0 });
+    h.deshacer(); h.deshacer(); h.deshacer();
+    expect(h.deshacer()).toBeNull();
+  });
+});
+
+describe('descripciones', () => {
+  it('una sola fila nombra lo que es', () => {
+    const d = doc();
+    expect(describirPaso(paso(d, x => { x.lotes[1].litros = 1; }))).toBe('lote 26002');
+    expect(describirPaso(paso(d, x => { x.analisis[0].ph = 1; }))).toBe('análisis del lote 26001');
+    expect(describirPaso(paso(d, x => { x.estado_lote['26001'].etapa = 'z'; }))).toBe('estado del lote 26001');
+  });
+  it('varias filas de una sección las cuenta', () => {
+    const d = doc();
+    expect(describirPaso(paso(d, x => { x.analisis.push({ lote: 'a' }, { lote: 'b' }, { lote: 'c' }); }))).toBe('3 análisis');
+  });
+  it('mezcla de secciones', () => {
+    const d = doc();
+    expect(describirPaso(paso(d, x => { x.lotes[0].litros = 1; x.movimientos.push({ id: 'm2' }); }))).toBe('2 cambios');
+  });
+  it('describirCambio de un análisis sin lote', () => {
+    expect(describirCambio({ seccion: 'analisis', tipo: 'fila', clave: null, antes: '{}', despues: null, pos: 0 })).toBe('análisis');
   });
 });

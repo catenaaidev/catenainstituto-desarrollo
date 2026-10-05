@@ -163,3 +163,172 @@ export function diferencia(foto, datos){
   }
   return { cambios, foto: nueva };
 }
+
+/* ---------- aplicar al reves ---------- */
+
+const esObjetoPlano = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/* Reescribe `obj` con el contenido de `nuevo` sin cambiar el objeto: las
+ * grillas y la ficha tienen referencias a las filas y tienen que seguir
+ * apuntando a algo vivo. Si no son los dos objetos, devuelve `nuevo`. */
+function enSitio(obj, nuevo){
+  if (!esObjetoPlano(obj) || !esObjetoPlano(nuevo)) return nuevo;
+  for (const k of Object.keys(obj)) delete obj[k];
+  Object.assign(obj, nuevo);
+  return obj;
+}
+
+/* Donde esta hoy la fila que tiene que estar como `texto`, o -1. */
+function buscarFila(arr, s, c, texto){
+  const campo = CLAVE_DE_SECCION[s];
+  if (c.clave != null && campo){
+    const i = arr.findIndex(f => claveDeFila(f, campo) === c.clave);
+    return (i >= 0 && aTexto(arr[i]) === texto) ? i : -1;
+  }
+  // Por contenido: primero donde estaba, despues en cualquier lado.
+  if (c.pos != null && c.pos < arr.length && aTexto(arr[c.pos]) === texto) return c.pos;
+  return arr.findIndex(f => aTexto(f) === texto);
+}
+
+function existeClave(arr, s, clave){
+  const campo = CLAVE_DE_SECCION[s];
+  return clave != null && !!campo && arr.some(f => claveDeFila(f, campo) === clave);
+}
+
+/** Aplica los cambios de un paso hacia atras ('deshacer') o hacia adelante
+ *  ('rehacer') sobre el documento ACTUAL. Cada fila se toca solo si hoy esta
+ *  exactamente como quedo despues del paso (o antes, al rehacer): si otra
+ *  persona la cambio despues, se saltea y se devuelve en `salteados`. */
+export function aplicar(datos, cambios, sentido){
+  const atras = sentido === 'deshacer';
+  const desde = c => atras ? c.despues : c.antes;   // como tiene que estar hoy
+  const hacia = c => atras ? c.antes : c.despues;   // como queda
+  const salteados = [];
+  let aplicados = 0;
+
+  // 1) secciones enteras
+  for (const c of cambios.filter(c => c.tipo === 'valor')){
+    if (aTexto(datos[c.seccion]) !== desde(c)){ salteados.push(c); continue; }
+    if (hacia(c) === undefined) delete datos[c.seccion];
+    else datos[c.seccion] = JSON.parse(hacia(c));
+    aplicados++;
+  }
+
+  // 2) campos de secciones objeto
+  for (const c of cambios.filter(c => c.tipo === 'campo')){
+    if (!esObjetoPlano(datos[c.seccion])) datos[c.seccion] = {};
+    const o = datos[c.seccion];
+    const hoy = o[c.clave] === undefined ? null : aTexto(o[c.clave]);
+    if (hoy !== desde(c)){ salteados.push(c); continue; }
+    if (hacia(c) === null) delete o[c.clave];
+    else o[c.clave] = enSitio(o[c.clave], JSON.parse(hacia(c)));
+    aplicados++;
+  }
+
+  // 3) filas: ediciones, despues bajas, despues altas (en orden de posicion,
+  //    asi cada una vuelve a su lugar aunque sean varias)
+  const filas = cambios.filter(c => c.tipo === 'fila');
+  const arr = s => (Array.isArray(datos[s]) ? datos[s] : (datos[s] = []));
+  for (const c of filas.filter(c => desde(c) !== null && hacia(c) !== null)){
+    const a = arr(c.seccion), i = buscarFila(a, c.seccion, c, desde(c));
+    if (i < 0){ salteados.push(c); continue; }
+    a[i] = enSitio(a[i], JSON.parse(hacia(c)));
+    aplicados++;
+  }
+  for (const c of filas.filter(c => desde(c) !== null && hacia(c) === null)){
+    const a = arr(c.seccion), i = buscarFila(a, c.seccion, c, desde(c));
+    if (i < 0){ salteados.push(c); continue; }
+    a.splice(i, 1);
+    aplicados++;
+  }
+  for (const c of filas.filter(c => desde(c) === null && hacia(c) !== null).sort((x, y) => x.pos - y.pos)){
+    const a = arr(c.seccion);
+    if (existeClave(a, c.seccion, c.clave)){ salteados.push(c); continue; }
+    a.splice(Math.min(c.pos, a.length), 0, JSON.parse(hacia(c)));
+    aplicados++;
+  }
+
+  // 4) orden (al final, con las filas ya en su lugar). No se saltea nunca: si
+  //    otro agrego filas, quedan al final en el orden en que estaban.
+  for (const c of cambios.filter(c => c.tipo === 'orden')){
+    const a = datos[c.seccion], campo = CLAVE_DE_SECCION[c.seccion];
+    if (!Array.isArray(a) || !campo) continue;
+    const rango = new Map(hacia(c).map((k, i) => [k, i]));
+    const con = [], sin = [];
+    for (const f of a) (rango.has(claveDeFila(f, campo)) ? con : sin).push(f);
+    con.sort((x, y) => rango.get(claveDeFila(x, campo)) - rango.get(claveDeFila(y, campo)));
+    a.splice(0, a.length, ...con, ...sin);
+    aplicados++;
+  }
+
+  return { aplicados, salteados };
+}
+
+/* ---------- pila ---------- */
+
+/** Pila de pasos. paso = {cambios, etiqueta, vista}. Misma linea de tiempo sin
+ *  ramas que tenia grilla-undo.js: hacer algo nuevo descarta el rehacer. */
+export function crearHistorial(tope = 100){
+  let atras = [], adelante = [];
+  return {
+    apilar(paso){
+      if (!paso || !paso.cambios || !paso.cambios.length) return false;
+      atras.push(paso);
+      adelante = [];
+      if (atras.length > tope) atras.shift();
+      return true;
+    },
+    deshacer(){
+      const p = atras.pop();
+      if (!p) return null;
+      adelante.push(p);
+      return p;
+    },
+    rehacer(){
+      const p = adelante.pop();
+      if (!p) return null;
+      atras.push(p);
+      return p;
+    },
+    limpiar(){ atras = []; adelante = []; },
+    tamano(){ return { atras: atras.length, adelante: adelante.length }; },
+  };
+}
+
+/* ---------- textos para el aviso ---------- */
+
+const NOMBRES = {
+  lotes: ['lote', 'lotes'], analisis: ['análisis', 'análisis'],
+  movimientos: ['movimiento', 'movimientos'], ordenes_trabajo: ['OT', 'OT'],
+  vasijas: ['vasija', 'vasijas'], mermas: ['merma', 'mermas'],
+  estado_lote: ['estado de lote', 'estados de lote'], config: ['Config', 'ajustes de Config'],
+  excepciones_analisis: ['excepción', 'excepciones'],
+};
+const nombre = (s, plural) => (NOMBRES[s] || [s, s])[plural ? 1 : 0];
+
+function loteDe(c){
+  try {
+    const o = JSON.parse(c.despues ?? c.antes);
+    return o && o.lote != null && o.lote !== '' ? String(o.lote) : '';
+  } catch (e) { return ''; }
+}
+
+export function describirCambio(c){
+  if (c.tipo === 'campo'){
+    return c.seccion === 'estado_lote' ? `estado del lote ${c.clave}` : `${nombre(c.seccion)} ${c.clave}`;
+  }
+  if (c.tipo === 'valor') return nombre(c.seccion, true);
+  if (c.tipo === 'orden') return `orden de ${nombre(c.seccion, true)}`;
+  if (c.seccion === 'lotes' || c.seccion === 'vasijas') return `${nombre(c.seccion)} ${c.clave}`;
+  const lote = loteDe(c);
+  return lote ? `${nombre(c.seccion)} del lote ${lote}` : nombre(c.seccion);
+}
+
+export function describirPaso(cambios){
+  const filas = cambios.filter(c => c.tipo !== 'orden');
+  if (!filas.length) return cambios.length ? describirCambio(cambios[0]) : '';
+  if (filas.length === 1) return describirCambio(filas[0]);
+  const secciones = new Set(filas.map(c => c.seccion));
+  if (secciones.size === 1) return `${filas.length} ${nombre(filas[0].seccion, true)}`;
+  return `${filas.length} cambios`;
+}
