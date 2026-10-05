@@ -1,11 +1,13 @@
 /* Las hojas son strings de HTML, así que se prueban sin DOM. orden-hoja.js
- * importa nucleo.js, que engancha un beforeunload al cargar: por eso el stub de
- * window ANTES del import dinámico. */
+ * importa nucleo.js, que engancha un beforeunload (y, desde la Tarea 6, el
+ * deshacer general) al cargar: por eso el stub de window y document ANTES del
+ * import dinámico. */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 let H, armarOT, P;
 beforeAll(async () => {
   globalThis.window ??= { addEventListener(){} };
+  globalThis.document ??= { addEventListener(){} };
   H = await import('../public/lotes/js/ot-hojas.js');
   ({ armarOT } = await import('../public/lotes/js/ot-armado.js'));
   P = await import('../public/lotes/js/ot-plantillas.js');

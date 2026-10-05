@@ -13,7 +13,6 @@
 
 import { rect, rectIguales, rectCeldas, rectRecortar,
          rectDiferencia, sonContiguos } from './grilla-rect.js';
-import { crearPila } from './grilla-undo.js';
 import { parsearTSV, armarTSV } from './grilla-tsv.js';
 import { escribirCelda } from './tabla.js';
 
@@ -41,7 +40,6 @@ function nuevoEstado(id){
     sel: null,        // rect|null — el rango seleccionado
     activa: null,     // {f,c}|null — la celda activa (el ancla del teclado)
     claves: null,     // identidad de cada fila visible, o null si no hay forma
-    pila: crearPila(),
     arrastrando: false,
     editando: false,
   };
@@ -619,9 +617,10 @@ function _manejarTecla(st, e){
   if (e.key === 'Delete' || e.key === 'Backspace'){ borrarRango(st, g); return true; }
   if (e.key === 'Enter' && e.ctrlKey){ aplicarAlRango(st, g); return true; }
   if ((e.key === 'd' || e.key === 'D') && e.ctrlKey){ rellenarAbajo(st, g); return true; }
-  if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && !e.shiftKey){ deshacer(st); return true; }
-  if ((e.key === 'y' || e.key === 'Y') && e.ctrlKey){ rehacer(st); return true; }
-  if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && e.shiftKey){ rehacer(st); return true; }
+  /* Deshacer / rehacer: los maneja nucleo.js para toda la pagina. */
+  if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && !e.shiftKey){ document.dispatchEvent(new CustomEvent('lotes:deshacer')); return true; }
+  if ((e.key === 'y' || e.key === 'Y') && e.ctrlKey){ document.dispatchEvent(new CustomEvent('lotes:rehacer')); return true; }
+  if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && e.shiftKey){ document.dispatchEvent(new CustomEvent('lotes:rehacer')); return true; }
 
   /* --- entrar a editar ---
    * El !e.ctrlKey no es decorativo: sin el, este caso se traga el Ctrl+Enter que
@@ -786,11 +785,6 @@ function cablearTeclado(){
   if (_tecladoCableado) return;
   _tecladoCableado = true;
 
-  /* Al recargar datos del servidor los objetos de DATOS() se reemplazan y las
-   * pilas quedarian apuntando a objetos huerfanos. El evento evita importar
-   * nucleo.js desde aca, que cerraria un ciclo: grilla->tabla->nucleo->grilla. */
-  document.addEventListener('lotes:datos-recargados', limpiarPilas);
-
   /* capture:true: la grilla escucha en la fase de captura, antes que los
    * listeners de burbujeo de app.js. Lo que evita que app.js lo vea es
    * stopImmediatePropagation(), que detiene los demas listeners; la captura
@@ -838,7 +832,6 @@ export function adaptadorCols(tabla, cols, onCambio){
       if (!obj) return 'ro';
       return escribirCelda(cols, obj, k, texto);
     },
-    escribirCrudo(obj, k, valor){ if (obj) obj[k] = valor; },
     onCambio,
   };
 }
@@ -866,7 +859,7 @@ export function escribirCeldas(st, g, items){
   const ad = st.adaptador;
   if (!ad) { res.salteadas = items.length; return res; }
 
-  const cambios = [];
+  let escribio = false;
   for (const it of items){
     const col = g.cols[it.c];
     if (!col){ res.salteadas++; continue; }
@@ -879,14 +872,10 @@ export function escribirCeldas(st, g, items){
     const obj = ad.objetoDe(it.f);
     if (!obj){ res.salteadas++; continue; }
 
-    const antes = ad.leer(obj, col.k);
     const estado = ad.escribir(obj, col.k, it.texto);
-
     if (estado === 'ok'){
       res.escritas++;
-      // `despues` se lee DESPUES de escribir, asi queda el valor ya normalizado
-      // (se pego "3,22" y se guarda 3.22). Lo usa rehacer en la tarea 10.
-      cambios.push({ obj, k: col.k, antes, despues: ad.leer(obj, col.k) });
+      escribio = true;
       refrescarCelda(ad, g, it.f, it.c, obj, col.k);
     } else if (estado === 'ro'){
       res.salteadas++;
@@ -895,10 +884,10 @@ export function escribirCeldas(st, g, items){
     }
   }
 
-  if (cambios.length){
-    st.pila.apilar(cambios);
-    if (ad.onCambio) ad.onCambio();
-  }
+  /* onCambio llama a markDirty: toda la operacion (pegar, borrar el rango,
+   * aplicar al rango) queda como UN paso del deshacer general (nucleo.js lo
+   * cierra a los 300 ms). */
+  if (escribio && ad.onCambio) ad.onCambio();
   return res;
 }
 
@@ -996,62 +985,6 @@ export function rellenarAbajo(st, g){
   }
   const res = escribirCeldas(st, g, items);
   reportar(st, 'Rellenado hacia abajo', res);
-}
-
-/* ---------- deshacer / rehacer ----------
- * No pasan por escribirCeldas: escriben el valor CRUDO sin validar (ya se
- * valido cuando se escribio la primera vez) y sin volver a apilar.
- *
- * Los cambios guardan el OBJETO de fila, no su indice, asi que deshacer es
- * correcto aunque entre medio se haya ordenado, filtrado, o la fila haya dejado
- * de estar visible.
- */
-function aplicarCambios(st, cambios, usarAntes){
-  const ad = st.adaptador;
-  if (!ad) return 0;
-
-  const g = geo(st.tabla);
-  // Objeto de fila -> indice visible, para refrescar solo lo que se ve.
-  const filaDe = new Map();
-  for (let f = 0; f < g.n; f++){
-    const obj = ad.objetoDe(f);
-    if (obj) filaDe.set(obj, f);
-  }
-  const colDe = new Map();
-  g.cols.forEach((col, c) => colDe.set(col.k, c));
-
-  let n = 0;
-  for (const cb of cambios){
-    ad.escribirCrudo(cb.obj, cb.k, usarAntes ? cb.antes : cb.despues);
-    n++;
-    const f = filaDe.get(cb.obj), c = colDe.get(cb.k);
-    if (f !== undefined && c !== undefined) refrescarCelda(ad, g, f, c, cb.obj, cb.k);
-  }
-  if (n && ad.onCambio) ad.onCambio();
-  return n;
-}
-
-export function deshacer(st){
-  if (!puedeEscribir(st)) return;
-  const cambios = st.pila.deshacer();
-  if (!cambios){ mensaje(st.tabla, 'No hay nada para deshacer.', 'info'); return; }
-  const n = aplicarCambios(st, cambios, true);
-  mensaje(st.tabla, `Deshecho: ${n} ${n === 1 ? 'celda' : 'celdas'}.`, 'ok');
-}
-
-export function rehacer(st){
-  if (!puedeEscribir(st)) return;
-  const cambios = st.pila.rehacer();
-  if (!cambios){ mensaje(st.tabla, 'No hay nada para rehacer.', 'info'); return; }
-  const n = aplicarCambios(st, cambios, false);
-  mensaje(st.tabla, `Rehecho: ${n} ${n === 1 ? 'celda' : 'celdas'}.`, 'ok');
-}
-
-/** Descarta las pilas de TODAS las tablas. Se llama cuando los datos se
- *  recargan del servidor: ahi los objetos son otros y restaurar sobre ellos
- *  escribiria en el lugar equivocado. */
-export function limpiarPilas(){
-  for (const st of _estados.values()) st.pila.limpiar();
 }
 
 /* ---------- cableado global del pegado ----------

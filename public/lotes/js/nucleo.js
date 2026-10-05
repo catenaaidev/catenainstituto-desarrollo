@@ -3,6 +3,7 @@
 
 import { queryAnios } from './selector-anios.js';
 import { crearAutoguardado } from './autoguardado.js';
+import { tomarFoto, diferencia, aplicar, crearHistorial, describirPaso, describirCambio } from './deshacer.js';
 
 /* ---------- estado global ----------
  * DATOS es una variable mutable que comparten todas las vistas. Los modulos ES
@@ -115,12 +116,77 @@ function _marcarCambiado(){
 export function markDirty(){
   if (!_nombrePedido && !usuarioActual()){ _nombrePedido = true; pedirUsuario(true); }
   _marcarCambiado();
+  _abrirPaso();
 }
 export function markSaved(){
   dirty = false;
   invalidarVistas();
   _estado('✓ Guardado (v' + DATOS().meta.version + ')', 'saved');
 }
+
+/* ---------- deshacer / rehacer de toda la pagina ----------
+ * _foto es como estaba el documento despues del ultimo paso. Cada markDirty
+ * abre un paso; a los 300 ms sin otro (o al empezar un guardado, o al apretar
+ * Ctrl+Z) se compara contra la foto y lo que cambio se apila. Lo que llega de
+ * otros (409, en vivo, borrador recuperado, ajustes antes de guardar) mueve la
+ * foto SIN apilar: tu Ctrl+Z nunca deshace lo ajeno. */
+const _historial = crearHistorial(100);
+let _foto = null;
+let _pasoAbierto = false, _timerPaso = null, _vistaDelPaso = null;
+
+function _abrirPaso(){
+  if (!_foto) return;
+  if (!_pasoAbierto) _vistaDelPaso = vistaActiva();
+  _pasoAbierto = true;
+  clearTimeout(_timerPaso);
+  _timerPaso = setTimeout(cerrarPaso, 300);
+}
+
+export function cerrarPaso(){
+  clearTimeout(_timerPaso);
+  _timerPaso = null;
+  if (!_pasoAbierto || !_foto || !_datos){ _pasoAbierto = false; return; }
+  _pasoAbierto = false;
+  const { cambios, foto } = diferencia(_foto, _datos);
+  _foto = foto;
+  _historial.apilar({ cambios, etiqueta: describirPaso(cambios), vista: _vistaDelPaso });
+  _vistaDelPaso = null;
+}
+
+function _nuevaFoto(){ _foto = _datos ? tomarFoto(_datos) : null; }
+
+const NOMBRE_VISTA = {
+  lotes: 'Lotes', analisis: 'Análisis', movimientos: 'Movimientos', so2: 'SO2', config: 'Config',
+  orden: 'Orden de muestras', ordencorr: 'Orden de corrección', cargar: 'Cargar', ficha: 'Ficha',
+  dashboard: 'Dashboard', tablero: 'Tablero', cruce: 'Cruce',
+};
+
+function _mover(sentido){
+  if (!_datos) return;
+  cerrarPaso();
+  const paso = sentido === 'deshacer' ? _historial.deshacer() : _historial.rehacer();
+  if (!paso){ avisoBreve(sentido === 'deshacer' ? 'No hay nada para deshacer.' : 'No hay nada para rehacer.', 'info'); return; }
+  const { aplicados, salteados } = aplicar(_datos, paso.cambios, sentido);
+  _nuevaFoto();   // lo que quedo es la base nueva: deshacer no es un paso
+  if (aplicados){
+    _marcarCambiado();
+    document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
+    invalidarVistas();
+    renderActivo();
+  }
+  if (salteados.length){
+    avisoBreve('No se deshizo ' + describirCambio(salteados[0]) +
+      (salteados.length > 1 ? ' (y ' + (salteados.length - 1) + ' más)' : '') +
+      ': lo cambió otra persona después.', 'error');
+    return;
+  }
+  const donde = paso.vista && paso.vista !== vistaActiva() && NOMBRE_VISTA[paso.vista] ? ' (' + NOMBRE_VISTA[paso.vista] + ')' : '';
+  avisoBreve((sentido === 'deshacer' ? 'Deshecho: ' : 'Rehecho: ') + paso.etiqueta + donde, 'ok');
+}
+export function deshacer(){ _mover('deshacer'); }
+export function rehacer(){ _mover('rehacer'); }
+document.addEventListener('lotes:deshacer', deshacer);
+document.addEventListener('lotes:rehacer', rehacer);
 
 window.addEventListener('beforeunload', e => {
   if (hayCambiosSinGuardar()){ e.preventDefault(); e.returnValue = ''; }
@@ -265,6 +331,9 @@ export async function cargarDatos(){
     // Cambios que quedaron sin guardar en este equipo (recarga, corte, sesión vencida).
     const recuperado = FUSION ? await FUSION.recuperar('lotes', DATOS()) : null;
     if (recuperado){ setDatos(recuperado); completarSecciones(); }
+    // Lo cargado (y el borrador recuperado) es la base: no hay nada para deshacer.
+    _historial.limpiar();
+    _nuevaFoto();
     // Los objetos de DATOS() acaban de ser reemplazados: las pilas de deshacer
     // de la grilla quedarian apuntando a objetos huerfanos. grilla.js escucha
     // este evento para limpiarse; no se importa directamente para evitar el
@@ -309,10 +378,13 @@ export function registrarAntesDeGuardar(fn){ _antesDeGuardar.push(fn); }
  * un cartel cada 2 s. El estado se ve en el statusBar. */
 async function _guardar(forzar, intento = 0){
   if (!dirty) return 'nada';
+  cerrarPaso();
   let cambioHook = false;
   for (const fn of _antesDeGuardar){
     try { if (fn(DATOS())) { invalidarVistas(); cambioHook = true; } } catch (e) { console.error('antesDeGuardar:', e); }
   }
+  // Los ajustes automaticos (cierre de mermas) no son un paso tuyo.
+  if (cambioHook) _nuevaFoto();
   DATOS().meta.autor = usuarioActual() || 'desconocido';
   if (FUSION) await FUSION.borrador.guardar('lotes', borradorActual);
   // Lo que se envía es esta foto: si se sigue editando durante el viaje, eso
@@ -409,11 +481,12 @@ async function _guardar(forzar, intento = 0){
   return 'ok';
 }
 
-/* Ganchos que completa la Tarea 6 (deshacer). Acá quedan vacíos para que
- * esta tarea se pueda probar sola. */
-function _antesDeCambioAjeno(){}
-function _despuesDeCambioAjeno(){}
-function _alCancelarFreno(){}
+/* Antes de que entre lo de otro: lo tuyo queda anotado como paso. */
+function _antesDeCambioAjeno(){ cerrarPaso(); }
+/* Despues: lo de otro es la base, no un paso tuyo. */
+function _despuesDeCambioAjeno(){ _nuevaFoto(); }
+/* El freno de borrado masivo pregunto y se eligio Cancelar. */
+function _alCancelarFreno(){ deshacer(); }
 
 /** La de siempre, para las vistas que hacen `await guardar()` antes de
  *  imprimir: guarda YA (corta la espera del autoguardado) y devuelve si quedó

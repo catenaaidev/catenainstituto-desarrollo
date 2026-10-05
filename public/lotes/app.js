@@ -3,7 +3,7 @@
 
 /* Cada vista se registra sola al importarse (registrarVista). */
 import { cargarDatos, mostrarTab, refrescarAvisos, refrescarInfo,
-         guardarAhora, pedirUsuario, usuarioActual, verHistorial, cerrarOverlay,
+         guardarAhora, deshacer, rehacer, pedirUsuario, usuarioActual, verHistorial, cerrarOverlay,
          cargarDashboard, $, registrarInit, invalidarVistas, invalidarDashMap,
          renderActivo, DATOS } from './js/nucleo.js';
 import { limpiarFiltrosMulti } from './js/tabla.js';
@@ -55,6 +55,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.preventDefault();
       guardarAhora();
     }
+  });
+
+  /* Ctrl+Z / Ctrl+Y (y Ctrl+Shift+Z): deshacer y rehacer de TODA la pagina.
+     Si el foco esta en un campo donde se escribe, la tecla es del navegador
+     (deshace lo que vas tipeando). Con un overlay abierto no se deshace nada:
+     el paso se anota recien al aceptar. La grilla, cuando tiene seleccion,
+     despacha lotes:deshacer/lotes:rehacer y llega al mismo lugar. */
+  const esCampoDeTexto = el => !!el && (el.isContentEditable || el.tagName === 'TEXTAREA' ||
+    (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'date'].includes(el.type)));
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    const esDeshacer = k === 'z' && !e.shiftKey;
+    const esRehacer = k === 'y' || (k === 'z' && e.shiftKey);
+    if (!esDeshacer && !esRehacer) return;
+    if (esCampoDeTexto(document.activeElement)) return;
+    if ($('overlay').classList.contains('show')) return;
+    e.preventDefault();
+    if (esDeshacer) deshacer(); else rehacer();
   });
   $('overlay').addEventListener('click', e => { if(e.target===$('overlay')) cerrarOverlay(); });
 
