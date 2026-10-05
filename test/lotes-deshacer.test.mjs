@@ -194,6 +194,38 @@ describe('aplicar', () => {
     aplicar(d, c, 'deshacer');
     expect('mermas' in d).toBe(false);
   });
+  it('campo en sección reemplazada por array: se saltea sin tocar', () => {
+    const d = doc();
+    const c = { seccion: 'estado_lote', tipo: 'campo', clave: '26001',
+      antes: '{"etapa":"FML"}', despues: '{"etapa":"Crianza"}' };
+    d.estado_lote['26001'].etapa = 'Crianza';
+    d.estado_lote = [];  // otro cambio la convirtió en array
+    const r = aplicar(d, [c], 'deshacer');
+    expect(r.salteados).toHaveLength(1);
+    expect(Array.isArray(d.estado_lote)).toBe(true);
+    expect(d.estado_lote).toEqual([]);
+  });
+  it('campo en sección ausente: rehacer la crea', () => {
+    const d = doc();
+    delete d.estado_lote;
+    const c = { seccion: 'estado_lote', tipo: 'campo', clave: '26009',
+      antes: null, despues: '{"etapa":"FML"}' };
+    aplicar(d, [c], 'rehacer');
+    expect(d.estado_lote).toEqual({ '26009': { etapa: 'FML' } });
+  });
+  it('dos bajas no adyacentes en un paso: deshacer y rehacer restauran orden', () => {
+    const d = doc();
+    d.lotes.push({ lote: '26003', litros: 0 }, { lote: '26004', litros: 0 }, { lote: '26005', litros: 0 });
+    const f = tomarFoto(d);
+    d.lotes.splice(1, 1);  // quita 26002
+    d.lotes.splice(2, 1);  // quita 26004 (ahora en índice 2)
+    const c = diferencia(f, d).cambios;
+    expect(d.lotes.map(l => l.lote)).toEqual(['26001', '26003', '26005']);
+    aplicar(d, c, 'deshacer');
+    expect(d.lotes.map(l => l.lote)).toEqual(['26001', '26002', '26003', '26004', '26005']);
+    aplicar(d, c, 'rehacer');
+    expect(d.lotes.map(l => l.lote)).toEqual(['26001', '26003', '26005']);
+  });
 });
 
 describe('crearHistorial', () => {

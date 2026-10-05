@@ -216,10 +216,22 @@ export function aplicar(datos, cambios, sentido){
 
   // 2) campos de secciones objeto
   for (const c of cambios.filter(c => c.tipo === 'campo')){
-    if (!esObjetoPlano(datos[c.seccion])) datos[c.seccion] = {};
-    const o = datos[c.seccion];
-    const hoy = o[c.clave] === undefined ? null : aTexto(o[c.clave]);
+    const seccion = datos[c.seccion];
+    /* Determina hoy SIN modificar: si la sección no existe o no es objeto plano,
+     * la comparación es contra null (campo ausente). Si otro cambio la convirtió
+     * en algo que no es objeto (ej. array), se saltea. */
+    let hoy;
+    if (seccion === undefined){
+      hoy = null;
+    } else if (!esObjetoPlano(seccion)){
+      salteados.push(c);
+      continue;
+    } else {
+      hoy = seccion[c.clave] === undefined ? null : aTexto(seccion[c.clave]);
+    }
     if (hoy !== desde(c)){ salteados.push(c); continue; }
+    /* Ahora sí modifica: o existe y es objeto plano, o no existía y vamos a crearla. */
+    const o = esObjetoPlano(datos[c.seccion]) ? datos[c.seccion] : (datos[c.seccion] = {});
     if (hacia(c) === null) delete o[c.clave];
     else o[c.clave] = enSitio(o[c.clave], JSON.parse(hacia(c)));
     aplicados++;
