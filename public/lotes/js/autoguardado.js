@@ -19,13 +19,20 @@ const PARA_SIEMPRE = new Set(['permiso', 'conflicto']);
 const PARA_HASTA_CAMBIO = new Set(['sesion', 'error']);
 
 export function crearAutoguardado({ ejecutar, avisar = () => {}, reloj = globalThis }){
-  let timer = null, enVuelo = false, otraVuelta = false, intentos = 0, parado = null;
+  let timer = null, enVuelo = false, otraVuelta = false, intentos = 0, parado = null, vuelta = null;
 
   function cancelar(){ if (timer !== null){ reloj.clearTimeout(timer); timer = null; } }
   function programar(ms){ cancelar(); timer = reloj.setTimeout(() => { timer = null; correr(); }, ms); }
 
-  async function correr(){
-    if (PARA_SIEMPRE.has(parado)) return;
+  /* Promise del save actual (ambas laps si la hay). */
+  function correr(){
+    if (PARA_SIEMPRE.has(parado)) return Promise.resolve();
+    if (vuelta){ otraVuelta = true; return vuelta; }
+    vuelta = _correr().finally(() => { vuelta = null; });
+    return vuelta;
+  }
+
+  async function _correr(){
     if (enVuelo){ otraVuelta = true; return; }
     enVuelo = true;
     avisar('guardando');
@@ -49,7 +56,7 @@ export function crearAutoguardado({ ejecutar, avisar = () => {}, reloj = globalT
       avisar('parado', { motivo: res });
       return;
     }
-    if (otraVuelta){ otraVuelta = false; return correr(); }
+    if (otraVuelta){ otraVuelta = false; return _correr(); }
     avisar('listo');
   }
 

@@ -135,4 +135,30 @@ describe('autoguardado', () => {
     ag.cambio(); await reloj.avanzar(ESPERA_MS);
     expect(avisos.some(a => a[0] === 'reintentando')).toBe(true);
   });
+  it('ahora() espera ambas laps si la primera está en vuelo', async () => {
+    const reloj = relojFalso();
+    let enCurso = 0, maximo = 0, llamadas = 0, soltar;
+    const ag = crearAutoguardado({
+      ejecutar: () => { llamadas++; enCurso++; maximo = Math.max(maximo, enCurso);
+        return new Promise(r => { soltar = () => { enCurso--; r('ok'); }; }); },
+      reloj,
+    });
+    ag.cambio();
+    await reloj.avanzar(ESPERA_MS);       // sale el primero y queda colgado
+    let listo = false;
+    const p = ag.ahora();
+    p.then(() => { listo = true; });
+    await vaciar();
+    expect(listo).toBe(false);            // el primero sigue en vuelo
+    expect(llamadas).toBe(1);
+    soltar();
+    await vaciar();
+    await vaciar();
+    expect(llamadas).toBe(2);             // sale la segunda lap
+    expect(listo).toBe(false);            // aún en vuelo
+    soltar();
+    await vaciar();
+    expect(listo).toBe(true);             // ahora sí resuelto
+    expect(maximo).toBe(1);               // nunca dos a la vez
+  });
 });
