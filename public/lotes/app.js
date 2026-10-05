@@ -3,7 +3,7 @@
 
 /* Cada vista se registra sola al importarse (registrarVista). */
 import { cargarDatos, mostrarTab, refrescarAvisos, refrescarInfo,
-         guardar, pedirUsuario, usuarioActual, verHistorial, cerrarOverlay,
+         guardarAhora, pedirUsuario, usuarioActual, verHistorial, cerrarOverlay,
          cargarDashboard, $, registrarInit, invalidarVistas, invalidarDashMap,
          renderActivo, DATOS } from './js/nucleo.js';
 import { limpiarFiltrosMulti } from './js/tabla.js';
@@ -47,10 +47,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   /* overlay: cerrar con Escape */
   document.addEventListener('keydown', e => { if(e.key==='Escape') cerrarOverlay(); });
+
+  /* Ctrl+S: guardar ya, sin esperar los 2 s del autoguardado. Se intercepta
+     para que el navegador no abra "Guardar página como". */
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')){
+      e.preventDefault();
+      guardarAhora();
+    }
+  });
   $('overlay').addEventListener('click', e => { if(e.target===$('overlay')) cerrarOverlay(); });
 
   /* botones de cabecera */
-  $('btnGuardar').addEventListener('click', () => guardar(false));
   $('btnHistorial').addEventListener('click', verHistorial);
   $('usuario').addEventListener('click', () => pedirUsuario(true));
 

@@ -427,7 +427,7 @@
       var si = g.confirm(
         'En este equipo quedaron cambios SIN GUARDAR' +
         (candidatos.length > 1 ? ' (de ' + candidatos.length + ' pestañas)' : '') + ', el último del ' + cuando + '.\n\n' +
-        'Aceptar = recuperarlos (se combinan con lo que cargaron los demás; después tocá Guardar).\n' +
+        'Aceptar = recuperarlos (se combinan con lo que cargaron los demás).\n' +
         'Cancelar = descartarlos.');
       var claves = candidatos.map(function (b) { return b.clave; });
       if (!si) { borrador.borrarClaves(claves); return null; }
@@ -462,10 +462,13 @@
     // Barriles sincroniza solo: no tiene botón Guardar y lo pendiente se sube
     // en cuanto vuelve la sesión.
     var esBarriles = g.CIW && g.CIW.modulo === 'barriles';
+    var esLotes = g.CIW && g.CIW.modulo === 'lotes';
     caja.innerHTML = '<button title="Cerrar" aria-label="Cerrar">&times;</button>' +
       '<b>Tu sesión se cerró.</b> Lo que cargaste sigue en esta pantalla: no se perdió.<br>' +
       (esBarriles
         ? 'Iniciá sesión en la otra pestaña y volvé acá: lo pendiente se sube solo.<br>'
+        : esLotes
+        ? 'Iniciá sesión en la otra pestaña y volvé acá: apretá <b>Ctrl+S</b> o seguí editando, y lo pendiente se guarda solo.<br>'
         : 'Iniciá sesión en la otra pestaña, volvé acá y tocá <b>Guardar</b> de nuevo.<br>') +
       '<a href="/login.html" target="_blank" rel="noopener">Iniciar sesión</a>';
     caja.querySelector('button').onclick = function () { caja.remove(); avisando = false; };

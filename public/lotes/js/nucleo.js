@@ -2,6 +2,7 @@
 'use strict';
 
 import { queryAnios } from './selector-anios.js';
+import { crearAutoguardado } from './autoguardado.js';
 
 /* ---------- estado global ----------
  * DATOS es una variable mutable que comparten todas las vistas. Los modulos ES
@@ -42,24 +43,88 @@ const borradorActual = () => ({ base: _base, local: _datos });
  * volver la respuesta la pantalla NO queda como guardada (eso no se envió). */
 let _ediciones = 0;
 
-export function markDirty(){
+/* ---------- autoguardado ----------
+ * Cada cambio programa un guardado a los 2 s (autoguardado.js decide cuando).
+ * Los guardados pasan por una cola: el autoguardado y los `await guardar()` de
+ * las vistas que imprimen nunca mandan dos POST a la vez. */
+let _cola = Promise.resolve();
+function _guardarEnCola(forzar){
+  const p = _cola.then(() => _guardar(forzar));
+  _cola = p.catch(() => {});
+  return p;
+}
+
+const _auto = crearAutoguardado({
+  ejecutar: () => _guardarEnCola(false),
+  avisar(estadoAuto, info){
+    if (estadoAuto === 'guardando') _estado('⟳ Guardando…', 'dirty');
+    else if (estadoAuto === 'reintentando') _estado('⚠ Sin conexión — reintentando en ' + Math.round(info.ms / 1000) + ' s', 'dirty');
+    else if (estadoAuto === 'parado') _estado(
+      info.motivo === 'sesion'   ? '⚠ Sesión cerrada: iniciá sesión y apretá Ctrl+S' :
+      info.motivo === 'permiso'  ? '⚠ Solo lectura: los cambios no se guardan' :
+      info.motivo === 'conflicto'? '⚠ No se pudo combinar: recargá la página' :
+                                   '⚠ No se guardó: apretá Ctrl+S para reintentar', 'dirty');
+  },
+});
+
+function _estado(texto, clase){
+  const s = $('statusBar');
+  s.textContent = texto;
+  s.className = 'status ' + (clase || '');
+}
+
+/** Cartel corto al pie (deshacer, actualizaciones). Se pisa con el siguiente. */
+let _timerAviso = null;
+export function avisoBreve(texto, tipo){
+  let el = $('avisoBreve');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'avisoBreve';
+    el.setAttribute('role', 'status');
+    el.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;' +
+      'padding:8px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.35);' +
+      'background:#2b3340;color:#fff;max-width:80vw;pointer-events:none';
+    document.body.appendChild(el);
+  }
+  el.textContent = texto;
+  el.style.background = tipo === 'error' ? '#7a2b2b' : tipo === 'ok' ? '#24503a' : '#2b3340';
+  el.style.display = 'block';
+  clearTimeout(_timerAviso);
+  _timerAviso = setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
+
+export function hayCambiosSinGuardar(){ return dirty || _auto.pendiente(); }
+export function guardarAhora(){ return _auto.ahora(); }
+
+/* El nombre se pide con el primer cambio y una sola vez por pagina: con
+ * autoguardado, pedirlo en medio de un guardado sacaba un cartel a los 2 s de
+ * cualquier edicion. */
+let _nombrePedido = false;
+
+/* Marca el documento como cambiado sin abrir un paso de deshacer. Lo usan
+ * markDirty (que ademas abre el paso, Tarea 6) y deshacer/rehacer. */
+function _marcarCambiado(){
   _ediciones++;
   dirty = true;
   invalidarVistas();
-  $('btnGuardar').disabled = false;
-  const s = $('statusBar'); s.textContent = '● Cambios sin guardar'; s.className = 'status dirty';
+  _estado('● Cambios sin guardar', 'dirty');
   if (FUSION && _datos) FUSION.borrador.programar('lotes', borradorActual);
+  _auto.cambio();
+}
+
+export function markDirty(){
+  if (!_nombrePedido && !usuarioActual()){ _nombrePedido = true; pedirUsuario(true); }
+  _marcarCambiado();
 }
 export function markSaved(){
   dirty = false;
   invalidarVistas();
-  $('btnGuardar').disabled = true;
-  const s = $('statusBar');
-  s.textContent = '✓ Guardado (v' + DATOS().meta.version + ')';
-  s.className = 'status saved';
+  _estado('✓ Guardado (v' + DATOS().meta.version + ')', 'saved');
 }
 
-window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => {
+  if (hayCambiosSinGuardar()){ e.preventDefault(); e.returnValue = ''; }
+});
 
 /* ---------- usuario (trazabilidad) ---------- */
 export function usuarioActual(){ try { return localStorage.getItem('lotes_usuario') || ''; } catch(e) { return ''; } }
@@ -206,7 +271,7 @@ export async function cargarDatos(){
     // ciclo grilla->tabla->nucleo->grilla.
     document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
     markSaved();   // tambien invalida el cache de pestañas
-    if (recuperado) markDirty();
+    if (recuperado) _marcarCambiado();
     _inits.forEach(fn => fn());
     renderActivo();
   } catch(e) {
@@ -230,14 +295,25 @@ function completarSecciones(){
 const _antesDeGuardar = [];
 export function registrarAntesDeGuardar(fn){ _antesDeGuardar.push(fn); }
 
-/* ---------- guardar (con 409/412 faithful port) ---------- */
-export async function guardar(forzar, intento = 0){
-  if (!dirty) return true;
+/* ---------- guardar ----------
+ * _guardar devuelve QUE paso, para que el autoguardado sepa si reintentar:
+ *   'nada'      no habia cambios
+ *   'ok'        guardado
+ *   'cancelado' el freno pregunto y se eligio deshacer
+ *   'red'       sin conexion, 5xx o error inesperado: se reintenta solo
+ *   'sesion'    401: avisa shared/fusion.js; se reintenta con el proximo cambio
+ *   'error'     400 que no es el freno: se avisa una vez
+ *   'permiso'   403: solo lectura
+ *   'conflicto' 409 que no se pudo combinar: hay que recargar
+ * Sin alert en los casos que se repiten (red, sesion): con autoguardado serian
+ * un cartel cada 2 s. El estado se ve en el statusBar. */
+async function _guardar(forzar, intento = 0){
+  if (!dirty) return 'nada';
   let cambioHook = false;
   for (const fn of _antesDeGuardar){
     try { if (fn(DATOS())) { invalidarVistas(); cambioHook = true; } } catch (e) { console.error('antesDeGuardar:', e); }
   }
-  DATOS().meta.autor = usuarioActual() || pedirUsuario(true) || 'desconocido';
+  DATOS().meta.autor = usuarioActual() || 'desconocido';
   if (FUSION) await FUSION.borrador.guardar('lotes', borradorActual);
   // Lo que se envía es esta foto: si se sigue editando durante el viaje, eso
   // queda pendiente para el próximo guardado.
@@ -251,28 +327,25 @@ export async function guardar(forzar, intento = 0){
       body: enviado
     });
   } catch(e) {
-    alert('No se pudo guardar: no hay conexión con el servidor. Tus cambios siguen en pantalla y quedaron guardados en este equipo; probá de nuevo cuando vuelva la señal.');
-    return false;
+    return 'red';
   }
-  if (r.status === 401){
-    alert('Tu sesión se cerró. Tus cambios siguen en pantalla y quedaron guardados en este equipo.\n\nIniciá sesión en la pestaña que se abre y después volvé a tocar Guardar.');
-    window.open('/login.html', '_blank');
-    return false;
-  }
+  if (r.status === 401) return 'sesion';   // shared/fusion.js ya mostró el aviso
   if (r.status === 400){
     const j = await r.json().catch(() => ({}));
     if (j.error === 'validacion'){
       const det = (j.detalles || []).join('\n• ');
-      if (!forzar && confirm(
+      if (forzar){ alert('No se pudo guardar:\n• ' + det); return 'error'; }
+      if (confirm(
         '⚠️ El servidor FRENÓ este guardado para proteger los datos:\n\n• ' + det +
-        '\n\n¿Era tu intención? Aceptar = guardar igual (queda registrado como FORZADO en el historial).\nCancelar = no guardar nada y revisar.'
+        '\n\n¿Era tu intención? Aceptar = guardar igual (queda registrado como FORZADO en el historial).\nCancelar = deshacer lo último que hiciste.'
       )){
-        return guardar(true);
+        return _guardar(true);
       }
-      if (forzar) alert('No se pudo guardar:\n• ' + det);
-      return false;
+      _alCancelarFreno();
+      return 'cancelado';
     }
-    alert('Error al guardar: ' + (j.error || r.status)); return false;
+    alert('Error al guardar: ' + (j.error || r.status));
+    return 'error';
   }
   if (r.status === 409){
     const j = await r.json().catch(() => ({}));
@@ -280,17 +353,19 @@ export async function guardar(forzar, intento = 0){
     // de los dos y se vuelve a guardar. Nadie pierde lo suyo.
     if (FUSION && _base && j.actual && intento < 4){
       const serv = j.actual;
+      _antesDeCambioAjeno();
       setDatos(FUSION.fusionarDocumento(_base, DATOS(), serv));
       completarSecciones();
       _base = FUSION.clonar(serv);
-      // Los objetos de DATOS() cambiaron: la grilla limpia sus pilas de deshacer
-      // y la pestaña visible se redibuja YA, aunque el reintento falle. Si no,
-      // sus filas seguían apuntando a los objetos viejos: las ediciones se
-      // perdían y el ✕ de Lotes borraba otro lote (indexOf daba -1).
+      _despuesDeCambioAjeno();
+      // Los objetos de DATOS() cambiaron: la pestaña visible se redibuja YA,
+      // aunque el reintento falle. Si no, sus filas seguían apuntando a los
+      // objetos viejos: las ediciones se perdían y el ✕ de Lotes borraba otro
+      // lote (indexOf daba -1).
       document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
       invalidarVistas();
       try { renderActivo(); } catch (e) { console.error('renderActivo tras fusionar:', e); }
-      return guardar(forzar, intento + 1);
+      return _guardar(forzar, intento + 1);
     }
     mostrarOverlay(
       '<h2 style="margin-top:0;color:#ffd766">Conflicto de versión</h2>'+
@@ -298,14 +373,14 @@ export async function guardar(forzar, intento = 0){
       '<p style="color:var(--muted);font-size:13px">Tus cambios quedaron guardados en este equipo: al recargar se te ofrece recuperarlos.</p>'+
       '<button class="btn primary" onclick="location.reload()">🔄 Recargar y recuperar</button>'
     );
-    return false;
+    return 'conflicto';
   }
   if (r.status === 403){
     const j = await r.json().catch(() => ({}));
     alert('No se pudo guardar: ' + ((j.detalles && j.detalles[0]) || 'tu usuario no tiene permiso para guardar en Lotes.'));
-    return false;
+    return 'permiso';
   }
-  if (!r.ok){ alert('Error al guardar: ' + r.status + '. Tus cambios siguen en pantalla y guardados en este equipo.'); return false; }
+  if (!r.ok) return 'red';
   const j = await r.json();
   DATOS().meta.version = j.version;
   DATOS().meta.actualizado = j.actualizado;
@@ -314,26 +389,43 @@ export async function guardar(forzar, intento = 0){
   if (FUSION){ _base = JSON.parse(enviado); _base.meta.version = j.version; _base.meta.actualizado = j.actualizado; }
   if (_ediciones !== edicionesAlEnviar){
     // Se editó durante el viaje: queda pendiente (y en el borrador del equipo).
-    markDirty();
+    _marcarCambiado();
     cargarDashboard();
     if (cambioHook || intento > 0) renderActivo();
-    return true;
+    return 'ok';
   }
   if (FUSION) FUSION.borrador.borrar('lotes');
   markSaved();
   /* El tablero, el Dashboard y los colores de Lotes salen de /api/dashboard,
-   * que el servidor calcula sobre lo GUARDADO. Antes se pedia una sola vez al
-   * abrir la pagina, asi que despues de corregir un criterio o cargar un
-   * analisis seguian mostrando el veredicto viejo hasta recargar. */
+   * que el servidor calcula sobre lo GUARDADO. */
   cargarDashboard();
   if (cambioHook || intento > 0) renderActivo();
-  if (intento > 0) $('statusBar').textContent = '✓ Guardado (v' + DATOS().meta.version + ') · combinado con lo que guardaron otros';
+  if (intento > 0) _estado('✓ Guardado (v' + DATOS().meta.version + ') · combinado con lo que guardaron otros', 'saved');
   if (j.respaldo){
     const s = $('statusBar');
     s.textContent = '✓ Guardado (v' + DATOS().meta.version + ') · respaldo: ' + j.respaldo;
     s.title = 'Respaldo JSON en backups/json/';
   }
-  return true;
+  return 'ok';
+}
+
+/* Ganchos que completa la Tarea 6 (deshacer). Acá quedan vacíos para que
+ * esta tarea se pueda probar sola. */
+function _antesDeCambioAjeno(){}
+function _despuesDeCambioAjeno(){}
+function _alCancelarFreno(){}
+
+/** La de siempre, para las vistas que hacen `await guardar()` antes de
+ *  imprimir: guarda YA (corta la espera del autoguardado) y devuelve si quedó
+ *  guardado. Acá sí se avisa con un cartel: quien la llama está esperando. */
+export async function guardar(forzar){
+  const r = await _guardarEnCola(!!forzar);
+  if (r === 'red'){
+    alert('No se pudo guardar: no hay conexión con el servidor. Tus cambios siguen en pantalla y quedaron guardados en este equipo; se van a guardar solos cuando vuelva la señal.');
+    _auto.cambio();
+  }
+  if (r === 'sesion') _auto.cambio();
+  return r === 'ok' || r === 'nada';
 }
 
 /* ---------- navegación de pestañas ---------- */

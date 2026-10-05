@@ -2,7 +2,7 @@
 'use strict';
 
 import { $, esc, escA, DATOS, markDirty, registrarVista, registrarInit, irALote,
-         vistaActiva, invalidarVista } from './nucleo.js';
+         vistaActiva, invalidarVista, hayCambiosSinGuardar } from './nucleo.js';
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla, repintarGrilla } from './grilla.js';
@@ -148,15 +148,9 @@ const SIN_VEREDICTO = Object.freeze({
   fuera: new Set(), dentro: new Set(), molec: null,
 });
 
-/* ¿Hay cambios sin guardar? nucleo no exporta su bandera `dirty`, pero la
- * refleja sin excepciones en el boton Guardar: markDirty lo habilita y
- * markSaved lo apaga. Con cambios sin guardar el array local no es el que
- * juzgo el servidor, asi que sus veredictos no se pueden enganchar por
- * posicion. */
-function _hayCambiosSinGuardar(){
-  const b = $('btnGuardar');
-  return !!b && !b.disabled;
-}
+/* Con cambios sin guardar el array local no es el que juzgo el servidor, asi
+ * que sus veredictos no se pueden enganchar por posicion. */
+function _hayCambiosSinGuardar(){ return hayCambiosSinGuardar(); }
 
 /* El veredicto de un registro de analisis, o undefined si no tiene. */
 const _veredictoDe = a => (_analisisFlags && a) ? _analisisFlags.get(a) : undefined;
