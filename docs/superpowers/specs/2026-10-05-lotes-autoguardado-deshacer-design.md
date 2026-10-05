@@ -228,7 +228,7 @@ pregunta la versión. Si la del servidor es mayor que la local:
    repinta la pestaña visible **conservando el scroll** (`conservarScroll`) y
    los filtros (viven en el estado de cada vista, no se tocan). La selección de
    celdas de la grilla se limpia;
-5. el `statusBar` dice por 5 s: *"↻ Actualizado con cambios de Oriana (v124)"*.
+5. el `statusBar` dice (hasta el próximo estado): *"↻ Actualizado con cambios de Oriana (v124)"*.
 
 Si mientras baja `/datos` editás algo, la respuesta se descarta (la cuenta de
 `_ediciones` cambió) y lo resuelve el 409 del autoguardado.
