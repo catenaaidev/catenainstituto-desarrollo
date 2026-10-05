@@ -279,21 +279,29 @@ export function aplicar(datos, cambios, sentido){
 /* ---------- pila ---------- */
 
 /** Pila de pasos. paso = {cambios, etiqueta, vista}. Misma linea de tiempo sin
- *  ramas que tenia grilla-undo.js: hacer algo nuevo descarta el rehacer. */
+ *  ramas que tenia grilla-undo.js: hacer algo nuevo descarta el rehacer.
+ *
+ *  La MARCA es cuantos pasos habia cuando se guardo por ultima vez: lo de
+ *  arriba es "lo de este guardado". El Cancelar del freno de borrado masivo
+ *  deshace eso entero (deshacerHasta), no solo el ultimo paso, que podia ser
+ *  otra edicion hecha mientras viajaba el guardado. Si la pila baja de la
+ *  marca (Ctrl+Z, o el tope que tira el paso mas viejo) la marca baja con ella. */
 export function crearHistorial(tope = 100){
-  let atras = [], adelante = [];
+  let atras = [], adelante = [], marca = 0;
+  const ajustar = () => { if (marca > atras.length) marca = atras.length; };
   return {
     apilar(paso){
       if (!paso || !paso.cambios || !paso.cambios.length) return false;
       atras.push(paso);
       adelante = [];
-      if (atras.length > tope) atras.shift();
+      if (atras.length > tope){ atras.shift(); if (marca > 0) marca--; }
       return true;
     },
     deshacer(){
       const p = atras.pop();
       if (!p) return null;
       adelante.push(p);
+      ajustar();
       return p;
     },
     rehacer(){
@@ -302,7 +310,18 @@ export function crearHistorial(tope = 100){
       atras.push(p);
       return p;
     },
-    limpiar(){ atras = []; adelante = []; },
+    /** Anota que se guardo con `n` pasos (por defecto, los que hay hoy). */
+    marcar(n = atras.length){ marca = Math.max(0, n); ajustar(); },
+    marca(){ return marca; },
+    profundidad(){ return atras.length; },
+    /** Saca los pasos de arriba de la marca, del mas nuevo al mas viejo, y los
+     *  deja para rehacer como si fueran Ctrl+Z seguidos. */
+    deshacerHasta(){
+      const out = [];
+      while (atras.length > marca){ const p = atras.pop(); adelante.push(p); out.push(p); }
+      return out;
+    },
+    limpiar(){ atras = []; adelante = []; marca = 0; },
     tamano(){ return { atras: atras.length, adelante: adelante.length }; },
   };
 }

@@ -256,6 +256,59 @@ describe('crearHistorial', () => {
   });
 });
 
+describe('crearHistorial: marca del último guardado', () => {
+  const p = n => ({ cambios: [{ n }], etiqueta: 'p' + n, vista: 'lotes' });
+  it('profundidad cuenta los pasos para deshacer', () => {
+    const h = crearHistorial();
+    expect(h.profundidad()).toBe(0);
+    h.apilar(p(1)); h.apilar(p(2));
+    expect(h.profundidad()).toBe(2);
+  });
+  it('deshacerHasta devuelve los pasos de arriba de la marca, del más nuevo al más viejo', () => {
+    const h = crearHistorial();
+    h.apilar(p(1)); h.marcar();
+    h.apilar(p(2)); h.apilar(p(3));
+    expect(h.deshacerHasta().map(x => x.etiqueta)).toEqual(['p3', 'p2']);
+    expect(h.profundidad()).toBe(1);
+    // quedan para rehacer, como un Ctrl+Z
+    expect(h.rehacer().etiqueta).toBe('p2');
+  });
+  it('sin nada arriba de la marca devuelve lista vacía', () => {
+    const h = crearHistorial();
+    h.apilar(p(1)); h.marcar();
+    expect(h.deshacerHasta()).toEqual([]);
+    expect(h.profundidad()).toBe(1);
+  });
+  it('marcar(n) fija la marca en n, sin pasarse de lo que hay', () => {
+    const h = crearHistorial();
+    h.apilar(p(1)); h.apilar(p(2)); h.apilar(p(3));
+    h.marcar(1);
+    expect(h.deshacerHasta().map(x => x.etiqueta)).toEqual(['p3', 'p2']);
+    h.marcar(10);
+    expect(h.marca()).toBe(1);
+  });
+  it('deshacer por debajo de la marca la baja', () => {
+    const h = crearHistorial();
+    h.apilar(p(1)); h.apilar(p(2)); h.marcar();
+    h.deshacer(); h.deshacer();
+    expect(h.marca()).toBe(0);
+    h.apilar(p(3));
+    expect(h.deshacerHasta().map(x => x.etiqueta)).toEqual(['p3']);
+  });
+  it('el tope corre la marca hacia abajo', () => {
+    const h = crearHistorial(3);
+    h.apilar(p(1)); h.apilar(p(2)); h.marcar();   // marca = 2
+    h.apilar(p(3)); h.apilar(p(4));               // se cae p1: marca = 1
+    expect(h.marca()).toBe(1);
+    expect(h.deshacerHasta().map(x => x.etiqueta)).toEqual(['p4', 'p3']);
+  });
+  it('limpiar vuelve la marca a cero', () => {
+    const h = crearHistorial();
+    h.apilar(p(1)); h.marcar(); h.limpiar();
+    expect(h.marca()).toBe(0);
+  });
+});
+
 describe('descripciones', () => {
   it('una sola fila nombra lo que es', () => {
     const d = doc();

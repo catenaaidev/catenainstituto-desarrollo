@@ -112,6 +112,26 @@ describe('autoguardado', () => {
     expect(llamadas()).toBe(2);
     expect(ag.parado()).toBeNull();
   });
+  it('cancelado (el freno deshizo): como ok, sin reintento ni parada', async () => {
+    const { ag, reloj, avisos, llamadas } = armar(['cancelado']);
+    ag.cambio(); await reloj.avanzar(ESPERA_MS);
+    expect(ag.parado()).toBeNull();
+    expect(avisos.at(-1)).toEqual(['listo']);
+    await reloj.avanzar(120000);
+    expect(llamadas()).toBe(1);
+    expect(reloj.cuantos()).toBe(0);
+  });
+  it('error (el freno no pudo deshacer nada): para hasta el próximo cambio', async () => {
+    const { ag, reloj, avisos, llamadas } = armar(['error', 'ok']);
+    ag.cambio(); await reloj.avanzar(ESPERA_MS);
+    expect(ag.parado()).toBe('error');
+    expect(avisos.at(-1)).toEqual(['parado', { motivo: 'error' }]);
+    await reloj.avanzar(120000);
+    expect(llamadas()).toBe(1);
+    ag.cambio(); await reloj.avanzar(ESPERA_MS);
+    expect(llamadas()).toBe(2);
+    expect(ag.parado()).toBeNull();
+  });
   it('solo lectura: para para siempre', async () => {
     const { ag, reloj, llamadas } = armar(['permiso']);
     ag.cambio(); await reloj.avanzar(ESPERA_MS);
