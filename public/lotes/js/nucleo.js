@@ -575,9 +575,7 @@ async function _guardar(forzar, intento = 0){
       invalidarVistas();
       // El redibujo vuela el <input> donde se estaba tipeando: se lo recuerda
       // y se lo vuelve a enfocar (misma tabla, fila y columna) con su texto.
-      const celda = _recordarCeldaActiva();
-      try { renderActivo(); } catch (e) { console.error('renderActivo tras fusionar:', e); }
-      _restaurarCeldaActiva(celda);
+      _renderActivoConservandoCelda();
       // DATOS y la base cambiaron sin editar: el borrador del equipo ya no sirve.
       _edicionesEnBorrador = -1;
       return _guardar(forzar, intento + 1);
@@ -608,7 +606,7 @@ async function _guardar(forzar, intento = 0){
     _historial.marcar(pasosAlEnviar);
     _marcarCambiado();
     cargarDashboard();
-    if (cambioHook || intento > 0) renderActivo();
+    if (cambioHook || intento > 0) _renderActivoConservandoCelda();
     return 'ok';
   }
   if (FUSION){ FUSION.borrador.borrar('lotes'); _edicionesEnBorrador = -1; }
@@ -616,7 +614,7 @@ async function _guardar(forzar, intento = 0){
   /* El tablero, el Dashboard y los colores de Lotes salen de /api/dashboard,
    * que el servidor calcula sobre lo GUARDADO. */
   cargarDashboard();
-  if (cambioHook || intento > 0) renderActivo();
+  if (cambioHook || intento > 0) _renderActivoConservandoCelda();
   if (intento > 0) _estado('✓ Guardado (v' + DATOS().meta.version + ') · combinado con lo que guardaron otros', 'saved');
   if (j.respaldo){
     const s = $('statusBar');
@@ -676,7 +674,20 @@ function _restaurarCeldaActiva(m){
     if (m.desde != null){
       try { el.setSelectionRange(m.desde, m.hasta); } catch (e) { /* sin cursor */ }
     }
+    /* La grilla solto el modo edicion cuando se fue el <input> viejo: sin
+     * esto, la proxima letra entraria por "tipear reemplaza" y vaciaria la
+     * celda. grilla.js escucha y la vuelve a poner en edicion (no se importa:
+     * ciclo grilla -> tabla -> nucleo -> grilla). */
+    document.dispatchEvent(new CustomEvent('lotes:celda-reenfocada', { detail: { el } }));
   } catch (e) { console.error('restaurar la celda activa:', e); }
+}
+
+/* Todo redibujo dentro de _guardar pasa por aca: un 409 redibuja, y el
+ * reintento que sale bien vuelve a redibujar. Cada uno conserva la celda. */
+function _renderActivoConservandoCelda(){
+  const celda = _recordarCeldaActiva();
+  try { renderActivo(); } catch (e) { console.error('renderActivo al guardar:', e); }
+  _restaurarCeldaActiva(celda);
 }
 
 /* Antes de que entre lo de otro: lo tuyo queda anotado como paso. */
@@ -705,7 +716,7 @@ function _alCancelarFreno(){
     _marcarCambiado();   // vuelve a programar el autoguardado
     document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
     invalidarVistas();
-    try { renderActivo(); } catch (e) { console.error('renderActivo tras el freno:', e); }
+    _renderActivoConservandoCelda();
   }
   if (salteados.length) _avisarSalteados(salteados);
   else if (aplicados) avisoBreve('Deshecho lo de este guardado (' + pasos.length + (pasos.length === 1 ? ' paso' : ' pasos') + ')', 'ok');

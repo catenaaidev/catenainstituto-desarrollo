@@ -620,7 +620,10 @@ function _manejarTecla(st, e){
   if ((e.key === 'd' || e.key === 'D') && e.ctrlKey){ rellenarAbajo(st, g); return true; }
   /* Deshacer / rehacer: los maneja nucleo.js para toda la pagina. Con un
    * overlay abierto (ficha de envases, asistentes) no: deshacer por detras
-   * de un formulario abierto cambiaria datos que el formulario tiene a medias. */
+   * de un formulario abierto cambiaria datos que el formulario tiene a medias.
+   * Se devuelve false y la tecla sigue hasta app.js, que le hace
+   * preventDefault: si no, Chrome aplicaria su deshacer nativo al ultimo
+   * <input> tocado de la tabla de atras. */
   if ((e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y') && e.ctrlKey &&
       document.getElementById('overlay')?.classList.contains('show')) return false;
   if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && !e.shiftKey){ document.dispatchEvent(new CustomEvent('lotes:deshacer')); return true; }
@@ -814,6 +817,30 @@ function cablearTeclado(){
       return;   // hay una sola tabla visible por vez
     }
   }, true);
+
+  /* nucleo.js redibujo la pestaña mientras se tipeaba (409, guardado
+   * combinado) y volvio a enfocar el <input> de la misma celda. El viejo, al
+   * irse, dejo st.editando en false: la proxima letra entraria por "tipear
+   * reemplaza" y vaciaria la celda. Se vuelve a poner esa celda como activa y
+   * en edicion. Escape vuelve al valor de antes de empezar a tipear si la
+   * celda es la misma que se estaba editando; si no, al que tiene ahora. */
+  document.addEventListener('lotes:celda-reenfocada', e => {
+    try {
+      const el = e.detail && e.detail.el;
+      const tabla = el && el.closest ? el.closest('table') : null;
+      const st = tabla && tabla.id ? _estados.get(tabla.id) : null;
+      if (!st || st.tabla !== tabla) return;
+      const g = geo(tabla);
+      const td = el.closest('td');
+      const f = g.fDe(td ? td.parentElement : null);
+      const c = td ? g.cols.findIndex(x => x.th.cellIndex === td.cellIndex) : -1;
+      if (f < 0 || c < 0) return;
+      const misma = !!st.activa && st.activa.f === f && st.activa.c === c && st.valorPrevio !== undefined;
+      seleccionar(st, g, f, c, false);
+      st.editando = true;
+      if (!misma) st.valorPrevio = el.value;
+    } catch (err) { console.error('grilla: celda reenfocada:', err); }
+  });
 }
 
 /* ---------- fabrica de adaptadores ----------

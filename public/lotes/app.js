@@ -60,8 +60,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   /* Ctrl+Z / Ctrl+Y (y Ctrl+Shift+Z): deshacer y rehacer de TODA la pagina.
      Si el foco esta en un campo donde se escribe, la tecla es del navegador
      (deshace lo que vas tipeando). Con un overlay abierto no se deshace nada:
-     el paso se anota recien al aceptar. La grilla, cuando tiene seleccion,
-     despacha lotes:deshacer/lotes:rehacer y llega al mismo lugar. */
+     el paso se anota recien al aceptar. Y tampoco el navegador: sin el
+     preventDefault, Chrome aplica su deshacer nativo al ultimo <input> que se
+     edito en la tabla de atras (inputType 'historyUndo') y eso llega al modelo.
+     La grilla, cuando tiene seleccion, despacha lotes:deshacer/lotes:rehacer
+     y llega al mismo lugar (con overlay abierto no despacha y cae aca). */
   const esCampoDeTexto = el => !!el && (el.isContentEditable || el.tagName === 'TEXTAREA' ||
     (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'date'].includes(el.type)));
   document.addEventListener('keydown', e => {
@@ -71,7 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const esRehacer = k === 'y' || (k === 'z' && e.shiftKey);
     if (!esDeshacer && !esRehacer) return;
     if (esCampoDeTexto(document.activeElement)) return;
-    if ($('overlay').classList.contains('show')) return;
+    if ($('overlay').classList.contains('show')){ e.preventDefault(); return; }
     e.preventDefault();
     if (esDeshacer) deshacer(); else rehacer();
   });
