@@ -608,6 +608,55 @@ export function cargarDashboard(){
   return _dashPromesa;
 }
 
+/* ---------- redibujo postergado mientras se escribe en un campo ----------
+ * _cargarDashboard repinta Lotes/Dashboard/Orden/Tablero con los colores que
+ * acaba de traer el autoguardado. Si eso pasa mientras alguien esta tipeando
+ * una celda, el redibujo le vuela el <input> de abajo del cursor y pierde el
+ * foco a mitad de palabra. Se posterga hasta que el foco se vaya de
+ * cualquier campo (aunque pase por varios, p.ej. Tab entre columnas), y ahi
+ * se redibuja la vista que haya quedado activa. */
+const _CAMPOS_FOCO = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
+function _escribiendoEnUnCampo(){
+  const a = document.activeElement;
+  if (!a || a === document.body) return false;
+  if (a.isContentEditable) return true;
+  if (!_CAMPOS_FOCO.has(a.tagName)) return false;
+  if (a.tagName === 'INPUT' && ['button', 'submit', 'checkbox', 'radio'].includes(a.type)) return false;
+  return true;
+}
+
+let _redibujoPendiente = false;
+let _escuchandoFocusout = false;
+
+function _redibujarVistaDashboard(){
+  const activa = vistaActiva();
+  if (['lotes', 'dashboard', 'orden', 'tablero'].includes(activa)) _dibujar(activa, true);
+}
+
+function _redibujarODemorar(){
+  if (!_escribiendoEnUnCampo()){ _redibujarVistaDashboard(); return; }
+  // Alguien esta escribiendo: se marca el pendiente y, si no hay ya un
+  // oyente puesto (para no apilar varios), se espera a que el foco se vaya.
+  _redibujoPendiente = true;
+  if (_escuchandoFocusout) return;
+  _escuchandoFocusout = true;
+  document.addEventListener('focusout', _alSalirDeUnCampo);
+}
+
+function _alSalirDeUnCampo(){
+  // focusout se dispara ANTES de que el elemento siguiente reciba el foco:
+  // hay que esperar un tick para que document.activeElement ya sea el nuevo.
+  setTimeout(() => {
+    if (_escribiendoEnUnCampo()) return; // paso de un campo a otro (Tab, flechas): seguir esperando
+    document.removeEventListener('focusout', _alSalirDeUnCampo);
+    _escuchandoFocusout = false;
+    if (!_redibujoPendiente) return;
+    _redibujoPendiente = false;
+    _redibujarVistaDashboard();
+  }, 0);
+}
+
 async function _cargarDashboard(){
   _dashLoading = true;
   try {
@@ -636,8 +685,7 @@ async function _cargarDashboard(){
     _vistaObligatoria('lotes');
     _vistaObligatoria('dashboard');
     invalidarVistas();
-    const activa = vistaActiva();
-    if (['lotes', 'dashboard', 'orden', 'tablero'].includes(activa)) _dibujar(activa, true);
+    _redibujarODemorar();
   } catch(e) {
     // Sin dashboard la app sigue andando, solo se omiten los colores. Pero se
     // deja rastro: si lo que fallo fue una vista y no la red, el silencio
