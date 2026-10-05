@@ -562,8 +562,9 @@ const TECLAS_MOVER = {
   ArrowLeft:  [ 0, -1], ArrowRight: [ 0,  1],
 };
 
-/** Devuelve true si consumio la tecla. Las tareas 8, 9 y 10 suman casos
- *  (copiar, pegar, borrar, deshacer) justo antes del bloque de navegacion. */
+/** Devuelve true si consumio la tecla. Copiar, borrar y las operaciones en
+ *  bloque van justo antes del bloque de navegacion; Ctrl+Z/Y solo avisan a
+ *  nucleo.js, que deshace para toda la pagina. */
 function _manejarTecla(st, e){
   const g = geo(st.tabla);
 
@@ -617,7 +618,11 @@ function _manejarTecla(st, e){
   if (e.key === 'Delete' || e.key === 'Backspace'){ borrarRango(st, g); return true; }
   if (e.key === 'Enter' && e.ctrlKey){ aplicarAlRango(st, g); return true; }
   if ((e.key === 'd' || e.key === 'D') && e.ctrlKey){ rellenarAbajo(st, g); return true; }
-  /* Deshacer / rehacer: los maneja nucleo.js para toda la pagina. */
+  /* Deshacer / rehacer: los maneja nucleo.js para toda la pagina. Con un
+   * overlay abierto (ficha de envases, asistentes) no: deshacer por detras
+   * de un formulario abierto cambiaria datos que el formulario tiene a medias. */
+  if ((e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y') && e.ctrlKey &&
+      document.getElementById('overlay')?.classList.contains('show')) return false;
   if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && !e.shiftKey){ document.dispatchEvent(new CustomEvent('lotes:deshacer')); return true; }
   if ((e.key === 'y' || e.key === 'Y') && e.ctrlKey){ document.dispatchEvent(new CustomEvent('lotes:rehacer')); return true; }
   if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && e.shiftKey){ document.dispatchEvent(new CustomEvent('lotes:rehacer')); return true; }
@@ -837,8 +842,8 @@ export function adaptadorCols(tabla, cols, onCambio){
 }
 
 /* ---------- motor de escritura ----------
- * Un solo camino para pegar, borrar, aplicar al rango, rellenar abajo y
- * deshacer. Todos comparten las mismas reglas y el mismo reporte.
+ * Un solo camino para pegar, borrar, aplicar al rango y rellenar abajo.
+ * Todos comparten las mismas reglas y el mismo reporte.
  */
 
 /** Vuelve a leer el valor guardado y lo pone en el control. Sin esto la celda
@@ -852,8 +857,9 @@ function refrescarCelda(ad, g, f, c, obj, k){
   el.value = (v == null) ? '' : String(v);
 }
 
-/** items: [{f, c, texto}]. Devuelve el conteo y apila UNA entrada de deshacer
- *  con todos los cambios de la operacion. */
+/** items: [{f, c, texto}]. Devuelve el conteo. Avisa el cambio UNA vez
+ *  (onCambio -> markDirty): para el Ctrl+Z de nucleo.js toda la operacion es
+ *  un solo paso. */
 export function escribirCeldas(st, g, items){
   const res = { escritas: 0, salteadas: 0, rechazadas: 0 };
   const ad = st.adaptador;

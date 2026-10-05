@@ -41,6 +41,12 @@ export const num  = v => { if (v===''||v==null) return null; const n=parseFloat(
 let _base = null;
 const FUSION = window.CIWFusion;
 const borradorActual = () => ({ base: _base, local: _datos });
+/* _ediciones con que se escribio el borrador por ultima vez. Lo anota el
+ * obtener() que se le pasa a borrador.programar, que fusion.js llama recien
+ * cuando escribe de verdad (despues de juntar los cambios y esperar el ocio).
+ * -1 = no se sabe (fuerza escribir). */
+let _edicionesEnBorrador = -1;
+const _borradorProgramado = () => { _edicionesEnBorrador = _ediciones; return borradorActual(); };
 /* Cuenta las ediciones: si mientras viaja un guardado se edita algo más, al
  * volver la respuesta la pantalla NO queda como guardada (eso no se envió). */
 let _ediciones = 0;
@@ -65,9 +71,12 @@ const _auto = crearAutoguardado({
       info.motivo === 'sesion'   ? '⚠ Sesión cerrada: iniciá sesión y apretá Ctrl+S' :
       info.motivo === 'permiso'  ? '⚠ Solo lectura: los cambios no se guardan' :
       info.motivo === 'conflicto'? '⚠ No se pudo combinar: recargá la página' :
-                                   '⚠ No se guardó: apretá Ctrl+S para reintentar', 'dirty');
+                                   (_textoError || '⚠ No se guardó: apretá Ctrl+S para reintentar'), 'dirty');
   },
 });
+/* Texto propio para el motivo 'error' cuando lo puso el freno de borrado
+ * masivo (Cancelar sin nada para deshacer). Se limpia al empezar cada guardado. */
+let _textoError = null;
 
 function _estado(texto, clase){
   const s = $('statusBar');
@@ -110,7 +119,7 @@ function _marcarCambiado(){
   dirty = true;
   invalidarVistas();
   _estado('● Cambios sin guardar', 'dirty');
-  if (FUSION && _datos) FUSION.borrador.programar('lotes', borradorActual);
+  if (FUSION && _datos) FUSION.borrador.programar('lotes', _borradorProgramado);
   _auto.cambio();
 }
 
@@ -121,6 +130,7 @@ export function markDirty(){
 }
 export function markSaved(){
   dirty = false;
+  _historial.marcar();   // lo de arriba de esta marca es "lo de este guardado" (freno, Cancelar)
   invalidarVistas();
   _estado('✓ Guardado (v' + DATOS().meta.version + ')', 'saved');
   _vivoParado = false;
@@ -141,12 +151,50 @@ function _abrirPaso(){
   if (!_pasoAbierto) _vistaDelPaso = vistaActiva();
   _pasoAbierto = true;
   clearTimeout(_timerPaso);
-  _timerPaso = setTimeout(cerrarPaso, 300);
+  _timerPaso = setTimeout(_cerrarPasoSiNoSeTipea, 300);
+}
+
+/* Mientras se tipea en una celda (un <input>/<textarea> de texto dentro de
+ * una tabla) los 300 ms no cierran el paso: cada pausa entre letras haria un
+ * Ctrl+Z por pedacito de palabra. Se cierra al salir del campo, con Ctrl+Z/Y
+ * o al empezar un guardado (los dos llaman a cerrarPaso). */
+let _celdaDelPaso = null;
+let _esperandoSalirDeCelda = false;
+
+function _tipeandoEnCelda(){
+  if (!_escribiendoEnUnCampo()) return null;
+  const a = document.activeElement;
+  if (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA') return null;
+  return a.closest('table') ? a : null;
+}
+
+function _cerrarPasoSiNoSeTipea(){
+  _timerPaso = null;
+  const celda = _tipeandoEnCelda();
+  if (!celda){ cerrarPaso(); return; }
+  _celdaDelPaso = celda;
+  if (_esperandoSalirDeCelda) return;   // un solo oyente
+  _esperandoSalirDeCelda = true;
+  document.addEventListener('focusout', _alSalirDeLaCelda);
+}
+
+function _alSalirDeLaCelda(){
+  // focusout llega antes de que el foco pase al elemento siguiente.
+  setTimeout(() => {
+    if (!_esperandoSalirDeCelda) return;
+    if (document.activeElement === _celdaDelPaso) return;   // p.ej. cambio de ventana
+    cerrarPaso();
+  }, 0);
 }
 
 export function cerrarPaso(){
   clearTimeout(_timerPaso);
   _timerPaso = null;
+  if (_esperandoSalirDeCelda){
+    _esperandoSalirDeCelda = false;
+    _celdaDelPaso = null;
+    document.removeEventListener('focusout', _alSalirDeLaCelda);
+  }
   if (!_pasoAbierto || !_foto || !_datos){ _pasoAbierto = false; return; }
   _pasoAbierto = false;
   const { cambios, foto } = diferencia(_foto, _datos);
@@ -176,14 +224,14 @@ function _mover(sentido){
     invalidarVistas();
     renderActivo();
   }
-  if (salteados.length){
-    avisoBreve('No se deshizo ' + describirCambio(salteados[0]) +
-      (salteados.length > 1 ? ' (y ' + (salteados.length - 1) + ' más)' : '') +
-      ': lo cambió otra persona después.', 'error');
-    return;
-  }
+  if (salteados.length){ _avisarSalteados(salteados); return; }
   const donde = paso.vista && paso.vista !== vistaActiva() && NOMBRE_VISTA[paso.vista] ? ' (' + NOMBRE_VISTA[paso.vista] + ')' : '';
   avisoBreve((sentido === 'deshacer' ? 'Deshecho: ' : 'Rehecho: ') + paso.etiqueta + donde, 'ok');
+}
+function _avisarSalteados(salteados){
+  avisoBreve('No se deshizo ' + describirCambio(salteados[0]) +
+    (salteados.length > 1 ? ' (y ' + (salteados.length - 1) + ' más)' : '') +
+    ': lo cambió otra persona después.', 'error');
 }
 export function deshacer(){ _mover('deshacer'); }
 export function rehacer(){ _mover('rehacer'); }
@@ -205,8 +253,16 @@ function _leerActivo(){
   };
 }
 
-async function _mirarVersion(){
-  if (_vivoParado || _vivoMirando || !_datos || document.visibilityState !== 'visible') return;
+function _ocupado(){
+  return ocupadoSegun({ overlayAbierto: $('overlay').classList.contains('show'), activo: _leerActivo() });
+}
+
+/* probar: con la sesion vencida (_vivoParado) la consulta periodica no sale,
+ * para no sacar el cartel de sesion cada 15 s. Pero al volver a la pestaña
+ * (visibilitychange) o a la ventana (focus) se prueba una vez: si ya se
+ * inicio sesion en la otra pestaña, el OK vuelve a prender el en vivo. */
+async function _mirarVersion(probar){
+  if ((_vivoParado && probar !== true) || _vivoMirando || !_datos || document.visibilityState !== 'visible') return;
   _vivoMirando = true;
   try {
     let info;
@@ -214,13 +270,14 @@ async function _mirarVersion(){
       const r = await fetch(API + '/version', { cache: 'no-store' });
       if (r.status === 401){ _vivoParado = true; return; }
       if (!r.ok) return;
+      _vivoParado = false;
       info = await r.json();
     } catch (e) { return; }
     const decision = decidirActualizacion({
       versionServidor: info.version,
       versionLocal: (_datos.meta || {}).version,
       pendiente: hayCambiosSinGuardar(),
-      ocupado: ocupadoSegun({ overlayAbierto: $('overlay').classList.contains('show'), activo: _leerActivo() }),
+      ocupado: _ocupado(),
     });
     if (decision === 'adoptar') await _adoptarDelServidor(info);
   } finally { _vivoMirando = false; }
@@ -231,11 +288,15 @@ async function _adoptarDelServidor(info){
   let nuevo;
   try {
     const r = await fetch(API + '/datos', { cache: 'no-store' });
+    if (r.status === 401){ _vivoParado = true; return; }
     if (!r.ok) return;
     nuevo = await r.json();
   } catch (e) { return; }
   // Se edito mientras bajaba: se descarta, lo combina el 409 del autoguardado.
   if (_ediciones !== edicionesAntes || hayCambiosSinGuardar()) return;
+  // Se abrio un overlay o se empezo a tipear mientras bajaba: se descarta; la
+  // proxima consulta lo vuelve a intentar.
+  if (_ocupado()) return;
   _antesDeCambioAjeno();
   setDatos(nuevo);
   completarSecciones();
@@ -244,7 +305,7 @@ async function _adoptarDelServidor(info){
   document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
   invalidarVistas();
   cargarDashboard();
-  renderActivo();
+  try { renderActivo(); } catch (e) { console.error('renderActivo tras actualizar en vivo:', e); }
   _estado('↻ Actualizado con cambios de ' + (info.autor || 'otro usuario') + ' (v' + DATOS().meta.version + ')', 'saved');
 }
 
@@ -252,8 +313,9 @@ async function _adoptarDelServidor(info){
 export function arrancarEnVivo(){
   setInterval(_mirarVersion, CADA_MS);
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') _mirarVersion();
+    if (document.visibilityState === 'visible') _mirarVersion(true);
   });
+  window.addEventListener('focus', () => { if (_vivoParado) _mirarVersion(true); });
 }
 
 window.addEventListener('beforeunload', e => {
@@ -402,10 +464,9 @@ export async function cargarDatos(){
     // Lo cargado (y el borrador recuperado) es la base: no hay nada para deshacer.
     _historial.limpiar();
     _nuevaFoto();
-    // Los objetos de DATOS() acaban de ser reemplazados: las pilas de deshacer
-    // de la grilla quedarian apuntando a objetos huerfanos. grilla.js escucha
-    // este evento para limpiarse; no se importa directamente para evitar el
-    // ciclo grilla->tabla->nucleo->grilla.
+    // Los objetos de DATOS() acaban de ser reemplazados: las vistas que
+    // guardan algo calculado sobre ellos (p.ej. vista-analisis) escuchan este
+    // evento para olvidarlo. El deshacer no lo necesita: guarda texto, no objetos.
     document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
     markSaved();   // tambien invalida el cache de pestañas
     if (recuperado) _marcarCambiado();
@@ -445,6 +506,7 @@ export function registrarAntesDeGuardar(fn){ _antesDeGuardar.push(fn); }
  * Sin alert en los casos que se repiten (red, sesion): con autoguardado serian
  * un cartel cada 2 s. El estado se ve en el statusBar. */
 async function _guardar(forzar, intento = 0){
+  _textoError = null;
   if (!dirty) return 'nada';
   cerrarPaso();
   let cambioHook = false;
@@ -454,11 +516,19 @@ async function _guardar(forzar, intento = 0){
   // Los ajustes automaticos (cierre de mermas) no son un paso tuyo.
   if (cambioHook) _nuevaFoto();
   DATOS().meta.autor = usuarioActual() || 'desconocido';
-  if (FUSION) await FUSION.borrador.guardar('lotes', borradorActual);
+  /* El borrador del equipo, antes de mandar. Si ya lo escribio el programar y
+   * no se edito nada despues, no se vuelve a pasar el documento a texto: con
+   * dos años son ~4 MB en cada guardado. Los ajustes de antesDeGuardar no
+   * suben _ediciones, por eso fuerzan la escritura. */
+  if (FUSION && (cambioHook || _edicionesEnBorrador !== _ediciones)){
+    _edicionesEnBorrador = _ediciones;
+    await FUSION.borrador.guardar('lotes', borradorActual);
+  }
   // Lo que se envía es esta foto: si se sigue editando durante el viaje, eso
   // queda pendiente para el próximo guardado.
   const enviado = JSON.stringify(DATOS());
   const edicionesAlEnviar = _ediciones;
+  const pasosAlEnviar = _historial.profundidad();
   let r;
   try {
     r = await fetch(API+'/datos' + (forzar ? '?forzar=1' : ''), {
@@ -477,12 +547,11 @@ async function _guardar(forzar, intento = 0){
       if (forzar){ alert('No se pudo guardar:\n• ' + det); return 'error'; }
       if (confirm(
         '⚠️ El servidor FRENÓ este guardado para proteger los datos:\n\n• ' + det +
-        '\n\n¿Era tu intención? Aceptar = guardar igual (queda registrado como FORZADO en el historial).\nCancelar = deshacer lo último que hiciste.'
+        '\n\n¿Era tu intención? Aceptar = guardar igual (queda registrado como FORZADO en el historial).\nCancelar = deshacer lo que hiciste desde el último guardado.'
       )){
         return _guardar(true);
       }
-      _alCancelarFreno();
-      return 'cancelado';
+      return _alCancelarFreno();
     }
     alert('Error al guardar: ' + (j.error || r.status));
     return 'error';
@@ -504,7 +573,13 @@ async function _guardar(forzar, intento = 0){
       // lote (indexOf daba -1).
       document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
       invalidarVistas();
+      // El redibujo vuela el <input> donde se estaba tipeando: se lo recuerda
+      // y se lo vuelve a enfocar (misma tabla, fila y columna) con su texto.
+      const celda = _recordarCeldaActiva();
       try { renderActivo(); } catch (e) { console.error('renderActivo tras fusionar:', e); }
+      _restaurarCeldaActiva(celda);
+      // DATOS y la base cambiaron sin editar: el borrador del equipo ya no sirve.
+      _edicionesEnBorrador = -1;
       return _guardar(forzar, intento + 1);
     }
     mostrarOverlay(
@@ -529,12 +604,14 @@ async function _guardar(forzar, intento = 0){
   if (FUSION){ _base = JSON.parse(enviado); _base.meta.version = j.version; _base.meta.actualizado = j.actualizado; }
   if (_ediciones !== edicionesAlEnviar){
     // Se editó durante el viaje: queda pendiente (y en el borrador del equipo).
+    // Lo guardado llega hasta el paso que estaba arriba al enviar.
+    _historial.marcar(pasosAlEnviar);
     _marcarCambiado();
     cargarDashboard();
     if (cambioHook || intento > 0) renderActivo();
     return 'ok';
   }
-  if (FUSION) FUSION.borrador.borrar('lotes');
+  if (FUSION){ FUSION.borrador.borrar('lotes'); _edicionesEnBorrador = -1; }
   markSaved();
   /* El tablero, el Dashboard y los colores de Lotes salen de /api/dashboard,
    * que el servidor calcula sobre lo GUARDADO. */
@@ -549,12 +626,95 @@ async function _guardar(forzar, intento = 0){
   return 'ok';
 }
 
+/* ---------- la celda donde se tipea, a traves de un redibujo ----------
+ * Tras un 409 la pestaña se redibuja YA (las filas son objetos nuevos) y eso
+ * reemplaza el <input> que tenia el foco. Se anota tabla + data-row + data-k
+ * + texto + cursor, y la identidad de la fila (el n° de lote de esa fila, si
+ * tiene celda de lote): si despues del redibujo la misma posicion es otra
+ * fila (se reordeno), no se toca nada. */
+function _recordarCeldaActiva(){
+  try {
+    const a = document.activeElement;
+    if (!a || (a.tagName !== 'INPUT' && a.tagName !== 'TEXTAREA')) return null;
+    const tabla = a.closest('table');
+    const conFila = a.closest('[data-row]'), conK = a.closest('[data-k]');
+    if (!tabla || !tabla.id || !conFila || !conK) return null;
+    const tr = a.closest('tr');
+    const celdaLote = tr ? tr.querySelector('input[data-k="lote"]') : null;
+    let desde = null, hasta = null;
+    try { desde = a.selectionStart; hasta = a.selectionEnd; } catch (e) { /* type=date: no tiene cursor */ }
+    return {
+      tabla: tabla.id, fila: conFila.dataset.row, k: conK.dataset.k, valor: a.value,
+      desde, hasta, lote: celdaLote ? celdaLote.value : null,
+    };
+  } catch (e) { return null; }
+}
+
+function _restaurarCeldaActiva(m){
+  if (!m) return;
+  try {
+    const tabla = document.getElementById(m.tabla);
+    if (!tabla) return;
+    const sel = '[data-row="' + CSS.escape(m.fila) + '"][data-k="' + CSS.escape(m.k) + '"]';
+    let el = null;
+    for (const x of tabla.querySelectorAll(sel)){
+      el = (x.tagName === 'INPUT' || x.tagName === 'TEXTAREA') ? x : x.querySelector('input, textarea');
+      if (el) break;
+    }
+    if (!el) return;   // la fila no esta dibujada (tabla virtual) o cambio de forma
+    if (m.lote != null){
+      const tr = el.closest('tr');
+      const celdaLote = tr ? tr.querySelector('input[data-k="lote"]') : null;
+      if (!celdaLote || celdaLote.value !== m.lote) return;   // es otra fila
+    }
+    el.focus();
+    if (el.value !== m.valor){
+      el.value = m.valor;
+      // Que lo tipeado llegue al modelo por el mismo camino que una tecla.
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (m.desde != null){
+      try { el.setSelectionRange(m.desde, m.hasta); } catch (e) { /* sin cursor */ }
+    }
+  } catch (e) { console.error('restaurar la celda activa:', e); }
+}
+
 /* Antes de que entre lo de otro: lo tuyo queda anotado como paso. */
 function _antesDeCambioAjeno(){ cerrarPaso(); }
 /* Despues: lo de otro es la base, no un paso tuyo. */
 function _despuesDeCambioAjeno(){ _nuevaFoto(); }
-/* El freno de borrado masivo pregunto y se eligio Cancelar. */
-function _alCancelarFreno(){ deshacer(); }
+/* El freno de borrado masivo pregunto y se eligio Cancelar: se deshace TODO
+ * lo hecho desde el ultimo guardado (los pasos de arriba de la marca), del mas
+ * nuevo al mas viejo y fila por fila como un Ctrl+Z: lo que otro cambio
+ * despues se saltea y se avisa. Solo el ultimo paso no alcanzaba: podia ser
+ * otra edicion hecha mientras viajaba el guardado, y el borrado quedaba.
+ * Si no se pudo deshacer nada devuelve 'error': el autoguardado para hasta el
+ * proximo cambio o Ctrl+S, en vez de volver a chocar con el freno. */
+function _alCancelarFreno(){
+  cerrarPaso();
+  const pasos = _historial.deshacerHasta();
+  let aplicados = 0;
+  const salteados = [];
+  for (const paso of pasos){
+    const r = aplicar(_datos, paso.cambios, 'deshacer');
+    aplicados += r.aplicados;
+    salteados.push(...r.salteados);
+  }
+  _nuevaFoto();   // lo que quedo es la base nueva: deshacer no es un paso
+  if (aplicados){
+    _marcarCambiado();   // vuelve a programar el autoguardado
+    document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
+    invalidarVistas();
+    try { renderActivo(); } catch (e) { console.error('renderActivo tras el freno:', e); }
+  }
+  if (salteados.length) _avisarSalteados(salteados);
+  else if (aplicados) avisoBreve('Deshecho lo de este guardado (' + pasos.length + (pasos.length === 1 ? ' paso' : ' pasos') + ')', 'ok');
+  else avisoBreve('No había nada para deshacer: el guardado quedó frenado.', 'error');
+  if (aplicados) return 'cancelado';
+  _textoError = '⚠ Guardado frenado: hay cambios sin guardar';
+  _estado(_textoError, 'dirty');
+  return 'error';
+}
 
 /** La de siempre, para las vistas que hacen `await guardar()` antes de
  *  imprimir: guarda YA (corta la espera del autoguardado) y devuelve si quedó

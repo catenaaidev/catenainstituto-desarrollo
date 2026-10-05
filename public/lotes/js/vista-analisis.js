@@ -1001,17 +1001,6 @@ export function renderAnalisis(opciones){
       if (estado === 'ok' && METRICAS_CON_CRITERIO.has(k)) _olvidarVeredicto(fila.analisis);
       return estado;
     },
-    escribirCrudo(fila, k, valor){
-      if (!fila) return;
-      // El Ctrl+Z tambien cambia la medicion: el veredicto ya no vale.
-      if (METRICAS_CON_CRITERIO.has(k)) _olvidarVeredicto(fila.analisis);
-      if (CAMPOS_CORRECCION.has(k)){
-        if (!fila.analisis.correccion) fila.analisis.correccion = {};
-        fila.analisis.correccion[k] = valor;
-      } else {
-        fila.analisis[k] = valor;
-      }
-    },
     onCambio: markDirty,
     /* La tabla es virtual: la grilla lee y decide sobre las filas que no estan
      * en el DOM a traves de esto (ver geo() en grilla.js). texto() tiene que
