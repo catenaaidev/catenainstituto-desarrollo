@@ -1427,6 +1427,9 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 <main>
   <!-- DASHBOARD -->
   <section class="view active" id="tab-dashboard">
+    <div class="controls" style="justify-content:flex-end;margin-bottom:12px">
+      <button class="btn" data-descargar-html data-seccion="tab-dashboard" data-titulo="Lotes CIW — Dashboard" data-archivo="dashboard-lotes" title="Baja una copia del dashboard tal como se ve ahora, en un .html que se abre sin internet">⬇️ Descargar HTML</button>
+    </div>
     <!-- KPIs -->
     <div class="kpi-grid" id="dashKpis">
       <div class="kpi-card kpi-neutral">
@@ -1697,6 +1700,8 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 <!-- QR de los rotulos de las OT (numero de lote). Mismo archivo que Prensas
      (qrcode-generator 1.4.4); clasico, publica window.qrcode. -->
 <script src="js/vendor/qrcode.min.js"></script>
+<!-- Boton "Descargar HTML" del Dashboard (compartido con Prensas). -->
+<script src="/shared/dashboard-html.js"></script>
 <script>/* Base de la API del modulo: al convivir los tres modulos en un mismo
    sitio, cada uno tiene su propio prefijo. Va como global porque app.js es un
    modulo ES y sus imports no comparten alcance. */

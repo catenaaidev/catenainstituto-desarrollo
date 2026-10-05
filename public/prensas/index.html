@@ -332,6 +332,7 @@
     <div class="controls">
       <label>Mes en curso:</label><select id="selMes"></select>
       <label>Fecha de referencia:</label><span id="hoy" style="color:var(--accent);font-weight:600"></span>
+      <button class="btn" style="margin-left:auto" data-descargar-html data-seccion="v-dashboard" data-titulo="Control de Prensas — Dashboard" data-archivo="dashboard-prensas" title="Baja una copia del dashboard tal como se ve ahora, en un .html que se abre sin internet">⬇️ Descargar HTML</button>
     </div>
     <div class="kpis">
       <div class="kpi total"><div class="label">Total lotes llenos</div><div class="num" id="kTotal">–</div><div class="pct">con litros &gt; 0</div><div class="bar"></div></div>
@@ -689,6 +690,7 @@
 
 <script src="vendor/qrcode.min.js"></script>
 <script src="/shared/reglas-av.js"></script>
+<script src="/shared/dashboard-html.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
