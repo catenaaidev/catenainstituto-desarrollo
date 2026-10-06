@@ -2,12 +2,13 @@
 'use strict';
 
 import { $, esc, escA, DATOS, markDirty, registrarVista, registrarInit, irALote,
-         vistaActiva, invalidarVista, hayCambiosSinGuardar } from './nucleo.js';
+         vistaActiva, invalidarVista, hayCambiosSinGuardar, usuarioActual } from './nucleo.js';
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla, repintarGrilla } from './grilla.js';
 import { montarVirtual } from './tabla-virtual.js';
 import { armarFilas, esQuimicaReal, esCorreccionReal, estadoCartelLote } from './analisis-filas.js';
+import { agregadosVigentes, textoAgregados, otsDeAgregados, anularAgregado } from './agregados.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
 import { crearAnchos, anchoDeTexto } from './anchos-cols.js';
@@ -50,6 +51,10 @@ const COLS_ANALISIS = [
    * o el libre. */
   { k:'so2_molecular', label:'SO₂ molecular',  ro:true, num:true },
   { k:'comentario',    label:'Comentario',     ro:false },
+  /* Los otros agregados (TH2, quitosano...) de este registro, como texto:
+   * "TH2 380 g · Quitosano 50 g". Solo se ve en la fila de tipo 'agregado' y
+   * no se edita aca: se carga y se anula en Correcciones → Otros agregados. */
+  { k:'agregado_txt',    label:'Agregado',        ro:true },
   { k:'ot_n',            label:'OT',              ro:false },
   /* La diferencia de SO2 que se agrego en la correccion (deseado - actual). Se
    * MUESTRA tal como quedo guardada, no se recalcula: la escribe
@@ -74,6 +79,10 @@ const COLS_ANALISIS = [
  * esCorreccionReal() sigue mirando so2_deseado en el DATO, asi que sacar la
  * columna no hace desaparecer ninguna fila de correccion. */
 const CAMPOS_CORRECCION = new Set(['ot_n', 'diferencia']);
+/* Lo que se ve en la fila de tipo 'agregado' (ademas de las comunes). La OT es
+ * la misma columna que la de la correccion, pero en esta fila sale de
+ * analisis.agregados[].ot_n y es de solo lectura. */
+const CAMPOS_AGREGADO = new Set(['agregado_txt', 'ot_n']);
 const CAMPOS_COMUNES = new Set([
   'lote', 'fecha_analisis',
   /* Los tres que salen del lote se ven en los DOS tipos de fila por el mismo
@@ -109,6 +118,8 @@ const CAMPOS_QUIMICA_A_VACIAR = ['ph', 'av', 'gluc_fruc', 'azucar_reductor', 'ma
  *  "lado" (correccion o quimica) coincide con el tipo de la fila. */
 function _columnaAplica(colKey, filaTipo){
   if (CAMPOS_COMUNES.has(colKey)) return true;
+  if (filaTipo === 'agregado') return CAMPOS_AGREGADO.has(colKey);
+  if (colKey === 'agregado_txt') return false;
   const esColCorreccion = CAMPOS_CORRECCION.has(colKey);
   return filaTipo === 'correccion' ? esColCorreccion : !esColCorreccion;
 }
@@ -267,8 +278,14 @@ function _fechaIso(a){
  *  Devuelve el valor CRUDO salvo en so2_molecular, que se muestra formateado:
  *  sin eso el embudo listaria 2601 floats distintos en vez de los ~200 que se
  *  leen en pantalla. */
-function _valorDeColumna(a, k){
+function _valorDeColumna(a, k, filaTipo){
   if (k === 'lote') return String(a.lote ?? '');
+  if (k === 'agregado_txt') return textoAgregados(a);
+  /* La OT de una fila de agregados sale de los agregados. Sin tipo de fila
+   * (opciones y match del embudo, que trabajan por registro) vale la de la
+   * correccion y, si no hay, la de los agregados. */
+  if (k === 'ot_n' && (filaTipo === 'agregado' || (filaTipo == null && !String((a.correccion || {}).ot_n ?? '').trim())))
+    return otsDeAgregados(a).join(', ');
   if (CAMPOS_DEL_LOTE.has(k)) return _delLote(a, k);
   if (k === 'so2_molecular'){
     const v = _veredictoDe(a);
@@ -353,6 +370,7 @@ const anchosAnalisis = crearAnchos({
  *  de la grilla para no duplicar esta decision en dos lugares. */
 function _escribirColumnaAnalisis(obj, k, texto, filaTipo){
   if (!_columnaAplica(k, filaTipo)) return 'ro';
+  if (_esROEnFila(k, filaTipo)) return 'ro';
   if (CAMPOS_CORRECCION.has(k)){
     if (!obj.correccion) obj.correccion = {};
     return escribirCelda(COLS_ANALISIS, obj.correccion, k, texto);
@@ -443,6 +461,12 @@ window.addEventListener('resize', cerrarPanelesAn);
 /* La columna por clave, para no buscarla con find() en cada celda. */
 const COL_POR_K = new Map(COLS_ANALISIS.map(c => [c.k, c]));
 
+/* En la fila de agregados solo la fecha (comun a las tres filas del registro)
+ * se edita: lo demas se maneja desde Correcciones → Otros agregados. */
+function _esROEnFila(k, filaTipo){
+  return filaTipo === 'agregado' && !CAMPOS_COMUNES.has(k);
+}
+
 /* Estado del cartel de cada lote en el ultimo render ('ok'|'mal'). Ver el
  * listener de tipeo. */
 let _estadoDeLote = new Map();
@@ -453,7 +477,7 @@ let _estadoDeLote = new Map();
 function _textoCelda(fila, k){
   if (!fila || !_columnaAplica(k, fila.tipo)) return '';
   const c = COL_POR_K.get(k);
-  const v = _valorDeColumna(fila.analisis, k);
+  const v = _valorDeColumna(fila.analisis, k, fila.tipo);
   const vista = c && c.fmt ? c.fmt(v) : v;
   return vista == null ? '' : String(vista);
 }
@@ -757,7 +781,8 @@ export function renderAnalisis(opciones){
     const o = fila.analisis;
     const ver = veredictoDe(fila);
 
-    let tb = `<tr data-f="${ri}"${esVacio(o.lote) ? ' class="vacio"' : ''}><td class="ggutter">${ri + 1}</td>`;
+    const clsTr = [esVacio(o.lote) ? 'vacio' : '', fila.tipo === 'agregado' ? 'fila-agregado' : ''].filter(Boolean).join(' ');
+    let tb = `<tr data-f="${ri}"${clsTr ? ` class="${clsTr}"` : ''}><td class="ggutter">${ri + 1}</td>`;
     for (const c of COLS_ANALISIS){
       const metric = c.k;
       const attrs = `data-row="${ri}" data-k="${escA(metric)}"`;
@@ -780,13 +805,13 @@ export function renderAnalisis(opciones){
       /* Una sola lectura para las cuatro procedencias (el registro, el lote,
        * analisis.correccion y el veredicto de la API), la misma que usan las
        * opciones del embudo de esta columna. */
-      const v = _valorDeColumna(o, metric);
+      const v = _valorDeColumna(o, metric, fila.tipo);
       /* Lo unico que cambia entre el dato y la pantalla. La celda de Fecha se
        * lee 10/09/2026 y se escribe igual; escribirCelda la vuelve a ISO al
        * guardar, asi que el valor del modelo nunca ve el formato de pantalla. */
       const vista = c.fmt ? c.fmt(v) : v;
 
-      if (c.ro){
+      if (c.ro || _esROEnFila(metric, fila.tipo)){
         const cls = 'ro' + marca + (c.num ? ' num' : '');
         tb += `<td class="${cls}" ${attrs}>${esc(vista)}</td>`;
       } else {
@@ -796,7 +821,8 @@ export function renderAnalisis(opciones){
               `${attrs} value="${escA(vista)}"></td>`;
       }
     }
-    const etiquetaBoton = fila.tipo === 'quimica' ? 'Eliminar medición' : 'Eliminar corrección';
+    const etiquetaBoton = fila.tipo === 'quimica' ? 'Eliminar medición'
+      : fila.tipo === 'agregado' ? 'Anular agregados' : 'Eliminar corrección';
     tb += `<td><button class="rowbtn" data-del="${ri}" title="${escA(etiquetaBoton)}">✕</button></td></tr>`;
     return tb;
   };
@@ -886,6 +912,18 @@ export function renderAnalisis(opciones){
       const fila = t._rows[+b.dataset.del]; if (!fila) return;
       const o = fila.analisis;
       const esQuimica = fila.tipo === 'quimica';
+      if (fila.tipo === 'agregado'){
+        /* Los agregados no se borran: se anulan, con quien y cuando, y quedan
+         * tachados en la bitacora de Otros agregados (rastro de calidad). */
+        if (!confirm(`¿Anular los agregados del lote ${o.lote} (${fmtFecha(o.fecha_analisis)||'sin fecha'}): ${textoAgregados(o)}?
+
+Quedan tachados en Correcciones → Otros agregados.`)) return;
+        const en = new Date().toISOString();
+        agregadosVigentes(o).forEach(ag => anularAgregado(ag, usuarioActual() || 'desconocido', en));
+        markDirty();
+        renderAnalisis({ conservarScroll: true });
+        return;
+      }
       const etiqueta = esQuimica ? 'esta medición' : 'esta corrección';
       if (!confirm(`¿Eliminar ${etiqueta} del lote ${esc(o.lote)} (${esc(fmtFecha(o.fecha_analisis)||'sin fecha')})?`)) return;
 
@@ -902,7 +940,7 @@ export function renderAnalisis(opciones){
 
       /* El registro completo desaparece de DATOS().analisis recien cuando
        * NINGUNA de las dos partes queda con algo real — nunca antes. */
-      if (!esQuimicaReal(o) && !esCorreccionReal(o.correccion)){
+      if (!esQuimicaReal(o) && !esCorreccionReal(o.correccion) && !Array.isArray(o.agregados)){
         const idx = DATOS().analisis.indexOf(o);
         if (idx !== -1) DATOS().analisis.splice(idx, 1);
       }
@@ -1013,7 +1051,7 @@ export function renderAnalisis(opciones){
       esRO: (f, k) => {
         const fila = filasDeDatos[f];
         const c = COL_POR_K.get(k);
-        return !fila || !c || c.ro || !_columnaAplica(k, fila.tipo);
+        return !fila || !c || c.ro || !_columnaAplica(k, fila.tipo) || _esROEnFila(k, fila.tipo);
       },
     },
   });

@@ -21,6 +21,7 @@ import './js/vista-movimientos.js';
 import './js/vista-orden.js';
 import './js/vista-cruce.js';
 import './js/vista-orden-correccion.js';
+import './js/vista-agregados.js';
 import { agregarVariedadConfig, agregarProyectoConfig, restaurarDefaultsConfig } from './js/vista-config.js';
 
 /* ---------- handlers inline del HTML ----------
@@ -37,7 +38,12 @@ window.cerrarOverlay       = cerrarOverlay;        // nucleo.js verHistorial(): 
 document.addEventListener('DOMContentLoaded', async () => {
   /* tabs */
   document.querySelectorAll('.tabs button[data-v]').forEach(b => {
-    b.addEventListener('click', () => mostrarTab(b.dataset.v));
+    /* El boton de Correcciones es data-v="so2", pero lleva a la ultima
+       sub-pestaña usada del grupo (mostrarTab('correcciones')). */
+    b.addEventListener('click', () => mostrarTab(b.dataset.v === 'so2' ? 'correcciones' : b.dataset.v));
+  });
+  document.querySelectorAll('#corrSub [data-sub]').forEach(b => {
+    b.addEventListener('click', () => mostrarTab(b.dataset.sub));
   });
 
   /* cerrar filtros al hacer clic fuera */

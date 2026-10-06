@@ -915,3 +915,15 @@ describe('la clave so2_libre_min ya no existe', () => {
     expect(criteriosEfectivos(cfg(), 'Malbec', null)).not.toHaveProperty('so2_libre_min');
   });
 });
+
+describe('otros agregados', () => {
+  it('un registro solo de agregados no mueve la ultima medicion', () => {
+    const an = [
+      { lote: '1', fecha_analisis: '2026-02-01', malico: 0.15 },
+      { lote: '1', fecha_analisis: '2026-02-20', agregados: [{ producto: 'TH2', ot_n: 'B1' }] },
+    ];
+    const r = evaluarLote({ lote: '1', variedad: 'Malbec', litros_actuales: 100 }, an, cfg(), d('2026-02-21'));
+    expect(r.ultima_fecha).toBe('2026-02-01');
+    expect(r.dias_desde_analisis).toBe(20);
+  });
+});
