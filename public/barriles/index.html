@@ -27,6 +27,10 @@ const API='/barriles/api';</script>
      porque el arranque de la página corre durante el parseo: un type="module"
      llegaría tarde. Se testea en test/barriles-altas.test.mjs. -->
 <script src="js/altas.js"></script>
+<!-- El Registro del operario: entender el buscador, filtrar y agrupar las órdenes
+     por mes, la historia de un barril y el resumen de un lote. Va acá, como script
+     clásico, por lo mismo que los de arriba. Se testea en test/barriles-registro.test.mjs. -->
+<script src="js/registro.js"></script>
 <!-- La sincronización con el servidor: cómo leer cada respuesta (401 no es
      "sin conexión"), el límite de tiempo de los pedidos y la fusión de boxes,
      palets y valores sueltos al reintentar un 409. Va acá, como script clásico,
@@ -414,6 +418,89 @@ const API='/barriles/api';</script>
   .palet .celda { width:58px; height:52px; }
   .palet .cas-col { font-size:.6rem; color:#777; text-align:center; }
 
+  /* ===== Modo operario: portada y barra de Inicio (2026-10-06) =====
+     Todo bajo body.rol-operario o en clases que solo existen en la portada: el
+     programador no ve ningún cambio. */
+  body.rol-operario { font-size: 17px; }
+  body.rol-operario main { max-width: 1280px; padding: 24px 28px; }
+  body.rol-operario .tarjeta { border-radius: 14px; padding: 22px; }
+  body.rol-operario button.btn { font-size: 1rem; padding: 11px 18px; border-radius: 8px; }
+  body.rol-operario #panel-inventario > details.ayuda { display: none; }
+  #navOperario #opInicio { color: #fff; font-weight: 700; }
+  body.op-inicio #navOperario #opInicio { display: none; }
+  #opTitulo { color: #fff; font-size: 1.15rem; font-weight: 700; padding: 14px 8px 14px 24px; }
+  body:not(.op-inicio) #opTitulo { border-left: 1px solid rgba(255,255,255,.25); padding-left: 18px; }
+  #opAyuda { color: #e8d3db; font-size: .98rem; padding: 14px 8px; }
+  .ini-saludo { margin: 8px 0 24px; }
+  .ini-saludo h2 { font-size: 1.9rem; color: var(--vino-osc); margin: 0; }
+  .ini-saludo p { color: #6d6259; font-size: 1.1rem; margin-top: 4px; }
+  .ini-grandes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+  .ini-boton { background: #fff; border: 1px solid var(--gris); border-radius: 18px; padding: 26px 22px; text-align: left; cursor: pointer;
+               display: flex; flex-direction: column; gap: 8px; min-height: 190px; font: inherit; color: inherit;
+               transition: border-color .15s, transform .15s; }
+  .ini-boton:hover { border-color: var(--vino); transform: translateY(-2px); }
+  .ini-boton:focus-visible, .ini-chico:focus-visible { outline: 3px solid var(--vino); outline-offset: 2px; }
+  .ini-boton .ini-ico { font-size: 2.6rem; line-height: 1; }
+  .ini-boton b { font-size: 1.35rem; color: var(--vino-osc); margin-top: auto; }
+  .ini-boton span:last-child { color: #6d6259; font-size: 1rem; }
+  .ini-boton.ini-destacado { border: 2px solid var(--vino); background: #fdf6f7; }
+  .ini-chicos { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+  .ini-chico { background: #fff; border: 1px solid var(--gris); border-radius: 999px; padding: 12px 20px; font: inherit; font-size: 1rem; cursor: pointer; color: var(--vino-osc); }
+  .ini-chico:hover { border-color: var(--vino); }
+  .ini-cuenta:not(:empty) { background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 9px; margin-left: 8px; font-size: .85rem; font-weight: 700; }
+  @media (max-width: 900px) { .ini-grandes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  /* ===== Registro del operario ===== */
+  .reg-barra { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+  .reg-buscador { flex: 1; display: flex; align-items: center; gap: 10px; background: #fff; border: 2px solid var(--vino); border-radius: 12px; padding: 2px 16px; font-size: 1.3rem; }
+  .reg-buscador input { flex: 1; border: none; outline: none; font-size: 1.35rem; padding: 12px 0; background: transparent; min-width: 0; }
+  .reg-como:not(:empty) { background: #f3e6ea; color: var(--vino-osc); border-radius: 999px; padding: 4px 12px; font-size: .9rem; font-weight: 600; white-space: nowrap; }
+  .reg-meses { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .reg-mes { background: #fff; border: 1px solid var(--gris); border-radius: 999px; padding: 8px 16px; font: inherit; font-size: .98rem; cursor: pointer; color: var(--vino-osc); }
+  .reg-mes:hover { border-color: var(--vino); }
+  .reg-mes.activo { background: var(--vino); border-color: var(--vino); color: #fff; font-weight: 700; }
+  .reg-grupo { margin-bottom: 24px; }
+  .reg-grupo h3 { font-size: 1.25rem; color: var(--vino-osc); margin: 0 0 12px; }
+  .reg-grupo h3 span { font-size: .95rem; color: #8a7f76; font-weight: 400; margin-left: 8px; }
+  details.reg-grupo > summary { cursor: pointer; list-style: none; }
+  details.reg-grupo > summary::-webkit-details-marker { display: none; }
+  details.reg-grupo > summary h3::before { content: '▸ '; }
+  details.reg-grupo[open] > summary h3::before { content: '▾ '; }
+  .reg-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; align-items: start; }
+  .reg-tarjeta { background: #fff; border: 1px solid var(--gris); border-top: 6px solid #9e9e9e; border-radius: 12px; padding: 14px 16px; }
+  .reg-tarjeta.reg-llenado { border-top-color: var(--ok); }
+  .reg-tarjeta.reg-vaciado { border-top-color: #e0a100; }
+  .reg-tarjeta.reg-mixto { border-top-color: var(--vino); }
+  .reg-tarjeta.reg-con-barril { box-shadow: 0 0 0 3px #ffd54f; }
+  .reg-cabeza { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .reg-lote { font-size: 1.9rem; font-weight: 800; color: #2b2b2b; letter-spacing: .5px; }
+  .reg-tipo { font-size: .8rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .5px; background: #eee; color: #444; white-space: nowrap; }
+  .reg-llenado .reg-tipo { background: #e3f1e4; color: #1b5e20; }
+  .reg-vaciado .reg-tipo { background: #fff3d6; color: #7a5200; }
+  .reg-mixto .reg-tipo { background: #f3e6ea; color: var(--vino-osc); }
+  .reg-datos { color: #6d6259; font-size: .95rem; margin: 4px 0 10px; }
+  .reg-barriles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .reg-barril { font-family: Consolas, 'Courier New', monospace; font-size: 1.05rem; padding: 6px 0; border: 1px solid var(--gris); border-radius: 6px; background: #faf8f5; cursor: pointer; color: #2b2b2b; }
+  .reg-barril:hover { border-color: var(--vino); background: #fff; }
+  .reg-barril.reg-hit { background: #ffd54f; border-color: #c79a00; font-weight: 700; }
+  .reg-acciones { display: flex; gap: 8px; margin-top: 12px; }
+  body.rol-operario .reg-acciones .btn { padding: 6px 12px; font-size: .9rem; }
+  .reg-vacio { background: #fff; border: 1px dashed var(--gris); border-radius: 12px; padding: 30px; text-align: center; font-size: 1.1rem; color: #6d6259; }
+  .reg-ficha { background: #fff; border: 2px solid var(--vino); border-radius: 14px; padding: 18px 22px; margin-bottom: 18px;
+               display: grid; grid-template-columns: auto 1fr auto; gap: 8px 26px; align-items: start; }
+  .reg-ficha-num { font-family: Consolas, 'Courier New', monospace; font-size: 2.2rem; font-weight: 800; color: var(--vino-osc); }
+  .reg-ficha dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 4px 0 0; }
+  .reg-ficha dt { color: #8a7f76; }
+  .reg-ficha dd { margin: 0; font-weight: 600; }
+  .reg-historia { grid-column: 1 / -1; border-top: 1px solid var(--gris); padding: 10px 0 0 22px; margin: 4px 0 0; }
+  .reg-historia li { margin: 3px 0; }
+  .reg-estado { padding: 2px 10px; border-radius: 999px; font-weight: 700; font-size: .9rem; background: #eceff1; color: #37474f; }
+  .reg-estado.LLENO { background: #e3f1e4; color: #1b5e20; }
+  .reg-estado.MERMO { background: #fff3d6; color: #7a5200; }
+  .reg-resumen { background: #fff; border: 1px solid var(--gris); border-left: 6px solid var(--vino); border-radius: 0 12px 12px 0; padding: 14px 18px; margin-bottom: 18px; font-size: 1.1rem; }
+  .reg-alternativa { margin-top: 6px; font-size: .98rem; }
+  .reg-link { background: none; border: none; color: var(--vino); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
+  .reg-titulo-impresion { display: none; }
+
   /* ===== Impresión: versión armada en #areaImpresion, B&N, boxes anchos en 2 tiras ===== */
   .solo-impresion { display: none; }
   @media print {
@@ -442,6 +529,30 @@ const API='/barriles/api';</script>
     .celda-print.resaltada-print .n { font-weight: 800; }
     .celda-print.libre-print { background: #fff; }
     .celda-print.hueco-print { background: repeating-linear-gradient(45deg,#fff,#fff 3px,#000 3px,#000 4px); }
+      /* Registro del operario: se imprime la pantalla tal cual (sin #areaImpresion,
+       que es la del mapa), con las tarjetas en tres columnas. */
+    body.imprimiendo-registro main { display: block !important; padding: 0; max-width: none; }
+    body.imprimiendo-registro #areaImpresion,
+    body.imprimiendo-registro #avisoSoloLectura,
+    body.imprimiendo-registro .reg-barra,
+    body.imprimiendo-registro .reg-meses,
+    body.imprimiendo-registro .reg-acciones,
+    body.imprimiendo-registro .reg-ficha .btn { display: none !important; }
+    body.imprimiendo-registro .reg-titulo-impresion { display: block !important; font-size: 16pt; color: #000; margin-bottom: 8px; }
+    /* En papel no sirve la grilla: una tarjeta de 36 barriles dejaba media hoja
+       en blanco. Columnas de diario: cada tarjeta entera, una debajo de otra. */
+    body.imprimiendo-registro { background: #fff; font-size: 10pt; }
+    body.imprimiendo-registro .reg-grilla { display: block; columns: 4; column-gap: 8px; }
+    body.imprimiendo-registro .reg-tarjeta { display: inline-block; width: 100%; margin: 0 0 8px; padding: 6px 8px;
+      break-inside: avoid; box-shadow: none; border-top-width: 4px; }
+    body.imprimiendo-registro .reg-lote { font-size: 14pt; }
+    body.imprimiendo-registro .reg-tipo { font-size: 7pt; padding: 1px 6px; }
+    body.imprimiendo-registro .reg-datos { font-size: 8pt; margin: 1px 0 4px; }
+    body.imprimiendo-registro .reg-barriles { grid-template-columns: repeat(3, 1fr); gap: 2px; }
+    body.imprimiendo-registro .reg-barril { background: #fff; font-size: 8.5pt; padding: 1px 0; border-radius: 3px; }
+    body.imprimiendo-registro .reg-grupo h3 { font-size: 12pt; margin-bottom: 6px; }
+    body.imprimiendo-registro .reg-ficha, body.imprimiendo-registro .reg-resumen { padding: 8px 12px; margin-bottom: 8px; font-size: 10pt; }
+    body.imprimiendo-registro details.reg-grupo > summary h3::before { content: ''; }
   }
 </style>
 </head>
@@ -463,13 +574,12 @@ const API='/barriles/api';</script>
   <button data-panel="reportes">📊 Reportes</button>
   <button data-panel="celular">📱 Celular</button>
 </nav>
+<!-- Operario: ya no hay pestañas. Se entra por la portada (#panel-inicio) y esta
+     barra solo dice dónde estás y cómo volver. -->
 <nav id="navOperario">
-  <button data-op="cargar">📦 Cargar box</button>
-  <button data-op="buscar">🔍 Buscar barriles</button>
-  <button data-op="escaner">🛢️ Escáner</button>
-  <button data-op="inventario">🧾 Inventario</button>
-  <button data-op="pedidos">🏷️ Pedidos de rótulos</button>
-  <button data-op="celular">📱 Conectar teléfono</button>
+  <button id="opInicio" data-op="inicio">← Inicio</button>
+  <span id="opTitulo"></span>
+  <span id="opAyuda"></span>
 </nav>
 <div id="opVistaSel">
   <span id="opVistaLabel" style="font-size:.85rem; color:#6b1f3a; font-weight:600;">Ver y cargar en:</span>
@@ -477,6 +587,40 @@ const API='/barriles/api';</script>
   <button data-opvista="mapa3d">🧊 Vista 3D</button>
 </div>
 <main>
+  <!-- ============ PORTADA DEL OPERARIO ============ -->
+  <section class="panel" id="panel-inicio">
+    <div class="ini-saludo">
+      <h2 id="iniSaludo">Buen día</h2>
+      <p id="iniFecha"></p>
+    </div>
+    <div class="ini-grandes">
+      <button class="ini-boton" data-op="cargar"><span class="ini-ico">📦</span><b>Cargar box</b><span>Ubicar barriles en el mapa</span></button>
+      <button class="ini-boton" data-op="escaner"><span class="ini-ico">🛢️</span><b>Llenado / vaciado</b><span>Escanear una orden</span></button>
+      <button class="ini-boton ini-destacado" data-op="registro"><span class="ini-ico">📒</span><b>Registro</b><span>Ver lo que se cargó</span></button>
+      <button class="ini-boton" data-op="buscar"><span class="ini-ico">🔍</span><b>Dónde está</b><span>Buscar un barril en el mapa</span></button>
+    </div>
+    <div class="ini-chicos">
+      <button class="ini-chico" data-op="inventario">🧾 Asociar vasija con lote</button>
+      <button class="ini-chico" data-op="pedidos">🏷️ Pedidos de rótulos<span class="ini-cuenta" id="iniPedidos"></span></button>
+      <button class="ini-chico" data-op="celular">📱 Conectar teléfono</button>
+    </div>
+  </section>
+  <!-- ============ REGISTRO DEL OPERARIO (lo que antes era la carpeta de Excel) ============ -->
+  <section class="panel" id="panel-registro">
+    <h2 class="reg-titulo-impresion" id="regTituloImpresion"></h2>
+    <div class="reg-barra">
+      <label class="reg-buscador">
+        <span aria-hidden="true">🔍</span>
+        <input type="search" id="regBuscar" autocomplete="off"
+               placeholder="Lote, barril, OT o fecha — ej. 25242 · 2180036 · OT 812 · 14/1">
+        <span class="reg-como" id="regComo"></span>
+      </label>
+      <button class="btn sec" id="regImprimir">🖨️ Imprimir</button>
+    </div>
+    <div class="reg-meses" id="regMeses"></div>
+    <div id="regArriba"></div>
+    <div id="regLista"></div>
+  </section>
 
   <!-- ============ INVENTARIO (una sola lista: barricas, vasijas y tanques) ============ -->
   <section class="panel activo" id="panel-inventario">
@@ -669,8 +813,9 @@ const API='/barriles/api';</script>
     <!-- El historial se pliega: al operario le come la pantalla y le mete adelante
          datos de ordenes viejas mientras carga. Arranca cerrado para el y abierto
          para el programador (lo decide aplicarRol). El contador va en el
-         encabezado para que se lea sin desplegar. -->
-    <details class="tarjeta esc-historial" id="escCajaHistorial">
+         encabezado para que se lea sin desplegar.
+         Desde el 2026-10-06 el operario no lo ve: tiene el Registro. -->
+    <details class="tarjeta esc-historial solo-prog" id="escCajaHistorial">
       <summary>
         <h2>Historial de órdenes</h2>
         <span class="nota" id="escHistCount"></span>
@@ -1407,6 +1552,8 @@ function redibujarTodo() {
   if ($('panel-reportes').classList.contains('activo')) dibujarReportes();
   if ($('panel-escaner').classList.contains('activo')) escDibujarHistorial();
   if ($('panel-pedidos').classList.contains('activo')) pedidosDibujar();
+  if ($('panel-inicio').classList.contains('activo')) iniDibujar();
+  if (regPanelActivo()) regDibujar();
   if (sesion) refrescarLibre();
   aplicarModoLote();   // un cambio remoto puede haber prendido/apagado el modo por lote
   if (typeof barSetContador === 'function') barSetContador();
@@ -1854,6 +2001,8 @@ function activarPanel(nombre) {
   if (nombre === 'inventario') { barAlAbrir(); dibujarResumenInv(); }
   if (nombre === 'pedidos') pedidosDibujar();
   if (nombre === 'celular') dibujarQR();
+  if (nombre === 'inicio') iniDibujar();
+  if (nombre === 'registro') { regDibujar(); setTimeout(() => $('regBuscar').focus(), 0); }
 }
 document.querySelectorAll('#navProgramador button[data-panel]').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('#navProgramador button').forEach(x => x.classList.remove('activo'));
@@ -1986,26 +2135,37 @@ function aplicarRol(r) {
   // Los botones del historial dependen del rol y de la hora: hay que redibujar,
   // o al cambiar de rol quedan los de antes.
   escDibujarHistorial();
-  if (r === 'operario') opSeccion('cargar');
+  if (r === 'operario') opSeccion('inicio');
   else if (!document.querySelector('.panel.activo')) activarPanel('inventario');
   revisarMigracion();
 }
 
-// Operario: dos secciones (cargar / buscar) que reusan los paneles de Mapa y Vista 3D.
+// Operario: se entra por la portada; cada botón abre una sección. Cargar y
+// Buscar reusan los paneles de Mapa y Vista 3D; Registro es propio.
+// La barra de arriba (#navOperario) solo dice dónde estás y cómo volver.
+const OP_TITULOS = {
+  inicio: ['', ''],
+  cargar: ['📦 Cargar box', 'Tocá la posición en el mapa y después leé el barril con la pistola.'],
+  buscar: ['🔍 Dónde está', 'Escribí un barril o un lote y se marca en el mapa.'],
+  escaner: ['🛢️ Llenado / vaciado', 'Elegí la operación, completá la OT y el lote, y leé los barriles.'],
+  registro: ['📒 Registro', 'Todo lo que se cargó, por mes. Buscá por lote, barril, OT o fecha.'],
+  inventario: ['🧾 Asociar vasija con lote', 'Leé la vasija y escribí el lote que tiene.'],
+  pedidos: ['🏷️ Pedidos de rótulos', 'Rótulos pedidos para reimprimir.'],
+  celular: ['📱 Conectar teléfono', 'Escaneá el código con el celular para usarlo como lector.'],
+};
 function opSeccion(sec) {
   if (sesion && sesion.modo === 'libre') salirModoLibre();   // no mezclar cargar y buscar
-  document.body.classList.toggle('op-cargar', sec === 'cargar');
-  document.body.classList.toggle('op-buscar', sec === 'buscar');
-  document.querySelectorAll('#navOperario button[data-op]').forEach(x => x.classList.toggle('activo', x.dataset.op === sec));
+  if (!OP_TITULOS[sec]) sec = 'inicio';
+  for (const s of Object.keys(OP_TITULOS)) document.body.classList.toggle('op-' + s, s === sec);
+  $('opTitulo').textContent = OP_TITULOS[sec][0];
+  $('opAyuda').textContent = OP_TITULOS[sec][1];
   const lbl = $('opVistaLabel');
   if (lbl) lbl.textContent = sec === 'buscar' ? 'Ver en:' : 'Ver y cargar en:';
   if (sec === 'cargar') opVista(opVistaActual);
   // Buscar arranca en Mapa 2D (el que se imprime); el selector permite pasar a 3D.
   else if (sec === 'buscar') { $('buscarMapa').value = ''; if ($('buscar3d')) $('buscar3d').value = ''; opVista('mapa'); }
-  else if (sec === 'escaner') activarPanel('escaner');
-  else if (sec === 'inventario') activarPanel('inventario');
-  else if (sec === 'pedidos') activarPanel('pedidos');
-  else if (sec === 'celular') activarPanel('celular');
+  else activarPanel(sec);   // inicio, registro, escaner, inventario, pedidos, celular
+  window.scrollTo(0, 0);
 }
 function opVista(vista) {
   opVistaActual = vista;
@@ -2014,6 +2174,196 @@ function opVista(vista) {
 }
 
 document.querySelectorAll('#navOperario button[data-op]').forEach(b => b.addEventListener('click', () => opSeccion(b.dataset.op)));
+
+document.querySelectorAll('#panel-inicio button[data-op]').forEach(b => b.addEventListener('click', () => opSeccion(b.dataset.op)));
+
+function iniDibujar() {
+  const h = new Date().getHours();
+  $('iniSaludo').textContent = h < 13 ? 'Buen día' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
+  const f = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  $('iniFecha').textContent = f.charAt(0).toUpperCase() + f.slice(1) + ' · ¿Qué vas a hacer?';
+  const pend = (estado.pedidos || []).filter(p => !p.hecho).length;
+  $('iniPedidos').textContent = pend ? String(pend) : '';
+}
+
+// ================== REGISTRO (operario) ==================
+// La carpeta de Excel de antes, con buscador: una tarjeta por orden con el lote
+// arriba y los barriles abajo, agrupadas por mes. La lógica pura está en
+// js/registro.js; acá solo se dibuja.
+let regMes = null;   // 'aaaa-mm', 'todos' o null (= todavía no se eligió: arranca en el mes actual)
+const REG_TIPO = {
+  llenado: ['Llenado', 'reg-llenado'],
+  vaciado: ['Vaciado', 'reg-vaciado'],
+  llenado_vaciado: ['Llenado y vaciado', 'reg-mixto'],
+};
+const REG_COMO = { fecha: 'fecha', barril: 'barril', lote: 'lote', ot: 'OT', texto: 'texto' };
+
+function regPanelActivo() { return !!$('panel-registro') && $('panel-registro').classList.contains('activo'); }
+
+function regTextoUbicacion(num) {
+  const u = buscarUbicacion(num);
+  if (u) return `${u.box.nombre} · ${LADO_NOMBRE[u.lado] || ''} · Fila ${u.fila} · Pos ${u.col}`;
+  const t = buscarUbicacionTanque(num);
+  if (t) return `${t.palet.nombre || 'Palet'} · Pos ${t.col}`;
+  return '';
+}
+// Boxes (y palets) donde está un lote. En la bodega el mapa se carga por lote: al
+// 2026-10 todas las posiciones tienen el lote y ninguna el número de barril, así
+// que "dónde está un barril" casi siempre se contesta por su lote.
+function regBoxesDeLote(lote) {
+  const l = String(lote || '').trim().toUpperCase();
+  if (!l) return [];
+  const tiene = v => v !== 'HUECO' && (String(v).toUpperCase() === l || loteDeCelda(v).toUpperCase() === l);
+  return [...(estado.boxes || []), ...(estado.palets || [])]
+    .filter(c => Object.values(c.celdas || {}).some(tiene))
+    .map(c => c.nombre || 'palet');
+}
+// "Dónde está" de la ficha: { texto, buscar } — buscar es lo que se marca en el
+// mapa (el barril si está ubicado, si no su lote). Sin ubicación: null.
+function regDondeEstaBarril(num, fila) {
+  const propia = regTextoUbicacion(num);
+  if (propia) return { texto: propia, buscar: String(num) };
+  const lleno = fila && fila.lote && normEstado(fila.estado) !== 'VACIO';
+  const boxes = lleno ? regBoxesDeLote(fila.lote) : [];
+  if (!boxes.length) return null;
+  return { texto: `Su lote ${fila.lote} está en ${boxes.join(', ')}`, buscar: String(fila.lote) };
+}
+
+function regTarjetaHtml(o, resaltar) {
+  const [txtTipo, clase] = REG_TIPO[o.tipo] || [o.tipo || '—', ''];
+  const cods = (o.codigos || []).map(c => String(c).trim());
+  const tiene = resaltar && cods.includes(resaltar);
+  const v = escPuedeEditar(o, rol);
+  const acciones = (!soloLectura && v.puede) ? `<div class="reg-acciones">
+      <button class="btn sec" onclick="regEditar(${argJs(o.id)})">✏️ Editar</button>
+      <button class="btn peligro" onclick="escBorrarOrden(${argJs(o.id)})">🗑 Borrar</button></div>` : '';
+  return `<article class="reg-tarjeta ${clase}${tiene ? ' reg-con-barril' : ''}">
+    <div class="reg-cabeza"><span class="reg-lote">${escapeHtml(o.lote || 'Sin lote')}</span><span class="reg-tipo">${escapeHtml(txtTipo)}</span></div>
+    <div class="reg-datos">${escapeHtml(fechaRegistro(o.fecha) || 'sin fecha')} · ${o.ot ? 'OT ' + escapeHtml(otLimpia(o.ot)) : 'sin OT'} · <b>${cods.length}</b> barril${cods.length === 1 ? '' : 'es'}</div>
+    <div class="reg-barriles">${cods.map(c =>
+      `<button class="reg-barril${c === resaltar ? ' reg-hit' : ''}" title="Ver la historia de este barril" onclick="regBuscarBarril(${argJs(c)})">${escapeHtml(c)}</button>`).join('')}</div>
+    ${acciones}
+  </article>`;
+}
+
+function regFichaHtml(num, ordenes) {
+  const fila = indiceInv.get(String(num));
+  const hist = historiaDeBarril(num, ordenes);
+  const donde = regDondeEstaBarril(num, fila);
+  const hoy = fila
+    ? `<span class="reg-estado ${escapeHtml(fila.estado)}">${escapeHtml(fila.estado === 'VACIO' ? 'VACÍO' : (fila.estado || '—'))}</span>` +
+      (fila.lote ? ' · lote ' + escapeHtml(fila.lote) : '') +
+      (fila.fecha ? ' · desde el ' + escapeHtml(fechaRegistro(fila.fecha)) : '')
+    : 'No figura en el inventario';
+  const lineas = hist.length
+    ? hist.map(h => `<li>${escapeHtml(fechaRegistro(h.fecha) || 'sin fecha')} · <b>${escapeHtml((REG_TIPO[h.tipo] || [h.tipo])[0])}</b> · lote ${escapeHtml(h.lote || '—')}${h.ot ? ' · OT ' + escapeHtml(otLimpia(h.ot)) : ''}</li>`).join('')
+    : '<li>Sin órdenes registradas.</li>';
+  return `<div class="reg-ficha">
+    <div class="reg-ficha-num">${escapeHtml(num)}</div>
+    <dl><dt>Hoy</dt><dd>${hoy}</dd><dt>Dónde está</dt><dd>${donde ? escapeHtml(donde.texto) : 'Sin ubicar en el mapa'}</dd></dl>
+    ${donde ? `<button class="btn" onclick="regVerEnMapa(${argJs(donde.buscar)})">🗺️ Ver en el mapa</button>` : '<span></span>'}
+    <ol class="reg-historia">${lineas}</ol>
+  </div>`;
+}
+
+function regArribaHtml(q, ordenes) {
+  if (q.tipo === 'barril') return regFichaHtml(q.valor, ordenes);
+  if (q.tipo === 'lote') {
+    const r = resumenDeLote(q.valor, ordenes);
+    const boxes = regBoxesDeLote(q.valor);
+    const mapa = boxes.length ? `<div class="reg-alternativa">En el mapa: <b>${escapeHtml(boxes.join(', '))}</b>
+      <button class="btn" style="margin-left:10px;" onclick="regVerEnMapa(${argJs(q.valor)})">🗺️ Ver en el mapa</button></div>` : '';
+    const esBarril = q.alternativa === 'barril' || indiceInv.has(q.valor);
+    const alt = esBarril ? `<div class="reg-alternativa">¿Buscabas el barril ${escapeHtml(q.valor)}?
+      <button class="reg-link" onclick="regBuscarBarril(${argJs(q.valor)})">Ver el barril</button></div>` : '';
+    if (!r.ordenes) return (alt || mapa) ? `<div class="reg-resumen">${mapa}${alt}</div>` : '';
+    return `<div class="reg-resumen"><b>Lote ${escapeHtml(q.valor)}</b> · ${r.ordenes === 1 ? '1 orden' : r.ordenes + ' órdenes'} ·
+      ${r.llenados} barril${r.llenados === 1 ? '' : 'es'} llenado${r.llenados === 1 ? '' : 's'} ·
+      ${r.vaciados} vaciado${r.vaciados === 1 ? '' : 's'} · último movimiento ${escapeHtml(fechaRegistro(r.ultimaFecha))}${mapa}${alt}</div>`;
+  }
+  return '';
+}
+
+function regDibujar() {
+  if (!$('panel-registro')) return;
+  const ordenes = estado.escaneos || [];
+  const texto = $('regBuscar').value;
+  const q = interpretarBusqueda(texto, ordenes);
+  const meses = mesesConOrdenes(ordenes);
+  if (regMes === null || (regMes !== 'todos' && !meses.includes(regMes))) {
+    const actual = hoyISO().slice(0, 7);
+    regMes = meses.includes(actual) ? actual : (meses[0] || 'todos');
+  }
+  $('regComo').textContent = q.tipo === 'vacio' ? '' : 'buscando ' + REG_COMO[q.tipo];
+  $('regMeses').innerHTML = meses.length
+    ? [['todos', 'Todos'], ...meses.map(m => [m, nombreMes(m)])].map(([m, t]) =>
+        `<button class="reg-mes${q.tipo === 'vacio' && m === regMes ? ' activo' : ''}" onclick="regElegirMes(${argJs(m)})">${escapeHtml(t)}</button>`).join('')
+    : '';
+  $('regArriba').innerHTML = regArribaHtml(q, ordenes);
+  if (!ordenes.length) {
+    $('regLista').innerHTML = `<div class="reg-vacio">Todavía no hay órdenes cargadas. Se cargan desde
+      <button class="btn" onclick="opSeccion('escaner')">🛢️ Llenado / vaciado</button></div>`;
+    return;
+  }
+  const filtradas = filtrarOrdenes(ordenes, q, regMes === 'todos' ? '' : regMes);
+  if (!filtradas.length) {
+    $('regLista').innerHTML = q.tipo === 'vacio'
+      ? '<div class="reg-vacio">Este mes no tiene órdenes.</div>'
+      : `<div class="reg-vacio">No encontramos «${escapeHtml(texto.trim())}» en ninguna orden.</div>`;
+    return;
+  }
+  const resaltar = q.tipo === 'barril' ? q.valor : '';
+  const plegar = q.tipo === 'vacio' && regMes === 'todos';
+  $('regLista').innerHTML = agruparPorMes(filtradas).map((g, i) => {
+    const n = g.ordenes.length;
+    const titulo = `${escapeHtml(g.mes ? nombreMes(g.mes) : 'Sin fecha')} <span>${n === 1 ? '1 orden' : n + ' órdenes'}</span>`;
+    const tarjetas = `<div class="reg-grilla">${g.ordenes.map(o => regTarjetaHtml(o, resaltar)).join('')}</div>`;
+    return plegar
+      ? `<details class="reg-grupo"${i === 0 ? ' open' : ''}><summary><h3>${titulo}</h3></summary>${tarjetas}</details>`
+      : `<section class="reg-grupo"><h3>${titulo}</h3>${tarjetas}</section>`;
+  }).join('');
+}
+
+function regElegirMes(mes) {
+  regMes = mes;
+  $('regBuscar').value = '';
+  regDibujar();
+}
+// "barril X" fuerza la lectura de barril aunque el número sea también un lote.
+function regBuscarBarril(num) {
+  $('regBuscar').value = 'barril ' + num;
+  regDibujar();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+// Marca en el mapa un barril o un lote (lo mismo que escribirlo en Dónde está).
+function regVerEnMapa(termino) {
+  opSeccion('buscar');
+  const enPalet = (estado.palets || []).some(p => Object.values(p.celdas || {}).some(v => String(v) === String(termino)));
+  const enBox = (estado.boxes || []).some(b => Object.values(b.celdas || {}).some(v => String(v) === String(termino)));
+  setMapaTipo(enPalet && !enBox ? 'tanques' : 'barriles');
+  $('buscarMapa').value = String(termino);
+  aplicarBusqueda();
+}
+// Editar es lo mismo que el ✏️ del historial: carga la orden en la pantalla de
+// Llenado / vaciado. Se cambia de pantalla antes, para que el operario la vea.
+function regEditar(id) {
+  opSeccion('escaner');
+  escEditarOrden(id);
+}
+
+$('regBuscar').addEventListener('input', regDibujar);
+
+// Imprime lo que se está viendo (un mes o una búsqueda), como la carpeta del Excel.
+function regImprimir() {
+  const texto = $('regBuscar').value.trim();
+  $('regTituloImpresion').textContent = 'Registro de llenado y vaciado de barricas — ' +
+    (texto ? 'búsqueda «' + texto + '»' : regMes === 'todos' ? 'todas las órdenes' : nombreMes(regMes));
+  document.querySelectorAll('#regLista details').forEach(d => { d.open = true; });
+  document.body.classList.add('imprimiendo-registro');
+  window.print();
+}
+window.addEventListener('afterprint', () => document.body.classList.remove('imprimiendo-registro'));
+$('regImprimir').addEventListener('click', regImprimir);
 document.querySelectorAll('#opVistaSel button[data-opvista]').forEach(b => b.addEventListener('click', () => opVista(b.dataset.opvista)));
 
 // ================== IMPORTAR EXCEL ==================
@@ -4633,6 +4983,9 @@ function escFiltrar(arr) {
 }
 
 function escDibujarHistorial() {
+  // El Registro del operario muestra las mismas órdenes: guardar, editar o borrar
+  // una (todas terminan acá) lo tiene que redibujar.
+  if (regPanelActivo()) regDibujar();
   escPoblarFiltros();
   const total = (estado.escaneos || []).length;
   const filtradas = escFiltrar(estado.escaneos || []);
