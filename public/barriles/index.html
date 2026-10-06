@@ -31,6 +31,11 @@ const API='/barriles/api';</script>
      por mes, la historia de un barril y el resumen de un lote. Va acá, como script
      clásico, por lo mismo que los de arriba. Se testea en test/barriles-registro.test.mjs. -->
 <script src="js/registro.js"></script>
+<!-- La consulta de inventario del operario (solo lectura) y la corrección única de
+     19 fechas mal importadas. Scripts clásicos, por lo mismo que los de arriba.
+     Se testean en test/barriles-consulta.test.mjs. -->
+<script src="js/consulta-inv.js"></script>
+<script src="js/correccion-fechas.js"></script>
 <!-- La sincronización con el servidor: cómo leer cada respuesta (401 no es
      "sin conexión"), el límite de tiempo de los pedidos y la fusión de boxes,
      palets y valores sueltos al reintentar un 409. Va acá, como script clásico,
@@ -434,7 +439,7 @@ const API='/barriles/api';</script>
   .ini-saludo { margin: 8px 0 24px; }
   .ini-saludo h2 { font-size: 1.9rem; color: var(--vino-osc); margin: 0; }
   .ini-saludo p { color: #6d6259; font-size: 1.1rem; margin-top: 4px; }
-  .ini-grandes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+  .ini-grandes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
   .ini-boton { background: #fff; border: 1px solid var(--gris); border-radius: 18px; padding: 26px 22px; text-align: left; cursor: pointer;
                display: flex; flex-direction: column; gap: 8px; min-height: 190px; font: inherit; color: inherit;
                transition: border-color .15s, transform .15s; }
@@ -448,7 +453,8 @@ const API='/barriles/api';</script>
   .ini-chico { background: #fff; border: 1px solid var(--gris); border-radius: 999px; padding: 12px 20px; font: inherit; font-size: 1rem; cursor: pointer; color: var(--vino-osc); }
   .ini-chico:hover { border-color: var(--vino); }
   .ini-cuenta:not(:empty) { background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 9px; margin-left: 8px; font-size: .85rem; font-weight: 700; }
-  @media (max-width: 900px) { .ini-grandes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 1100px) { .ini-grandes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 700px) { .ini-grandes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   /* ===== Registro del operario ===== */
   .reg-barra { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
   .reg-buscador { flex: 1; display: flex; align-items: center; gap: 10px; background: #fff; border: 2px solid var(--vino); border-radius: 12px; padding: 2px 16px; font-size: 1.3rem; }
@@ -500,6 +506,22 @@ const API='/barriles/api';</script>
   .reg-alternativa { margin-top: 6px; font-size: .98rem; }
   .reg-link { background: none; border: none; color: var(--vino); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
   .reg-titulo-impresion { display: none; }
+  /* ===== Inventario del operario (solo consulta) ===== */
+  .con-filtros { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+  .con-grupo { display: flex; gap: 6px; flex-wrap: wrap; }
+  .con-vista { margin-left: auto; }
+  .con-n { display: inline-block; min-width: 22px; padding: 0 7px; margin-left: 4px; border-radius: 999px; background: rgba(0,0,0,.07); font-size: .85rem; }
+  .reg-mes.activo .con-n { background: rgba(255,255,255,.25); }
+  .con-cuenta { color: #6d6259; margin-bottom: 8px; }
+  .con-tabla-wrap { background: #fff; border: 1px solid var(--gris); border-radius: 12px; overflow: auto; }
+  .con-tabla { width: 100%; border-collapse: collapse; font-size: 1rem; }
+  .con-tabla th { text-align: left; background: #f6f0f2; color: var(--vino-osc); padding: 10px 14px; font-size: .9rem; white-space: nowrap; }
+  .con-tabla td { padding: 9px 14px; border-top: 1px solid #f0ebe5; }
+  .con-tabla tr:hover td { background: #fdf9f6; }
+  .con-tabla .num { text-align: right; }
+  .con-num { font-family: Consolas, 'Courier New', monospace; font-size: 1.05rem; font-weight: 700; background: none; border: none;
+             color: var(--vino-osc); cursor: pointer; padding: 0; text-decoration: underline dotted; }
+  body.rol-operario .con-tabla .btn { padding: 5px 12px; font-size: .9rem; }
 
   /* ===== Impresión: versión armada en #areaImpresion, B&N, boxes anchos en 2 tiras ===== */
   .solo-impresion { display: none; }
@@ -597,6 +619,7 @@ const API='/barriles/api';</script>
       <button class="ini-boton" data-op="cargar"><span class="ini-ico">📦</span><b>Cargar box</b><span>Ubicar barriles en el mapa</span></button>
       <button class="ini-boton" data-op="escaner"><span class="ini-ico">🛢️</span><b>Llenado / vaciado</b><span>Escanear una orden</span></button>
       <button class="ini-boton ini-destacado" data-op="registro"><span class="ini-ico">📒</span><b>Registro</b><span>Ver lo que se cargó</span></button>
+      <button class="ini-boton" data-op="consulta"><span class="ini-ico">📋</span><b>Inventario</b><span>Barriles llenos, vacíos y lotes</span></button>
       <button class="ini-boton" data-op="buscar"><span class="ini-ico">🔍</span><b>Dónde está</b><span>Buscar un barril en el mapa</span></button>
     </div>
     <div class="ini-chicos">
@@ -605,6 +628,23 @@ const API='/barriles/api';</script>
       <button class="ini-chico" data-op="celular">📱 Conectar teléfono</button>
     </div>
   </section>
+  <!-- ============ INVENTARIO DEL OPERARIO (solo consulta) ============ -->
+  <section class="panel" id="panel-consulta">
+    <div class="reg-barra">
+      <label class="reg-buscador">
+        <span aria-hidden="true">🔍</span>
+        <input type="search" id="conBuscar" autocomplete="off"
+               placeholder="Barril, lote o marca — ej. 2180036 · 26277 · Taransaud">
+      </label>
+    </div>
+    <div class="con-filtros">
+      <div class="con-grupo" id="conEstados"></div>
+      <div class="con-grupo" id="conTipos"></div>
+      <div class="con-grupo con-vista" id="conVistas"></div>
+    </div>
+    <div id="conLista"></div>
+  </section>
+
   <!-- ============ REGISTRO DEL OPERARIO (lo que antes era la carpeta de Excel) ============ -->
   <section class="panel" id="panel-registro">
     <h2 class="reg-titulo-impresion" id="regTituloImpresion"></h2>
@@ -1554,6 +1594,7 @@ function redibujarTodo() {
   if ($('panel-pedidos').classList.contains('activo')) pedidosDibujar();
   if ($('panel-inicio').classList.contains('activo')) iniDibujar();
   if (regPanelActivo()) regDibujar();
+  if (conPanelActivo()) conDibujar();
   if (sesion) refrescarLibre();
   aplicarModoLote();   // un cambio remoto puede haber prendido/apagado el modo por lote
   if (typeof barSetContador === 'function') barSetContador();
@@ -2003,6 +2044,7 @@ function activarPanel(nombre) {
   if (nombre === 'celular') dibujarQR();
   if (nombre === 'inicio') iniDibujar();
   if (nombre === 'registro') { regDibujar(); setTimeout(() => $('regBuscar').focus(), 0); }
+  if (nombre === 'consulta') { conDibujar(); setTimeout(() => $('conBuscar').focus(), 0); }
 }
 document.querySelectorAll('#navProgramador button[data-panel]').forEach(b => b.addEventListener('click', () => {
   document.querySelectorAll('#navProgramador button').forEach(x => x.classList.remove('activo'));
@@ -2138,6 +2180,7 @@ function aplicarRol(r) {
   if (r === 'operario') opSeccion('inicio');
   else if (!document.querySelector('.panel.activo')) activarPanel('inventario');
   revisarMigracion();
+  revisarCorreccionFechas();
 }
 
 // Operario: se entra por la portada; cada botón abre una sección. Cargar y
@@ -2149,6 +2192,7 @@ const OP_TITULOS = {
   buscar: ['🔍 Dónde está', 'Escribí un barril o un lote y se marca en el mapa.'],
   escaner: ['🛢️ Llenado / vaciado', 'Elegí la operación, completá la OT y el lote, y leé los barriles.'],
   registro: ['📒 Registro', 'Todo lo que se cargó, por mes. Buscá por lote, barril, OT o fecha.'],
+  consulta: ['📋 Inventario', 'Cómo está cada barril hoy. Buscá un barril, un lote o una marca. Es solo para consultar.'],
   inventario: ['🧾 Asociar vasija con lote', 'Leé la vasija y escribí el lote que tiene.'],
   pedidos: ['🏷️ Pedidos de rótulos', 'Rótulos pedidos para reimprimir.'],
   celular: ['📱 Conectar teléfono', 'Escaneá el código con el celular para usarlo como lector.'],
@@ -2352,6 +2396,130 @@ function regEditar(id) {
 }
 
 $('regBuscar').addEventListener('input', regDibujar);
+
+// ================== INVENTARIO DEL OPERARIO (solo consulta) ==================
+// Lo mismo que la lista del programador, pero para leer: sin editar, sin altas ni
+// bajas, sin importar ni descargar. La lógica pura está en js/consulta-inv.js.
+let conFiltro = { estado: '', tipo: '', vista: 'barril' }, conMostrar = 200;
+const CON_ESTADOS = [['', 'Todos'], ['LLENO', 'Llenos'], ['MERMO', 'Mermos'], ['VACIO', 'Vacíos']];
+const CON_TIPOS = [['', 'Todo'], ['barrica', 'Barricas y vasijas'], ['tanque50', 'Tanques de 50 L']];
+const CON_VISTAS = [['barril', 'Por barril'], ['lote', 'Por lote']];
+
+function conPanelActivo() { return !!$('panel-consulta') && $('panel-consulta').classList.contains('activo'); }
+function conChips(lista, actual, campo, contar) {
+  return lista.map(([v, t]) => `<button class="reg-mes${v === actual ? ' activo' : ''}" onclick="conElegir(${argJs(campo)},${argJs(v)})">` +
+    `${escapeHtml(t)}${contar ? ` <span class="con-n">${contar[v || 'total']}</span>` : ''}</button>`).join('');
+}
+function conElegir(campo, v) { conFiltro[campo] = v; conMostrar = 200; conDibujar(); }
+function conEstadoHtml(e) {
+  const s = normEstado(e);
+  return `<span class="reg-estado ${escapeHtml(s)}">${escapeHtml(s === 'VACIO' ? 'VACÍO' : (s || '—'))}</span>`;
+}
+function conMasHtml(total) {
+  return total > conMostrar
+    ? `<div style="text-align:center; margin-top:12px;"><button class="btn sec" onclick="conMostrar += 200; conDibujar()">Mostrar más (faltan ${total - conMostrar})</button></div>`
+    : '';
+}
+
+function conDibujar() {
+  if (!$('panel-consulta')) return;
+  const texto = $('conBuscar').value;
+  // Los contadores de estado respetan el texto y el tipo, no el estado elegido:
+  // así se ve cuántos llenos y vacíos hay de lo que se está buscando.
+  const base = filtrarInventario(estado.inventario, { texto, tipo: conFiltro.tipo });
+  $('conEstados').innerHTML = conChips(CON_ESTADOS, conFiltro.estado, 'estado', contarEstados(base));
+  $('conTipos').innerHTML = conChips(CON_TIPOS, conFiltro.tipo, 'tipo');
+  $('conVistas').innerHTML = conChips(CON_VISTAS, conFiltro.vista, 'vista');
+  if (!estado.inventario.length) { $('conLista').innerHTML = '<div class="reg-vacio">Todavía no hay inventario cargado.</div>'; return; }
+  const filas = filtrarInventario(base, { estado: conFiltro.estado });
+  if (conFiltro.vista === 'lote') { conDibujarLotes(filas); return; }
+  if (!filas.length) {
+    $('conLista').innerHTML = `<div class="reg-vacio">No hay vasijas que coincidan${texto.trim() ? ' con «' + escapeHtml(texto.trim()) + '»' : ''}.</div>`;
+    return;
+  }
+  const fila = r => `<tr>
+    <td><button class="con-num" title="Ver su historia en el Registro" onclick="conVerBarril(${argJs(String(r.num))})">${escapeHtml(r.num)}</button></td>
+    <td>${conEstadoHtml(r.estado)}</td>
+    <td>${r.lote ? `<button class="reg-link" title="Ver todo el lote" onclick="conVerLote(${argJs(String(r.lote))})">${escapeHtml(r.lote)}</button>` : '—'}</td>
+    <td>${escapeHtml(r.cosecha || '—')}</td><td>${escapeHtml(r.marca || '—')}</td>
+    <td class="num">${escapeHtml(r.cap || '—')}</td><td class="num">${escapeHtml(r.litros === '' || r.litros == null ? '—' : r.litros)}</td>
+    <td>${escapeHtml(r.fecha ? fechaRegistro(r.fecha) : '—')}</td></tr>`;
+  $('conLista').innerHTML = `<div class="con-cuenta">${filas.length === 1 ? '1 vasija' : filas.length + ' vasijas'}</div>
+    <div class="con-tabla-wrap"><table class="con-tabla"><thead><tr><th>Número</th><th>Estado</th><th>Lote</th><th>Cosecha</th><th>Marca</th>
+    <th class="num">Capacidad (L)</th><th class="num">Litros</th><th>Desde</th></tr></thead>
+    <tbody>${filas.slice(0, conMostrar).map(fila).join('')}</tbody></table></div>${conMasHtml(filas.length)}`;
+}
+
+function conDibujarLotes(filas) {
+  if (conFiltro.estado === 'VACIO') {
+    $('conLista').innerHTML = '<div class="reg-vacio">Los barriles vacíos no tienen lote. Para verlos, elegí <b>Por barril</b>.</div>';
+    return;
+  }
+  const lotes = resumenPorLote(filas);
+  if (!lotes.length) { $('conLista').innerHTML = '<div class="reg-vacio">No hay lotes que coincidan.</div>'; return; }
+  const vasijas = lotes.reduce((n, l) => n + l.vasijas, 0);
+  const fila = l => {
+    const boxes = regBoxesDeLote(l.lote);
+    return `<tr>
+      <td><button class="con-num" title="Ver sus barriles" onclick="conVerLote(${argJs(l.lote)})">${escapeHtml(l.lote)}</button></td>
+      <td>${escapeHtml(l.cosecha || '—')}</td><td class="num">${l.llenos}</td><td class="num">${l.mermos}</td>
+      <td class="num">${Math.round(l.litros).toLocaleString('es-AR')}</td>
+      <td>${boxes.length ? escapeHtml(boxes.join(', ')) : '<span style="color:#8a7f76;">Sin ubicar</span>'}</td>
+      <td>${boxes.length ? `<button class="btn sec" onclick="regVerEnMapa(${argJs(l.lote)})">🗺️ Ver en el mapa</button>` : ''}</td></tr>`;
+  };
+  $('conLista').innerHTML = `<div class="con-cuenta">${lotes.length === 1 ? '1 lote' : lotes.length + ' lotes'} · ${vasijas} vasijas en uso</div>
+    <div class="con-tabla-wrap"><table class="con-tabla"><thead><tr><th>Lote</th><th>Cosecha</th><th class="num">Llenos</th><th class="num">Mermos</th>
+    <th class="num">Litros</th><th>Dónde está</th><th></th></tr></thead>
+    <tbody>${lotes.slice(0, conMostrar).map(fila).join('')}</tbody></table></div>${conMasHtml(lotes.length)}`;
+}
+
+// Tocar un barril lleva a su ficha del Registro (estado, dónde está, historia).
+function conVerBarril(num) { opSeccion('registro'); regBuscarBarril(num); }
+// Tocar un lote muestra sus barriles.
+function conVerLote(lote) {
+  $('conBuscar').value = lote;
+  conFiltro.vista = 'barril'; conMostrar = 200;
+  conDibujar();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$('conBuscar').addEventListener('input', () => { conMostrar = 200; conDibujar(); });
+
+// ================== CORRECCIÓN DE 19 FECHAS IMPORTADAS (una sola vez) ==================
+// Lista y criterio en js/correccion-fechas.js. Solo el programador la ve y la
+// aplica; si se pospone, vuelve a aparecer al recargar.
+let correccionPospuesta = false;
+function revisarCorreccionFechas() {
+  if (correccionPospuesta || rol !== 'programador' || soloLectura) return;
+  if ($('modal').classList.contains('abierto')) return;   // no tapar otro modal
+  const plan = planCorreccionFechas(estado.escaneos);
+  if (!plan.length) return;
+  $('modalContenido').innerHTML = `
+    <h3>Corregir ${plan.length} fechas mal importadas</h3>
+    <p class="nota">Son órdenes viejas de la Planilla scaner que entraron con día y mes invertidos o con el año mal tipeado, y por eso
+      aparecían en meses que todavía no llegaron. Cada una se revisó contra la planilla y las órdenes de al lado.</p>
+    <div style="max-height:300px; overflow:auto; margin-top:10px;"><table class="datos">
+      <tr><th>Orden</th><th>Lote</th><th>Dice</th><th>Pasa a</th></tr>
+      ${plan.map(c => `<tr><td>${escapeHtml(c.id)}</td><td>${escapeHtml(c.lote)}</td><td>${escapeHtml(fechaRegistro(c.de))}</td><td><b>${escapeHtml(fechaRegistro(c.a))}</b></td></tr>`).join('')}
+    </table></div>
+    <div class="acciones-modal">
+      <button class="btn" id="btnCorrFechas">Corregir las ${plan.length}</button>
+      <button class="btn sec" id="btnCorrLuego">Más tarde</button>
+    </div>`;
+  $('modal').classList.add('abierto');
+  $('btnCorrLuego').onclick = () => { correccionPospuesta = true; $('modal').classList.remove('abierto'); };
+  $('btnCorrFechas').onclick = () => {
+    const porId = new Map((estado.escaneos || []).map(o => [String(o.id), o]));
+    // se recalcula: entre que se abrió el aviso y el clic pudo llegar un cambio de otro equipo
+    for (const c of planCorreccionFechas(estado.escaneos)) {
+      const o = porId.get(c.id);
+      o.fecha = c.a;
+      delete o.mes;   // el mes sale de la fecha
+    }
+    guardar();
+    $('modal').classList.remove('abierto');
+    escDibujarHistorial();
+  };
+}
 
 // Imprime lo que se está viendo (un mes o una búsqueda), como la carpeta del Excel.
 function regImprimir() {

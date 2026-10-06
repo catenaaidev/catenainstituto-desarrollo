@@ -10,6 +10,8 @@
   'use strict';
 
   function txt(v) { return String(v == null ? '' : v).trim(); }
+  // Mayúsculas y sin acentos: "francois" encuentra "FRANÇOIS".
+  function plano(v) { return txt(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase(); }
   function est(r) { return txt(r && r.estado).toUpperCase().replace('VACÍO', 'VACIO'); }
 
   // consulta: { texto, estado: 'LLENO'|'MERMO'|'VACIO'|'' , tipo: 'tanque50'|'barrica'|'' }
@@ -19,7 +21,7 @@
   // tiene que mezclar el "262770". Si no, busca contenido en número, lote y marca.
   function filtrarInventario(filas, consulta) {
     const q = consulta || {};
-    const t = txt(q.texto).toUpperCase();
+    const t = plano(q.texto);
     const arr = (filas || []).filter(r => {
       if (q.estado && est(r) !== q.estado) return false;
       if (q.tipo === 'tanque50' && txt(r.cap) !== '50') return false;
@@ -27,9 +29,9 @@
       return true;
     });
     if (!t) return arr;
-    const loteExacto = arr.filter(r => txt(r.lote).toUpperCase() === t);
+    const loteExacto = arr.filter(r => plano(r.lote) === t);
     if (loteExacto.length) return loteExacto;
-    return arr.filter(r => [r.num, r.lote, r.marca].some(v => txt(v).toUpperCase().includes(t)));
+    return arr.filter(r => [r.num, r.lote, r.marca].some(v => plano(v).includes(t)));
   }
 
   function contarEstados(filas) {

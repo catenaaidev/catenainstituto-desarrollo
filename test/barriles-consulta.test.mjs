@@ -45,6 +45,10 @@ describe('filtrarInventario', () => {
     expect(nums(filtrarInventario(INV, { texto: 'criolla' }))).toEqual(['458']);
     expect(nums(filtrarInventario(INV, { texto: '21807' }))).toEqual(['2180741']);
   });
+  it('sin acentos: "francois" encuentra "FRANÇOIS FRÈRES"', () => {
+    const inv = [...INV, fila('7', 'VACIO', '', { marca: 'FRANÇOIS FRÈRES' })];
+    expect(nums(filtrarInventario(inv, { texto: 'francois freres' }))).toEqual(['7']);
+  });
   it('un lote exacto trae solo ese lote (no los que lo contienen)', () => {
     const inv = [...INV, fila('9', 'LLENO', '262770')];
     expect(nums(filtrarInventario(inv, { texto: '26277' }))).toEqual(['2180036', '2180002', '2180741']);
