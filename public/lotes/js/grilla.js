@@ -740,8 +740,14 @@ function alPortapapeles(texto){
   let ok = false;
   try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
 
-  // Devolver el foco: si no, la grilla pierde el teclado despues de copiar.
-  if (focoPrevio && focoPrevio.focus) focoPrevio.focus();
+  /* Devolver el foco: si no, la grilla pierde el teclado despues de copiar.
+   * Se suelta el textarea ANTES: con una celda seleccionada el foco previo es
+   * casi siempre <body> (el mousedown de la grilla no deja enfocar), y
+   * body.focus() no le saca el foco a nadie. El foco quedaba en #gclip, el
+   * keydown lo veia como "un control ajeno a la tabla" y desde el segundo
+   * Ctrl+C no se copiaba nada, sin ningun cartel. */
+  ta.blur();
+  if (focoPrevio && focoPrevio !== ta && focoPrevio.focus) focoPrevio.focus();
   ta.value = '';
 
   if (ok) return Promise.resolve(true);
