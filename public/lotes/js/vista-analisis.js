@@ -2,12 +2,13 @@
 'use strict';
 
 import { $, esc, escA, DATOS, markDirty, registrarVista, registrarInit, irALote,
-         vistaActiva, invalidarVista, hayCambiosSinGuardar, usuarioActual } from './nucleo.js';
+         vistaActiva, invalidarVista, hayCambiosSinGuardar, usuarioActual,
+         renderActivoConservandoCelda } from './nucleo.js';
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti, limpiarFiltrosMulti } from './tabla.js';
 import { activarGrilla, repintarGrilla } from './grilla.js';
 import { montarVirtual } from './tabla-virtual.js';
-import { armarFilas, esQuimicaReal, esCorreccionReal, estadoCartelLote } from './analisis-filas.js';
+import { armarFilas, esQuimicaReal, esCorreccionReal, estadoCartelLote, firmaVeredicto } from './analisis-filas.js';
 import { agregadosVigentes, textoAgregados, otsDeAgregados, anularAgregado } from './agregados.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
@@ -163,15 +164,24 @@ const SIN_VEREDICTO = Object.freeze({
  * que sus veredictos no se pueden enganchar por posicion. */
 function _hayCambiosSinGuardar(){ return hayCambiosSinGuardar(); }
 
-/* El veredicto de un registro de analisis, o undefined si no tiene. */
-const _veredictoDe = a => (_analisisFlags && a) ? _analisisFlags.get(a) : undefined;
+/* El veredicto de un registro de analisis, o undefined si no tiene o si ya no
+ * describe lo que hay. Cada veredicto lleva la firma de los valores con los que
+ * lo juzgo el servidor (firmaVeredicto): una edicion lo apaga sola, sin
+ * borrarlo, y un Ctrl+Z que devuelve el valor guardado lo vuelve a prender en
+ * el acto. Antes la edicion lo BORRABA y el deshacer soltaba todos los
+ * veredictos de la tabla: los colores no volvian hasta cambiar de pestaña. */
+const _veredictoDe = a => {
+  if (!_analisisFlags || !a) return undefined;
+  const v = _analisisFlags.get(a);
+  return v && v.firma === firmaVeredicto(a) ? v : undefined;
+};
 
-/* Una edicion deja el veredicto de esa fila describiendo el valor anterior: se
- * lo saca, y el proximo repintado la deja sin color en vez de con el viejo. */
-function _olvidarVeredicto(a){ if (_analisisFlags && a) _analisisFlags.delete(a); }
+/* Un pedido que llego mientras otro viajaba (p.ej. un guardado en el medio):
+ * se repite al terminar, porque el que viaja puede describir la version vieja. */
+let _repedirFlags = false;
 
 async function cargarAnalisisFlags(){
-  if (_analisisFlagsLoading) return;
+  if (_analisisFlagsLoading){ _repedirFlags = true; return; }
   /* Con cambios sin guardar no se piden: no habria forma de saber que fila
    * local es cada posicion del servidor. Se piden solos al guardar (sube la
    * version y registrarVista los da por vencidos). */
@@ -201,8 +211,13 @@ async function cargarAnalisisFlags(){
      * servidor es otro: el chequeo de lote+fecha lo detecta y se descartan
      * todos (sin colores) antes que pintar filas equivocadas. */
     const mismoDoc = arr === arrPedido && ((DATOS().meta || {}).version ?? null) === vPedido
-      && !_hayCambiosSinGuardar() && filas.length === arr.length;
-    const calza = mismoDoc && filas.every(row => {
+      && !_hayCambiosSinGuardar();
+    /* Se edito (o se recargo) mientras viajaba: esta respuesta no se puede
+     * enganchar, pero tampoco hay por que tirar los colores que ya hay — la
+     * firma de cada uno ya apaga los que dejaron de valer. Los frescos los
+     * trae el pedido que sale con el proximo guardado. */
+    if (!mismoDoc) return;
+    const calza = filas.length === arr.length && filas.every(row => {
       const a = arr[row.idx];
       return !!a && String(a.lote ?? '') === String(row.lote ?? '')
         && String(a.fecha_analisis ?? '') === String(row.fecha_analisis ?? '');
@@ -220,6 +235,7 @@ async function cargarAnalisisFlags(){
          * vez cambia (el 1.8 del pKa, por ejemplo) no puede quedar una copia
          * vieja aca mostrando un numero que no se corresponde con su color. */
         molec: row.so2_molec_calc ?? null,
+        firma: firmaVeredicto(arr[row.idx]),
       });
     }
     /* Repintar con colores una vez que lleguen los flags, pero solo si la
@@ -227,10 +243,16 @@ async function cargarAnalisisFlags(){
      * marcada como vieja y se dibuja UNA vez, ya con colores, cuando alguien la
      * abre. (Con la tabla virtual el render cuesta ~0,1 s y no los ~3 s de
      * antes, pero no hay por que dibujar algo que nadie mira.) */
-    if (vistaActiva() === 'analisis') renderAnalisis({ conservarScroll: true });
+    /* Se redibuja conservando la celda donde se esta parado: este pedido sale
+     * solo despues de cada autoguardado, y puede llegar con el cursor adentro
+     * de una celda que se acaba de tipear. */
+    if (vistaActiva() === 'analisis') renderActivoConservandoCelda();
     else invalidarVista('analisis');
   } catch(e) { /* sin flags: los colores se omiten */ }
-  finally { _analisisFlagsLoading = false; }
+  finally {
+    _analisisFlagsLoading = false;
+    if (_repedirFlags){ _repedirFlags = false; cargarAnalisisFlags(); }
+  }
 }
 
 /* Mapa de lote -> OBJETO lote.
@@ -894,10 +916,10 @@ export function renderAnalisis(opciones){
        * prefiere una celda sin color a una celda con el color equivocado. */
       if (METRICAS_CON_CRITERIO.has(el.dataset.k)){
         _descolorarFila(el.closest('tr'));
-        // Y fuera del DOM: si no, el proximo repintado (ordenar, filtrar) le
-        // devolvia el color viejo. El cartel del lote tambien: la tabla virtual
-        // lo vuelve a dibujar cuando se scrollea de vuelta hasta el.
-        _olvidarVeredicto(fila.analisis);
+        // Fuera del DOM no hace falta borrar el veredicto: su firma ya no
+        // coincide con el valor nuevo y el proximo repintado no lo usa. El
+        // cartel del lote si: la tabla virtual lo vuelve a dibujar cuando se
+        // scrollea de vuelta hasta el.
         _estadoDeLote.delete(String(fila.analisis.lote ?? ''));
       }
       markDirty();
@@ -929,7 +951,6 @@ Quedan tachados en Correcciones → Otros agregados.`)) return;
 
       if (esQuimica){
         for (const campo of CAMPOS_QUIMICA_A_VACIAR) o[campo] = null;
-        _olvidarVeredicto(o);
       } else if (o.correccion){
         /* Borrar el objeto entero, no campo por campo: la correccion trae
          * otras claves (so2_libre_actual, diferencia, fecha) que escribe
@@ -1033,11 +1054,9 @@ Quedan tachados en Correcciones → Otros agregados.`)) return;
     },
     escribir(fila, k, texto){
       if (!fila) return 'ro';
-      const estado = _escribirColumnaAnalisis(fila.analisis, k, texto, fila.tipo);
-      /* Pegar o Ctrl+D sobre una medicion deja su veredicto viejo: mismo
-       * criterio que el tipeo a mano (ver el listener de 'input'). */
-      if (estado === 'ok' && METRICAS_CON_CRITERIO.has(k)) _olvidarVeredicto(fila.analisis);
-      return estado;
+      /* Pegar o Ctrl+D sobre una medicion: su veredicto viejo se apaga solo
+       * porque la firma ya no coincide (ver _veredictoDe). */
+      return _escribirColumnaAnalisis(fila.analisis, k, texto, fila.tipo);
     },
     onCambio: markDirty,
     /* La tabla es virtual: la grilla lee y decide sobre las filas que no estan
@@ -1099,7 +1118,22 @@ registrarInit(() => {
  * fusion tras un 409). Los veredictos estan enganchados a los objetos viejos,
  * asi que ya no le sirven a nadie: se sueltan para que registrarVista los de
  * por vencidos y los vuelva a pedir en cuanto no haya cambios sin guardar. */
-document.addEventListener('lotes:datos-recargados', () => { _analisisFlags = null; });
+document.addEventListener('lotes:datos-recargados', e => {
+  /* Un Ctrl+Z/Ctrl+Y reescribe las filas en el mismo objeto: los veredictos
+   * siguen enganchados y la firma decide cuales valen todavia. Soltarlos aca
+   * dejaba la tabla entera sin colores hasta cambiar de pestaña. */
+  if (e.detail && e.detail.enSitio) return;
+  _analisisFlags = null;
+});
+
+/* Cada guardado sube la version y los veredictos pasan a describir la
+ * anterior. Con la pestaña a la vista se piden YA: con autoguardado nadie
+ * cambia de pestaña para que registrarVista los repida, y una celda editada
+ * (o deshecha, o recuperada al recargar) quedaba sin color para siempre. Con
+ * la pestaña oculta no: registrarVista los pide al abrirla. */
+document.addEventListener('lotes:guardado', () => {
+  if (vistaActiva() === 'analisis') cargarAnalisisFlags();
+});
 
 registrarVista('analisis', () => {
   renderAnalisis({ conservarScroll: true });

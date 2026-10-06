@@ -221,7 +221,9 @@ function _mover(sentido){
   _nuevaFoto();   // lo que quedo es la base nueva: deshacer no es un paso
   if (aplicados){
     _marcarCambiado();
-    document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
+    /* enSitio: aplicar() reescribe las filas en el MISMO objeto, asi que lo
+     * enganchado a ellos (los veredictos de Analisis) sigue valiendo. */
+    document.dispatchEvent(new CustomEvent('lotes:datos-recargados', { detail: { enSitio: true } }));
     invalidarVistas();
     renderActivo();
   }
@@ -613,6 +615,9 @@ async function _guardar(forzar, intento = 0){
   }
   if (FUSION){ FUSION.borrador.borrar('lotes'); _edicionesEnBorrador = -1; }
   markSaved();
+  /* Lo que el servidor calcula sobre lo guardado (los colores de Analisis)
+   * ya describe la version anterior: la pestaña que lo muestra lo repide. */
+  document.dispatchEvent(new CustomEvent('lotes:guardado'));
   /* El tablero, el Dashboard y los colores de Lotes salen de /api/dashboard,
    * que el servidor calcula sobre lo GUARDADO. */
   cargarDashboard();
@@ -686,6 +691,7 @@ function _restaurarCeldaActiva(m){
 
 /* Todo redibujo dentro de _guardar pasa por aca: un 409 redibuja, y el
  * reintento que sale bien vuelve a redibujar. Cada uno conserva la celda. */
+export function renderActivoConservandoCelda(){ _renderActivoConservandoCelda(); }
 function _renderActivoConservandoCelda(){
   const celda = _recordarCeldaActiva();
   try { renderActivo(); } catch (e) { console.error('renderActivo al guardar:', e); }
@@ -716,7 +722,7 @@ function _alCancelarFreno(){
   _nuevaFoto();   // lo que quedo es la base nueva: deshacer no es un paso
   if (aplicados){
     _marcarCambiado();   // vuelve a programar el autoguardado
-    document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
+    document.dispatchEvent(new CustomEvent('lotes:datos-recargados', { detail: { enSitio: true } }));
     invalidarVistas();
     _renderActivoConservandoCelda();
   }
