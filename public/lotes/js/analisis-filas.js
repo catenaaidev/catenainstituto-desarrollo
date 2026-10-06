@@ -147,3 +147,21 @@ export function estadoCartelLote(veredictos){
   }
   return ultimos.some(v => v.fuera.size) ? 'mal' : 'ok';
 }
+
+/* Los campos de un registro de analisis que mira el servidor para juzgarlo
+ * (veredictosAnalisis en src/lotes/motores/fml.ts): las metricas con criterio,
+ * el pH que decide el molecular, y lo que so2LibreDe lee para el SO2 libre
+ * (so2_libre_actual y la correccion). El lote y la fecha, porque los criterios
+ * dependen de la variedad y el proyecto del lote. El comentario y la OT no. */
+const CAMPOS_FIRMA = ['lote', 'fecha_analisis', 'ph', 'av', 'malico', 'gluc_fruc',
+  'azucar_reductor', 'so2_libre', 'so2_libre_actual', 'correccion'];
+
+/** Texto que describe los valores con los que se juzgo un registro. El
+ *  veredicto que manda el servidor se guarda junto con esta firma y solo se
+ *  pinta mientras el registro siga dando la misma: una edicion lo apaga sin
+ *  tener que borrarlo, y un Ctrl+Z que devuelve el valor lo vuelve a prender
+ *  en el acto, sin esperar el guardado. */
+export function firmaVeredicto(a){
+  if (!a) return '';
+  return JSON.stringify(CAMPOS_FIRMA.map(c => a[c] === undefined ? null : a[c]));
+}

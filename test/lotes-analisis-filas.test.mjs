@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { indicesPorObjeto, armarFilas,
-         esQuimicaReal, esCorreccionReal, estadoCartelLote } from '../public/lotes/js/analisis-filas.js';
+         esQuimicaReal, esCorreccionReal, estadoCartelLote, firmaVeredicto } from '../public/lotes/js/analisis-filas.js';
 
 describe('indicesPorObjeto', () => {
   it('da para cada objeto la misma posicion que indexOf', () => {
@@ -194,5 +194,41 @@ describe('fila de otros agregados', () => {
     const filas = armarFilas([quim, solo]);
     expect(filas.map(f => f.tipo)).toEqual(['separador', 'quimica', 'agregado']);
     expect(filas[2].analisis).toBe(quim);
+  });
+});
+
+describe('firmaVeredicto', () => {
+  const base = () => ({ lote: '26005', fecha_analisis: '2026-08-10', ph: 3.2, av: 0, so2_libre: 7,
+                        gluc_fruc: 2.7, malico: 2.82, comentario: 'x', ot: 'B 209' });
+
+  it('cambia si cambia una medicion que juzga el servidor', () => {
+    const a = base(), f = firmaVeredicto(a);
+    a.ph = 3.9;
+    expect(firmaVeredicto(a)).not.toBe(f);
+  });
+
+  it('vuelve a ser la misma si el valor vuelve (Ctrl+Z)', () => {
+    const a = base(), f = firmaVeredicto(a);
+    a.so2_libre = 30;
+    a.so2_libre = 7;
+    expect(firmaVeredicto(a)).toBe(f);
+  });
+
+  it('cuenta la correccion y el so2_libre_actual (los mira so2LibreDe)', () => {
+    const a = base(), f = firmaVeredicto(a);
+    a.correccion = { so2_libre_actual: 20 };
+    expect(firmaVeredicto(a)).not.toBe(f);
+  });
+
+  it('no cambia por el comentario ni la OT: no tienen criterio', () => {
+    const a = base(), f = firmaVeredicto(a);
+    a.comentario = 'otro'; a.ot = '999';
+    expect(firmaVeredicto(a)).toBe(f);
+  });
+
+  it('un numero y su texto equivalente no se confunden con otro valor', () => {
+    const a = base(); const b = { ...base(), ph: '3.2' };
+    expect(firmaVeredicto(a)).not.toBe(firmaVeredicto({ ...base(), ph: 3.3 }));
+    expect(typeof firmaVeredicto(b)).toBe('string');
   });
 });
