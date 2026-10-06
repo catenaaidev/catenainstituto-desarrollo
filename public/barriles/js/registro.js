@@ -45,10 +45,13 @@
     return m ? m[3] + '/' + m[2] + '/' + m[1].slice(2) : txt(iso);
   }
 
-  // La mitad de las órdenes reales trae la OT con el prefijo ("OT-89", "ot 63").
-  // Solo se saca si sigue un número: una OT "OTOÑO" no existe, pero no se toca.
+  // La mitad de las órdenes reales trae la OT con el prefijo ("OT-89", "ot 63",
+  // "OT-D024", hasta "OT OT-91"). Solo se saca si sigue un número, con o sin una
+  // letra adelante: una palabra como "OTOÑO" no se toca.
   function otLimpia(ot) {
-    return txt(ot).replace(/^ot\s*[:#-]?\s*(?=\d)/i, '');
+    let s = txt(ot), antes;
+    do { antes = s; s = s.replace(/^ot\s*[:#-]?\s*(?=(?:ot\b|[a-z]?\d))/i, ''); } while (s !== antes);
+    return s;
   }
 
   function lotesCargados(ordenes) {
