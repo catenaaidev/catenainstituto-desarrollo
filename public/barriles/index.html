@@ -67,6 +67,11 @@ const API='/barriles/api';</script>
   main { padding: 20px; max-width: 1400px; margin: 0 auto; }
   .panel { display: none; }
   .panel.activo { display: block; }
+  /* Mientras el script grande todavía no eligió la pantalla, cada rol ve la suya
+     desde el primer cuadro (la clase de rol la pone el script de <body>). Antes el
+     operario veía unos segundos "Asociar vasija con lote" hasta que llegaban los datos. */
+  body.rol-operario:not(.panel-elegido) #panel-inicio,
+  body.rol-programador:not(.panel-elegido) #panel-inventario { display: block; }
   .tarjeta { background: #fff; border: 1px solid var(--gris); border-radius: 10px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
   h2 { font-size: 1.05rem; margin-bottom: 12px; color: var(--vino); }
   h3 { font-size: .95rem; margin: 10px 0 6px; }
@@ -631,6 +636,8 @@ const API='/barriles/api';</script>
 </style>
 </head>
 <body>
+<script>/* El rol, antes de dibujar nada: decide qué barra y qué pantalla se ven primero. */
+document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-programador' : 'rol-operario');</script>
 <header>
   <h1>🍷 Mapa de Barriles</h1>
   <span class="insignia-sync" id="insigniaSync" title="Modo de datos">⏳</span>
@@ -732,7 +739,7 @@ const API='/barriles/api';</script>
   </section>
 
   <!-- ============ INVENTARIO (una sola lista: barricas, vasijas y tanques) ============ -->
-  <section class="panel activo" id="panel-inventario">
+  <section class="panel" id="panel-inventario">
     <details class="ayuda">
       <summary>¿Para qué sirve esta pantalla?</summary>
       <div class="cuerpo">
@@ -2235,6 +2242,10 @@ let rol = null, opVistaActual = 'mapa';
 document.body.classList.add(rolDeLaPlataforma() === 'programador' ? 'rol-programador' : 'rol-operario');
 // Lo mismo con el solo lectura: que el lector no vea un instante los botones de carga.
 if (soloLectura) document.body.classList.add('solo-lectura');
+// La pantalla de entrada, también ya: no esperar a los datos del servidor.
+if (rolDeLaPlataforma() === 'operario') { document.body.classList.add('op-inicio'); activarPanel('inicio'); }
+else $('panel-inventario').classList.add('activo');
+document.body.classList.add('panel-elegido');
 try { localStorage.removeItem('mapaBarriles_rol'); } catch (e) {}   // el rol que se elegía a mano
 
 function aplicarRol(r) {
@@ -2247,7 +2258,8 @@ function aplicarRol(r) {
   // Los botones del historial dependen del rol y de la hora: hay que redibujar,
   // o al cambiar de rol quedan los de antes.
   escDibujarHistorial();
-  if (r === 'operario') opSeccion('inicio');
+  // Si el operario ya tocó un botón mientras cargaba, no lo devolvemos a la portada.
+  if (r === 'operario') { if ($('panel-inicio').classList.contains('activo')) opSeccion('inicio'); }
   else if (!document.querySelector('.panel.activo')) activarPanel('inventario');
   revisarMigracion();
   revisarCorreccionFechas();
