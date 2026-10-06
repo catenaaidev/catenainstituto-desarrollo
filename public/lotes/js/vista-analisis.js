@@ -255,6 +255,81 @@ async function cargarAnalisisFlags(){
   }
 }
 
+/* ---------- veredictos al tipear ----------
+ * Los de arriba los calcula el servidor sobre lo GUARDADO: una fila recien
+ * editada quedaba sin color hasta el autoguardado y el pedido siguiente. Las
+ * filas cuyo veredicto ya no corresponde a lo que muestran (editadas, pegadas,
+ * rehechas con Ctrl+Y, nuevas) se mandan solas, con su lote y los criterios,
+ * a POST /analisis/veredictos, que las juzga con las MISMAS reglas sin leer la
+ * base. Se espera una pausa corta para no pedir una vez por tecla. */
+let _timerJuzgar = null, _juzgando = false, _rejuzgar = false;
+function _programarJuzgar(){
+  clearTimeout(_timerJuzgar);
+  _timerJuzgar = setTimeout(_juzgarCambiadas, 300);
+}
+
+/* Las filas con algo que juzgar y sin un veredicto que valga para lo que hay.
+ * Sin _analisisFlags no se hace nada: todavia no llego el pedido grande, que
+ * las trae todas. */
+function _filasSinVeredicto(){
+  if (!_analisisFlags) return [];
+  const out = [];
+  for (const a of (DATOS().analisis || [])){
+    if (!a || !(esQuimicaReal(a) || esCorreccionReal(a.correccion))) continue;
+    const v = _analisisFlags.get(a);
+    if (v && v.firma === firmaVeredicto(a)) continue;
+    out.push(a);
+    if (out.length >= 1000) break;   // el tope del servidor
+  }
+  return out;
+}
+
+async function _juzgarCambiadas(){
+  if (_juzgando){ _rejuzgar = true; return; }
+  const filas = _filasSinVeredicto();
+  if (!filas.length) return;
+  _juzgando = true;
+  const flags = _analisisFlags;
+  const firmas = filas.map(firmaVeredicto);
+  /* Por numero de lote sin espacios, igual que normalizarLote del servidor. */
+  const lotes = new Map();
+  for (const l of (DATOS().lotes || [])) if (l) lotes.set(String(l.lote ?? '').trim(), l);
+  try {
+    const r = await fetch(API + '/analisis/veredictos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        criterios: (DATOS().config || {}).criterios_fml || {},
+        filas: filas.map(a => ({ analisis: a, lote: lotes.get(String(a.lote ?? '').trim()) || null })),
+      }),
+    });
+    if (!r.ok) return;
+    const res = await r.json();
+    /* Si en el medio llegaron los veredictos grandes (o se recargo todo), estos
+     * no se mezclan con aquellos. */
+    if (flags !== _analisisFlags || !Array.isArray(res)) return;
+    let alguno = false;
+    filas.forEach((a, i) => {
+      const row = res[i];
+      /* Se siguio tipeando en esta fila mientras viajaba: este veredicto ya es
+       * de otro valor. La pausa siguiente la vuelve a mandar. */
+      if (!row || firmaVeredicto(a) !== firmas[i]) return;
+      flags.set(a, {
+        fuera: new Set(row.fuera || []), dentro: new Set(row.dentro || []),
+        molec: row.so2_molec_calc ?? null, firma: firmas[i],
+      });
+      alguno = true;
+    });
+    if (!alguno) return;
+    if (vistaActiva() === 'analisis') renderActivoConservandoCelda();
+    else invalidarVista('analisis');
+  } catch (e) { /* sin red: quedan sin color hasta el proximo intento */ }
+  finally {
+    _juzgando = false;
+    if (_rejuzgar){ _rejuzgar = false; _programarJuzgar(); }
+  }
+}
+
 /* Mapa de lote -> OBJETO lote.
  *
  * get() de un lote que no existe devuelve undefined, y eso esta bien: un
@@ -921,6 +996,7 @@ export function renderAnalisis(opciones){
         // cartel del lote si: la tabla virtual lo vuelve a dibujar cuando se
         // scrollea de vuelta hasta el.
         _estadoDeLote.delete(String(fila.analisis.lote ?? ''));
+        _programarJuzgar();
       }
       markDirty();
     });
@@ -1055,8 +1131,10 @@ Quedan tachados en Correcciones → Otros agregados.`)) return;
     escribir(fila, k, texto){
       if (!fila) return 'ro';
       /* Pegar o Ctrl+D sobre una medicion: su veredicto viejo se apaga solo
-       * porque la firma ya no coincide (ver _veredictoDe). */
-      return _escribirColumnaAnalisis(fila.analisis, k, texto, fila.tipo);
+       * porque la firma ya no coincide (ver _veredictoDe), y se pide el nuevo. */
+      const estado = _escribirColumnaAnalisis(fila.analisis, k, texto, fila.tipo);
+      if (estado === 'ok') _programarJuzgar();
+      return estado;
     },
     onCambio: markDirty,
     /* La tabla es virtual: la grilla lee y decide sobre las filas que no estan
@@ -1089,6 +1167,11 @@ Quedan tachados en Correcciones → Otros agregados.`)) return;
 
   const btnResAn = $('btnResetAnchosAn');
   if (btnResAn) btnResAn.addEventListener('click', () => anchosAnalisis.restablecer());
+
+  /* Filas que se dibujaron sin un veredicto que valga (un Ctrl+Y, un
+   * analisis nuevo de Cargar, un cambio en otra pestaña): se piden. Si no hay
+   * ninguna no sale ningun pedido. */
+  _programarJuzgar();
 
   /* Ultimo de todo, para que ni la grilla ni los anchos le saquen el foco
    * despues: si el buscador lo tenia antes del repintado, se lo devuelve con el
