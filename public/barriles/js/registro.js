@@ -38,9 +38,17 @@
     return m && +m[2] >= 1 && +m[2] <= 12 ? MESES[+m[2] - 1] + ' ' + m[1] : txt(mes);
   }
 
-  function fechaCorta(iso) {
+  // No se llama fechaCorta: index.html ya tiene una con ese nombre (día/mes) y,
+  // como los dos son scripts clásicos, la de la página pisaría a esta.
+  function fechaRegistro(iso) {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(txt(iso));
     return m ? m[3] + '/' + m[2] + '/' + m[1].slice(2) : txt(iso);
+  }
+
+  // La mitad de las órdenes reales trae la OT con el prefijo ("OT-89", "ot 63").
+  // Solo se saca si sigue un número: una OT "OTOÑO" no existe, pero no se toca.
+  function otLimpia(ot) {
+    return txt(ot).replace(/^ot\s*[:#-]?\s*(?=\d)/i, '');
   }
 
   function lotesCargados(ordenes) {
@@ -99,7 +107,7 @@
       case 'fecha': return arr.filter(o => txt(o.fecha).slice(0, 10) === v);
       case 'barril': return arr.filter(o => (o.codigos || []).some(c => txt(c) === v));
       case 'lote': return arr.filter(o => txt(o.lote).toUpperCase() === v.toUpperCase());
-      case 'ot': return arr.filter(o => txt(o.ot).toLowerCase() === v.toLowerCase());
+      case 'ot': return arr.filter(o => otLimpia(o.ot).toLowerCase() === otLimpia(v).toLowerCase());
       case 'texto': {
         const b = v.toLowerCase();
         return arr.filter(o => txt(o.lote).toLowerCase().includes(b) ||
@@ -158,5 +166,6 @@
   raiz.historiaDeBarril = historiaDeBarril;
   raiz.resumenDeLote = resumenDeLote;
   raiz.nombreMes = nombreMes;
-  raiz.fechaCorta = fechaCorta;
+  raiz.fechaRegistro = fechaRegistro;
+  raiz.otLimpia = otLimpia;
 })(typeof globalThis !== 'undefined' ? globalThis : window);

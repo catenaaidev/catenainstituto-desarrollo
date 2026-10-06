@@ -539,9 +539,19 @@ const API='/barriles/api';</script>
     body.imprimiendo-registro .reg-acciones,
     body.imprimiendo-registro .reg-ficha .btn { display: none !important; }
     body.imprimiendo-registro .reg-titulo-impresion { display: block !important; font-size: 16pt; color: #000; margin-bottom: 8px; }
-    body.imprimiendo-registro .reg-grilla { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-    body.imprimiendo-registro .reg-tarjeta { break-inside: avoid; box-shadow: none; }
-    body.imprimiendo-registro .reg-barril { background: #fff; }
+    /* En papel no sirve la grilla: una tarjeta de 36 barriles dejaba media hoja
+       en blanco. Columnas de diario: cada tarjeta entera, una debajo de otra. */
+    body.imprimiendo-registro { background: #fff; font-size: 10pt; }
+    body.imprimiendo-registro .reg-grilla { display: block; columns: 4; column-gap: 8px; }
+    body.imprimiendo-registro .reg-tarjeta { display: inline-block; width: 100%; margin: 0 0 8px; padding: 6px 8px;
+      break-inside: avoid; box-shadow: none; border-top-width: 4px; }
+    body.imprimiendo-registro .reg-lote { font-size: 14pt; }
+    body.imprimiendo-registro .reg-tipo { font-size: 7pt; padding: 1px 6px; }
+    body.imprimiendo-registro .reg-datos { font-size: 8pt; margin: 1px 0 4px; }
+    body.imprimiendo-registro .reg-barriles { grid-template-columns: repeat(3, 1fr); gap: 2px; }
+    body.imprimiendo-registro .reg-barril { background: #fff; font-size: 8.5pt; padding: 1px 0; border-radius: 3px; }
+    body.imprimiendo-registro .reg-grupo h3 { font-size: 12pt; margin-bottom: 6px; }
+    body.imprimiendo-registro .reg-ficha, body.imprimiendo-registro .reg-resumen { padding: 8px 12px; margin-bottom: 8px; font-size: 10pt; }
     body.imprimiendo-registro details.reg-grupo > summary h3::before { content: ''; }
   }
 </style>
@@ -2197,6 +2207,27 @@ function regTextoUbicacion(num) {
   if (t) return `${t.palet.nombre || 'Palet'} · Pos ${t.col}`;
   return '';
 }
+// Boxes (y palets) donde está un lote. En la bodega el mapa se carga por lote: al
+// 2026-10 todas las posiciones tienen el lote y ninguna el número de barril, así
+// que "dónde está un barril" casi siempre se contesta por su lote.
+function regBoxesDeLote(lote) {
+  const l = String(lote || '').trim().toUpperCase();
+  if (!l) return [];
+  const tiene = v => v !== 'HUECO' && (String(v).toUpperCase() === l || loteDeCelda(v).toUpperCase() === l);
+  return [...(estado.boxes || []), ...(estado.palets || [])]
+    .filter(c => Object.values(c.celdas || {}).some(tiene))
+    .map(c => c.nombre || 'palet');
+}
+// "Dónde está" de la ficha: { texto, buscar } — buscar es lo que se marca en el
+// mapa (el barril si está ubicado, si no su lote). Sin ubicación: null.
+function regDondeEstaBarril(num, fila) {
+  const propia = regTextoUbicacion(num);
+  if (propia) return { texto: propia, buscar: String(num) };
+  const lleno = fila && fila.lote && normEstado(fila.estado) !== 'VACIO';
+  const boxes = lleno ? regBoxesDeLote(fila.lote) : [];
+  if (!boxes.length) return null;
+  return { texto: `Su lote ${fila.lote} está en ${boxes.join(', ')}`, buscar: String(fila.lote) };
+}
 
 function regTarjetaHtml(o, resaltar) {
   const [txtTipo, clase] = REG_TIPO[o.tipo] || [o.tipo || '—', ''];
@@ -2208,7 +2239,7 @@ function regTarjetaHtml(o, resaltar) {
       <button class="btn peligro" onclick="escBorrarOrden(${argJs(o.id)})">🗑 Borrar</button></div>` : '';
   return `<article class="reg-tarjeta ${clase}${tiene ? ' reg-con-barril' : ''}">
     <div class="reg-cabeza"><span class="reg-lote">${escapeHtml(o.lote || 'Sin lote')}</span><span class="reg-tipo">${escapeHtml(txtTipo)}</span></div>
-    <div class="reg-datos">${escapeHtml(fechaCorta(o.fecha) || 'sin fecha')} · ${o.ot ? 'OT ' + escapeHtml(o.ot) : 'sin OT'} · <b>${cods.length}</b> barril${cods.length === 1 ? '' : 'es'}</div>
+    <div class="reg-datos">${escapeHtml(fechaRegistro(o.fecha) || 'sin fecha')} · ${o.ot ? 'OT ' + escapeHtml(otLimpia(o.ot)) : 'sin OT'} · <b>${cods.length}</b> barril${cods.length === 1 ? '' : 'es'}</div>
     <div class="reg-barriles">${cods.map(c =>
       `<button class="reg-barril${c === resaltar ? ' reg-hit' : ''}" title="Ver la historia de este barril" onclick="regBuscarBarril(${argJs(c)})">${escapeHtml(c)}</button>`).join('')}</div>
     ${acciones}
@@ -2218,19 +2249,19 @@ function regTarjetaHtml(o, resaltar) {
 function regFichaHtml(num, ordenes) {
   const fila = indiceInv.get(String(num));
   const hist = historiaDeBarril(num, ordenes);
-  const donde = regTextoUbicacion(num);
+  const donde = regDondeEstaBarril(num, fila);
   const hoy = fila
     ? `<span class="reg-estado ${escapeHtml(fila.estado)}">${escapeHtml(fila.estado === 'VACIO' ? 'VACÍO' : (fila.estado || '—'))}</span>` +
       (fila.lote ? ' · lote ' + escapeHtml(fila.lote) : '') +
-      (fila.fecha ? ' · desde el ' + escapeHtml(fechaCorta(fila.fecha)) : '')
+      (fila.fecha ? ' · desde el ' + escapeHtml(fechaRegistro(fila.fecha)) : '')
     : 'No figura en el inventario';
   const lineas = hist.length
-    ? hist.map(h => `<li>${escapeHtml(fechaCorta(h.fecha))} · <b>${escapeHtml((REG_TIPO[h.tipo] || [h.tipo])[0])}</b> · lote ${escapeHtml(h.lote || '—')}${h.ot ? ' · OT ' + escapeHtml(h.ot) : ''}</li>`).join('')
+    ? hist.map(h => `<li>${escapeHtml(fechaRegistro(h.fecha) || 'sin fecha')} · <b>${escapeHtml((REG_TIPO[h.tipo] || [h.tipo])[0])}</b> · lote ${escapeHtml(h.lote || '—')}${h.ot ? ' · OT ' + escapeHtml(otLimpia(h.ot)) : ''}</li>`).join('')
     : '<li>Sin órdenes registradas.</li>';
   return `<div class="reg-ficha">
     <div class="reg-ficha-num">${escapeHtml(num)}</div>
-    <dl><dt>Hoy</dt><dd>${hoy}</dd><dt>Dónde está</dt><dd>${donde ? escapeHtml(donde) : 'Sin ubicar en el mapa'}</dd></dl>
-    ${donde ? `<button class="btn" onclick="regVerEnMapa(${argJs(String(num))})">🗺️ Ver en el mapa</button>` : '<span></span>'}
+    <dl><dt>Hoy</dt><dd>${hoy}</dd><dt>Dónde está</dt><dd>${donde ? escapeHtml(donde.texto) : 'Sin ubicar en el mapa'}</dd></dl>
+    ${donde ? `<button class="btn" onclick="regVerEnMapa(${argJs(donde.buscar)})">🗺️ Ver en el mapa</button>` : '<span></span>'}
     <ol class="reg-historia">${lineas}</ol>
   </div>`;
 }
@@ -2239,13 +2270,16 @@ function regArribaHtml(q, ordenes) {
   if (q.tipo === 'barril') return regFichaHtml(q.valor, ordenes);
   if (q.tipo === 'lote') {
     const r = resumenDeLote(q.valor, ordenes);
+    const boxes = regBoxesDeLote(q.valor);
+    const mapa = boxes.length ? `<div class="reg-alternativa">En el mapa: <b>${escapeHtml(boxes.join(', '))}</b>
+      <button class="btn" style="margin-left:10px;" onclick="regVerEnMapa(${argJs(q.valor)})">🗺️ Ver en el mapa</button></div>` : '';
     const esBarril = q.alternativa === 'barril' || indiceInv.has(q.valor);
     const alt = esBarril ? `<div class="reg-alternativa">¿Buscabas el barril ${escapeHtml(q.valor)}?
       <button class="reg-link" onclick="regBuscarBarril(${argJs(q.valor)})">Ver el barril</button></div>` : '';
-    if (!r.ordenes) return alt ? `<div class="reg-resumen">${alt}</div>` : '';
-    return `<div class="reg-resumen"><b>Lote ${escapeHtml(q.valor)}</b> · ${r.ordenes} orden${r.ordenes === 1 ? '' : 'es'} ·
+    if (!r.ordenes) return (alt || mapa) ? `<div class="reg-resumen">${mapa}${alt}</div>` : '';
+    return `<div class="reg-resumen"><b>Lote ${escapeHtml(q.valor)}</b> · ${r.ordenes === 1 ? '1 orden' : r.ordenes + ' órdenes'} ·
       ${r.llenados} barril${r.llenados === 1 ? '' : 'es'} llenado${r.llenados === 1 ? '' : 's'} ·
-      ${r.vaciados} vaciado${r.vaciados === 1 ? '' : 's'} · último movimiento ${escapeHtml(fechaCorta(r.ultimaFecha))}${alt}</div>`;
+      ${r.vaciados} vaciado${r.vaciados === 1 ? '' : 's'} · último movimiento ${escapeHtml(fechaRegistro(r.ultimaFecha))}${mapa}${alt}</div>`;
   }
   return '';
 }
@@ -2282,7 +2316,7 @@ function regDibujar() {
   const plegar = q.tipo === 'vacio' && regMes === 'todos';
   $('regLista').innerHTML = agruparPorMes(filtradas).map((g, i) => {
     const n = g.ordenes.length;
-    const titulo = `${escapeHtml(g.mes ? nombreMes(g.mes) : 'Sin fecha')} <span>${n} orden${n === 1 ? '' : 'es'}</span>`;
+    const titulo = `${escapeHtml(g.mes ? nombreMes(g.mes) : 'Sin fecha')} <span>${n === 1 ? '1 orden' : n + ' órdenes'}</span>`;
     const tarjetas = `<div class="reg-grilla">${g.ordenes.map(o => regTarjetaHtml(o, resaltar)).join('')}</div>`;
     return plegar
       ? `<details class="reg-grupo"${i === 0 ? ' open' : ''}><summary><h3>${titulo}</h3></summary>${tarjetas}</details>`
@@ -2301,10 +2335,13 @@ function regBuscarBarril(num) {
   regDibujar();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-function regVerEnMapa(num) {
+// Marca en el mapa un barril o un lote (lo mismo que escribirlo en Dónde está).
+function regVerEnMapa(termino) {
   opSeccion('buscar');
-  setMapaTipo(buscarUbicacion(num) ? 'barriles' : 'tanques');
-  $('buscarMapa').value = String(num);
+  const enPalet = (estado.palets || []).some(p => Object.values(p.celdas || {}).some(v => String(v) === String(termino)));
+  const enBox = (estado.boxes || []).some(b => Object.values(b.celdas || {}).some(v => String(v) === String(termino)));
+  setMapaTipo(enPalet && !enBox ? 'tanques' : 'barriles');
+  $('buscarMapa').value = String(termino);
   aplicarBusqueda();
 }
 // Editar es lo mismo que el ✏️ del historial: carga la orden en la pantalla de

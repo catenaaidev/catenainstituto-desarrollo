@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import '../public/barriles/js/registro.js';
 
 const { interpretarBusqueda, mesDeOrden, mesesConOrdenes, filtrarOrdenes, agruparPorMes,
-        historiaDeBarril, resumenDeLote, nombreMes, fechaCorta } = globalThis;
+        historiaDeBarril, resumenDeLote, nombreMes, fechaRegistro, otLimpia } = globalThis;
 
 // Tres órdenes del Excel "Datos Ori" (14/01/26) y dos de enero 12 importadas con `mes`.
 const ORD = [
@@ -148,12 +148,26 @@ describe('resumenDeLote', () => {
   });
 });
 
-describe('nombreMes y fechaCorta', () => {
+describe('nombreMes y fechaRegistro', () => {
   it('formatos', () => {
     expect(nombreMes('2026-01')).toBe('Enero 2026');
     expect(nombreMes('2025-12')).toBe('Diciembre 2025');
     expect(nombreMes('raro')).toBe('raro');
-    expect(fechaCorta('2026-01-14')).toBe('14/01/26');
-    expect(fechaCorta('')).toBe('');
+    expect(fechaRegistro('2026-01-14')).toBe('14/01/26');
+    expect(fechaRegistro('')).toBe('');
+  });
+});
+
+// La mitad de las órdenes reales trae la OT escrita con el prefijo ("OT-89",
+// "ot 63"): se muestra y se busca sin él.
+describe('otLimpia y la búsqueda por OT', () => {
+  it('saca el prefijo OT en sus formas', () => {
+    for (const t of ['OT-89', 'ot 89', 'OT 89', 'ot:89', '89', ' OT89 ']) expect(otLimpia(t)).toBe('89');
+    expect(otLimpia('D023')).toBe('D023');
+    expect(otLimpia('')).toBe('');
+  });
+  it('"OT 89" encuentra las órdenes guardadas como "OT-89" o "89"', () => {
+    const ords = [{ id: 'x', ot: 'OT-89' }, { id: 'y', ot: '89' }, { id: 'z', ot: '890' }];
+    expect(filtrarOrdenes(ords, interpretarBusqueda('OT 89', ords), '').map(o => o.id)).toEqual(['x', 'y']);
   });
 });
