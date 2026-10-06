@@ -2,7 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import { registrarAgregados, revertirAgregados, anularAgregado, agregadosVigentes,
          esSoloAgregados, textoAgregados, otsDeAgregados, normalizarItem, filasBitacora,
-         sugerirOT, cantidadTexto, filasPapelAgregados, filaPapelAgregado }
+         sugerirOT, cantidadTexto, filasPapelAgregados, filaPapelAgregado,
+         vasijasDeLote, litrosReferencia, dosisVasija, totalLote, resumenVasijas }
   from '../public/lotes/js/agregados.js';
 
 const TH2 = { producto: 'TH2', cantidad: 380, unidad: 'g' };
@@ -108,15 +109,69 @@ describe('sugerirOT', () => {
   });
 });
 
+describe('dosis por vasija', () => {
+  const B = (num, cap, estado = 'LLENO') => ({ num, cap, estado });
+
+  it('barriles llenos del Mapa + envases sin ubicar + tanque', () => {
+    const lote = { lote: '26126', cap225: 3, cap50: 1, vasija_grande: 1500, vasija_actual: 'T50' };
+    const v = vasijasDeLote(lote, [B('1021', 225), B('1022', 225), B('9', 225, 'VACIO')], 'Barricas');
+    expect(v).toEqual([
+      { tipo: 'barril', num: '1021', litros: 225 }, { tipo: 'barril', num: '1022', litros: 225 },
+      { tipo: 'sin_num', num: '', litros: 225 }, { tipo: 'sin_num', num: '', litros: 50 },
+      { tipo: 'tanque', num: 'T50', litros: 1500 },
+    ]);
+    const ref = litrosReferencia(v);
+    expect(ref).toBe(225);
+    expect(v.map(x => dosisVasija(50, x.litros, ref))).toEqual([50, 50, 50, 11.11, 333.33]);
+    expect(totalLote(50, v, ref)).toBe(494.44);
+    expect(resumenVasijas(v)).toBe('3 × 225 L + 1 × 50 L + T50 1500 L');
+  });
+
+  it('un lote solo en tanque lleva la dosis tal cual; el tanque "Barricas" se llama Tanque', () => {
+    const v = vasijasDeLote({ vasija_grande: 3500, vasija_actual: 'T 140' }, [], '');
+    expect(litrosReferencia(v)).toBe(3500);
+    expect(dosisVasija(50, 3500, 3500)).toBe(50);
+    expect(vasijasDeLote({ vasija_grande: 100, vasija_actual: 'Barricas' }, null)[0].num).toBe('Tanque');
+    expect(vasijasDeLote({ vasija_grande: 100, vasija_actual: 'H 170 + Barricas' }, null)[0].num).toBe('H 170');
+  });
+
+  it('sin datos: una sola vasija con el texto de la tarjeta', () => {
+    expect(vasijasDeLote(null, null, 'T 9')).toEqual([{ tipo: 'unica', num: 'T 9', litros: null }]);
+    expect(dosisVasija(50, null, null)).toBe(50);
+  });
+
+  it('registrar guarda el total y como se reparte', () => {
+    const an = [];
+    registrarAgregados(an, { lote: '1', fecha: 'f', ot: 'B1',
+      items: [{ producto: 'TH2', cantidad: 494.44, unidad: 'g', dosis_vasija: 50, litros_ref: 225, vasijas: 5 }] });
+    expect(an[0].agregados[0]).toMatchObject({ cantidad: 494.44, dosis_vasija: 50, litros_ref: 225, vasijas: 5 });
+  });
+});
+
 describe('papel', () => {
-  it('un renglon por producto, separador entre lotes, sin lotes vacios', () => {
+  it('encabezado por lote y un renglon por vasija y producto, escalando la dosis', () => {
+    const lote = { lote: '26126', cap225: 2, cap50: 1 };
+    const t = [{ lote: '26126', vasija: 'Barricas', items: [{ producto: 'TH2', cantidad: '50', unidad: 'g' }] }];
+    const f = filasPapelAgregados(t, () => vasijasDeLote(lote, [B2('1021', 225)], 'Barricas'));
+    expect(f.map(x => [x.tipo, x.vasija, x.cantidad])).toEqual([
+      ['lote', undefined, undefined], ['item', '1021', 50], ['item', '', 50], ['item', '', 11.11]]);
+    expect(filaPapelAgregado({ fila: f[0] })).toContain('2 × 225 L + 1 × 50 L · dosis por vasija de 225 L');
+    expect(filaPapelAgregado({ fila: f[3] })).toBe('<tr><td class="oh-check"></td><td class="c">26126</td>' +
+      '<td class="c">____ · 50 L</td><td>TH2</td><td class="c"><b>11,11 g</b></td></tr>');
+  });
+});
+
+const B2 = (num, cap) => ({ num, cap, estado: 'lleno' });
+
+describe('papel sin Mapa', () => {
+  it('sin Mapa ni lote: una vasija con el texto de la tarjeta, sin lotes vacios', () => {
     const f = filasPapelAgregados([
       { lote: '26150', vasija: 'T12', items: [{ producto: 'TH2', cantidad: '380', unidad: 'g' }, { producto: '' }] },
       { lote: '', items: [{ producto: 'T1' }] },
       { lote: '26151', vasija: 'B3', items: [{ producto: 'Quitosano', cantidad: '50', unidad: 'g' }] },
     ]);
-    expect(f.map(x => x.tipo)).toEqual(['item', 'sep', 'item']);
-    expect(filaPapelAgregado({ fila: f[0] })).toBe('<tr><td class="oh-check"></td><td class="c"><b>26150</b></td>' +
-      '<td class="c">T12</td><td>TH2</td><td class="c">380 g</td></tr>');
+    expect(f.map(x => x.tipo)).toEqual(['lote', 'item', 'lote', 'item']);
+    expect(filaPapelAgregado({ fila: f[1] })).toBe('<tr><td class="oh-check"></td><td class="c">26150</td>' +
+      '<td class="c">T12</td><td>TH2</td><td class="c"><b>380 g</b></td></tr>');
   });
 });
