@@ -165,22 +165,53 @@ export function analisisConFlags(datos: Record<string, unknown>) {
     ((datos.lotes as Fila[]) ?? []).map((l) => [normalizarLote((l ?? {}).lote), l ?? {}]),
   );
 
-  return ((datos.analisis as Fila[]) ?? []).map((a, i) => {
-    const info = lotesPorNum.get(normalizarLote((a ?? {}).lote)) ?? {};
-    const eff = criteriosEfectivos(config, info.variedad, info.proyecto);
-    /* El lote va entero y no solo su variedad: la decision de FML puede venir
-     * de su propia ficha (hace_fml / fml_excluida) y pisar a la de config, y de
-     * eso depende si el málico de esta fila se juzga o no. Un analisis cuyo
-     * lote ya no existe queda con {}, que fmlExcluida trata como "sin decision
-     * propia" y resuelve por la variedad. */
-    const v = veredictosAnalisis(a, eff, info);
-    return {
-      idx: i,
-      lote: a.lote,
-      fecha_analisis: a.fecha_analisis,
-      fuera: Object.keys(v).filter((k) => v[k] === 'fuera'),
-      dentro: Object.keys(v).filter((k) => v[k] === 'dentro'),
-      so2_molec_calc: so2Molecular(a.so2_libre, a.ph),
-    };
+  return ((datos.analisis as Fila[]) ?? []).map((a, i) => ({
+    idx: i,
+    lote: a.lote,
+    fecha_analisis: a.fecha_analisis,
+    ...veredictoDeFila(a, lotesPorNum.get(normalizarLote((a ?? {}).lote)) ?? {}, config),
+  }));
+}
+
+/* El veredicto de UNA fila de análisis con su lote y la config de criterios.
+ * El lote va entero y no solo su variedad: la decision de FML puede venir de su
+ * propia ficha (hace_fml / fml_excluida) y pisar a la de config, y de eso
+ * depende si el málico de esta fila se juzga o no. Un analisis cuyo lote ya no
+ * existe queda con {}, que fmlExcluida trata como "sin decision propia" y
+ * resuelve por la variedad. */
+function veredictoDeFila(a: Fila, info: Fila, config: Record<string, unknown>) {
+  const eff = criteriosEfectivos(config, info.variedad, info.proyecto);
+  const v = veredictosAnalisis(a, eff, info);
+  return {
+    fuera: Object.keys(v).filter((k) => v[k] === 'fuera'),
+    dentro: Object.keys(v).filter((k) => v[k] === 'dentro'),
+    so2_molec_calc: so2Molecular(a.so2_libre, a.ph),
+  };
+}
+
+/** Tope de filas por pedido de veredictosSueltos: un pegado grande entra
+ *  entero; algo mas grande es un error de la pantalla, no un caso de uso. */
+const MAX_SUELTOS = 1000;
+
+/**
+ * Veredictos de filas de análisis que todavía NO están guardadas: las que se
+ * acaban de tipear, pegar o deshacer. Con analisisConFlags (que juzga lo
+ * guardado) la celda quedaba sin color hasta el autoguardado y el pedido
+ * siguiente. La pantalla manda cada fila con su lote y los criterios tal como
+ * los tiene, así que esto no lee la base y no depende de que lo editado ya esté
+ * guardado. Mismas reglas que analisisConFlags (veredictoDeFila).
+ *
+ * Cuerpo: { criterios: config.criterios_fml, filas: [{ analisis, lote? }] }.
+ * Devuelve un veredicto por fila, en el mismo orden.
+ */
+export function veredictosSueltos(cuerpo: unknown) {
+  const c = (cuerpo ?? {}) as Record<string, unknown>;
+  const criterios = c.criterios && typeof c.criterios === 'object'
+    ? (c.criterios as Record<string, unknown>) : {};
+  const filas = Array.isArray(c.filas) ? c.filas.slice(0, MAX_SUELTOS) : [];
+  return filas.map((f) => {
+    const x = (f && typeof f === 'object' ? f : {}) as Record<string, unknown>;
+    const obj = (v: unknown) => (v && typeof v === 'object' ? (v as Fila) : {});
+    return veredictoDeFila(obj(x.analisis), obj(x.lote), criterios);
   });
 }

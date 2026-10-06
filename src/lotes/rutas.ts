@@ -10,7 +10,7 @@ import { identidad, puedeEscribir, puedeLeer, marcarSesion } from '../auth';
 import { json } from '../respuestas';
 import { validarDatos, SECCIONES_LOTES, ahoraBodega, type Datos } from '../prensas/validacion';
 import { resumenCambios } from '../prensas/cambios';
-import { datosDashboard, datosFicha, analisisConFlags } from './vistas';
+import { datosDashboard, datosFicha, analisisConFlags, veredictosSueltos } from './vistas';
 import { normalizarMapa, MapaNoDisponible } from './motores/mapa';
 import { cruzar } from './motores/cruce';
 import { armarOrden } from './motores/correccion';
@@ -259,6 +259,14 @@ export async function rutasLotes(
   // ---------- GET /analisis ----------
   if (ruta === '/analisis' && req.method === 'GET') {
     return json(200, analisisConFlags(await leerDocumento(env)));
+  }
+
+  // ---------- POST /analisis/veredictos ----------
+  // Juzga filas sin guardar (las que se acaban de tipear): no escribe nada, por
+  // eso alcanza con poder leer. Ver veredictosSueltos.
+  if (ruta === '/analisis/veredictos' && req.method === 'POST') {
+    const cuerpo = await req.json().catch(() => null);
+    return json(200, veredictosSueltos(cuerpo));
   }
 
   // ---------- GET /ficha?lote=NNN[&etapa=X] ----------
