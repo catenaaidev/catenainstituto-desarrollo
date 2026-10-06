@@ -337,7 +337,8 @@ Crear `public/barriles/js/registro.js`:
     // "b" corto solo con dígitos: "blend" es un lote, no el barril "lend".
     if ((m = /^(?:barril\s*[:#-]?\s*(\S+)|b\s*[:#-]?\s*(\d+))$/i.exec(t))) return { tipo: 'barril', valor: m[1] || m[2] };
     if ((m = /^lote\s*[:#-]?\s*(\S.*)$/i.exec(t))) return { tipo: 'lote', valor: txt(m[1]) };
-    if ((m = /^ot\s*[:#-]?\s*(\S+)$/i.exec(t))) return { tipo: 'ot', valor: m[1] };
+    // OT siempre arranca con número: "OTOÑO" es un lote, no la OT "OÑO".
+    if ((m = /^ot\s*[:#-]?\s*(\d\S*)$/i.exec(t))) return { tipo: 'ot', valor: m[1] };
     if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return { tipo: 'fecha', valor: t };
     if ((m = /^(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2}|\d{4}))?$/.exec(t))) {
       const d = +m[1], mes = +m[2];
