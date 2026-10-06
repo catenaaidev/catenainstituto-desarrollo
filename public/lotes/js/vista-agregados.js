@@ -18,7 +18,7 @@ import { visible } from './selector-anios.js';
 import { AGREGADOS_COMUNES, PLANTILLAS, UNIDADES, normalizarItem, registrarAgregados,
          anularAgregado, esAgregadoAnulado, filasBitacora, sugerirOT, cantidadTexto,
          filasPapelAgregados, filaPapelAgregado, COLUMNAS_PAPEL_AG, COLGROUP_PAPEL_AG,
-         THEAD_PAPEL_AG } from './agregados.js';
+         THEAD_PAPEL_AG, vasijasDeLote, litrosReferencia, totalLote, resumenVasijas } from './agregados.js';
 
 const _hoyISO = () => {
   const d = new Date();
@@ -46,6 +46,47 @@ function _badges(t){
   return [l.variedad, l.proyecto].filter(Boolean).map(x => `<span class="ag-badge">${esc(x)}</span>`).join('');
 }
 
+/* ---------- barriles del Mapa ----------
+ * La dosis se carga POR VASIJA y el papel sale con un renglon por barril, asi
+ * que hacen falta los barriles llenos de cada lote. Se piden al Mapa al salir
+ * del lote (para mostrar el resumen en la tarjeta) y de nuevo al imprimir y al
+ * registrar, para no usar un Mapa viejo. null = el Mapa no respondio: se sigue
+ * con los envases del lote, sin numeros. */
+const _barriles = new Map();   // lote -> [barriles] | null
+let _mapaFallo = false;
+
+async function _cargarBarriles(lotes){
+  const L = [...new Set(lotes.map(x => String(x ?? '').trim()).filter(Boolean))];
+  if (!L.length) return;
+  try {
+    const r = await fetch(API + '/barriles?lotes=' + encodeURIComponent(L.join(',')));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const por = (await r.json()).por_lote || {};
+    L.forEach(l => _barriles.set(l, por[l] || []));
+    _mapaFallo = false;
+  } catch (e){
+    L.forEach(l => { if (!_barriles.has(l)) _barriles.set(l, null); });
+    _mapaFallo = true;
+  }
+}
+
+function _vasijasDe(t){
+  const L = String(t.lote ?? '').trim();
+  return vasijasDeLote(_loteDe(L), _barriles.get(L) || null, t.vasija);
+}
+
+function _resumenTarjeta(t){
+  const L = String(t.lote ?? '').trim();
+  if (!L || !_barriles.has(L)) return '';
+  const v = _vasijasDe(t);
+  const ref = litrosReferencia(v);
+  const sinNum = v.filter(x => x.tipo === 'sin_num').length;
+  return esc(resumenVasijas(v) || '1 vasija') +
+    (v.length > 1 && ref ? ' · cantidad por vasija de ' + ref + ' L' : '') +
+    (sinNum ? ` · <span title="El lote declara más envases que los barriles llenos del Mapa">${sinNum} sin número en el Mapa</span>` : '') +
+    (_barriles.get(L) === null ? ' · Mapa de Barriles no disponible' : '');
+}
+
 /* ---------- render ---------- */
 function _selector(){
   const b = (k, txt) => `<button type="button" data-agsub="${k}" role="radio" aria-checked="${_sub === k}"` +
@@ -66,12 +107,13 @@ function _htmlTarjeta(t){
       <div><span class="ag-lbl">CIW Lote</span><input class="txt ag-lote" list="agLotes" data-f="lote" value="${escA(t.lote)}" placeholder="26150"></div>
       <div><span class="ag-lbl">Vasija</span><input class="txt ag-vasija" data-f="vasija" value="${escA(t.vasija)}" placeholder="Vasija"></div>
       <span class="ag-badges">${_badges(t)}</span>
+      <span class="ag-vasijas">${_resumenTarjeta(t)}</span>
       <div class="spacer" style="flex:1"></div>
       <button type="button" class="btn" data-dup title="Otra tarjeta con el mismo lote">⎘ Duplicar</button>
       <button type="button" class="btn danger" data-quitar-tarjeta title="Quitar este lote de la orden">✕</button>
     </div>
     <div class="ag-card-body">
-      <table><thead><tr><th>Agregado</th><th>Cantidad</th><th>Unidad</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+      <table><thead><tr><th>Agregado</th><th title="Por vasija: las de otros litros llevan la dosis proporcional">Cantidad por vasija</th><th>Unidad</th><th></th></tr></thead><tbody>${filas}</tbody></table>
       <button type="button" class="btn" data-agregar-item style="margin-top:4px">+ Producto</button>
     </div>
     <div class="ag-tpl">Plantillas: ${PLANTILLAS.map(p => `<button type="button" data-tpl="${p.clave}">+ ${esc(p.nombre)}</button>`).join('')}</div>
@@ -127,7 +169,8 @@ function _htmlBitacora(){
       <td>${esc(fmtFecha(f.fecha) || f.fecha)}</td>
       <td><button class="alarm-lote-link" data-iralote="${escA(f.lote)}">${esc(f.lote)}</button></td>
       <td>${esc(l.variedad || '')}</td><td>${esc(l.vasija_actual || '')}</td>
-      <td><b>${esc(ag.producto)}</b></td><td class="num">${esc(cantidadTexto(ag))}</td>
+      <td><b>${esc(ag.producto)}</b></td><td class="num">${esc(cantidadTexto(ag))}${ag.dosis_vasija != null
+        ? `<div style="font-size:11px;color:var(--muted)">${esc(cantidadTexto({ cantidad: ag.dosis_vasija, unidad: ag.unidad }))} por vasija de ${esc(ag.litros_ref || '?')} L · ${esc(ag.vasijas)} vasijas</div>` : ''}</td>
       <td>${esc(ag.ot_n || '')}</td><td>${esc(ag.registrado_por || '')}</td>
       <td class="ag-acc">${acc}</td></tr>`;
   }).join('');
@@ -207,7 +250,11 @@ function _cablear(sec){
       card.querySelector('.ag-vasija').value = t.vasija;
     }
     card.querySelector('.ag-badges').innerHTML = _badges(t);
-  });
+    const L = String(t.lote ?? '').trim();
+    card.querySelector('.ag-vasijas').innerHTML = L ? 'Buscando barriles…' : '';
+    _cargarBarriles([L]).then(() => {
+      if (String(t.lote ?? '').trim() === L) card.querySelector('.ag-vasijas').innerHTML = _resumenTarjeta(t);
+    });  });
 
   sec.addEventListener('click', e => {
     const el = e.target;
@@ -268,9 +315,13 @@ function _tarjetasValidas(){
     .filter(x => String(x.t.lote).trim() && x.items.length);
 }
 
-function _imprimir(){
+async function _imprimir(){
   const cont = $('agPaginas'); if (!cont) return;
-  const filas = filasPapelAgregados(_b.tarjetas);
+  if (!_tarjetasValidas().length){ _msg('<div class="msg err">Cargá al menos un lote con un producto para imprimir.</div>'); return; }
+  _msg('<div class="msg">Leyendo los barriles del Mapa…</div>');
+  await _cargarBarriles(_b.tarjetas.map(t => t.lote));
+  _msg(_mapaFallo ? '<div class="msg err">El Mapa de Barriles no respondió: el papel sale con los envases del lote, sin número de barril.</div>' : '');
+  const filas = filasPapelAgregados(_b.tarjetas, _vasijasDe);
   if (!filas.length){ _msg('<div class="msg err">Cargá al menos un lote con un producto para imprimir.</div>'); return; }
   const p = (_b.fecha || '').split('-');
   cont.innerHTML = pintarHojas({
@@ -290,7 +341,7 @@ function _imprimir(){
   document.body.classList.remove('printing-agregados');
 }
 
-function _registrar(){
+async function _registrar(){
   const ot = String(_b.ot || '').trim();
   const fecha = String(_b.fecha || '').trim();
   if (!ot){ _msg('<div class="msg err">Ingresá el N° de OT: es lo que identifica el agregado en el lote y en Análisis.</div>'); return; }
@@ -304,11 +355,23 @@ function _registrar(){
 
   /* Dos tarjetas del mismo lote se juntan: registrarAgregados reemplaza lo de
    * la misma OT, y registrarlas por separado dejaria solo la segunda. */
+  /* Lo que se registra en el lote es el TOTAL que lleva (la dosis de cada
+   * vasija sumada), con la dosis por vasija y los litros de referencia al
+   * lado para poder reconstruir la orden. */
+  _msg('<div class="msg">Leyendo los barriles del Mapa…</div>');
+  await _cargarBarriles(validas.map(x => x.t.lote));
+  if (_mapaFallo && !confirm('El Mapa de Barriles no respondió. El total se calcula con los envases que declara cada lote. ¿Registrar igual?')){
+    _msg(''); return;
+  }
   const porLote = new Map();
   for (const x of validas){
     const L = String(x.t.lote).trim();
+    const vas = _vasijasDe(x.t);
+    const ref = litrosReferencia(vas);
     if (!porLote.has(L)) porLote.set(L, []);
-    porLote.get(L).push(...x.items);
+    porLote.get(L).push(...x.items.map(it => ({ ...it,
+      cantidad: totalLote(it.cantidad, vas, ref),
+      dosis_vasija: it.cantidad, litros_ref: ref, vasijas: vas.length })));
   }
 
   const yaEstaba = [...porLote.keys()].filter(L => (DATOS().analisis || []).some(a =>
