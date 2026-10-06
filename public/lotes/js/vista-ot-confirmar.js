@@ -447,7 +447,7 @@ async function _aplicar(st){
     if ($('otcRaiz')){
       $('otcAplicar').disabled = false;
       $('otcAplicar').textContent = 'Reintentar guardar';
-      err2('No se guardó. La OT ya quedó confirmada en pantalla: probá Reintentar guardar, o cerrá y usá 💾 Guardar.');
+      err2('No se guardó. La OT ya quedó confirmada en pantalla: probá Reintentar guardar o Ctrl+S, o esperá — se guarda sola apenas vuelva la conexión.');
     }
     return;
   }

@@ -3,9 +3,9 @@
 
 /* Cada vista se registra sola al importarse (registrarVista). */
 import { cargarDatos, mostrarTab, refrescarAvisos, refrescarInfo,
-         guardar, pedirUsuario, usuarioActual, verHistorial, cerrarOverlay,
+         guardarAhora, deshacer, rehacer, pedirUsuario, usuarioActual, verHistorial, cerrarOverlay,
          cargarDashboard, $, registrarInit, invalidarVistas, invalidarDashMap,
-         renderActivo, DATOS } from './js/nucleo.js';
+         renderActivo, DATOS, arrancarEnVivo } from './js/nucleo.js';
 import { limpiarFiltrosMulti } from './js/tabla.js';
 import { montarSelectorAnios } from './js/selector-anios.js';
 
@@ -47,10 +47,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   /* overlay: cerrar con Escape */
   document.addEventListener('keydown', e => { if(e.key==='Escape') cerrarOverlay(); });
+
+  /* Ctrl+S: guardar ya, sin esperar los 2 s del autoguardado. Se intercepta
+     para que el navegador no abra "Guardar página como". */
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 's' || e.key === 'S')){
+      e.preventDefault();
+      guardarAhora();
+    }
+  });
+
+  /* Ctrl+Z / Ctrl+Y (y Ctrl+Shift+Z): deshacer y rehacer de TODA la pagina.
+     Si el foco esta en un campo donde se escribe, la tecla es del navegador
+     (deshace lo que vas tipeando). Con un overlay abierto no se deshace nada:
+     el paso se anota recien al aceptar. Y tampoco el navegador: sin el
+     preventDefault, Chrome aplica su deshacer nativo al ultimo <input> que se
+     edito en la tabla de atras (inputType 'historyUndo') y eso llega al modelo.
+     La grilla, cuando tiene seleccion, despacha lotes:deshacer/lotes:rehacer
+     y llega al mismo lugar (con overlay abierto no despacha y cae aca). */
+  const esCampoDeTexto = el => !!el && (el.isContentEditable || el.tagName === 'TEXTAREA' ||
+    (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'date'].includes(el.type)));
+  document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const k = e.key.toLowerCase();
+    const esDeshacer = k === 'z' && !e.shiftKey;
+    const esRehacer = k === 'y' || (k === 'z' && e.shiftKey);
+    if (!esDeshacer && !esRehacer) return;
+    if (esCampoDeTexto(document.activeElement)) return;
+    if ($('overlay').classList.contains('show')){ e.preventDefault(); return; }
+    e.preventDefault();
+    if (esDeshacer) deshacer(); else rehacer();
+  });
   $('overlay').addEventListener('click', e => { if(e.target===$('overlay')) cerrarOverlay(); });
 
   /* botones de cabecera */
-  $('btnGuardar').addEventListener('click', () => guardar(false));
   $('btnHistorial').addEventListener('click', verHistorial);
   $('usuario').addEventListener('click', () => pedirUsuario(true));
 
@@ -117,6 +147,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   refrescarAvisos();
   refrescarInfo();
   await dash;
+
+  /* ver en vivo lo que guardan los demas (cada 15 s, con la pestaña a la vista) */
+  arrancarEnVivo();
 
   /* refrescar avisos cada 60 s */
   setInterval(refrescarAvisos, 60000);

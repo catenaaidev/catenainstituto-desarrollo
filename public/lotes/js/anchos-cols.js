@@ -4,7 +4,7 @@
  * mismo lo autoajusta al contenido, como en Excel. Los anchos son una
  * preferencia de pantalla de cada persona: viven en el localStorage, igual que
  * el colapsado de grupos (ver CLAVE_GRUPOS en vista-lotes.js). Guardarlos en
- * datos.json obligaria a apretar Guardar y le pisaria la vista a los demas.
+ * datos.json obligaria a un guardado (ahora automatico) que le pisaria la vista a los demas.
  *
  * TRES DECISIONES QUE EXPLICAN TODO EL ARCHIVO
  *

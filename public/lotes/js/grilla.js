@@ -13,7 +13,6 @@
 
 import { rect, rectIguales, rectCeldas, rectRecortar,
          rectDiferencia, sonContiguos } from './grilla-rect.js';
-import { crearPila } from './grilla-undo.js';
 import { parsearTSV, armarTSV } from './grilla-tsv.js';
 import { escribirCelda } from './tabla.js';
 
@@ -41,7 +40,6 @@ function nuevoEstado(id){
     sel: null,        // rect|null — el rango seleccionado
     activa: null,     // {f,c}|null — la celda activa (el ancla del teclado)
     claves: null,     // identidad de cada fila visible, o null si no hay forma
-    pila: crearPila(),
     arrastrando: false,
     editando: false,
   };
@@ -564,8 +562,9 @@ const TECLAS_MOVER = {
   ArrowLeft:  [ 0, -1], ArrowRight: [ 0,  1],
 };
 
-/** Devuelve true si consumio la tecla. Las tareas 8, 9 y 10 suman casos
- *  (copiar, pegar, borrar, deshacer) justo antes del bloque de navegacion. */
+/** Devuelve true si consumio la tecla. Copiar, borrar y las operaciones en
+ *  bloque van justo antes del bloque de navegacion; Ctrl+Z/Y solo avisan a
+ *  nucleo.js, que deshace para toda la pagina. */
 function _manejarTecla(st, e){
   const g = geo(st.tabla);
 
@@ -619,9 +618,17 @@ function _manejarTecla(st, e){
   if (e.key === 'Delete' || e.key === 'Backspace'){ borrarRango(st, g); return true; }
   if (e.key === 'Enter' && e.ctrlKey){ aplicarAlRango(st, g); return true; }
   if ((e.key === 'd' || e.key === 'D') && e.ctrlKey){ rellenarAbajo(st, g); return true; }
-  if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && !e.shiftKey){ deshacer(st); return true; }
-  if ((e.key === 'y' || e.key === 'Y') && e.ctrlKey){ rehacer(st); return true; }
-  if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && e.shiftKey){ rehacer(st); return true; }
+  /* Deshacer / rehacer: los maneja nucleo.js para toda la pagina. Con un
+   * overlay abierto (ficha de envases, asistentes) no: deshacer por detras
+   * de un formulario abierto cambiaria datos que el formulario tiene a medias.
+   * Se devuelve false y la tecla sigue hasta app.js, que le hace
+   * preventDefault: si no, Chrome aplicaria su deshacer nativo al ultimo
+   * <input> tocado de la tabla de atras. */
+  if ((e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y') && e.ctrlKey &&
+      document.getElementById('overlay')?.classList.contains('show')) return false;
+  if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && !e.shiftKey){ document.dispatchEvent(new CustomEvent('lotes:deshacer')); return true; }
+  if ((e.key === 'y' || e.key === 'Y') && e.ctrlKey){ document.dispatchEvent(new CustomEvent('lotes:rehacer')); return true; }
+  if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && e.shiftKey){ document.dispatchEvent(new CustomEvent('lotes:rehacer')); return true; }
 
   /* --- entrar a editar ---
    * El !e.ctrlKey no es decorativo: sin el, este caso se traga el Ctrl+Enter que
@@ -786,11 +793,6 @@ function cablearTeclado(){
   if (_tecladoCableado) return;
   _tecladoCableado = true;
 
-  /* Al recargar datos del servidor los objetos de DATOS() se reemplazan y las
-   * pilas quedarian apuntando a objetos huerfanos. El evento evita importar
-   * nucleo.js desde aca, que cerraria un ciclo: grilla->tabla->nucleo->grilla. */
-  document.addEventListener('lotes:datos-recargados', limpiarPilas);
-
   /* capture:true: la grilla escucha en la fase de captura, antes que los
    * listeners de burbujeo de app.js. Lo que evita que app.js lo vea es
    * stopImmediatePropagation(), que detiene los demas listeners; la captura
@@ -815,6 +817,30 @@ function cablearTeclado(){
       return;   // hay una sola tabla visible por vez
     }
   }, true);
+
+  /* nucleo.js redibujo la pestaña mientras se tipeaba (409, guardado
+   * combinado) y volvio a enfocar el <input> de la misma celda. El viejo, al
+   * irse, dejo st.editando en false: la proxima letra entraria por "tipear
+   * reemplaza" y vaciaria la celda. Se vuelve a poner esa celda como activa y
+   * en edicion. Escape vuelve al valor de antes de empezar a tipear si la
+   * celda es la misma que se estaba editando; si no, al que tiene ahora. */
+  document.addEventListener('lotes:celda-reenfocada', e => {
+    try {
+      const el = e.detail && e.detail.el;
+      const tabla = el && el.closest ? el.closest('table') : null;
+      const st = tabla && tabla.id ? _estados.get(tabla.id) : null;
+      if (!st || st.tabla !== tabla) return;
+      const g = geo(tabla);
+      const td = el.closest('td');
+      const f = g.fDe(td ? td.parentElement : null);
+      const c = td ? g.cols.findIndex(x => x.th.cellIndex === td.cellIndex) : -1;
+      if (f < 0 || c < 0) return;
+      const misma = !!st.activa && st.activa.f === f && st.activa.c === c && st.valorPrevio !== undefined;
+      seleccionar(st, g, f, c, false);
+      st.editando = true;
+      if (!misma) st.valorPrevio = el.value;
+    } catch (err) { console.error('grilla: celda reenfocada:', err); }
+  });
 }
 
 /* ---------- fabrica de adaptadores ----------
@@ -838,14 +864,13 @@ export function adaptadorCols(tabla, cols, onCambio){
       if (!obj) return 'ro';
       return escribirCelda(cols, obj, k, texto);
     },
-    escribirCrudo(obj, k, valor){ if (obj) obj[k] = valor; },
     onCambio,
   };
 }
 
 /* ---------- motor de escritura ----------
- * Un solo camino para pegar, borrar, aplicar al rango, rellenar abajo y
- * deshacer. Todos comparten las mismas reglas y el mismo reporte.
+ * Un solo camino para pegar, borrar, aplicar al rango y rellenar abajo.
+ * Todos comparten las mismas reglas y el mismo reporte.
  */
 
 /** Vuelve a leer el valor guardado y lo pone en el control. Sin esto la celda
@@ -859,14 +884,15 @@ function refrescarCelda(ad, g, f, c, obj, k){
   el.value = (v == null) ? '' : String(v);
 }
 
-/** items: [{f, c, texto}]. Devuelve el conteo y apila UNA entrada de deshacer
- *  con todos los cambios de la operacion. */
+/** items: [{f, c, texto}]. Devuelve el conteo. Avisa el cambio UNA vez
+ *  (onCambio -> markDirty): para el Ctrl+Z de nucleo.js toda la operacion es
+ *  un solo paso. */
 export function escribirCeldas(st, g, items){
   const res = { escritas: 0, salteadas: 0, rechazadas: 0 };
   const ad = st.adaptador;
   if (!ad) { res.salteadas = items.length; return res; }
 
-  const cambios = [];
+  let escribio = false;
   for (const it of items){
     const col = g.cols[it.c];
     if (!col){ res.salteadas++; continue; }
@@ -879,14 +905,10 @@ export function escribirCeldas(st, g, items){
     const obj = ad.objetoDe(it.f);
     if (!obj){ res.salteadas++; continue; }
 
-    const antes = ad.leer(obj, col.k);
     const estado = ad.escribir(obj, col.k, it.texto);
-
     if (estado === 'ok'){
       res.escritas++;
-      // `despues` se lee DESPUES de escribir, asi queda el valor ya normalizado
-      // (se pego "3,22" y se guarda 3.22). Lo usa rehacer en la tarea 10.
-      cambios.push({ obj, k: col.k, antes, despues: ad.leer(obj, col.k) });
+      escribio = true;
       refrescarCelda(ad, g, it.f, it.c, obj, col.k);
     } else if (estado === 'ro'){
       res.salteadas++;
@@ -895,10 +917,10 @@ export function escribirCeldas(st, g, items){
     }
   }
 
-  if (cambios.length){
-    st.pila.apilar(cambios);
-    if (ad.onCambio) ad.onCambio();
-  }
+  /* onCambio llama a markDirty: toda la operacion (pegar, borrar el rango,
+   * aplicar al rango) queda como UN paso del deshacer general (nucleo.js lo
+   * cierra a los 300 ms). */
+  if (escribio && ad.onCambio) ad.onCambio();
   return res;
 }
 
@@ -996,62 +1018,6 @@ export function rellenarAbajo(st, g){
   }
   const res = escribirCeldas(st, g, items);
   reportar(st, 'Rellenado hacia abajo', res);
-}
-
-/* ---------- deshacer / rehacer ----------
- * No pasan por escribirCeldas: escriben el valor CRUDO sin validar (ya se
- * valido cuando se escribio la primera vez) y sin volver a apilar.
- *
- * Los cambios guardan el OBJETO de fila, no su indice, asi que deshacer es
- * correcto aunque entre medio se haya ordenado, filtrado, o la fila haya dejado
- * de estar visible.
- */
-function aplicarCambios(st, cambios, usarAntes){
-  const ad = st.adaptador;
-  if (!ad) return 0;
-
-  const g = geo(st.tabla);
-  // Objeto de fila -> indice visible, para refrescar solo lo que se ve.
-  const filaDe = new Map();
-  for (let f = 0; f < g.n; f++){
-    const obj = ad.objetoDe(f);
-    if (obj) filaDe.set(obj, f);
-  }
-  const colDe = new Map();
-  g.cols.forEach((col, c) => colDe.set(col.k, c));
-
-  let n = 0;
-  for (const cb of cambios){
-    ad.escribirCrudo(cb.obj, cb.k, usarAntes ? cb.antes : cb.despues);
-    n++;
-    const f = filaDe.get(cb.obj), c = colDe.get(cb.k);
-    if (f !== undefined && c !== undefined) refrescarCelda(ad, g, f, c, cb.obj, cb.k);
-  }
-  if (n && ad.onCambio) ad.onCambio();
-  return n;
-}
-
-export function deshacer(st){
-  if (!puedeEscribir(st)) return;
-  const cambios = st.pila.deshacer();
-  if (!cambios){ mensaje(st.tabla, 'No hay nada para deshacer.', 'info'); return; }
-  const n = aplicarCambios(st, cambios, true);
-  mensaje(st.tabla, `Deshecho: ${n} ${n === 1 ? 'celda' : 'celdas'}.`, 'ok');
-}
-
-export function rehacer(st){
-  if (!puedeEscribir(st)) return;
-  const cambios = st.pila.rehacer();
-  if (!cambios){ mensaje(st.tabla, 'No hay nada para rehacer.', 'info'); return; }
-  const n = aplicarCambios(st, cambios, false);
-  mensaje(st.tabla, `Rehecho: ${n} ${n === 1 ? 'celda' : 'celdas'}.`, 'ok');
-}
-
-/** Descarta las pilas de TODAS las tablas. Se llama cuando los datos se
- *  recargan del servidor: ahi los objetos son otros y restaurar sobre ellos
- *  escribiria en el lugar equivocado. */
-export function limpiarPilas(){
-  for (const st of _estados.values()) st.pila.limpiar();
 }
 
 /* ---------- cableado global del pegado ----------

@@ -98,6 +98,24 @@ export async function rutasLotes(
     });
   }
 
+  // ---------- GET /version ----------
+  // Lo pregunta cada pantalla abierta cada 15 s para ver en vivo lo que
+  // guardan los demas (spec 2026-10-05, seccion 4). Lee solo las columnas, que
+  // escribirDocumento() mantiene iguales a meta.version/autor/actualizado del
+  // json en la misma sentencia: no se parsean los 3,9 MB del documento.
+  if (ruta === '/version' && req.method === 'GET') {
+    const fila = await env.DB.prepare(
+      'SELECT version, autor, guardado FROM documento WHERE modulo = ?',
+    )
+      .bind(MODULO)
+      .first<{ version: number; autor: string | null; guardado: string | null }>();
+    return json(200, {
+      version: fila?.version ?? 0,
+      autor: fila?.autor ?? '',
+      guardado: fila?.guardado ?? '',
+    });
+  }
+
   // ---------- GET /datos ----------
   if (ruta === '/datos' && req.method === 'GET') {
     return json(200, await leerDocumento(env));
@@ -168,7 +186,13 @@ export async function rutasLotes(
       )
       .run();
 
-    ctx.waitUntil(snapshotLotes(env, nuevo, Number(meta.version)));
+    /* Un guardado forzado es el que el freno de borrado masivo dejo pasar:
+     * se respalda tambien el documento que pisa (la version anterior), que
+     * es justo lo que se querria recuperar si el forzado fue un error. */
+    ctx.waitUntil(
+      (forzar ? snapshotLotes(env, actual, va, true) : Promise.resolve(true))
+        .then(() => snapshotLotes(env, nuevo, Number(meta.version), forzar)),
+    );
 
     return json(200, {
       ok: true,
@@ -357,10 +381,33 @@ async function leerMapaBarriles(env: Env): Promise<{ version: unknown; estado: R
   return JSON.parse(fila.json);
 }
 
-export async function snapshotLotes(env: Env, d: Datos, version: number) {
-  const fecha = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+/* Con autoguardado hay un guardado cada pocos segundos mientras alguien edita.
+ * Un respaldo completo por guardado (3,9 MB) llenaria los 10 GB de R2 en dias:
+ * se sube como maximo uno cada 5 minutos, y siempre uno de los forzados (los
+ * que el freno de borrado masivo dejo pasar). El ultimo estado igual esta
+ * siempre en D1, y el historial sigue anotando cada guardado. La hora del
+ * ultimo respaldo vive en R2 para no necesitar una migracion de D1; dos
+ * guardados casi juntos pueden subir dos respaldos, y no importa. */
+export const RESPALDO_CADA_MS = 5 * 60 * 1000;
+const MARCA_RESPALDO = 'lotes/_ultimo-respaldo';
+
+export async function snapshotLotes(
+  env: Env,
+  d: Datos,
+  version: number,
+  forzado = false,
+  ahora = Date.now(),
+): Promise<boolean> {
+  if (!forzado) {
+    const marca = await env.RESPALDOS.get(MARCA_RESPALDO);
+    const ultimo = marca ? Number(await marca.text()) : 0;
+    if (Number.isFinite(ultimo) && ahora - ultimo < RESPALDO_CADA_MS) return false;
+  }
+  const fecha = new Date(ahora).toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const clave = `lotes/datos-v${String(version).padStart(5, '0')}-${fecha}.json`;
   await env.RESPALDOS.put(clave, JSON.stringify(d), {
     httpMetadata: { contentType: 'application/json' },
   });
+  await env.RESPALDOS.put(MARCA_RESPALDO, String(ahora));
+  return true;
 }

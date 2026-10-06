@@ -2,8 +2,9 @@
  *
  * Guarda en memoria la ultima lectura del Mapa para los barriles de las mermas
  * pendientes. Al guardar Lotes (registrarAntesDeGuardar), las que el Mapa ya ve
- * LLENAS con el mismo lote se cierran y sus lotes recalculan litros. Asi la web
- * nunca guarda sola: el cierre viaja en un guardado que alguien pidio. */
+ * LLENAS con el mismo lote se cierran y sus lotes recalculan litros. El cierre
+ * viaja en el proximo guardado (ahora automatico): no se escribe nada fuera
+ * de un guardado. */
 'use strict';
 
 import { DATOS, usuarioActual, registrarAntesDeGuardar, registrarInit,
@@ -18,8 +19,8 @@ let _porNum = undefined;
 export const porNumMermas = () => _porNum;
 
 /* La sub-pestaña Mermas (vista-mermas.js) tiene que verse al dia apenas la
- * lectura del Mapa cambia, aunque nadie haya tocado Guardar: si esta abierta
- * se repinta sola. */
+ * lectura del Mapa cambia, aunque todavia no haya pasado ningun guardado: si
+ * esta abierta se repinta sola. */
 function _avisarMovimientos(){
   invalidarVista('movimientos');
   if (vistaActiva() === 'movimientos') renderActivo();
