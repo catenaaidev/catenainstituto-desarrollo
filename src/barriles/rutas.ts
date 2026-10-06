@@ -127,6 +127,36 @@ export async function rutasBarriles(
     return json(200, { modo: 'web', urls: [] });
   }
 
+  // ---------- GET /lote-rotulo?lote=26124 ----------
+  // La pantalla de Rótulos necesita dos datos de Lotes: el título del lote
+  // (id_texto) y si es orgánico (etiqueta verde) o no (blanca). Se devuelven solo
+  // esos, con el permiso de Barriles: el operario no tiene por qué tener acceso a
+  // Lotes, y el documento de Lotes pesa ~4 MB. json_each busca el lote dentro
+  // del documento sin parsearlo entero en el Worker. El lote puede estar guardado
+  // como número o como texto: se compara como texto.
+  if (ruta === '/lote-rotulo' && req.method === 'GET') {
+    const lote = (new URL(req.url).searchParams.get('lote') ?? '').trim();
+    if (!lote) return json(400, { error: 'falta_lote' });
+    const fila = await env.DB.prepare(
+      `SELECT json_extract(l.value, '$.id_texto') AS titulo,
+              json_extract(l.value, '$.organico_convencional') AS manejo
+         FROM documento d, json_each(d.json, '$.lotes') l
+        WHERE d.modulo = 'lotes' AND CAST(json_extract(l.value, '$.lote') AS TEXT) = ?
+        LIMIT 1`,
+    )
+      .bind(lote)
+      .first<{ titulo: unknown; manejo: unknown }>();
+    if (!fila) return json(404, { error: 'no_existe' });
+    // Misma regla que esOrganico() de public/lotes/js/envases.js: el valor entero,
+    // sin mayúsculas, sin espacios de los bordes, con o sin tilde.
+    const manejo = typeof fila.manejo === 'string' ? fila.manejo.trim().toLowerCase() : '';
+    return json(200, {
+      lote,
+      titulo: typeof fila.titulo === 'string' ? fila.titulo : '',
+      organico: manejo === 'organico' || manejo === 'orgánico',
+    });
+  }
+
   // ---------- GET /backup ----------
   // Antes bajaba el .db, y solo desde la propia PC. Ahora los respaldos son
   // automáticos (Time Travel + snapshot diario en R2); esto queda como
