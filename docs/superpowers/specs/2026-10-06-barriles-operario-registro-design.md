@@ -48,9 +48,10 @@ abajo".
 - Las seis pestañas de `#navOperario` se reemplazan por una **barra fija**: botón
   "← Inicio" + el nombre de la pantalla actual (+ el selector Mapa 2D / Vista 3D
   donde ya existía). Siempre se sabe dónde estás y cómo volver.
-- Textos sin jerga: botones con verbo, y una línea de ayuda arriba de cada
-  pantalla del operario en lugar de los `<details class="ayuda">` (que siguen para
-  el programador).
+- Textos sin jerga: botones con verbo, y una línea de ayuda en la barra de arriba
+  para cada pantalla. Para el operario se ocultan los `<details class="ayuda">` de
+  Asociar vasija (Escáner ya los ocultaba); los del mapa se quedan porque explican
+  cómo leerlo.
 - Estilo: se mantiene la identidad vino de la app (`--vino`, `--vino-osc`), con
   tipografía base más grande para el operario, más aire, tarjetas con borde fino
   y radios suaves. Los colores de operación son fijos en toda la pantalla:
@@ -69,6 +70,7 @@ Un campo grande que filtra mientras escribís y muestra cómo interpretó el tex
 | Lo escrito | Se toma como |
 |---|---|
 | vacío | sin búsqueda: se muestra el mes elegido |
+| `barril 123`, `b123` / `lote X` | **barril** / **lote**, forzado (lo usa el enlace "¿Buscabas el barril…?" y tocar un número) |
 | fecha `d/m`, `d/m/aa`, `d/m/aaaa` o `aaaa-mm-dd` | **fecha**: órdenes de ese día (sin año = el año más reciente que tenga órdenes ese día) |
 | solo dígitos, 6 o más | **barril** (los números de barril tienen 5 a 7 dígitos; ver abajo) |
 | solo dígitos, 5 | **lote** si existe alguna orden con ese lote; si no, **barril** |
