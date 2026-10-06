@@ -1,10 +1,13 @@
 /* ===== Lotes CIW — filas virtuales de la pestana Analisis =====
  * Funciones puras, sin DOM. Un registro de DATOS().analisis puede respaldar
- * hasta DOS filas visibles: una de quimica y una de correccion. Las dos
- * comparten la referencia al objeto real (nunca se clona), asi que escribir
- * en cualquiera de las dos es la misma escritura sobre el mismo dato.
+ * hasta TRES filas visibles: una de quimica, una de correccion de SO2 y una de
+ * otros agregados (TH2, quitosano...). Las tres comparten la referencia al
+ * objeto real (nunca se clona), asi que escribir en cualquiera es la misma
+ * escritura sobre el mismo dato.
  */
 'use strict';
+
+import { agregadosVigentes } from './agregados.js';
 
 /* Campos quimicos: los mismos que ya definia COLS_ANALISIS antes de esta
  * tarea (lote/variedad/fecha_analisis quedan afuera porque son metadatos,
@@ -83,6 +86,7 @@ export function armarFilas(analisisArray, sortState, filtroFila){
   for (const obj of (analisisArray || [])){
     if (esQuimicaReal(obj)) candidatas.push({ tipo: 'quimica', analisis: obj });
     if (esCorreccionReal(obj.correccion)) candidatas.push({ tipo: 'correccion', analisis: obj });
+    if (agregadosVigentes(obj).length) candidatas.push({ tipo: 'agregado', analisis: obj });
   }
 
   candidatas = candidatas.filter(pasaFiltro);

@@ -395,3 +395,13 @@ describe('normalización del número de lote', () => {
     expect(normalizarLote(0)).toBe('0'); // no '' : la fórmula es la del original
   });
 });
+
+describe('lineaTiempo: otros agregados', () => {
+  it('un registro solo de agregados no es un evento de analisis, si de agregado', () => {
+    const an = [{ lote: '26001', fecha_analisis: '2026-10-05',
+      agregados: [{ producto: 'TH2', cantidad: 380, unidad: 'g', ot_n: 'B231' },
+                  { producto: 'DAP', cantidad: 5, unidad: 'g', ot_n: 'B231', anulada: { por: 'x' } }] }];
+    const t = lineaTiempo({ lote: '26001' }, an, [], []);
+    expect(t).toEqual([{ fecha: '2026-10-05', clase: 'agregado', titulo: 'Agregado', detalle: 'TH2 380 g, OT B231' }]);
+  });
+});

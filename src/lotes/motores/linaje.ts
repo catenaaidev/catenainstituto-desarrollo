@@ -297,6 +297,27 @@ export function recorridoVasijas(lote: unknown, movimientos: Fila[]): Estadia[] 
   return estadias;
 }
 
+/**
+ * El registro de análisis existe solo para llevar otros agregados (TH2,
+ * quitosano...): no tiene química ni corrección. No es un análisis: no mueve
+ * la fecha del último análisis ni sale como evento "Analisis". Espejo de
+ * esSoloAgregados en public/lotes/js/agregados.js.
+ */
+export function esSoloAgregados(a: Fila): boolean {
+  if (!a || !Array.isArray(a.agregados)) return false;
+  return Object.keys(a).every(
+    (k) => k === 'lote' || k === 'fecha_analisis' || k === 'agregados' || a[k] == null || a[k] === '',
+  );
+}
+
+/** Los agregados no anulados de un registro (anulada: {} no cuenta como anulada). */
+function agregadosVigentes(a: Fila): Fila[] {
+  const lista = Array.isArray(a?.agregados) ? (a.agregados as Fila[]) : [];
+  const veraz = (v: unknown) =>
+    Array.isArray(v) ? v.length > 0 : v && typeof v === 'object' ? Object.keys(v).length > 0 : Boolean(v);
+  return lista.filter((ag) => ag && sl(ag.producto) && !veraz(ag.anulada));
+}
+
 function tieneCorreccion(a: Fila): boolean {
   const c = ((a ?? {}).correccion as Fila) ?? {};
   return ['so2_deseado', 'mbk_a_agregar', 'ml_exactos', 'ot_n'].some((k) => Boolean(sl(c[k])));
@@ -312,7 +333,7 @@ export interface Evento {
 /**
  * Todos los eventos del lote en un solo eje, ordenados por fecha.
  *
- * Clases: ingreso, movimiento, analisis, correccion, etapa. Los eventos sin
+ * Clases: ingreso, movimiento, analisis, correccion, agregado, etapa. Los eventos sin
  * fecha se descartan: no se pueden ubicar en el eje.
  */
 export function lineaTiempo(
@@ -374,7 +395,20 @@ export function lineaTiempo(
       .map(([n, v]) => `${n} ${v}`)
       .join(', ');
 
-    ev.push({ fecha: f, clase: 'analisis', titulo: 'Analisis', detalle });
+    if (!esSoloAgregados(a)) ev.push({ fecha: f, clase: 'analisis', titulo: 'Analisis', detalle });
+
+    const ags = agregadosVigentes(a);
+    if (ags.length) {
+      const ots = [...new Set(ags.map((ag) => sl(ag.ot_n)).filter(Boolean))];
+      ev.push({
+        fecha: f,
+        clase: 'agregado',
+        titulo: 'Agregado',
+        detalle:
+          ags.map((ag) => [sl(ag.producto), sl(ag.cantidad), sl(ag.unidad)].filter(Boolean).join(' ')).join(', ') +
+          `, OT ${ots.join(', ') || '-'}`,
+      });
+    }
 
     if (tieneCorreccion(a)) {
       const c = (a.correccion as Fila) ?? {};

@@ -14,7 +14,7 @@
  */
 
 import { litrosDeEnvases } from './envases';
-import { normalizarLote } from './linaje';
+import { normalizarLote, esSoloAgregados } from './linaje';
 import {
   num,
   filasDe,
@@ -558,7 +558,10 @@ export function evaluarLote(
 
   const accion_sugerida = accionSugerida(alarmas);
 
+  // Un registro que solo lleva otros agregados no es un analisis: no mueve la
+  // "Ultima medicion" ni los dias desde el ultimo analisis.
   const fechas = analisis
+    .filter((a) => !esSoloAgregados(a))
     .map((a) => fecha(a.fecha_analisis))
     .filter((f): f is number => f !== null);
   const ultima = fechas.length ? Math.max(...fechas) : null;

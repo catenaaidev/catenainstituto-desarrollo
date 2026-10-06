@@ -207,7 +207,8 @@ function _nuevaFoto(){ _foto = _datos ? tomarFoto(_datos) : null; }
 
 const NOMBRE_VISTA = {
   lotes: 'Lotes', analisis: 'Análisis', movimientos: 'Movimientos', so2: 'SO2', config: 'Config',
-  orden: 'Orden de muestras', ordencorr: 'Orden de corrección', cargar: 'Cargar', ficha: 'Ficha',
+  orden: 'Orden de muestras', ordencorr: 'Orden de corrección', agregados: 'Otros agregados',
+  cargar: 'Cargar', ficha: 'Ficha',
   dashboard: 'Dashboard', tablero: 'Tablero', cruce: 'Cruce',
 };
 
@@ -415,10 +416,11 @@ const _genDibujada = {};
 export function invalidarVistas(){ _gen++; }
 /** Obliga a rearmar UNA pestaña la proxima vez que se muestre. */
 export function invalidarVista(nombre){ delete _genDibujada[nombre]; }
-export function vistaActiva(){
-  const b = document.querySelector('.tabs button.active');
-  return b ? b.dataset.v : 'dashboard';
-}
+/* La vista que se esta mostrando. No se lee del boton activo: las tres
+ * sub-pestañas de Correcciones comparten UN boton (data-v="so2"), y leer el
+ * boton haria que renderActivo redibuje la bitacora estando en la orden. */
+let _vistaMostrada = 'dashboard';
+export function vistaActiva(){ return _vistaMostrada; }
 function _dibujar(nombre, forzar){
   const fn = _vistas[nombre];
   if (!fn || !DATOS()) return;
@@ -740,9 +742,30 @@ export async function guardar(forzar){
   return r === 'ok' || r === 'nada';
 }
 
-/* ---------- navegación de pestañas ---------- */
+/* ---------- navegación de pestañas ----------
+ * Correcciones es un grupo: un boton en la barra (data-v="so2") y tres
+ * sub-pestañas (bitacora de SO2, orden de correccion y otros agregados), cada
+ * una con su propia <section>. El selector #corrSub solo se ve en el grupo.
+ * Tocar el boton vuelve a la ultima sub-pestaña que se uso (en memoria). */
+const GRUPO_CORRECCIONES = ['so2', 'ordencorr', 'agregados'];
+let _ultimaCorreccion = 'so2';
+
 export function mostrarTab(nombre){
-  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.v === nombre));
+  if (nombre === 'correcciones') nombre = _ultimaCorreccion;
+  const enGrupo = GRUPO_CORRECCIONES.includes(nombre);
+  if (enGrupo) _ultimaCorreccion = nombre;
+  const boton = enGrupo ? 'so2' : nombre;
+  _vistaMostrada = nombre;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.v === boton));
+  const sub = $('corrSub');
+  if (sub){
+    sub.hidden = !enGrupo;
+    sub.querySelectorAll('[data-sub]').forEach(b => {
+      const on = b.dataset.sub === nombre;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    });
+  }
   document.querySelectorAll('.view').forEach(s => s.classList.remove('active'));
   const sec = $('tab-' + nombre);
   if (sec) sec.classList.add('active');

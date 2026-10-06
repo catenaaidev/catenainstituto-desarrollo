@@ -791,6 +791,18 @@
      * ordencorr). Todas son el mismo papel RCI 08, y sin esta regla el navegador
      * mete su propio encabezado y pie (URL, fecha, n de pagina) en un formulario
      * de calidad. Mismo valor que usa prensas-app. */
+    /* ---- @media print: Otros agregados (formato B015) ---- */
+    body.printing-agregados header,
+    body.printing-agregados #avisos,
+    body.printing-agregados .tabs{display:none!important}
+    body.printing-agregados main{padding:0;max-width:none}
+    body.printing-agregados main > .view:not(#tab-agregados){display:none!important}
+    body.printing-agregados #tab-agregados{display:block!important}
+    body.printing-agregados #tab-agregados > *:not(#agPaginas){display:none!important}
+    body.printing-agregados #agPaginas{display:block!important}
+    body.printing-agregados .orden-hoja{box-shadow:none;border-radius:0;max-width:none;padding:0}
+    #agPaginas .orden-hoja + .orden-hoja{page-break-before:always;margin-top:0}
+
     @page{margin:14mm}
   }
 /* @media print: la grilla — separado porque oculta los estilos de seleccion en todas las vistas */
@@ -1260,6 +1272,47 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 #tab-movimientos .mov-sub button:hover{color:var(--accent)}
 #tab-movimientos .mov-sub button.on{background:var(--panel);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 #tab-movimientos .mov-sub button:focus-visible{outline:none;box-shadow:var(--ring)}
+/* ---- Correcciones: Bitacora SO2 | Orden de correccion | Otros agregados ----
+ * Mismo selector segmentado que Movimientos, pero vive fuera de las tres
+ * <section> (es uno solo para el grupo). */
+.corr-sub{display:inline-flex;height:32px;margin:0 0 12px;border:1px solid var(--line);
+  border-radius:var(--r-pill);background:var(--panel2);padding:2px;gap:2px}
+.corr-sub[hidden]{display:none}
+.corr-sub button{border:none;background:transparent;color:var(--muted);font:inherit;
+  font-size:13px;font-weight:600;padding:0 14px;border-radius:var(--r-pill);cursor:pointer}
+.corr-sub button:hover{color:var(--accent)}
+.corr-sub button.on{background:var(--panel);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.corr-sub button:focus-visible{outline:none;box-shadow:var(--ring)}
+@media print{.corr-sub{display:none!important}}
+
+/* ---- Otros agregados ---- */
+#tAnalisis tbody tr.fila-agregado td{background:rgba(124,92,196,.07)}
+#tAnalisis tbody tr.fila-agregado td[data-k="agregado_txt"]{color:var(--accent);font-weight:600}
+.timeline li.agregado::before{background:#7c5cc4}
+.ag-grid{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:12px;margin-bottom:12px}
+.ag-grid label,.ag-lbl{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.ag-grid input{width:100%}
+.ag-card{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;margin-bottom:10px;background:var(--panel)}
+.ag-card-head{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:10px 12px;background:var(--panel2);border-radius:8px 8px 0 0}
+.ag-card-head .ag-lote{width:110px;font-weight:600}
+.ag-card-head .ag-vasija{width:110px}
+.ag-badge{font-size:11px;padding:2px 8px;border-radius:10px;background:var(--panel);border:1px solid var(--line);color:var(--muted);align-self:center}
+.ag-badge.err{color:var(--nook);border-color:var(--nook)}
+.ag-card-body{padding:8px 12px 10px}
+.ag-card-body table{width:100%}
+.ag-card-body td{padding:3px 4px;border:none}
+.ag-card-body .ag-prod{width:100%}
+.ag-card-body .ag-cant{width:90px}
+.ag-tpl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.ag-tpl button{font-size:12px;padding:2px 10px;border-radius:12px;border:1px dashed var(--accent);background:transparent;color:var(--accent);cursor:pointer}
+.ag-tpl button:hover{background:var(--accent);color:#fff}
+.ag-add-lote{width:100%;border:2px dashed var(--line);background:none;padding:10px;font-weight:600;color:var(--accent);border-radius:8px;cursor:pointer;margin-bottom:12px}
+.ag-add-lote:hover{border-color:var(--accent)}
+tr.ag-anulada td{text-decoration:line-through;opacity:.55}
+tr.ag-anulada td.ag-acc{text-decoration:none;opacity:1}
+tr.ag-sep td{height:6px;padding:0!important;background:#eee}
+@media(max-width:700px){.ag-grid{grid-template-columns:1fr 1fr}}
+
 #tab-movimientos tr.mer-llena td{color:#54d38a}
 #tab-movimientos tr.mer-resuelta td{opacity:.6}
 
@@ -1415,15 +1468,20 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
   <button data-v="cargar">⬆️ Cargar análisis</button>
   <button data-v="analisis">🧪 Análisis</button>
   <button data-v="tablero">🧫 Tablero FML</button>
-  <button data-v="so2">🧴 Correcciones SO2</button>
+  <button data-v="so2">🧴 Correcciones</button>
   <button data-v="movimientos">🔄 Movimientos</button>
   <button data-v="orden">📝 Orden de muestras</button>
   <button data-v="cruce">🛢️ Cruce con barriles</button>
-  <button data-v="ordencorr">💊 Orden de corrección</button>
   <button data-v="config">⚙️ Configuración</button>
 </div>
 
 <main>
+  <!-- Sub-pestañas de Correcciones: se muestra solo en ese grupo (nucleo.js mostrarTab) -->
+  <div class="corr-sub" id="corrSub" role="radiogroup" aria-label="Vista de Correcciones" hidden>
+    <button type="button" data-sub="so2" role="radio" aria-checked="false">🧴 Bitácora SO₂</button>
+    <button type="button" data-sub="ordencorr" role="radio" aria-checked="false">💊 Orden de corrección</button>
+    <button type="button" data-sub="agregados" role="radio" aria-checked="false">🧪 Otros agregados</button>
+  </div>
   <!-- DASHBOARD -->
   <section class="view active" id="tab-dashboard">
     <div class="controls" style="justify-content:flex-end;margin-bottom:12px">
@@ -1650,6 +1708,9 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 
   <!-- ORDEN DE CORRECCIÓN DE SO2 -->
   <section class="view" id="tab-ordencorr"></section>
+
+  <!-- OTROS AGREGADOS (TH2, quitosano, levadura...) -->
+  <section class="view" id="tab-agregados"></section>
 
   <!-- CONFIGURACIÓN -->
   <section class="view" id="tab-config">

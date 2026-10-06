@@ -184,3 +184,15 @@ describe('estadoCartelLote', () => {
     expect(estadoCartelLote([v('', ['av'], [])])).toBe('mal');
   });
 });
+
+describe('fila de otros agregados', () => {
+  it('un registro con agregados vigentes da una fila de tipo agregado; anulados no', () => {
+    const quim = { lote: '1', fecha_analisis: '2026-10-01', ph: 3.5,
+      agregados: [{ producto: 'TH2', cantidad: 380, unidad: 'g', ot_n: 'B1' }] };
+    const solo = { lote: '1', fecha_analisis: '2026-10-02',
+      agregados: [{ producto: 'T1', ot_n: 'B2', anulada: { por: 'x' } }] };
+    const filas = armarFilas([quim, solo]);
+    expect(filas.map(f => f.tipo)).toEqual(['separador', 'quimica', 'agregado']);
+    expect(filas[2].analisis).toBe(quim);
+  });
+});
