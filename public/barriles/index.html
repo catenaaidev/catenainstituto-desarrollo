@@ -57,9 +57,13 @@ const API='/barriles/api';</script>
   header { background: var(--vino); color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   header h1 { font-size: 1.2rem; font-weight: 600; }
   header .estado-datos { font-size: .8rem; opacity: .85; margin-left: auto; }
-  #toggleModoLote { font-size: .82rem; display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.16); padding: 5px 11px; border-radius: 14px; cursor: pointer; user-select: none; }
-  #toggleModoLote input { cursor: pointer; }
-  body.modo-lote #toggleModoLote { background: #ffd600; color: var(--vino-osc); font-weight: 700; }
+  /* El interruptor está en Administrar → Importar y modo; en el encabezado queda
+     solo #chipModoLote, que se ve mientras el modo está prendido. */
+  #toggleModoLote { font-size: 1rem; display: inline-flex; align-items: center; gap: 8px; background: #f3ede5; border: 1px solid var(--gris); padding: 9px 16px; border-radius: 999px; cursor: pointer; user-select: none; }
+  #toggleModoLote input { cursor: pointer; width: 18px; height: 18px; }
+  body.modo-lote #toggleModoLote { background: #ffd600; border-color: #e0bc00; color: var(--vino-osc); font-weight: 700; }
+  #chipModoLote { display: none; font: inherit; font-size: .82rem; background: #ffd600; color: var(--vino-osc); font-weight: 700; border: none; padding: 5px 11px; border-radius: 14px; cursor: pointer; }
+  body.rol-programador.modo-lote #chipModoLote { display: inline-block; }
   nav { display: flex; background: var(--vino-osc); flex-wrap: wrap; }
   nav button { background: none; border: none; color: #d9c5cd; padding: 12px 22px; font-size: .95rem; cursor: pointer; border-bottom: 3px solid transparent; }
   nav button.activo { color: #fff; border-bottom-color: #e8b4c8; font-weight: 600; }
@@ -71,7 +75,7 @@ const API='/barriles/api';</script>
      desde el primer cuadro (la clase de rol la pone el script de <body>). Antes el
      operario veía unos segundos "Asociar vasija con lote" hasta que llegaban los datos. */
   body.rol-operario:not(.panel-elegido) #panel-inicio,
-  body.rol-programador:not(.panel-elegido) #panel-inventario { display: block; }
+  body.rol-programador:not(.panel-elegido) #panel-tablero { display: block; }
   .tarjeta { background: #fff; border: 1px solid var(--gris); border-radius: 10px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
   h2 { font-size: 1.05rem; margin-bottom: 12px; color: var(--vino); }
   h3 { font-size: .95rem; margin: 10px 0 6px; }
@@ -465,6 +469,48 @@ const API='/barriles/api';</script>
   .ini-chico:hover { border-color: var(--vino); }
   .ini-cuenta:not(:empty) { background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 9px; margin-left: 8px; font-size: .85rem; font-weight: 700; }
   @media (max-width: 700px) { .ini-grandes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* ===== Programador: grupos, sub-pestañas e Inicio (2026-10-06) =====
+     Todo bajo body.rol-programador o en elementos que solo existen para él: el
+     operario no ve ningún cambio. Las pantallas y sus botones son los de siempre. */
+  #navSubProg { display: none; }
+  body.rol-programador #navSubProg { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 20px; background: #f0e6ea; border-bottom: 1px solid #e2d3d9; }
+  body.rol-programador #navSubProg:empty { display: none; }
+  #navSubProg button { background: #fff; border: 1px solid #d9c5cd; color: var(--vino-osc); border-radius: 999px; padding: 7px 16px; font: inherit; font-size: .92rem; cursor: pointer; }
+  #navSubProg button:hover { border-color: var(--vino); }
+  #navSubProg button.activo { background: var(--vino); border-color: var(--vino); color: #fff; font-weight: 600; }
+  #navProgramador button { padding: 13px 24px; font-size: 1rem; }
+  .prog-cuenta:not(:empty) { background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 8px; margin-left: 7px; font-size: .78rem; font-weight: 700; }
+  body.rol-programador main { max-width: 1320px; padding: 22px 26px; }
+  body.rol-programador .tarjeta { border-radius: 14px; padding: 20px 22px; }
+  /* Barriles → Inventario muestra solo la lista; Barriles → Asociar vasija, solo la tarjeta de asociar. */
+  body.rol-programador.prog-sub-inventario #panel-inventario .tarjeta-asociar,
+  body.rol-programador.prog-sub-inventario #barResumen,
+  body.rol-programador.prog-sub-inventario #panel-inventario > details.ayuda,
+  body.rol-programador.prog-sub-asociar #tarjetaResumenInv { display: none !important; }
+  /* Inicio */
+  .tab-subtitulo { font-size: .85rem; text-transform: uppercase; letter-spacing: .6px; color: #8a7f76; margin: 22px 0 10px; font-weight: 700; }
+  .tab-cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+  @media (max-width: 700px) {
+    .tab-cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .tab-cifra { padding: 12px 14px; }
+    .tab-cifra .tab-valor { font-size: 1.6rem; }
+    body.rol-programador main { padding: 14px; }
+    body.rol-programador #navSubProg { padding: 8px 12px; }
+  }
+  .tab-cifra { background: #fff; border: 1px solid var(--gris); border-radius: 14px; padding: 16px 18px; text-align: left; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color .15s, transform .15s; }
+  .tab-cifra:hover { border-color: var(--vino); transform: translateY(-1px); }
+  .tab-cifra:focus-visible { outline: 3px solid var(--vino); outline-offset: 2px; }
+  .tab-cifra .tab-valor { font-size: 2rem; font-weight: 800; color: var(--vino-osc); line-height: 1.1; }
+  .tab-cifra .tab-desc { font-weight: 600; color: #2b2b2b; }
+  .tab-cifra .tab-det { font-size: .85rem; color: #8a7f76; }
+  .tab-cifra.tab-alerta { border-left: 6px solid var(--warn); }
+  .tab-cifra.tab-alerta .tab-valor { color: var(--warn); }
+  .tab-cifra.tab-ok { border-left: 6px solid var(--ok); }
+  .tab-cifra.tab-ok .tab-valor { color: var(--ok); }
+  .tab-accesos .ini-boton { min-height: 120px; padding: 20px; }
+  .tab-accesos .ini-boton .ini-ico { font-size: 2.1rem; }
+  .tab-accesos .ini-boton b { font-size: 1.15rem; }
   /* ===== Registro del operario ===== */
   .reg-barra { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
   .reg-buscador { flex: 1; display: flex; align-items: center; gap: 10px; background: #fff; border: 2px solid var(--vino); border-radius: 12px; padding: 2px 16px; font-size: 1.3rem; }
@@ -642,20 +688,22 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
   <h1>🍷 Mapa de Barriles</h1>
   <span class="insignia-sync" id="insigniaSync" title="Modo de datos">⏳</span>
   <span class="estado-datos" id="estadoDatos">Sin inventario cargado</span>
-  <label id="toggleModoLote" title="Cargar el mapa solo con el número de lote, sin inventario"><input type="checkbox" id="chkModoLote"> 🏷️ Modo por lote</label>
+  <!-- El interruptor de "Modo por lote" vive en Administrar → Importar y modo; acá
+       queda solo el aviso de que está prendido (se toca y lleva al interruptor). -->
+  <button type="button" id="chipModoLote" title="El mapa se está cargando por número de lote. Tocá para ir al interruptor." onclick="progIr('datos')">🏷️ Modo por lote</button>
 </header>
 <div id="avisoSoloLectura" role="status">👁 <b>Solo lectura:</b> tu usuario puede consultar el mapa, el inventario y las órdenes, pero no cargar cambios. Si necesitás cargar, pedile a un administrador permiso de edición.</div>
+<!-- Programador (2026-10-06): cinco grupos en vez de nueve pestañas sueltas; cada
+     grupo tiene sus sub-pestañas en #navSubProg. Los grupos y las sub-pestañas
+     están en PROG_GRUPOS (script); las pantallas son las mismas de siempre. -->
 <nav id="navProgramador">
-  <button data-panel="inventario" class="activo">📥 Inventario</button>
-  <button data-panel="boxes">📦 Boxes y Palets</button>
-  <button data-panel="escaner">🛢️ Escáner</button>
-  <button data-panel="pedidos">🏷️ Pedidos de rótulos</button>
-  <button data-panel="rotulos">🏷️ Rótulos</button>
-  <button data-panel="mapa">🗺️ Mapa</button>
-  <button data-panel="mapa3d">🧊 Vista 3D</button>
-  <button data-panel="reportes">📊 Reportes</button>
-  <button data-panel="celular">📱 Celular</button>
+  <button data-grupo="inicio" class="activo">🏠 Inicio</button>
+  <button data-grupo="barriles">🛢️ Barriles</button>
+  <button data-grupo="mapa">🗺️ Mapa</button>
+  <button data-grupo="imprimir">🏷️ Imprimir<span class="prog-cuenta" id="progCuentaPedidos"></span></button>
+  <button data-grupo="admin">⚙️ Administrar</button>
 </nav>
+<div id="navSubProg"></div>
 <!-- Operario: ya no hay pestañas. Se entra por la portada (#panel-inicio) y esta
      barra solo dice dónde estás y cómo volver. -->
 <nav id="navOperario">
@@ -669,6 +717,29 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
   <button data-opvista="mapa3d">🧊 Vista 3D</button>
 </div>
 <main>
+  <!-- ============ INICIO DEL PROGRAMADOR ============
+       Cómo está todo y qué quedó pendiente; cada tarjeta lleva a su pantalla.
+       Lo dibuja progTableroDibujar() con las mismas cuentas de Inventario y Reportes. -->
+  <section class="panel" id="panel-tablero">
+    <div class="ini-saludo">
+      <h2 id="tabSaludo">Buen día</h2>
+      <p id="tabFecha"></p>
+    </div>
+    <h3 class="tab-subtitulo">Cómo está hoy</h3>
+    <div class="tab-cifras" id="tabCifras"></div>
+    <h3 class="tab-subtitulo">Para atender</h3>
+    <div class="tab-cifras" id="tabPendientes"></div>
+    <h3 class="tab-subtitulo">Ir a</h3>
+    <div class="ini-grandes tab-accesos">
+      <button class="ini-boton" data-sub="escaner"><span class="ini-ico">🛢️</span><b>Llenado / vaciado</b><span>Escanear una orden</span></button>
+      <button class="ini-boton" data-sub="registro"><span class="ini-ico">📒</span><b>Registro</b><span>Las órdenes cargadas, por mes</span></button>
+      <button class="ini-boton" data-sub="inventario"><span class="ini-ico">📋</span><b>Inventario</b><span>La lista de vasijas, editable</span></button>
+      <button class="ini-boton" data-sub="mapa"><span class="ini-ico">🗺️</span><b>Mapa</b><span>Buscar y cargar en los boxes</span></button>
+      <button class="ini-boton" data-sub="rotulos"><span class="ini-ico">🏷️</span><b>Rótulos</b><span>Imprimir los rótulos de un lote</span></button>
+      <button class="ini-boton" data-sub="asociar"><span class="ini-ico">🧾</span><b>Asociar vasija</b><span>Vasija con lote, con la pistola o la cámara</span></button>
+    </div>
+  </section>
+
   <!-- ============ PORTADA DEL OPERARIO ============ -->
   <section class="panel" id="panel-inicio">
     <div class="ini-saludo">
@@ -756,7 +827,9 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
 
     <!-- ---------- asociar vasija con lote (sirve para barricas, vasijas y tanques) ---------- -->
     <div id="barResumen" style="display:none; background:#e6f4e6; border:2px solid var(--ok); border-radius:12px; padding:14px; margin-bottom:16px; text-align:center;"></div>
-    <div class="tarjeta">
+    <!-- El programador ve esta tarjeta y la lista en sub-pestañas distintas
+         (Barriles → Asociar vasija / Inventario); el operario, las dos juntas. -->
+    <div class="tarjeta tarjeta-asociar">
       <div class="fila-flex" style="justify-content:space-between;">
         <h2 style="margin:0;">📷 Asociar vasija con lote</h2>
         <span class="esc-contador" id="barContador">📷 0 asociadas</span>
@@ -773,17 +846,8 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       </div>
       <div id="barFeedback" style="display:none; margin-top:10px;"></div>
     </div>
-    <!-- ---------- carga del inventario desde el Excel ---------- -->
-    <div class="tarjeta solo-prog solo-barricas">
-      <h2>Importar barricas desde Excel</h2>
-      <p style="font-size:.88rem; margin-bottom:10px;">Seleccioná el archivo <b>Inventario de barricas</b> (.xlsx). Se lee la hoja con los encabezados NÚMERO / ESTADO / LOTE. El archivo original no se modifica.</p>
-      <div class="fila-flex">
-        <input type="file" id="archivoExcel" accept=".xlsx,.xlsm,.xls">
-        <select id="selectorHoja" style="display:none;"></select>
-        <button class="btn" id="btnImportar" disabled>Importar</button>
-      </div>
-      <div id="resultadoImport" class="nota"></div>
-    </div>
+    <!-- La importación del Excel y los respaldos se mudaron a Administrar
+         (#panel-admin-datos y #panel-admin-respaldos), con los mismos ids. -->
     <!-- ---------- la lista: una fila por número (barricas, vasijas y tanques) ---------- -->
     <div class="tarjeta" id="tarjetaResumenInv" style="display:none;">
       <div class="fila-flex" style="justify-content:space-between;">
@@ -813,8 +877,32 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
         <button class="btn sec" id="btnMasInv" style="display:none;">Mostrar más</button>
       </div>
     </div>
+  </section>
+
+  <!-- ============ ADMINISTRAR → IMPORTAR Y MODO (solo programador) ============ -->
+  <section class="panel" id="panel-admin-datos">
+    <!-- ---------- carga del inventario desde el Excel ---------- -->
+    <div class="tarjeta solo-prog solo-barricas">
+      <h2>📥 Importar barricas desde Excel</h2>
+      <p style="font-size:.88rem; margin-bottom:10px;">Seleccioná el archivo <b>Inventario de barricas</b> (.xlsx). Se lee la hoja con los encabezados NÚMERO / ESTADO / LOTE. El archivo original no se modifica.</p>
+      <div class="fila-flex">
+        <input type="file" id="archivoExcel" accept=".xlsx,.xlsm,.xls">
+        <select id="selectorHoja" style="display:none;"></select>
+        <button class="btn" id="btnImportar" disabled>Importar</button>
+      </div>
+      <div id="resultadoImport" class="nota"></div>
+    </div>
     <div class="tarjeta solo-prog">
-      <h2>Copia de seguridad del trabajo</h2>
+      <h2>🏷️ Modo por lote</h2>
+      <p class="nota" style="margin-bottom:10px;">Prendido, el mapa se carga solo con el número de lote, sin inventario: no hace falta la lista de barricas y en el mapa aparece el 🖌 Pincel. Es para toda la bodega, no solo para esta pantalla.</p>
+      <label id="toggleModoLote" title="Cargar el mapa solo con el número de lote, sin inventario"><input type="checkbox" id="chkModoLote"> Cargar el mapa por número de lote</label>
+    </div>
+  </section>
+
+  <!-- ============ ADMINISTRAR → RESPALDOS (solo programador) ============ -->
+  <section class="panel" id="panel-admin-respaldos">
+    <div class="tarjeta solo-prog">
+      <h2>💾 Copia de seguridad del trabajo</h2>
       <p class="nota">El mapa se guarda automáticamente en el servidor, y el servidor guarda una copia de cada versión. Esto es para tener además una copia propia en un archivo, o para volver a una.</p>
       <div class="fila-flex" style="margin-top:8px;">
         <button class="btn sec" id="btnExportarJSON">⬇ Exportar respaldo</button>
@@ -948,15 +1036,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       </div>
     </details>
 
-    <!-- Solo el programador: al operario le complicaba la pantalla (2026-10-06). -->
-    <div class="tarjeta solo-prog">
-      <div class="fila-flex" style="justify-content:space-between;">
-        <h2 style="margin:0;">🔄 Lotes trasegados por mes</h2>
-        <span class="nota" id="escTrasegadosResumen" style="margin:0;"></span>
-      </div>
-      <p class="nota" style="margin:4px 0 8px;">Un lote cuenta como trasegado en un mes si ese mes tuvo al menos un <b>vaciado</b> y un <b>llenado</b> del lote.</p>
-      <div style="overflow:auto;"><table class="datos" id="escTrasegados"></table></div>
-    </div>
+    <!-- "Lotes trasegados por mes" se mudó a Reportes (2026-10-06). -->
   </section>
 
   <!-- ============ PEDIDOS DE RÓTULOS ============ -->
@@ -1098,6 +1178,15 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       <h2>Barriles llenos sin ubicar en el mapa</h2>
       <p class="nota" id="notaSinUbicar"></p>
       <div style="overflow:auto;"><table class="datos" id="tablaSinUbicar"></table></div>
+    </div>
+    <!-- Venía de Llenado / vaciado. Solo el programador: al operario le complicaba la pantalla. -->
+    <div class="tarjeta solo-prog">
+      <div class="fila-flex" style="justify-content:space-between;">
+        <h2 style="margin:0;">🔄 Lotes trasegados por mes</h2>
+        <span class="nota" id="escTrasegadosResumen" style="margin:0;"></span>
+      </div>
+      <p class="nota" style="margin:4px 0 8px;">Un lote cuenta como trasegado en un mes si ese mes tuvo al menos un <b>vaciado</b> y un <b>llenado</b> del lote.</p>
+      <div style="overflow:auto;"><table class="datos" id="escTrasegados"></table></div>
     </div>
   </section>
 
@@ -1670,6 +1759,8 @@ function redibujarTodo() {
   if ($('panel-escaner').classList.contains('activo')) escDibujarHistorial();
   if ($('panel-pedidos').classList.contains('activo')) pedidosDibujar();
   if ($('panel-inicio').classList.contains('activo')) iniDibujar();
+  if ($('panel-tablero').classList.contains('activo')) progTableroDibujar();
+  if (rol === 'programador') progContarPedidos();
   if (regPanelActivo()) regDibujar();
   if (conPanelActivo()) conDibujar();
   if (sesion) refrescarLibre();
@@ -2112,7 +2203,8 @@ function activarPanel(nombre) {
   if (p) p.classList.add('activo');
   if (nombre === 'mapa') dibujarMapas();
   if (nombre === 'mapa3d') Vista3D.abrir();
-  if (nombre === 'reportes') dibujarReportes();
+  if (nombre === 'reportes') { dibujarReportes(); escDibujarTrasegados(); }
+  if (nombre === 'tablero') progTableroDibujar();
   if (nombre === 'boxes') { dibujarTablaBoxes(); dibujarTablaPalets(); }
   if (nombre === 'escaner') escAlAbrir();
   // el inventario junta las dos mitades: tanques de 50 L y barricas y vasijas
@@ -2124,16 +2216,102 @@ function activarPanel(nombre) {
   if (nombre === 'consulta') { conDibujar(); setTimeout(() => $('conBuscar').focus(), 0); }
   if (nombre === 'rotulos') { rotDibujar(); setTimeout(() => $('rotLote').focus(), 0); }
 }
-document.querySelectorAll('#navProgramador button[data-panel]').forEach(b => b.addEventListener('click', () => {
-  document.querySelectorAll('#navProgramador button').forEach(x => x.classList.remove('activo'));
-  b.classList.add('activo');
-  activarPanel(b.dataset.panel);
+// ---- Programador: cinco grupos con sub-pestañas (2026-10-06) ----
+// Cada sub-pestaña abre un panel de siempre (activarPanel). Inventario y Asociar
+// comparten #panel-inventario: la clase prog-sub-* del body esconde la otra mitad.
+const PROG_GRUPOS = {
+  inicio:   [['tablero', '🏠 Inicio']],
+  barriles: [['inventario', '📋 Inventario'], ['escaner', '🛢️ Llenado / vaciado'], ['registro', '📒 Registro'], ['asociar', '🧾 Asociar vasija']],
+  mapa:     [['mapa', '🗺️ Mapa'], ['mapa3d', '🧊 Vista 3D'], ['reportes', '📊 Reportes']],
+  imprimir: [['rotulos', '🏷️ Rótulos'], ['pedidos', '📨 Pedidos de rótulos']],
+  admin:    [['datos', '📥 Importar y modo'], ['boxes', '📦 Boxes y palets'], ['respaldos', '💾 Respaldos'], ['celular', '📱 Celular']],
+};
+const PROG_PANEL = { asociar: 'inventario', datos: 'admin-datos', respaldos: 'admin-respaldos' };   // el resto: mismo nombre
+const progUltima = {};   // grupo -> última sub-pestaña abierta, para volver a donde estaba
+let progSubActual = 'tablero';
+function progGrupoDe(sub) { return Object.keys(PROG_GRUPOS).find(g => PROG_GRUPOS[g].some(([s]) => s === sub)); }
+function progIr(sub) {
+  const grupo = progGrupoDe(sub);
+  if (!grupo) return;
+  if (sesion && sesion.modo === 'libre' && sub !== progSubActual) salirModoLibre();
+  progSubActual = sub; progUltima[grupo] = sub;
+  document.querySelectorAll('#navProgramador button[data-grupo]').forEach(b => b.classList.toggle('activo', b.dataset.grupo === grupo));
+  const subs = PROG_GRUPOS[grupo];
+  $('navSubProg').innerHTML = subs.length < 2 ? '' : subs.map(([s, t]) =>
+    `<button data-sub="${s}" class="${s === sub ? 'activo' : ''}">${t}${s === 'pedidos' ? '<span class="prog-cuenta" id="progSubCuentaPedidos"></span>' : ''}</button>`).join('');
+  for (const ss of Object.values(PROG_GRUPOS).flat().map(x => x[0])) document.body.classList.toggle('prog-sub-' + ss, ss === sub);
+  activarPanel(PROG_PANEL[sub] || sub);
+  progContarPedidos();
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll('#navProgramador button[data-grupo]').forEach(b => b.addEventListener('click', () => {
+  const g = b.dataset.grupo;
+  progIr(progUltima[g] || PROG_GRUPOS[g][0][0]);
 }));
+$('navSubProg').addEventListener('click', e => { const b = e.target.closest('button[data-sub]'); if (b) progIr(b.dataset.sub); });
+document.querySelectorAll('#panel-tablero button[data-sub]').forEach(b => b.addEventListener('click', () => progIr(b.dataset.sub)));
+
+function progContarPedidos() {
+  const n = (estado.pedidos || []).filter(p => !p.hecho).length;
+  for (const id of ['progCuentaPedidos', 'progSubCuentaPedidos']) if ($(id)) $(id).textContent = n ? String(n) : '';
+}
+
+// Inicio del programador: las cifras salen de las mismas cuentas que Inventario y Reportes.
+function progTableroDibujar() {
+  const h = new Date().getHours();
+  $('tabSaludo').textContent = h < 13 ? 'Buen día' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
+  const f = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  $('tabFecha').textContent = f.charAt(0).toUpperCase() + f.slice(1);
+
+  const inv = estado.inventario || [];
+  const cnt = {}; const lotes = new Set();
+  for (const r of inv) { cnt[r.estado] = (cnt[r.estado] || 0) + 1; if (r.lote) lotes.add(r.lote); }
+  const mes = hoyISO().slice(0, 7);
+  const ordenesMes = (estado.escaneos || []).filter(o => escMesDe(o) === mes).length;
+  // "Llenas sin ubicar" y "Lotes fragmentados" (Reportes) no van acá: el mapa de la
+  // bodega se carga por lote, sin número de barril, y darían siempre "todas" y 0.
+  const revisar = inv.filter(r => hayCartel(r.num)).length;
+  const pedidos = (estado.pedidos || []).filter(p => !p.hecho).length;
+  const fechas = soloLectura ? 0 : planCorreccionFechas(estado.escaneos).length;
+  const migrar = necesitaMigracion(estado);
+
+  const cifra = (ir, valor, desc, det, clase = '', accion = '') =>
+    `<button class="tab-cifra ${clase}" data-ir="${ir}"${accion ? ` data-accion="${accion}"` : ''}>
+      <span class="tab-valor">${valor}</span><span class="tab-desc">${desc}</span>${det ? `<span class="tab-det">${det}</span>` : ''}</button>`;
+  $('tabCifras').innerHTML = [
+    cifra('inventario', inv.length, 'Vasijas', `${lotes.size} lotes distintos`),
+    cifra('inventario', cnt['LLENO'] || 0, 'Llenas', `${cnt['MERMO'] || 0} mermadas`),
+    cifra('inventario', cnt['VACIO'] || 0, 'Vacías', ''),
+    cifra('registro', ordenesMes, 'Órdenes este mes', 'llenado y vaciado'),
+  ].join('');
+  const nivel = n => n ? 'tab-alerta' : 'tab-ok';
+  $('tabPendientes').innerHTML = [
+    cifra('inventario', revisar, 'Para revisar', revisar ? 'vasijas con cartel ⚠' : 'sin carteles', nivel(revisar), 'revisar'),
+    cifra('pedidos', pedidos, 'Pedidos de rótulos', pedidos ? 'sin imprimir' : 'todo impreso', nivel(pedidos)),
+    // Los avisos que salen solos al entrar; si se tocó "Más tarde", desde acá se vuelven a abrir.
+    fechas ? cifra('tablero', fechas, 'Fechas para corregir', 'órdenes importadas con fecha mal', 'tab-alerta', 'fechas') : '',
+    migrar ? cifra('tablero', '!', 'Pasar al inventario simple', 'se hace una sola vez', 'tab-alerta', 'migrar') : '',
+  ].join('');
+  document.querySelectorAll('#panel-tablero .tab-cifra').forEach(b => b.addEventListener('click', () => {
+    const a = b.dataset.accion;
+    if (a === 'fechas') { correccionPospuesta = false; revisarCorreccionFechas(); return; }
+    if (a === 'migrar') { migracionPospuesta = false; revisarMigracion(); return; }
+    // "Para revisar" abre el inventario con el filtro de carteles puesto.
+    if (a === 'revisar' && $('soloRevisar')) $('soloRevisar').checked = true;
+    progIr(b.dataset.ir);
+  }));
+}
+// Al cerrarse un aviso (corregir fechas, migrar, un cartel…) las cifras pueden
+// haber cambiado: el Inicio se redibuja si está a la vista.
+new MutationObserver(() => {
+  if (!$('modal').classList.contains('abierto') && $('panel-tablero').classList.contains('activo')) progTableroDibujar();
+}).observe($('modal'), { attributes: true, attributeFilter: ['class'] });
 
 // ================== PEDIDOS DE RÓTULOS ==================
 // Un pedido pide reimprimir un rótulo (tanque o lote). Vive en estado.pedidos[]
 // y se atiende desde el panel 🏷️ Pedidos; lo imprime quien esté en la PC.
 function pedidoRefrescar() {
+  if (rol === 'programador') progContarPedidos();
   if (typeof pedidosDibujar === 'function' &&
       $('panel-pedidos') && $('panel-pedidos').classList.contains('activo')) {
     pedidosDibujar();
@@ -2245,7 +2423,14 @@ document.body.classList.add(rolDeLaPlataforma() === 'programador' ? 'rol-program
 if (soloLectura) document.body.classList.add('solo-lectura');
 // La pantalla de entrada, también ya: no esperar a los datos del servidor.
 if (rolDeLaPlataforma() === 'operario') { document.body.classList.add('op-inicio'); activarPanel('inicio'); }
-else $('panel-inventario').classList.add('activo');
+else {
+  // Solo se marca: el Inicio se dibuja en aplicarRol, cuando ya están los datos.
+  $('panel-tablero').classList.add('activo');
+  document.body.classList.add('prog-sub-tablero');
+  // La ayuda del mapa arranca abierta para el operario; el programador ya la conoce.
+  const ayudaMapa = document.querySelector('#panel-mapa > details.ayuda');
+  if (ayudaMapa) ayudaMapa.open = false;
+}
 document.body.classList.add('panel-elegido');
 try { localStorage.removeItem('mapaBarriles_rol'); } catch (e) {}   // el rol que se elegía a mano
 
@@ -2261,7 +2446,9 @@ function aplicarRol(r) {
   escDibujarHistorial();
   // Si el operario ya tocó un botón mientras cargaba, no lo devolvemos a la portada.
   if (r === 'operario') { if ($('panel-inicio').classList.contains('activo')) opSeccion('inicio'); }
-  else if (!document.querySelector('.panel.activo')) activarPanel('inventario');
+  // Programador: lo vuelve a abrir donde está (al arrancar, el Inicio) para que se
+  // dibuje con los datos y quede marcada la pestaña.
+  else progIr(progSubActual);
   revisarMigracion();
   revisarCorreccionFechas();
 }
@@ -2281,7 +2468,17 @@ const OP_TITULOS = {
   pedidos: ['🏷️ Pedidos de rótulos', 'Rótulos pedidos para reimprimir.'],
   celular: ['📱 Conectar teléfono', 'Escaneá el código con el celular para usarlo como lector.'],
 };
+// Secciones del operario → sub-pestaña del programador. El Registro, la ficha del
+// barril y el Inventario de consulta llaman a opSeccion; al programador eso lo
+// tiene que llevar a su propia barra.
+const OP_A_PROG = { inicio: 'tablero', cargar: 'mapa', buscar: 'mapa', escaner: 'escaner', registro: 'registro',
+  rotulos: 'rotulos', consulta: 'inventario', inventario: 'asociar', pedidos: 'pedidos', celular: 'celular' };
 function opSeccion(sec) {
+  if (rol === 'programador' || (rol === null && document.body.classList.contains('rol-programador'))) {
+    if (sec === 'buscar') { $('buscarMapa').value = ''; if ($('buscar3d')) $('buscar3d').value = ''; }
+    progIr(OP_A_PROG[sec] || 'tablero');
+    return;
+  }
   if (sesion && sesion.modo === 'libre') salirModoLibre();   // no mezclar cargar y buscar
   if (!OP_TITULOS[sec]) sec = 'inicio';
   for (const s of Object.keys(OP_TITULOS)) document.body.classList.toggle('op-' + s, s === sec);
