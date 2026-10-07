@@ -483,11 +483,11 @@ const API='/barriles/api';</script>
   .prog-cuenta:not(:empty) { background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 8px; margin-left: 7px; font-size: .78rem; font-weight: 700; }
   body.rol-programador main { max-width: 1320px; padding: 22px 26px; }
   body.rol-programador .tarjeta { border-radius: 14px; padding: 20px 22px; }
-  /* Barriles → Inventario muestra solo la lista; Barriles → Asociar vasija, solo la tarjeta de asociar. */
-  body.rol-programador.prog-sub-inventario #panel-inventario .tarjeta-asociar,
-  body.rol-programador.prog-sub-inventario #barResumen,
-  body.rol-programador.prog-sub-inventario #panel-inventario > details.ayuda,
-  body.rol-programador.prog-sub-asociar #tarjetaResumenInv { display: none !important; }
+  /* El programador no asocia vasijas a mano (pedido 2026-10-06): en Barriles → Inventario
+     ve solo la lista. El operario sigue teniendo "Asociar vasija con lote" en su portada. */
+  body.rol-programador #panel-inventario .tarjeta-asociar,
+  body.rol-programador #barResumen,
+  body.rol-programador #panel-inventario > details.ayuda { display: none !important; }
   /* Inicio */
   .tab-subtitulo { font-size: .85rem; text-transform: uppercase; letter-spacing: .6px; color: #8a7f76; margin: 22px 0 10px; font-weight: 700; }
   .tab-cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
@@ -736,7 +736,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       <button class="ini-boton" data-sub="inventario"><span class="ini-ico">📋</span><b>Inventario</b><span>La lista de vasijas, editable</span></button>
       <button class="ini-boton" data-sub="mapa"><span class="ini-ico">🗺️</span><b>Mapa</b><span>Buscar y cargar en los boxes</span></button>
       <button class="ini-boton" data-sub="rotulos"><span class="ini-ico">🏷️</span><b>Rótulos</b><span>Imprimir los rótulos de un lote</span></button>
-      <button class="ini-boton" data-sub="asociar"><span class="ini-ico">🧾</span><b>Asociar vasija</b><span>Vasija con lote, con la pistola o la cámara</span></button>
+      <button class="ini-boton" data-sub="reportes"><span class="ini-ico">📊</span><b>Reportes</b><span>Estado general y lotes trasegados por mes</span></button>
     </div>
   </section>
 
@@ -2217,16 +2217,16 @@ function activarPanel(nombre) {
   if (nombre === 'rotulos') { rotDibujar(); setTimeout(() => $('rotLote').focus(), 0); }
 }
 // ---- Programador: cinco grupos con sub-pestañas (2026-10-06) ----
-// Cada sub-pestaña abre un panel de siempre (activarPanel). Inventario y Asociar
-// comparten #panel-inventario: la clase prog-sub-* del body esconde la otra mitad.
+// Cada sub-pestaña abre un panel de siempre (activarPanel). La clase prog-sub-*
+// del body dice cuál está abierta.
 const PROG_GRUPOS = {
   inicio:   [['tablero', '🏠 Inicio']],
-  barriles: [['inventario', '📋 Inventario'], ['escaner', '🛢️ Llenado / vaciado'], ['registro', '📒 Registro'], ['asociar', '🧾 Asociar vasija']],
+  barriles: [['inventario', '📋 Inventario'], ['escaner', '🛢️ Llenado / vaciado'], ['registro', '📒 Registro']],
   mapa:     [['mapa', '🗺️ Mapa'], ['mapa3d', '🧊 Vista 3D'], ['reportes', '📊 Reportes']],
   imprimir: [['rotulos', '🏷️ Rótulos'], ['pedidos', '📨 Pedidos de rótulos']],
   admin:    [['datos', '📥 Importar y modo'], ['boxes', '📦 Boxes y palets'], ['respaldos', '💾 Respaldos'], ['celular', '📱 Celular']],
 };
-const PROG_PANEL = { asociar: 'inventario', datos: 'admin-datos', respaldos: 'admin-respaldos' };   // el resto: mismo nombre
+const PROG_PANEL = { datos: 'admin-datos', respaldos: 'admin-respaldos' };   // el resto: mismo nombre
 const progUltima = {};   // grupo -> última sub-pestaña abierta, para volver a donde estaba
 let progSubActual = 'tablero';
 function progGrupoDe(sub) { return Object.keys(PROG_GRUPOS).find(g => PROG_GRUPOS[g].some(([s]) => s === sub)); }
@@ -2472,7 +2472,7 @@ const OP_TITULOS = {
 // barril y el Inventario de consulta llaman a opSeccion; al programador eso lo
 // tiene que llevar a su propia barra.
 const OP_A_PROG = { inicio: 'tablero', cargar: 'mapa', buscar: 'mapa', escaner: 'escaner', registro: 'registro',
-  rotulos: 'rotulos', consulta: 'inventario', inventario: 'asociar', pedidos: 'pedidos', celular: 'celular' };
+  rotulos: 'rotulos', consulta: 'inventario', inventario: 'inventario', pedidos: 'pedidos', celular: 'celular' };
 function opSeccion(sec) {
   if (rol === 'programador' || (rol === null && document.body.classList.contains('rol-programador'))) {
     if (sec === 'buscar') { $('buscarMapa').value = ''; if ($('buscar3d')) $('buscar3d').value = ''; }

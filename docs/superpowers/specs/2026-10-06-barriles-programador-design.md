@@ -10,7 +10,7 @@ Nueve pestañas sueltas → cinco grupos con sub-pestañas (`PROG_GRUPOS`, `prog
 | Grupo | Sub-pestañas |
 |---|---|
 | 🏠 Inicio | (pantalla nueva `#panel-tablero`) |
-| 🛢️ Barriles | Inventario · Llenado / vaciado · Registro · Asociar vasija |
+| 🛢️ Barriles | Inventario · Llenado / vaciado · Registro |
 | 🗺️ Mapa | Mapa · Vista 3D · Reportes |
 | 🏷️ Imprimir | Rótulos · Pedidos de rótulos (con contador) |
 | ⚙️ Administrar | Importar y modo · Boxes y palets · Respaldos · Celular |
@@ -21,8 +21,8 @@ Nueve pestañas sueltas → cinco grupos con sub-pestañas (`PROG_GRUPOS`, `prog
   pospusieron con "Más tarde" se reabren desde acá.
   No muestra "llenas sin ubicar" ni "lotes fragmentados": el mapa de la bodega se
   carga por lote, sin número de barril, y darían siempre "todas" y 0.
-- **Inventario / Asociar** comparten `#panel-inventario` (el operario los ve
-  juntos); para el programador la clase `prog-sub-*` del body esconde la otra mitad.
+- **Asociar vasija**: el programador no la usa (pedido del usuario, 2da vuelta): en
+  Barriles → Inventario ve solo la lista. El operario la sigue teniendo en su portada.
 - **Importar Excel**, **Modo por lote** (antes en el encabezado) y **Respaldos**
   se mudaron a Administrar, con los mismos ids. En el encabezado queda
   `#chipModoLote`, visible solo cuando el modo está prendido.
