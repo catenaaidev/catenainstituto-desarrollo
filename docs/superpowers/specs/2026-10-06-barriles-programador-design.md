@@ -11,7 +11,7 @@ Nueve pestañas sueltas → cinco grupos con sub-pestañas (`PROG_GRUPOS`, `prog
 |---|---|
 | 🏠 Inicio | (pantalla nueva `#panel-tablero`) |
 | 🛢️ Barriles | Inventario · Llenado / vaciado · Registro |
-| 🗺️ Mapa | Mapa · Vista 3D · Reportes |
+| 🗺️ Mapa | Mapa · Vista 3D |
 | 🏷️ Imprimir | Rótulos · Pedidos de rótulos (con contador) |
 | ⚙️ Administrar | Importar y modo · Boxes y palets · Respaldos · Celular |
 
@@ -26,7 +26,7 @@ Nueve pestañas sueltas → cinco grupos con sub-pestañas (`PROG_GRUPOS`, `prog
 - **Importar Excel**, **Modo por lote** (antes en el encabezado) y **Respaldos**
   se mudaron a Administrar, con los mismos ids. En el encabezado queda
   `#chipModoLote`, visible solo cuando el modo está prendido.
-- **Lotes trasegados por mes** pasó de Llenado / vaciado a Reportes.
+- **Reportes** se sacó a pedido del usuario (3ra vuelta); "Lotes trasegados por mes" sigue en Llenado / vaciado.
 - **Registro** (el del operario) ahora también lo ve el programador.
   `opSeccion` redirige al programador a su barra (`OP_A_PROG`), así los atajos del
   Registro (ver en mapa, editar) funcionan igual.

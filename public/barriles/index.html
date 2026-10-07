@@ -736,7 +736,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       <button class="ini-boton" data-sub="inventario"><span class="ini-ico">📋</span><b>Inventario</b><span>La lista de vasijas, editable</span></button>
       <button class="ini-boton" data-sub="mapa"><span class="ini-ico">🗺️</span><b>Mapa</b><span>Buscar y cargar en los boxes</span></button>
       <button class="ini-boton" data-sub="rotulos"><span class="ini-ico">🏷️</span><b>Rótulos</b><span>Imprimir los rótulos de un lote</span></button>
-      <button class="ini-boton" data-sub="reportes"><span class="ini-ico">📊</span><b>Reportes</b><span>Estado general y lotes trasegados por mes</span></button>
+      <button class="ini-boton" data-sub="pedidos"><span class="ini-ico">📨</span><b>Pedidos de rótulos</b><span>Rótulos pedidos para reimprimir</span></button>
     </div>
   </section>
 
@@ -1036,7 +1036,15 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       </div>
     </details>
 
-    <!-- "Lotes trasegados por mes" se mudó a Reportes (2026-10-06). -->
+    <!-- Solo el programador: al operario le complicaba la pantalla (2026-10-06). -->
+    <div class="tarjeta solo-prog">
+      <div class="fila-flex" style="justify-content:space-between;">
+        <h2 style="margin:0;">🔄 Lotes trasegados por mes</h2>
+        <span class="nota" id="escTrasegadosResumen" style="margin:0;"></span>
+      </div>
+      <p class="nota" style="margin:4px 0 8px;">Un lote cuenta como trasegado en un mes si ese mes tuvo al menos un <b>vaciado</b> y un <b>llenado</b> del lote.</p>
+      <div style="overflow:auto;"><table class="datos" id="escTrasegados"></table></div>
+    </div>
   </section>
 
   <!-- ============ PEDIDOS DE RÓTULOS ============ -->
@@ -1178,15 +1186,6 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       <h2>Barriles llenos sin ubicar en el mapa</h2>
       <p class="nota" id="notaSinUbicar"></p>
       <div style="overflow:auto;"><table class="datos" id="tablaSinUbicar"></table></div>
-    </div>
-    <!-- Venía de Llenado / vaciado. Solo el programador: al operario le complicaba la pantalla. -->
-    <div class="tarjeta solo-prog">
-      <div class="fila-flex" style="justify-content:space-between;">
-        <h2 style="margin:0;">🔄 Lotes trasegados por mes</h2>
-        <span class="nota" id="escTrasegadosResumen" style="margin:0;"></span>
-      </div>
-      <p class="nota" style="margin:4px 0 8px;">Un lote cuenta como trasegado en un mes si ese mes tuvo al menos un <b>vaciado</b> y un <b>llenado</b> del lote.</p>
-      <div style="overflow:auto;"><table class="datos" id="escTrasegados"></table></div>
     </div>
   </section>
 
@@ -2203,7 +2202,7 @@ function activarPanel(nombre) {
   if (p) p.classList.add('activo');
   if (nombre === 'mapa') dibujarMapas();
   if (nombre === 'mapa3d') Vista3D.abrir();
-  if (nombre === 'reportes') { dibujarReportes(); escDibujarTrasegados(); }
+  if (nombre === 'reportes') dibujarReportes();
   if (nombre === 'tablero') progTableroDibujar();
   if (nombre === 'boxes') { dibujarTablaBoxes(); dibujarTablaPalets(); }
   if (nombre === 'escaner') escAlAbrir();
@@ -2222,7 +2221,7 @@ function activarPanel(nombre) {
 const PROG_GRUPOS = {
   inicio:   [['tablero', '🏠 Inicio']],
   barriles: [['inventario', '📋 Inventario'], ['escaner', '🛢️ Llenado / vaciado'], ['registro', '📒 Registro']],
-  mapa:     [['mapa', '🗺️ Mapa'], ['mapa3d', '🧊 Vista 3D'], ['reportes', '📊 Reportes']],
+  mapa:     [['mapa', '🗺️ Mapa'], ['mapa3d', '🧊 Vista 3D']],   // Reportes se sacó a pedido (2026-10-06)
   imprimir: [['rotulos', '🏷️ Rótulos'], ['pedidos', '📨 Pedidos de rótulos']],
   admin:    [['datos', '📥 Importar y modo'], ['boxes', '📦 Boxes y palets'], ['respaldos', '💾 Respaldos'], ['celular', '📱 Celular']],
 };
