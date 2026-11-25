@@ -87,7 +87,15 @@ export async function rutasLibros(req:Request,env:Env,ctx:ExecutionContext,sub:s
   const b=await leerJSON(req,m?.[2]==='guardar'?MAX_BYTES:16384);
   if(sub==='/ingresos'||sub.startsWith('/ingresos/')){
    if(!validoTexto(b.lote,80)||!validoTexto(b.nombre_lote,120)||(typeof b.vasija!=='string'||b.vasija.length>80)||typeof b.variedad!=='string'||b.variedad.length>100||!fechaISO(b.recepcion)||!['borrador','en_proceso','finalizado'].includes(String(b.estado)))return response(400,{error:'Completá lote, nombre, vasija y fecha de recepción.'});
-   const info=esObj(b.informacion_id)?JSON.stringify(b.informacion_id):'{}';
+   const inf=esObj(b.informacion_id)?b.informacion_id:{};
+   const det=inf.recepcion_detalle;
+   if(det!==undefined){if(!esObj(det))return response(400,{error:'Datos de recepción inválidos.'});
+    const num=(v:unknown)=>v===''||v===undefined||(typeof v==='string'&&v.trim()!==''&&Number.isFinite(Number(v))&&Number(v)>=0);
+    if(!['bins','peso_bruto','tara'].every(k=>num(det[k]))||(det.peso_bruto!==''&&det.tara!==''&&Number(det.tara)>Number(det.peso_bruto)))return response(400,{error:'Revisá los pesos: la tara no puede superar el peso bruto.'});
+    if(det.hora_recepcion&&(!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(det.hora_recepcion))))return response(400,{error:'Hora inválida.'});
+    if(!Array.isArray(det.destinos)||det.destinos.length>100||det.destinos.some(x=>!esObj(x)||!num(x.bins)||!num(x.kg)))return response(400,{error:'Revisá los destinos de vasijas.'});
+   }
+   const info=JSON.stringify(inf);
    const datos=[b.lote.trim(),b.nombre_lote.trim(),b.variedad.trim(),b.vasija.trim(),b.recepcion,String(b.estado),autor];
    if(sub==='/ingresos'){
     const pid=crypto.randomUUID();const nombre=`${b.lote} · ${b.vasija} · ${pid.slice(0,8)}`;

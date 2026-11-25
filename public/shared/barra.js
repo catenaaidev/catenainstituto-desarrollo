@@ -97,6 +97,7 @@
     '#ciw-barra a{display:inline-flex;align-items:center;min-height:44px;padding:0 10px;box-sizing:border-box}' +
     '#ciw-barra .ancho,#ciw-barra .cuenta-ancho{display:none}' +
     '#ciw-barra .cuenta-cel{display:block}}' +
+    '@media (max-width:760px){#ciw-barra{flex-wrap:wrap}#ciw-barra .aqui{min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}#ciw-barra .sep{flex-shrink:0}}' +
     '@media (prefers-reduced-motion:reduce){#ciw-barra a{transition:none}}' +
     '@media print{#ciw-barra{display:none}}';
 

@@ -1,0 +1,10 @@
+# CIW Desarrollo V5 - ingreso de uva y navegación
+
+Base: ZIP V4. Entorno exclusivo de desarrollo. No cambia la configuración de producción ni requiere una migración adicional. El detalle de recepción se conserva en informacion_id.recepcion_detalle (campo JSON existente). Los registros anteriores sin detalle se abren con campos vacíos.
+
+Cambios: marcador visible V5, archivos JS/CSS de Vendimia con versión en URL, recepción con hora, OT, turno, parcela, bins, peso bruto, tara, cálculo de neto, destinos múltiples y observaciones; recuperación local y persistencia en servidor al confirmar; vínculo de encabezados y destinos con ambas plantillas de molienda. No se elige automáticamente una plantilla de molienda si el usuario no seleccionó una. Se conservan las fórmulas TODAY y total de bins de las plantillas originales; la fecha fija y los pesos quedan en la ficha. Los datos de ejemplo de las plantillas no se eliminan automáticamente. La barra común se adapta a pantallas estrechas mediante wrap. Si el maestro Lotes está vacío se muestra un aviso.
+
+Pruebas: npm run test:vendimia-libros (7/7; SQLite y simulación R2). node --check en los JS modificados. Pendiente: build real, tsc, Vitest completo, homologación interactiva y exportación Excel, revisión exhaustiva de pantallas y rendimiento, guardado automático en servidor de la ficha sin confirmación, sincronización completa de libros. No se ha desplegado V5. La edición de un ingreso existente no actualiza el maestro Lotes automáticamente.
+
+## Actualizar (Git Bash)
+Conservar .git y copiar el contenido del ZIP a la carpeta de desarrollo. Verificar origen y que wrangler.jsonc apunta a catenainstituto-desarrollo y a D1 bab98747-2936-431c-a1c6-f8e333eb5a77. Ejecutar npm ci, npm run build:vendimia, npm run tipos, npx tsc --noEmit, npm run test:vendimia-libros, npm test. Si pasan, git add ., git commit -m "CIW V5 ingreso de uva y navegacion", git push -u origin main. Si no hay despliegue automático, npx wrangler deploy --config wrangler.jsonc. Comprobar versión V5 en /vendimia/ y crear/reabrir un ingreso de prueba con dos destinos en desarrollo.
