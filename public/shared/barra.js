@@ -13,7 +13,7 @@
 (function (g) {
   'use strict';
 
-  var NOMBRES = { prensas: 'Prensas', barriles: 'Barriles', lotes: 'Lotes', ordenes: 'Órdenes' };
+  var NOMBRES = { prensas: 'Prensas', barriles: 'Barriles', lotes: 'Lotes', vendimia: 'Vendimia', ordenes: 'Órdenes' };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -28,7 +28,7 @@
     var actual = ctx.enOrden ? 'ordenes' : (ctx.modulo || '');
     var modulos = ctx.modulos || {};
     var p = ['<a class="inicio" href="/" title="Volver al menú">← Menú</a>', '<span class="sep" aria-hidden="true"></span>'];
-    ['prensas', 'barriles', 'lotes'].forEach(function (m) {
+    ['prensas', 'barriles', 'lotes', 'vendimia'].forEach(function (m) {
       if (m === actual) p.push('<span class="aqui" aria-current="page">' + NOMBRES[m] + '</span>');
       else if (modulos[m]) p.push('<a href="/' + m + '/">' + NOMBRES[m] + '</a>');
     });

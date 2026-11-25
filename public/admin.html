@@ -86,6 +86,7 @@
       <div class="mods">
         <div><label for="m-prensas">Prensas</label><select id="m-prensas"></select></div>
         <div><label for="m-barriles">Barriles</label><select id="m-barriles"></select></div>
+        <div><label for="m-vendimia">Vendimia</label><select id="m-vendimia"></select></div>
         <div><label for="m-lotes">Lotes</label><select id="m-lotes"></select></div>
       </div>
       <p class="ci-ayuda">Lector: solo mira · Editor: carga y edita · Admin: todo, incluidos los respaldos.<br>
@@ -105,8 +106,8 @@
 </dialog>
 
 <script>
-const MODULOS = ['prensas', 'barriles', 'lotes'];
-const NOMBRES = { prensas: 'Prensas', barriles: 'Barriles', lotes: 'Lotes' };
+const MODULOS = ['prensas', 'barriles', 'lotes', 'vendimia'];
+const NOMBRES = { prensas: 'Prensas', barriles: 'Barriles', lotes: 'Lotes', vendimia: 'Vendimia' };
 const OPCIONES = [['', 'Sin acceso'], ['lector', 'Lector'], ['editor', 'Editor'], ['admin', 'Admin']];
 
 let yo = null;

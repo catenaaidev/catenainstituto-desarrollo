@@ -1,3 +1,5 @@
+> **DESARROLLO: no ejecutar comandos antiguos de este documento. Usar exclusivamente [DESPLIEGUE-VENDIMIA.md](DESPLIEGUE-VENDIMIA.md).**
+
 # Cómo subirlo — paso a paso
 
 Todo esto ya se probó funcionando en una PC. Seguí los pasos en orden; cada uno

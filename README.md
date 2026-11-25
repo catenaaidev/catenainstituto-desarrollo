@@ -1,3 +1,5 @@
+> **DESARROLLO: no ejecutar comandos antiguos de este documento. Usar exclusivamente [DESPLIEGUE-VENDIMIA.md](DESPLIEGUE-VENDIMIA.md).**
+
 # Plataforma CIW
 
 Las aplicaciones de Bodegas Esmeralda en un solo sitio, con login de Office 365.

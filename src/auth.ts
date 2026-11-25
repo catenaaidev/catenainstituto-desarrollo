@@ -12,9 +12,9 @@
  */
 
 export type Rol = 'admin' | 'editor' | 'lector';
-export type Modulo = 'prensas' | 'barriles' | 'lotes';
+export type Modulo = 'prensas' | 'barriles' | 'lotes' | 'vendimia';
 
-export const MODULOS: Modulo[] = ['prensas', 'barriles', 'lotes'];
+export const MODULOS: Modulo[] = ['prensas', 'barriles', 'lotes', 'vendimia'];
 export const ROLES: Rol[] = ['admin', 'editor', 'lector'];
 
 /** Contraseña con la que nace (o se resetea) toda cuenta. */

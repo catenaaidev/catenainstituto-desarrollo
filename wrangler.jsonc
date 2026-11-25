@@ -3,7 +3,7 @@
   // Un solo Worker sirve los archivos estáticos (public/) y responde las APIs
   // de los tres módulos. Reemplaza a los tres servidor.py.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "catenainstitute",
+  "name": "catenainstitute-desarrollo",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -29,6 +29,11 @@
       "/barriles/api/*",
       "/lotes/api/*",
       "/ordenes/api/*",
+      "/vendimia/api/*",
+      "/vendimia",
+      "/vendimia/",
+      "/vendimia/index.html",
+      "/vendimia/referencias.json",
       "/prensas",
       "/prensas/",
       "/prensas/index.html",
@@ -48,8 +53,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "catenainstitute",
-      "database_id": "28dc2eb1-aa60-4087-9313-003b8bf23014",
+      "database_name": "catenainstitute-desarrollo",
+      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ],
@@ -57,7 +62,7 @@
   // Respaldos: snapshots JSON fechados. Crear el bucket con:
   //   npx wrangler r2 bucket create catenainstitute-respaldos
   "r2_buckets": [
-    { "binding": "RESPALDOS", "bucket_name": "catenainstitute-respaldos" }
+    { "binding": "RESPALDOS", "bucket_name": "catenainstitute-desarrollo-respaldos" }
   ],
 
   // Asistente IA (reemplaza a Ollama en localhost).

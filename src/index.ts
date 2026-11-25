@@ -10,6 +10,7 @@
 
 import { rutasPrensas, snapshot } from './prensas/rutas';
 import { rutasBarriles } from './barriles/rutas';
+import { rutasVendimia } from './vendimia/rutas';
 import { rutasLotes } from './lotes/rutas';
 import { rutasOrdenes, rolOrdenes } from './ordenes/rutas';
 import {
@@ -30,7 +31,7 @@ import { PLANTILLA as PLANTILLA_PRENSAS } from './prensas/reporte-plantilla';
 import { recortarAlUltimoAnio } from './prensas/anio-reporte';
 import { construirReporte as construirReporteLotes } from './lotes/reporte';
 
-const MODULOS: Modulo[] = ['prensas', 'barriles', 'lotes'];
+const MODULOS: Modulo[] = ['prensas', 'barriles', 'lotes', 'vendimia'];
 const ICONO = '<link rel="icon" type="image/svg+xml" href="/favicon.svg">\n';
 const esPantallaOrdenes = (ruta: string) => ruta === '/ordenes' || ruta === '/ordenes/' || ruta === '/ordenes/index.html';
 
@@ -100,7 +101,7 @@ export default {
         error: 'base_sin_inicializar',
         detalles: [
           'La base de datos todavía no tiene sus tablas.',
-          'Falta correr las migraciones: npx wrangler d1 migrations apply catenainstitute --remote',
+          'Falta correr las migraciones: npx wrangler d1 migrations apply catenainstitute-desarrollo --remote',
           'Y después importar los datos (paso 5 de DESPLIEGUE.md).',
         ],
       });
@@ -169,6 +170,12 @@ export default {
     }
     if (esPantallaOrdenes(ruta)) return servirOrdenes(req, env);
 
+    if (ruta === "/vendimia/referencias.json") {
+      const id = await identidad(req, env, ctx, "vendimia");
+      if (!id?.rol) return json(403, {error:"sin_permiso"});
+      return env.ASSETS.fetch(req);
+    }
+
     // ---- APIs de cada módulo ----
     for (const modulo of MODULOS) {
       const prefijo = `/${modulo}/api`;
@@ -185,7 +192,7 @@ export default {
         }
 
         const handler =
-          modulo === 'prensas' ? rutasPrensas : modulo === 'barriles' ? rutasBarriles : rutasLotes;
+          modulo === 'prensas' ? rutasPrensas : modulo === 'barriles' ? rutasBarriles : modulo === 'vendimia' ? rutasVendimia : rutasLotes;
 
         const r = await handler(req, env, ctx, sub);
         if (r) return r;
