@@ -15,7 +15,7 @@ describe('portal: tarjeta Órdenes de trabajo', () => {
   it('el rol de la tarjeta sale de prensas o lotes', () => {
     expect(h).toContain('function rolDe(m, modulos)');
   });
-  it('la grilla tiene cuatro columnas', () => {
-    expect(h).toContain('grid-template-columns:repeat(4,1fr)');
+  it('la grilla tiene cinco columnas', () => {
+    expect(h).toContain('grid-template-columns:repeat(5,1fr)');
   });
 });
