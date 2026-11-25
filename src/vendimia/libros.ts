@@ -53,6 +53,9 @@ export async function rutasLibros(req:Request,env:Env,ctx:ExecutionContext,sub:s
  const id=await identidad(req,env,ctx,'vendimia');if(!puedeLeer(id))return response(403,{error:'sin_permiso'});
  const url=new URL(req.url),autor=id!.email;
  try{
+  if(req.method==='GET'&&sub==='/ingresos'){
+   const {results}=await env.DB.prepare('SELECT * FROM vend_ingresos ORDER BY actualizado DESC').all();return response(200,{ingresos:results});
+  }
   if(req.method==='GET'&&sub==='/plantillas')return response(200,{plantillas:catalogo});
   if(req.method==='GET'&&sub==='/periodos'){
    const {results}=await env.DB.prepare('SELECT p.*, (SELECT count(*) FROM vend_libros l WHERE l.periodo_id=p.id) AS libros FROM vend_periodos p ORDER BY anio DESC,desde DESC,creado DESC').all();
@@ -82,6 +85,20 @@ export async function rutasLibros(req:Request,env:Env,ctx:ExecutionContext,sub:s
   if(req.headers.get('Origin')!==url.origin)return response(403,{error:'origen_invalido'});
   if(!req.headers.get('Content-Type')?.startsWith('application/json'))return response(415,{error:'formato_invalido'});
   const b=await leerJSON(req,m?.[2]==='guardar'?MAX_BYTES:16384);
+  if(sub==='/ingresos'||sub.startsWith('/ingresos/')){
+   if(!validoTexto(b.lote,80)||!validoTexto(b.nombre_lote,120)||!validoTexto(b.vasija,80)||typeof b.variedad!=='string'||b.variedad.length>100||!fechaISO(b.recepcion)||!['borrador','en_proceso','finalizado'].includes(String(b.estado)))return response(400,{error:'Completá lote, nombre, vasija y fecha de recepción.'});
+   const datos=[b.lote.trim(),b.nombre_lote.trim(),b.variedad.trim(),b.vasija.trim(),b.recepcion,String(b.estado),autor];
+   if(sub==='/ingresos'){
+    const pid=crypto.randomUUID();const nombre=`${b.lote} · ${b.vasija} · ${pid.slice(0,8)}`;
+    const stmts=[env.DB.prepare('INSERT INTO vend_periodos(id,nombre,anio,desde,autor) VALUES(?,?,?,?,?)').bind(pid,nombre,Number(b.recepcion.slice(0,4)),b.recepcion,autor),env.DB.prepare('INSERT INTO vend_ingresos(periodo_id,lote,nombre_lote,variedad,vasija,recepcion,estado,autor) VALUES(?,?,?,?,?,?,?,?)').bind(pid,...datos)];
+    for(const p of PLANTILLAS)stmts.push(...nuevaCopia(env,pid,p.id,p.name,autor).stmts);
+    stmts.push(...nuevaCopia(env,pid,'agregados-v1','Agregado de nutrientes',autor).stmts,...nuevaCopia(env,pid,'agregados-v1','Anhídrido sulfuroso (SO₂)',autor).stmts);
+    await env.DB.batch(stmts);return response(201,{id:pid});
+   }
+   const pid=sub.slice('/ingresos/'.length);if(!uuid.test(pid)||!Number.isInteger(b.version))return response(400,{error:'Versión inválida'});
+   const r=await env.DB.batch([env.DB.prepare("UPDATE vend_ingresos SET lote=?,nombre_lote=?,variedad=?,vasija=?,recepcion=?,estado=?,autor=?,version=version+1,actualizado=datetime('now') WHERE periodo_id=? AND version=?").bind(...datos,pid,b.version)]);
+   if(r[0].meta.changes!==1)return response(409,{error:'Otro usuario cambió la ficha. Volvé a abrirla antes de guardar.'});return response(200,{version:Number(b.version)+1});
+  }
   if(sub==='/periodos'){
    if(!validoTexto(b.nombre,120)||!Number.isInteger(b.anio)||Number(b.anio)<1900||Number(b.anio)>2200||!fechaISO(b.desde)||((b.hasta!==null&&b.hasta!==undefined&&b.hasta!=='')&&(!fechaISO(b.hasta)||String(b.hasta)<b.desde)))return response(400,{error:'Completar nombre, año y fechas válidas.'});
    const pid=crypto.randomUUID();const stmts=[env.DB.prepare('INSERT INTO vend_periodos(id,nombre,anio,desde,hasta,autor) VALUES(?,?,?,?,?,?)').bind(pid,b.nombre.trim(),b.anio,b.desde,b.hasta||null,autor)];

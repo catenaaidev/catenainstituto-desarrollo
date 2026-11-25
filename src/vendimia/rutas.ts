@@ -4,7 +4,7 @@ import { esquema } from './esquema';
 import { rutasLibros } from './libros';
 
 export async function rutasVendimia(req: Request, env: Env, ctx: ExecutionContext, sub: string): Promise<Response> {
-  if (sub === '/plantillas' || sub === '/periodos' || sub.startsWith('/periodos/') || sub.startsWith('/libros/')) return rutasLibros(req,env,ctx,sub);
+  if (sub === '/ingresos' || sub.startsWith('/ingresos/') || sub === '/plantillas' || sub === '/periodos' || sub.startsWith('/periodos/') || sub.startsWith('/libros/')) return rutasLibros(req,env,ctx,sub);
   const id = await identidad(req, env, ctx, 'vendimia');
   if (!puedeLeer(id)) return json(403, {error:'sin_permiso'});
   const url = new URL(req.url);
