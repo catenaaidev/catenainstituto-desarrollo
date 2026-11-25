@@ -1,6 +1,7 @@
 import { identidad, puedeLeer, puedeEscribir } from '../auth';
 import { json } from '../respuestas';
 import { PLANTILLAS } from './plantillas-data';
+import { registrarHechos } from './v6';
 
 const MAX_BYTES=8*1024*1024;
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -54,7 +55,7 @@ export async function rutasLibros(req:Request,env:Env,ctx:ExecutionContext,sub:s
  const url=new URL(req.url),autor=id!.email;
  try{
   if(req.method==='GET'&&sub==='/ingresos'){
-   const {results}=await env.DB.prepare('SELECT * FROM vend_ingresos ORDER BY actualizado DESC').all();return response(200,{ingresos:results});
+   const {results}=await env.DB.prepare("SELECT i.*, (SELECT group_concat(plantilla_id) FROM vend_libros l WHERE l.periodo_id=i.periodo_id AND l.version>0) AS planillas FROM vend_ingresos i ORDER BY actualizado DESC").all();return response(200,{ingresos:results});
   }
   if(req.method==='GET'&&sub==='/plantillas')return response(200,{plantillas:catalogo});
   if(req.method==='GET'&&sub==='/periodos'){
@@ -121,6 +122,8 @@ export async function rutasLibros(req:Request,env:Env,ctx:ExecutionContext,sub:s
   }
   if(m&&libro&&m[2]==='guardar'&&!m[3]){
    if(!Number.isInteger(b.version)||Number(b.version)<0||typeof b.operacion!=='string'||!uuid.test(b.operacion)||!snapshotValido(b.snapshot))return response(400,{error:'Estructura del libro inválida o fuera de límites. Conservá el borrador local.'});
+   const fin=await env.DB.prepare('SELECT estado FROM vend_ingresos WHERE periodo_id=?').bind(libro.periodo_id).first<{estado:string}>();
+   if(fin?.estado==='finalizado'&&id!.rol!=='admin')return response(403,{error:'Este lote está finalizado. Solo un administrador puede modificar sus planillas.'});
    const previa=await env.DB.prepare('SELECT version,autor,fecha FROM vend_libro_versiones WHERE libro_id=? AND operacion=?').bind(libro.id,b.operacion).first<{version:number;autor:string;fecha:string}>();
    if(previa&&previa.version===libro.version)return response(200,{version:previa.version,autor:previa.autor,actualizado:previa.fecha,repetida:true});
    const conflicto=()=>response(409,{error:'conflicto_version',version:libro.version,autor:libro.autor,actualizado:libro.actualizado});
@@ -140,6 +143,8 @@ export async function rutasLibros(req:Request,env:Env,ctx:ExecutionContext,sub:s
     console.error('vendimia guardar',e);return response(503,{error:'guardado_no_confirmado',detalles:['El borrador queda en el navegador. Reintentá.']});
    }
    if(r[0].meta.changes!==1){await env.RESPALDOS.delete(clave).catch(()=>{});const actual=await env.DB.prepare('SELECT version,autor,actualizado FROM vend_libros WHERE id=?').bind(libro.id).first<{version:number;autor:string;actualizado:string}>();return response(409,{error:'conflicto_version',...actual});}
+   // Datos compartidos: si falla, el libro ya quedó guardado; se reintenta en el próximo guardado.
+   try{await registrarHechos(env,libro,version,autor,b.snapshot);}catch(e){console.error('vendimia hechos',e);}
    return response(200,{version,autor,actualizado:new Date().toISOString()});
   }
   return response(404,{error:'ruta_no_encontrada'});

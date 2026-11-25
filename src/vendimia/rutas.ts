@@ -2,8 +2,10 @@ import { identidad, puedeLeer, puedeEscribir } from '../auth';
 import { json } from '../respuestas';
 import { esquema } from './esquema';
 import { rutasLibros } from './libros';
+import { rutasV6 } from './v6';
 
 export async function rutasVendimia(req: Request, env: Env, ctx: ExecutionContext, sub: string): Promise<Response> {
+  const v6 = await rutasV6(req, env, ctx, sub); if (v6) return v6;
   if (sub === '/ingresos' || sub.startsWith('/ingresos/') || sub === '/plantillas' || sub === '/periodos' || sub.startsWith('/periodos/') || sub.startsWith('/libros/')) return rutasLibros(req,env,ctx,sub);
   const id = await identidad(req, env, ctx, 'vendimia');
   if (!puedeLeer(id)) return json(403, {error:'sin_permiso'});
