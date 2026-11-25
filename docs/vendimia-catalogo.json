@@ -1,0 +1,295 @@
+[
+  {
+    "id": "molienda-ch-v1",
+    "stage": "Ingreso / molienda",
+    "name": "A036 molienda CH Adrianna LGF.xlsx",
+    "sha256": "a79280828e7c0a476c498c079f4e20a84a1056c307b7f2ceed7c48f79709d8ca",
+    "sheets": [
+      {
+        "name": "OT Molienda",
+        "rows": 29,
+        "cols": 13,
+        "formulas": 3,
+        "merges": 39,
+        "validations": 0,
+        "printAreas": [
+          "A1:M29"
+        ]
+      },
+      {
+        "name": "Hoja1",
+        "rows": 4,
+        "cols": 1,
+        "formulas": 0,
+        "merges": 0,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "molienda-cs-v1",
+    "stage": "Ingreso / molienda",
+    "name": "A072 molienda CS NICASIA CT1 Mecanica Lunes.xlsx",
+    "sha256": "c22c13c879cb983a4f6342791c6b93b3cd48fc761be06431ca0dcb5f7dee938c",
+    "sheets": [
+      {
+        "name": "OT Molienda",
+        "rows": 29,
+        "cols": 12,
+        "formulas": 2,
+        "merges": 45,
+        "validations": 0,
+        "printAreas": [
+          "A1:L29"
+        ]
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "agregados-v1",
+    "stage": "Agregados",
+    "name": "B005 OT agregados siembra.xlsx",
+    "sha256": "1d443fe654946219891a26a4d907bdecbae09bda85177dace7a553748b396eb4",
+    "sheets": [
+      {
+        "name": "OT",
+        "rows": 37,
+        "cols": 9,
+        "formulas": 0,
+        "merges": 28,
+        "validations": 0,
+        "printAreas": []
+      },
+      {
+        "name": "Lavados",
+        "rows": 61,
+        "cols": 9,
+        "formulas": 0,
+        "merges": 24,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "tintos-v1",
+    "stage": "Seguimiento de FA",
+    "name": "PCI 01 ICI 01 RCI 02- Rev04 -  Planilla de Fermentación Tintos.xlsx",
+    "sha256": "bf23f5e65deaff5c74932ec8352a5115943af556cfef1164eef68dce2abbf3f0",
+    "sheets": [
+      {
+        "name": "Cara 1",
+        "rows": 101,
+        "cols": 14,
+        "formulas": 38,
+        "merges": 89,
+        "validations": 0,
+        "printAreas": [
+          "A1:K102"
+        ]
+      },
+      {
+        "name": "Para completar",
+        "rows": 30,
+        "cols": 14,
+        "formulas": 0,
+        "merges": 0,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "blancos-v1",
+    "stage": "Seguimiento de FA",
+    "name": "PCI 02 ICI 02 RCI 01 - Rev 05 - Planilla Fermentación blancos.xlsx",
+    "sha256": "823d895f797ca42f70ca92f8d279a8f0195fa8be4f17bcb562933c8d4c8e891c",
+    "sheets": [
+      {
+        "name": "Cara 1",
+        "rows": 93,
+        "cols": 11,
+        "formulas": 45,
+        "merges": 85,
+        "validations": 0,
+        "printAreas": [
+          "A1:H44",
+          "A49:H94"
+        ]
+      },
+      {
+        "name": "Sheet1",
+        "rows": 39,
+        "cols": 13,
+        "formulas": 0,
+        "merges": 2,
+        "validations": 0,
+        "printAreas": []
+      },
+      {
+        "name": "Obj. Base Brandy",
+        "rows": 4,
+        "cols": 8,
+        "formulas": 0,
+        "merges": 1,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "19 controles de formulario heredados (casillas) y dibujos: el motor web no los reproduce; conservar y consultar el original.",
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "brix-v1",
+    "stage": "Seguimiento de FA",
+    "name": "RCI Control de Brix y Temperatura.xlsx",
+    "sha256": "0a52dfc68814e827e8408463d4255c82f4df19b9f53493336fe9ccb1a272e12a",
+    "sheets": [
+      {
+        "name": "Hoja1",
+        "rows": 52,
+        "cols": 13,
+        "formulas": 1,
+        "merges": 6,
+        "validations": 0,
+        "printAreas": []
+      },
+      {
+        "name": "Hoja1 (2)",
+        "rows": 52,
+        "cols": 13,
+        "formulas": 1,
+        "merges": 6,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "movimientos-v1",
+    "stage": "Movimientos de vasijas",
+    "name": "Planilla movimientos vasijas.xlsx",
+    "sha256": "6d574e25e1aa343203f667912a5d2fbd59328ef4a52d6b5c7ed650e3bf4f68a0",
+    "sheets": [
+      {
+        "name": "Tanques",
+        "rows": 58,
+        "cols": 20,
+        "formulas": 3,
+        "merges": 27,
+        "validations": 0,
+        "printAreas": [
+          "A1:T58"
+        ]
+      },
+      {
+        "name": "Micros",
+        "rows": 29,
+        "cols": 7,
+        "formulas": 2,
+        "merges": 4,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "checklist-v1",
+    "stage": "Actividades técnicas",
+    "name": "Check list de actividades técnicas en CIW.xlsx",
+    "sha256": "d476921c22cfeb32ab31afb3f7bfbafaddcf4555f9df1fdafa0309a6999b5904",
+    "sheets": [
+      {
+        "name": "Cosecha",
+        "rows": 47,
+        "cols": 6,
+        "formulas": 1,
+        "merges": 9,
+        "validations": 0,
+        "printAreas": []
+      },
+      {
+        "name": "Crianza",
+        "rows": 35,
+        "cols": 9,
+        "formulas": 0,
+        "merges": 14,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "criterios-v1",
+    "stage": "Corrección pH / referencias",
+    "name": "Criterio de corrección Rev 01 2021.xlsx",
+    "sha256": "fb1c1ca1f30299ba4021dbfb63cbdc2e564a16e0a5bb999ad82cfae24758ff20",
+    "sheets": [
+      {
+        "name": "Sheet1",
+        "rows": 18,
+        "cols": 7,
+        "formulas": 0,
+        "merges": 4,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": []
+  },
+  {
+    "id": "degustacion-v1",
+    "stage": "Controles complementarios",
+    "name": "Degustación 13-4.xlsx",
+    "sha256": "c280e47e7a793cf700b2dc006e4138040b7cf918506f7d6c16b1679b7dabf944",
+    "sheets": [
+      {
+        "name": "imprimir",
+        "rows": 109,
+        "cols": 8,
+        "formulas": 0,
+        "merges": 5,
+        "validations": 0,
+        "printAreas": [
+          "A1:H53"
+        ]
+      },
+      {
+        "name": "Hoja1",
+        "rows": 26,
+        "cols": 4,
+        "formulas": 0,
+        "merges": 0,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  }
+]

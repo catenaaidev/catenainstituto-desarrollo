@@ -70,7 +70,7 @@ export default defineWorkersConfig({
     // saca de globalThis lo que ese archivo agregó.
     setupFiles: ['./test/aplicar-migraciones.ts', './test/limpiar-globales.ts'],
     // Los tests de .claude/worktrees/* son copias de otras ramas: no son de esta.
-    exclude: ['**/node_modules/**', '.claude/**'],
+    exclude: ['**/node_modules/**', '.claude/**', 'test-local/**', 'frontend/**'],
     poolOptions: {
       workers: {
         // Un solo runtime para todos los archivos. Sin esto el pool levanta un

@@ -170,6 +170,11 @@ export default {
     }
     if (esPantallaOrdenes(ruta)) return servirOrdenes(req, env);
 
+    if (ruta === '/vendimia/trazabilidad.html' || ruta === '/vendimia/trazabilidad') {
+      if (!(await baseInicializada(env))) return json(503,{error:'base_sin_inicializar'});
+      return servirConIdentidad(req,env,ctx,'/vendimia/trazabilidad.html');
+    }
+
     if (ruta === "/vendimia/referencias.json") {
       const id = await identidad(req, env, ctx, "vendimia");
       if (!id?.rol) return json(403, {error:"sin_permiso"});
@@ -256,7 +261,7 @@ async function servirConIdentidad(
   // Se pide la ruta canónica con barra final: el manejador de assets redirige
   // /prensas/index.html a /prensas/, y eso nos dejaría en un bucle.
   const url = new URL(req.url);
-  url.pathname = `/${modulo}/`;
+  url.pathname = ruta === '/vendimia/trazabilidad.html' ? '/vendimia/trazabilidad' : `/${modulo}/`;
   const res = await env.ASSETS.fetch(new Request(url, { method: 'GET', headers: req.headers }));
 
   const tipo = res.headers.get('Content-Type') ?? '';

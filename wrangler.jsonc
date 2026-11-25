@@ -5,6 +5,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "catenainstituto-desarrollo",
   "main": "src/index.ts",
+  "build": { "command": "npm run build:vendimia" },
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
 
@@ -34,6 +35,8 @@
       "/vendimia/",
       "/vendimia/index.html",
       "/vendimia/referencias.json",
+      "/vendimia/trazabilidad",
+      "/vendimia/trazabilidad.html",
       "/prensas",
       "/prensas/",
       "/prensas/index.html",

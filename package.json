@@ -19,7 +19,9 @@
     "importar:barriles": "node scripts/importar.mjs --modulo barriles --local --datos datos-origen/estado-barriles.json",
     "importar:lotes": "node scripts/importar.mjs --modulo lotes    --local --datos datos-origen/lotes-datos.json",
     "importar:todo": "npm run importar:prensas && npm run importar:barriles && npm run importar:lotes",
-    "reporte:plantillas": "node scripts/extraer-reporte.mjs ../prensas-app/reporte.py src/prensas/reporte-plantilla.ts"
+    "reporte:plantillas": "node scripts/extraer-reporte.mjs ../prensas-app/reporte.py src/prensas/reporte-plantilla.ts",
+    "build:vendimia": "node scripts/build-vendimia.mjs",
+    "test:vendimia-libros": "node --test test-local/vendimia-*.test.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.8.0",

@@ -27,3 +27,6 @@ sembrar.sql
 
 # Snapshots locales del corte (datos de producción — repo público)
 docs/corte/ultimo-estado-local-*.json
+
+# Editor de planillas: generado por el build de Wrangler
+/public/vendimia/vendor/
