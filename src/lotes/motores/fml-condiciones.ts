@@ -549,6 +549,10 @@ export function estadoFml(analisis: Fila[], eff: Criterios, lote: Fila) {
   const { excluida, origen } = fmlExcluida(lote, eff);
   if (excluida) return { estado: 'excluida', origen, desde: null };
 
+  // La FML no retrocede: si una persona confirmó crianza, ya terminó, aunque
+  // después llegue un málico alto (ruido o mal cargado). Ver etapas.ts.
+  if (textoDe((lote ?? {}).etapa) === 'crianza') return { estado: 'finalizada', origen, desde: null };
+
   const malicos = ordenarPorFecha(analisis)
     .map((a) => valorValido(a.malico))
     .filter((v): v is number => v !== null);

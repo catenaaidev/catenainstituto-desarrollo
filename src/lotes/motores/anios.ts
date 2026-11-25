@@ -6,7 +6,7 @@
  * lote con otro formato no tiene año y se muestra siempre: esconderlo por un
  * número raro sería perder un lote de vista sin que nadie lo note.
  *
- * Misma regla que public/lotes/js/anios.js; test/lotes-anios.test.mjs
+ * Misma regla que public/shared/anios.js; test/lotes-anios.test.mjs
  * verifica que las dos den lo mismo.
  */
 import { filasDe } from './fml-condiciones';

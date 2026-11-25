@@ -12,8 +12,14 @@
  * `vasija` y `año` colgando, que nadie lee y que igual viajan a D1 dentro del
  * JSON del documento. Ahora solo se guardan las claves de ALIAS: cualquier otro
  * nombre se lee para que las POSICIONES calcen y se descarta. Por eso el orden
- * por defecto nombra columnas que no existen ('vasija', 'año') y usa '-' para
- * las que no tienen nombre: son huecos declarados, no errores.
+ * por defecto nombra una columna que no existe ('año') y usa '-' para las que
+ * no tienen nombre: son huecos declarados, no errores.
+ *
+ * VASIJA ES OPCIONAL
+ *
+ * 'vasija' si se guarda, pero solo cuando la celda trae algo: identifica en
+ * que vasija puntual se tomo la muestra. Vacia, el analisis queda sin la clave
+ * y la tabla de Analisis muestra la vasija actual del lote, como siempre.
  */
 'use strict';
 
@@ -32,6 +38,7 @@ export const ORDEN_PLANILLA =
  * guion es como sale de copiar el encabezado. */
 const ALIAS = {
   lote: 'lote',
+  vasija: 'vasija',
   fecha: 'fecha_analisis', fecha_analisis: 'fecha_analisis',
   ph: 'ph',
   av: 'av', acidez_volatil: 'av',
@@ -49,6 +56,30 @@ const ALIAS = {
  * comentario quedan como texto: un lote puede tener letras. */
 export const NUMERICAS = new Set(['ph', 'av', 'gluc_fruc', 'azucar_reductor',
   'malico', 'lactico', 'acidez_total', 'etanol', 'so2_libre']);
+
+/* Las tres mediciones que hacen de una fila un CONTROL DE PROCESO: una corrida
+ * completa del FOSS. Es la misma lista que METRICAS_PROCESO en
+ * src/lotes/motores/fml-condiciones.ts, y tiene que seguir siendolo: el motor
+ * cuenta la frecuencia (el "Vencido" de la Orden de muestras) desde la ultima
+ * fila que trae las tres. */
+const CONTROL_PROCESO = ['etanol', 'av', 'malico'];
+
+/** Las claves de CONTROL_PROCESO que le faltan a una fila que trae ALGUNA de
+ *  ellas, o [] si no falta nada o si la fila no es una corrida del FOSS.
+ *
+ *  Una carga de solo SO2 o solo pH no trae ninguna de las tres y no es un
+ *  error: no se avisa. Lo que se avisa es la corrida a medias, que el motor no
+ *  cuenta como control. Asi quedaron el 04/11/2026 veinte filas con el numero
+ *  en Lactico y el Malico vacio, y esos lotes siguieron saliendo vencidos con
+ *  un analisis de la semana.
+ *
+ *  "Informada" es lo mismo que pide el motor (num() !== null): el 0 y el -999
+ *  cuentan, solo la celda vacia (null) o la columna ausente faltan. */
+export function faltanParaControl(campos){
+  const c = campos || {};
+  const falta = CONTROL_PROCESO.filter(k => c[k] === null || c[k] === undefined);
+  return falta.length === CONTROL_PROCESO.length ? [] : falta;
+}
 
 /** Fecha en dd/mm/aaaa, dd-mm-aaaa o aaaa-mm-dd -> 'yyyy-mm-dd', o null.
  *  El null no es un detalle: es lo que hace que la fila se marque en rojo en la
@@ -89,6 +120,11 @@ export function parsearFila(linea, plan){
     if (k === 'fecha_analisis'){
       campos.fecha_analisis = parsearFecha(crudo);
       if (!campos.fecha_analisis) errores.push('fecha inválida');
+      return;
+    }
+    if (k === 'vasija'){
+      /* Vacia no se guarda: sin la clave, Analisis cae a la vasija del lote. */
+      if (crudo !== '') campos.vasija = crudo;
       return;
     }
     if (NUMERICAS.has(k)){

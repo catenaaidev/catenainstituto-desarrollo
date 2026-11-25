@@ -27,6 +27,9 @@ describe('litrosPrevistos', () => {
 });
 
 describe('resumenVasijas', () => {
+  it('resume una cantidad generica de barricas sin numeros individuales', () => {
+    expect(resumenVasijas({ cantidad_barricas: 17, barriles: [] })).toBe('17 Barricas');
+  });
   it('una barrica lleva su numero', () => {
     expect(resumenVasijas({ barriles: [barril('2221713')] })).toBe('1 barrica 2221713');
   });
@@ -36,12 +39,28 @@ describe('resumenVasijas', () => {
   it('si hay algo mas grande que una barrica dice vasijas', () => {
     expect(resumenVasijas({ barriles: [barril('a'), barril('451', 500)] })).toBe('2 vasijas');
   });
+  it('los tanques de 50 L dicen T50', () => {
+    expect(resumenVasijas({ barriles: [barril('901', 50), barril('902', 50)] })).toBe('2 T50');
+    expect(resumenVasijas({ barriles: [barril('901', 50)] })).toBe('1 T50 901');
+  });
+  it('barricas y T50 juntos se cuentan por separado', () => {
+    expect(resumenVasijas({ barriles: [barril('a'), barril('b'), barril('901', 50)] })).toBe('2 barricas + 1 T50');
+  });
   it('sin barriles usa lo cargado a mano', () => {
     expect(resumenVasijas({ barriles: [], vasijas_manual: '1 x t500' })).toBe('1 x t500');
   });
 });
 
 describe('armarOT', () => {
+  it('guarda un origen por cantidad sin barriles identificados', () => {
+    const ot = otDe([{ lote: '26192', cantidad_barricas: 17, barriles: [], litros_previstos: 3825 }]);
+    expect(ot.lotes[0]).toMatchObject({ cantidad_barricas: 17, barriles: [], litros_previstos: 3825 });
+  });
+  it('rechaza una cantidad de barricas que no sea un entero positivo', () => {
+    const ot = otDe([{ lote: '26192', cantidad_barricas: 17.8, barriles: CINCO }]);
+    expect(ot.lotes[0]).toMatchObject({ cantidad_barricas: null });
+    expect(ot.lotes[0].barriles).toHaveLength(5);
+  });
   it('un lote con cinco barricas', () => {
     const ot = otDe([{ lote: '26217', id_texto: 'CS VSC Ct.3 Clon 169', organico: false, barriles: CINCO }]);
     expect(ot).toMatchObject({
@@ -79,6 +98,13 @@ describe('armarOT', () => {
 });
 
 describe('movimientosDeOT', () => {
+  it('corte a un lote existente que tambien es origen: ese lote no se traspasa a si mismo', () => {
+    const ot = otDe([{ lote: '26217', barriles: CINCO }, { lote: '26218', barriles: [barril('7')] }],
+      { lote_corte: { lote: '26218', id_texto: 'Corte', existente: true } });
+    const movs = movimientosDeOT(ot, 'ana', '2026-09-23');
+    expect(movs.map(m => [m.lote, m.tipo, m.lote_destino])).toEqual(
+      [['26217', 'traspaso', '26218'], ['26218', 'trasiego', '']]);
+  });
   it('un movimiento pendiente por lote, colgado de la OT', () => {
     const ot = otDe([{ lote: '26217', barriles: CINCO }, { lote: '26218', barriles: [barril('7')] }]);
     const movs = movimientosDeOT(ot, 'ana', '2026-09-23');
@@ -194,5 +220,147 @@ describe('proximoNumeroOT con ordenes', () => {
   it('mira tambien los numeros de las OT', () => {
     expect(proximoNumeroOT([{ ot: 'OT-2026-003' }], 2026, [{ ot: 'OT-2026-010' }])).toBe('OT-2026-011');
     expect(proximoNumeroOT([{ ot: 'OT-2026-003' }], 2026)).toBe('OT-2026-004');
+  });
+});
+
+describe('proximoNumeroOT con el formato de la carpeta', () => {
+  it('si ya hay OT 0939 sigue esa serie', () => {
+    expect(proximoNumeroOT([{ ot: 'OT-2026-014' }, { ot: '0941' }], 2026, [{ ot: '0939' }])).toBe('0942');
+  });
+  it('sin formato nuevo, el de siempre', () => {
+    expect(proximoNumeroOT([{ ot: 'OT-2026-014' }], 2026, [])).toBe('OT-2026-015');
+  });
+});
+
+describe('lote_corte existente', () => {
+  it('el lote del corte existente conserva la marca', () => {
+    const o = armarOT({ id: 'x', numero: '0950', plantilla: 'barricas-tanque', fecha: '2026-10-26',
+      lotes: [], lote_corte: { lote: '26300', id_texto: 'C', existente: true } });
+    expect(o.lote_corte).toEqual({ lote: '26300', id_texto: 'C', existente: true });
+  });
+});
+
+describe('tanques y vasijas manuales', () => {
+  it('resumenVasijas junta barricas, tanques y vasijas manuales', () => {
+    expect(resumenVasijas({ barriles: CINCO, tanques: [{ num: '201', litros: 1 }], otras: [{ nombre: 'IBC 1', litros: 1 }] }))
+      .toBe('5 barricas + T 201 + IBC 1');
+    expect(resumenVasijas({ barriles: [], tanques: [{ num: '201', litros: 1 }] })).toBe('T 201');
+  });
+  it('armarOT guarda tanques y otras y suma los litros', () => {
+    const o = armarOT({ id: 'x', numero: '0950', plantilla: 'barrica-tanque', fecha: '2026-10-26',
+      lotes: [{ lote: '1', barriles: [], tanques: [{ num: 201, litros: 4850 }, { num: '', litros: 5 }],
+                otras: [{ nombre: ' IBC ', litros: 300 }, { nombre: '', litros: 9 }] }] });
+    expect(o.lotes[0].tanques).toEqual([{ num: '201', litros: 4850 }]);
+    expect(o.lotes[0].otras).toEqual([{ nombre: 'IBC', litros: 300 }]);
+    expect(o.lotes[0].litros_previstos).toBe(5150);
+  });
+  it('una OT sin tanques ni otras los deja vacios', () => {
+    const o = armarOT({ id: 'x', numero: '0950', plantilla: 'barrica-tanque', fecha: '2026-10-26',
+      lotes: [{ lote: '1', barriles: [], vasijas_manual: '1 x t500' }] });
+    expect(o.lotes[0]).toMatchObject({ tanques: [], otras: [], litros_previstos: null });
+  });
+});
+
+describe('Corte + achique', () => {
+  const ACH = { destinos: [
+    { tipo: 'tanque', num: '206', litros: 7500, lote: '26323', nuevo: false },
+    { tipo: 'tanque', num: '209', litros: 7500, lote: '26324', nuevo: true },
+  ] };
+  const otA = () => otDe([{ lote: '26034', barriles: CINCO }], {
+    plantilla: 'corte-achique', destino: 'TQ pulmón bodega',
+    lote_corte: { lote: '26323', id_texto: 'Corte PN' }, achique: ACH });
+
+  it('armarOT guarda el achique normalizado; sin achique queda null', () => {
+    expect(otA().achique.destinos.map(d => [d.lote, d.mov_id])).toEqual([['26323', null], ['26324', 'ot-x-a0']]);
+    expect(otDe([{ lote: '26034', barriles: CINCO }]).achique).toBeNull();
+  });
+  it('movimientos: traspasos origen -> corte y corte -> hijo', () => {
+    const ms = movimientosDeOT(otA(), 'ana', '2026-10-13');
+    expect(ms.map(m => [m.id, m.lote, m.lote_destino, m.vasija_destino])).toEqual([
+      ['ot-x-0', '26034', '26323', 'TQ pulmón bodega'], ['ot-x-a0', '26323', '26324', 'T 209']]);
+  });
+  it('confirmar pisa los reales del traspaso al hijo', () => {
+    const ot = otA();
+    const movs = movimientosDeOT(ot, 'ana', 'h');
+    const faltan = confirmarOT(ot, movs, { operario: 'Ignacio', pasos_cumplidos: true, comentario: '',
+      por_lote: [{ destino_real: 'TQ pulmón bodega', litros_reales: 1100 }],
+      achique: [{ destino_real: 'T 206', litros_reales: 7480 }, { destino_real: 'T 209', litros_reales: 7490 }] }, 'ana', 'h');
+    expect(faltan).toEqual([]);
+    const m = movs.find(x => x.id === 'ot-x-a0');
+    expect(m).toMatchObject({ estado: 'ejecutado', litros: 7490, vasija_destino: 'T 209', operario: 'Ignacio' });
+    expect(ot.achique.destinos[1]).toMatchObject({ destino_real: 'T 209', litros_reales: 7490 });
+  });
+  it('otDeMovimiento y eliminarOT ven los traspasos a hijos', () => {
+    const ot = otA();
+    const datos = { ordenes_trabajo: [ot], movimientos: movimientosDeOT(ot, 'ana', 'h') };
+    expect(otDeMovimiento(datos.ordenes_trabajo, { id: 'ot-x-a0' })).toBe(ot);
+    expect(eliminarOT(datos, ot)).toBe(2);
+    expect(datos.movimientos).toEqual([]);
+  });
+});
+
+import { movIdsDeOT, lotesCreadosPorOT, textoDestinos } from '../public/lotes/js/ot-achique.js';
+
+describe('destinos extra (2026-11-12)', () => {
+  const base = { id: 'ot-9', numero: '0990', plantilla: 'tq-tq', fecha: '2026-11-12', destino: 'T 212', emitio: 'Roy',
+    usuario: 'ana', hoy: '2026-11-12' };
+  const lote = (extra = {}) => ({ lote: '26217', id_texto: 'MB', barriles: [], tanques: [{ num: '189', litros: 4000 }], otras: [], litros_previstos: 4000, ...extra });
+
+  it('sin extras la OT y sus movimientos quedan como antes (sin campo destinos_extra)', () => {
+    const ot = armarOT({ ...base, lotes: [lote()] });
+    expect('destinos_extra' in ot.lotes[0]).toBe(false);
+    expect('destinos_extra' in ot).toBe(false);
+    expect(movimientosDeOT(ot, 'ana', '2026-11-12')).toHaveLength(1);
+  });
+  it('guarda los extra del lote y suma un traspaso padre -> hijo', () => {
+    const ot = armarOT({ ...base, lotes: [lote({ destinos_extra: [{ num: 'T 214', litros: '1500', lote: '26330' }] })] });
+    expect(ot.lotes[0].destinos_extra).toEqual([{ tipo: 'tanque', num: '214', litros: 1500, lote: '26330', nuevo: true, mov_id: 'ot-9-x0-0' }]);
+    const movs = movimientosDeOT(ot, 'ana', '2026-11-12');
+    expect(movs.map(m => [m.tipo, m.lote, m.lote_destino, m.vasija_destino])).toEqual([
+      ['trasiego', '26217', '', 'T 212'], ['traspaso', '26217', '26330', 'T 214']]);
+    expect(movIdsDeOT(ot)).toEqual(['ot-9-0', 'ot-9-x0-0']);
+    expect(lotesCreadosPorOT(ot)).toEqual(['26330']);
+    expect(textoDestinos(ot)).toBe('T 212 + T 214');
+  });
+  it('corte: los extra van en la OT y son hijos del lote del corte', () => {
+    const ot = armarOT({ ...base, plantilla: 'barricas-tanque', destino: 'T 201', lote_corte: { lote: '26400', id_texto: 'Corte' },
+      lotes: [lote()], destinos_extra: [{ num: '214', lote: '26401' }] });
+    const movs = movimientosDeOT(ot, 'ana', '2026-11-12');
+    expect(movs.at(-1)).toMatchObject({ tipo: 'traspaso', lote: '26400', lote_destino: '26401', vasija_destino: 'T 214' });
+    expect(lotesCreadosPorOT(ot)).toEqual(['26400', '26401']);
+  });
+  it('con todos los extras con litros, el movimiento al destino 1 lleva el resto', () => {
+    const ot = armarOT({ ...base, lotes: [lote({ destinos_extra: [{ num: '214', litros: 1500, lote: '26330' }, { num: '215', litros: 500, lote: '26331' }] })] });
+    expect(movimientosDeOT(ot, 'ana', '2026-11-12').map(m => m.litros)).toEqual([2000, 1500, 500]);
+  });
+  it('si algun extra no tiene litros, el movimiento al destino 1 lleva los previstos enteros', () => {
+    const ot = armarOT({ ...base, lotes: [lote({ destinos_extra: [{ num: '214', litros: 1500, lote: '26330' }, { num: '215', lote: '26331' }] })] });
+    expect(movimientosDeOT(ot, 'ana', '2026-11-12').map(m => m.litros)).toEqual([4000, 1500, null]);
+  });
+  it('confirmarOT pasa a EJECUTADO el traspaso del extra con sus litros y su merma', () => {
+    const ot = armarOT({ ...base, lotes: [lote({ destinos_extra: [{ num: '214', lote: '26330' }] })] });
+    const movs = movimientosDeOT(ot, 'ana', '2026-11-12');
+    confirmarOT(ot, movs, { operario: 'Juan', por_lote: [{ destino_real: 'T 212', litros_reales: 2400, merma_litros: 20 }],
+      extras: [{ i: 0, k: 0, destino_real: 'T 214', litros_reales: 1550, merma_litros: 30 }] }, 'ana', '2026-11-13');
+    const d = ot.lotes[0].destinos_extra[0];
+    expect([d.destino_real, d.litros_reales, d.merma_litros]).toEqual(['T 214', 1550, 30]);
+    expect(movs[1]).toMatchObject({ estado: 'ejecutado', litros: 1550, merma_litros: 30, vasija_destino: 'T 214', operario: 'Juan' });
+  });
+});
+
+describe('destino por lote (2026-11-13)', () => {
+  it('cada lote guarda su destino, la OT la lista y el movimiento va al del lote', async () => {
+    const { armarOT, movimientosDeOT } = await import('../public/lotes/js/ot-armado.js');
+    const ot = armarOT({ id: 'ot-1', numero: '0999', plantilla: 'tq-tq', fecha: '2026-11-13', destino: '', emitio: 'x',
+      lotes: [{ lote: '1', destino: 'T 212', litros_previstos: 100 }, { lote: '2', destino: 'P147', litros_previstos: 50 }], usuario: 'u', hoy: 'x' });
+    expect(ot.lotes.map(l => l.destino)).toEqual(['T 212', 'P147']);
+    expect(ot.destino).toBe('T 212 + P147');
+    expect(movimientosDeOT(ot, 'u', 'x').map(m => m.vasija_destino)).toEqual(['T 212', 'P147']);
+  });
+  it('sin destino por lote: como antes', async () => {
+    const { armarOT } = await import('../public/lotes/js/ot-armado.js');
+    const ot = armarOT({ id: 'ot-1', numero: '1', plantilla: 'tq-tq', fecha: 'x', destino: 'T 9', emitio: '', lotes: [{ lote: '1' }], hoy: 'x' });
+    expect(ot.destino).toBe('T 9');
+    expect(ot.lotes[0].destino).toBeUndefined();
   });
 });

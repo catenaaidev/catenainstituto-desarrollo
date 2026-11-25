@@ -59,6 +59,26 @@ export function validarNumeroLote(texto, lotes){
   return { ok: true, valor };
 }
 
+/* El numero que se propone para un lote nuevo: los lotes son AANNN (26319 =
+ * cosecha 2026, correlativo 319), asi que es el mayor del año + 1. Sin
+ * ninguno del año, AA001. Se propone; el usuario lo puede cambiar. */
+/* El año (añada) de un lote por su numero: 25315 -> 2025. Un numero que no
+ * es de 5 cifras devuelve `defecto`. */
+export function anioDeLote(lote, defecto){
+  const t = String(lote ?? '').trim();
+  return /^\d{5}$/.test(t) ? 2000 + Number(t.slice(0, 2)) : defecto;
+}
+
+export function siguienteLote(lotes, anio){
+  const aa = String(anio).slice(-2);
+  let max = 0;
+  for (const l of lotes || []){
+    const t = String((l && l.lote) ?? '').trim();
+    if (/^\d{5}$/.test(t) && t.startsWith(aa)) max = Math.max(max, parseInt(t.slice(2), 10));
+  }
+  return aa + String(max + 1).padStart(3, '0');
+}
+
 /* Los fijos van arriba, del mas nuevo al mas viejo (`fijos` esta en orden de
  * creacion), y despues el resto en el orden que ya traian. Un fijo se muestra
  * aunque el filtro lo haya dejado afuera: un lote recien creado arranca en 0

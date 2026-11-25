@@ -25,6 +25,15 @@ export const CAPACIDADES = [
   { k: 'cap50',  cap: 50  },
 ];
 
+/* Los envases de 50 L son tanques chicos, no barricas: en bodega se escriben
+ * "T50" ("2 T50"), igual que el filtro tanque50 del Mapa de Barriles. Todo
+ * texto que cuente vasijas por capacidad pregunta aca antes de decir
+ * "barrica". El Mapa guarda cap a veces como '50' (texto). */
+export const NOMBRE_T50 = 'T50';
+export const esT50 = cap => Number(cap) === 50;
+/* "T50" dentro de un texto de vasija ("11 barricas + 1 T50", "t 50"). */
+export const RE_T50 = /\bt\s*50\b/i;
+
 /* Numero positivo, o 0. null, undefined, '', negativos y basura valen 0.
  * Es deliberadamente indulgente: estos campos vienen de una migracion de Excel
  * y un valor raro no tiene que hacer explotar el render de la tabla. La
@@ -43,6 +52,41 @@ export function litrosDeEnvases(lote){
   let t = 0;
   for (const c of CAPACIDADES) t += n0(lote[c.k]) * c.cap;
   return t + n0(lote.vasija_grande);
+}
+
+/* Numeros de tanque escritos en vasija_actual: "H 170 + Barricas" -> ['170'].
+ * Cada grupo de digitos es un candidato aparte ("T201/202" -> ['201','202']).
+ * NO son tanques los envases chicos: barricas, y toneles/T50 escritos con
+ * cantidad ("1 t200", "2 x T50"), que es como la OT escribe lo que queda.
+ * El tanque 200 SI existe en el padron: "T 200" sin cantidad es el tonel solo
+ * si el lote (opcional) tiene toneles de 200 cargados (2026-11-18: el 26260,
+ * "huevo + 1 t200", aparecia en el tanque 200 del inventario). */
+const ENVASE_CON_CANTIDAD = /^\s*\d+\s*(?:x\s*)?(?:t\s*(?:50|200|500)\b|barric)/i;
+const TONEL_SUELTO = /^\s*t\s*(50|200|500)\s*$/i;
+export function numerosDeTanque(texto, lote){
+  const out = [];
+  for (const parte of String(texto ?? '').split('+')){
+    if (/barric/i.test(parte) || ENVASE_CON_CANTIDAD.test(parte)) continue;
+    const suelto = parte.match(TONEL_SUELTO);
+    if (suelto && (suelto[1] !== '200' || n0(lote && lote.cap200) > 0)) continue;
+    for (const d of parte.match(/\d+/g) || []) if (!out.includes(d)) out.push(d);
+  }
+  return out;
+}
+
+/** Litros del lote que estan en un tanque. Unica regla de "el lote esta en un
+ *  tanque", compartida por el Inventario de tanques y la ronda de la Orden de
+ *  muestras: manda vasija_grande; sin el, si el lote no tiene envases chicos y
+ *  su vasija nombra un tanque, todos sus litros estan ahi (lotes migrados del
+ *  Excel sin el desglose). Con envases chicos y sin vasija_grande, el tanque
+ *  del texto quedo viejo: 0. */
+export function litrosEnTanque(lote){
+  if (!lote) return 0;
+  const g = n0(lote.vasija_grande);
+  if (g > 0) return g;
+  if (CAPACIDADES.some(c => n0(lote[c.k]) > 0)) return 0;
+  const total = n0(lote.litros_actuales);
+  return total > 0 && numerosDeTanque(lote.vasija_actual, lote).length ? total : 0;
 }
 
 /** Resumen legible: '2×225 + 1×50', 'grande 3500', '2×225 + grande 1500', ''.

@@ -29,6 +29,7 @@ export function armarCorreccion({ so2Actual, so2Deseado, mbk, ml, ot, fecha }){
 }
 
 const _otDe = c => String((c && c.ot_n) ?? '').trim();
+const _esDeBarril = a => /^\s*[Bb]?\s*\d{1,7}\s*$|^\s*t\s*(50|200)\s*$/i.test(String((a && a.vasija) ?? ''));
 const _tieneDosis = c => !!c && c.mbk_a_agregar != null && c.mbk_a_agregar !== '';
 
 /** ¿Se puede escribir `nueva` encima de la correccion que ya tiene `a`?
@@ -82,12 +83,20 @@ function _pisable(a, nueva){
  *  orden lo multiplica por la cantidad de lotes de cada ejecucion. */
 export function aplicarCorreccion(analisis, lote, fecha, correccion){
   const L = String(lote ?? '');
+  /* El analisis de un barril (vasija con numero de barril o t50/t200) no se
+   * usa de soporte: la correccion del lote pisaria su SO2 propio
+   * (so2_libre_actual de la correccion gana en el motor). Un nombre de tanque
+   * es analisis del lote, igual que en so2-por-vasija.ts. */
   const mismos = (analisis || []).filter(a =>
-    String(a.lote ?? '') === L && (a.fecha_analisis || '') === fecha);
+    String(a.lote ?? '') === L && (a.fecha_analisis || '') === fecha && !_esDeBarril(a));
   const otNueva = _otDe(correccion);
+  /* Dos tanques destino extra del mismo lote, fecha y OT (cada uno su propia
+   * vasija) no se tienen que pisar entre si: conviven como dos registros. */
+  const vasijaDe = c => String((c && c.vasija) ?? '').trim();
+  const otraVasija = a => vasijaDe(correccion) !== '' && vasijaDe(a.correccion) !== '' && vasijaDe(a.correccion) !== vasijaDe(correccion);
   const existente =
-    mismos.find(a => otNueva !== '' && a.correccion && !esAnulada(a.correccion) && _otDe(a.correccion) === otNueva)
-    || mismos.find(a => _pisable(a, correccion));
+    mismos.find(a => otNueva !== '' && a.correccion && !esAnulada(a.correccion) && _otDe(a.correccion) === otNueva && !otraVasija(a))
+    || mismos.find(a => _pisable(a, correccion) && !otraVasija(a));
   const base = { lote: L, fecha, escrita: correccion };
   if (existente){
     const anterior = existente.correccion;

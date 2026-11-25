@@ -11,17 +11,21 @@
 import { $, esc, escA, DATOS, dashData, dashLoading, cargarDashboard, registrarVista, mostrarOverlay, guardar, markDirty, usuarioActual } from './nucleo.js';
 import { htmlFicha } from './tablero-ficha.js';
 import { htmlPanel } from './tablero-panel.js';
-import { initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, opcionesValores, matchValor } from './tabla.js';
+import { initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, opcionesValores, matchValor, setF } from './tabla.js';
 import { PREGUNTAS, pasaPregunta, ordenarPorAntiguedad, chipsDe, aplicarEdicion, textoCriterios } from './tablero-datos.js';
 import { criteriosEfectivosJS } from './criterios.js';
 import { filasExport, COLUMNAS_EXPORT } from './tablero-export.js';
 import { fmtFecha } from './fechas.js';
 
-let _modoPanel = 'numeros';
+/* Buscador y modo del panel sobreviven al F5 en esta pestaña (shared/filtros-sesion.js). */
+const _FS = typeof window !== 'undefined' && window.CIWFiltros;
+const _lf = (k, d) => _FS ? _FS.leer('lotes:tablero:' + k, d) : d;
+const _gf = (k, v) => { if (_FS) _FS.guardar('lotes:tablero:' + k, v); };
+let _modoPanel = _lf('modo', 'numeros') === 'mosaico' ? 'mosaico' : 'numeros';
 
-const filt = { proyecto: new Set(), condicion: new Set() };
+const filt = { proyecto: setF('tablero', 'proyecto'), condicion: setF('tablero', 'condicion') };
 let _desc = [], _inst = [];
-let _busca = '';
+let _busca = (v => typeof v === 'string' ? v : '')(_lf('busca', ''));
 let _pregunta = '';
 let _montado = false;
 
@@ -60,7 +64,7 @@ function armazon(){
     </div>
     <div id="tbPanel"></div>
     <div class="tb-filtros">
-      <input id="tbBusca" placeholder="Buscar lote o variedad…">
+      <input id="tbBusca" placeholder="Buscar lote o variedad…" value="${escA(_busca)}">
       <select id="tbPregunta">
         <option value="">Todas las preguntas</option>
         ${PREGUNTAS.map(p => `<option value="${p.val}">${esc(p.text)}</option>`).join('')}
@@ -138,13 +142,13 @@ function renderLista(){
 
   $('tbLista').innerHTML = filas.length === 0
     ? '<p>Ningún lote pasa los filtros.</p>'
-    : `<table class="tb-tabla">
+    : `<div class="scroll-x"><table class="tb-tabla">
          <thead><tr>
            <th>Lote</th><th>Proyecto</th><th>Vasija</th><th>Último control</th>
            <th>Proceso</th><th>Condiciones</th><th>Acción sugerida</th><th></th>
          </tr></thead>
          <tbody>${cuerpo}</tbody>
-       </table>`;
+       </table></div>`;
 }
 
 function abrirFicha(lote){
@@ -191,7 +195,7 @@ function cablearOverlay(){
 function cablear(sec){
   sec.addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-modo]');
-    if (b){ _modoPanel = b.dataset.modo; renderPanel(); return; }
+    if (b){ _modoPanel = b.dataset.modo; _gf('modo', _modoPanel); renderPanel(); return; }
     const vf = ev.target.closest('[data-ficha]');
     if (vf){ abrirFicha(vf.dataset.ficha); return; }
     if (ev.target.id === 'tbVerCriterios'){
@@ -211,11 +215,13 @@ function cablear(sec){
     }
     if (ev.target.id === 'tbLimpiar'){
       _pregunta = ''; $('tbPregunta').value = '';
+      /* Se borra lo guardado de la pantalla; el modo del panel no es un filtro. */
+      if (_FS){ _FS.borrar('lotes:tablero:'); _gf('modo', _modoPanel); }
       limpiarFiltrosMulti(_desc, 'tbBusca', _inst, () => { _busca = ''; renderLista(); });
     }
   });
   sec.addEventListener('input', (ev) => {
-    if (ev.target.id === 'tbBusca'){ _busca = ev.target.value; renderLista(); }
+    if (ev.target.id === 'tbBusca'){ _busca = ev.target.value; _gf('busca', _busca); renderLista(); }
   });
   sec.addEventListener('change', (ev) => {
     if (ev.target.id === 'tbPregunta'){ _pregunta = ev.target.value; renderLista(); }

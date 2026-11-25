@@ -129,11 +129,15 @@ export function armarFilas(analisisArray, sortState, filtroFila){
  *  dejaba el cartel naranja aunque el analisis de hoy estuviera todo en
  *  criterio, y el cartel contradecia a las celdas que tenia justo debajo.
  *
- *  `veredictos` es una lista de {fecha, fuera, dentro} (fecha ISO o '' si no
- *  tiene una usable; fuera/dentro, Sets de metricas). Los analisis sin ningun
+ *  `veredictos` es una lista de {fecha, fuera, dentro, orden} (fecha ISO o ''
+ *  si no tiene una usable; fuera/dentro, Sets de metricas; orden, la posicion
+ *  del registro en DATOS().analisis = orden de carga). Los analisis sin ningun
  *  veredicto (sin medicion juzgable) no cuentan: no pueden decir que el lote
- *  esta bien. Si el ultimo dia tiene dos analisis, se juzgan juntos. Una fila
- *  sin fecha solo se usa si ninguna con fecha tiene veredicto.
+ *  esta bien. Si el ultimo dia tiene varios analisis, manda el CARGADO ULTIMO:
+ *  el caso tipico es analizar, corregir y volver a analizar el mismo dia, y el
+ *  de antes de corregir ya no describe al lote (antes se juzgaban juntos y el
+ *  cartel quedaba naranja con el lote ya corregido). Una fila sin fecha solo
+ *  se usa si ninguna con fecha tiene veredicto.
  *
  *  null = sin color: nada que juzgar no es lo mismo que "esta bien". */
 export function estadoCartelLote(veredictos){
@@ -145,7 +149,9 @@ export function estadoCartelLote(veredictos){
     const max = conFecha.reduce((m, v) => v.fecha > m ? v.fecha : m, '');
     ultimos = conFecha.filter(v => v.fecha === max);
   }
-  return ultimos.some(v => v.fuera.size) ? 'mal' : 'ok';
+  /* Sin orden conocido (?? -1) gana el que viene despues en la lista. */
+  const ultimo = ultimos.reduce((u, v) => (v.orden ?? -1) >= (u.orden ?? -1) ? v : u);
+  return ultimo.fuera.size ? 'mal' : 'ok';
 }
 
 /* Los campos de un registro de analisis que mira el servidor para juzgarlo

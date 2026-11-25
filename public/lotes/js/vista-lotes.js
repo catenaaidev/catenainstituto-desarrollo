@@ -5,7 +5,7 @@ import { $, esc, escA, num, DATOS, markDirty, registrarVista,
          registrarInit, dashMap, invalidarDashMap, cargarDashboard, irALote,
          mostrarOverlay, cerrarOverlay, usuarioActual } from './nucleo.js';
 import { toggleSort, sortRows, pasaMulti, opcionesValores, matchValor,
-         crearFiltroMulti } from './tabla.js';
+         crearFiltroMulti, setF, ordenValido } from './tabla.js';
 import { activarGrilla, adaptadorCols, limpiarSeleccion, repintarGrilla } from './grilla.js';
 import { colsVisibles, bandasVisibles, alternar } from './grupos-cols.js';
 import { crearAnchos, anchoDeTexto } from './anchos-cols.js';
@@ -16,8 +16,9 @@ import { litrosDelLote, faltanteDeLote } from './mermas.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { fmtFecha } from './fechas.js';
 import { PASOS, armarHijo, validarNumeroLote, ordenarConFijos,
-         movimientoHijo } from './lote-nuevo.js';
+         movimientoHijo, siguienteLote } from './lote-nuevo.js';
 import { visible, montarSelectorAnios } from './selector-anios.js';
+import { avisar, confirmar } from './dialogos.js';
 
 /* La clave de storage es la de siempre (lotes_cols_ancho): respeta los anchos
  * que la gente ya tiene guardados. El encabezado de Lotes son DOS filas
@@ -129,8 +130,22 @@ function guardarColapsados(){
   try { localStorage.setItem(CLAVE_GRUPOS, JSON.stringify(colapsados)); } catch(e){}
 }
 
-/* --- sort / filtros --- */
-let sortLotes = { key:'lote', dir:1 };
+/* --- sort / filtros ---
+ * Buscador y orden sobreviven al F5 en esta pestaña (shared/filtros-sesion.js). */
+const _FS = typeof window !== 'undefined' && window.CIWFiltros;
+const _lf = (k, d) => _FS ? _FS.leer('lotes:lotes:' + k, d) : d;
+const _gf = (k, v) => { if (_FS) _FS.guardar('lotes:lotes:' + k, v); };
+let sortLotes = ordenValido(_lf('orden', null), { key:'lote', dir:1 });
+/* El buscador es un <input> del HTML (app.js): vuelve antes del primer render. */
+export const buscaLotesGuardado = () => { const v = _lf('busca', ''); return typeof v === 'string' ? v : ''; };
+export const guardarBuscaLotes = v => _gf('busca', v);
+/* Limpiar filtros no toca el orden: se borra todo lo de la pantalla y el orden
+   se vuelve a anotar. */
+export function olvidarFiltrosLotes(){
+  if (!_FS) return;
+  _FS.borrar('lotes:lotes:');
+  _gf('orden', sortLotes);
+}
 
 /* --- filtros de la pestaña Lotes ---
  * Los que empiezan con _ no son campos del lote: se resuelven con un descriptor
@@ -179,7 +194,7 @@ const CAMPOS_FLT_LOTES = [
   { campo:'_etapa',   label:'Etapa',    col:'etapa'    },
   { campo:'_envase',  label:'Envase',   col:'envases'  },
 ];
-const filtLotes = {}; CAMPOS_FLT_LOTES.forEach(c=>filtLotes[c.campo]=new Set());
+const filtLotes = {}; CAMPOS_FLT_LOTES.forEach(c=>filtLotes[c.campo]=setF('lotes', c.campo));
 let _descLotes=[], _instLotes=[];
 /* columna -> {campo, label, inst}, para que el render sepa que embudo pintar en
    cada <th> y el clic sepa que panel abrir. Lo llena initFiltrosLotes. */
@@ -325,7 +340,7 @@ function initFiltrosLotes(){
 
   const hueco = $('fltLlenado');
   if (hueco){
-    fltLlenado = crearFiltroLlenado(renderLotes);
+    fltLlenado = crearFiltroLlenado(renderLotes, 'lotes:lotes:llenado');
     hueco.appendChild(fltLlenado.el);
   }
 }
@@ -391,7 +406,7 @@ function abrirOverlayEnvases(o){
    * segun el mock-up del spec. CAPACIDADES es descendente para resumenEnvases y
    * tiposDeEnvase; aqui hacemos una copia revertida para no mutar el array exportado. */
   const filas = [...CAPACIDADES].reverse().map(c => `
-  <label for="envf_${c.k}">Barricas de ${c.cap} L</label>
+  <label for="envf_${c.k}">${c.cap === 50 ? 'T50 (50 L)' : 'Barricas de ' + c.cap + ' L'}</label>
   <input class="txt num" type="number" step="1" min="0" id="envf_${c.k}"
          data-envk="${escA(c.k)}" value="${escA(o[c.k] != null ? String(o[c.k]) : '')}">
   <span class="envsub" id="envsub_${c.k}">—</span>`).join('');
@@ -472,8 +487,7 @@ ${faltanteMermas > 0 ? `<div style="text-align:right;font-size:13px;color:var(--
      * ahi no llegaria nunca al documento. */
     const vivo = _loteVivo(o);
     if (!vivo){
-      alert('No se encontró el lote ' + (o.lote ?? '') + ' en los datos actuales (puede que se hayan recargado). No se cambió nada.');
-      cerrarOverlay();
+      cerrarOverlay(); avisar('No se encontró el lote ' + (o.lote ?? '') + ' en los datos actuales (puede que se hayan recargado). No se cambió nada.', { tipo: 'mal' });
       renderLotes();
       return;
     }
@@ -536,7 +550,7 @@ function celdaDeCol(c, o, ri){
   const v = o[c.k]==null?'':o[c.k];
   /* title con el valor completo: la columna ID esta acotada por CSS y sin esto
    * no habria forma de leer un ID largo sin entrar a editarlo. */
-  return `<td ${attrs} title="${escA(v)}"><input class="cell ${c.num?'num':''}" type="text" ${attrs} value="${escA(v)}"></td>`;
+  return `<td ${attrs} title="${escA(v)}"><input class="cell ${c.num?'num':''}" type="text"${c.num ? ' inputmode="decimal"' : (c.k === 'lote' ? ' inputmode="numeric"' : '')} ${attrs} value="${escA(v)}"></td>`;
 }
 
 /* Etapa y Hijo: las dos columnas de la banda 'estado'. No estan en COLS_LOTES
@@ -697,6 +711,13 @@ export function renderLotes(){
   };
   const nCeldas = bandas.reduce((n, b) => n + (b.testigo ? 1 : b.id === 'estado' ? 2 : colsDe(b).length), 0);
   t.innerHTML = h + '<tbody></tbody>' + _filaMedidoraLotes(t._rows, bandas, colsDe);
+  /* La segunda fila del encabezado (columnas) se apoya debajo de la de bandas
+   * (las dos son sticky). Su alto depende de la letra y, en pantallas táctiles,
+   * de los blancos de 44 px: se mide en vez de escribirlo a mano. Oculta (otra
+   * pestaña, content-visibility) mide 0: se deja el valor anterior. */
+  const filaBandas = t.tHead && t.tHead.rows[0];
+  const altoBandas = filaBandas ? filaBandas.getBoundingClientRect().height : 0;
+  if (altoBandas > 0) t.style.setProperty('--lt-banda-h', altoBandas + 'px');
   const virtual = montarVirtual({
     tabla: t,
     n: t._rows.length,
@@ -711,6 +732,7 @@ export function renderLotes(){
   /* sort por clic en encabezado */
   t.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => {
     toggleSort(sortLotes, th.dataset.k);
+    _gf('orden', sortLotes);
     renderLotes();
   });
 
@@ -762,7 +784,7 @@ export function renderLotes(){
       o[el.dataset.k] = el.value===''?null:el.value;
       markDirty();
     });
-    t.addEventListener('click', e => {
+    t.addEventListener('click', async e => {
       const cg = e.target.closest('[data-grupo]');
       if (cg){
         colapsados = alternar(colapsados, cg.dataset.grupo);
@@ -791,13 +813,13 @@ export function renderLotes(){
       const b = e.target.closest('[data-del]'); if(!b) return;
       const o = t._rows[+b.dataset.del];
       if (!o) return;
-      if (confirm('¿Eliminar el lote ' + o.lote + '?')){
+      if (await confirmar({ titulo: 'Eliminar lote', texto: 'Se elimina el lote ' + o.lote + ' de la pestaña Lotes.', si: 'Eliminar lote', no: 'Cancelar', peligro: true })){
         /* Nunca splice(indexOf(o)) a secas: si o quedo huerfano (una fusion
          * tras un 409 reemplazo los objetos de DATOS()), indexOf da -1 y
          * splice(-1, 1) borra el ULTIMO lote, uno que nadie eligio. */
         const vivo = _loteVivo(o);
         if (!vivo){
-          alert('No se encontró el lote ' + (o.lote ?? '') + ' en los datos actuales (puede que se hayan recargado). No se borró nada.');
+          avisar('No se encontró el lote ' + (o.lote ?? '') + ' en los datos actuales (puede que se hayan recargado). No se borró nada.', { tipo: 'mal' });
           renderLotes();
           return;
         }
@@ -994,7 +1016,8 @@ function abrirAsistente(padre){
 
   const base = padre ? armarHijo(padre) : loteEnBlanco();
   const vals = {};
-  for (const p of PASOS) vals[p.k] = p.k === 'lote' ? '' : String(base[p.k] ?? '');
+  // El numero arranca propuesto (el siguiente del año); se puede cambiar.
+  for (const p of PASOS) vals[p.k] = p.k === 'lote' ? siguienteLote(DATOS().lotes, new Date().getFullYear()) : String(base[p.k] ?? '');
   let paso = 0;
 
   const titulo = padre ? `Lote hijo de ${esc(String(padre.lote ?? ''))}` : 'Nuevo lote';

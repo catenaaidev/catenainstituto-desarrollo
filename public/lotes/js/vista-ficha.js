@@ -2,7 +2,7 @@
 'use strict';
 
 import { $, esc, escA, registrarVista, mostrarTab,
-         loteActivo, irALote } from './nucleo.js';
+         loteActivo, irALote, vistaAntesDeFicha } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
 import { fmtFecha } from './fechas.js';
 
@@ -42,7 +42,7 @@ function htmlBuscador(mensajeError){
   ${mensajeError ? `<div class="msg err" style="margin-bottom:14px">${esc(mensajeError)}</div>` : ''}
   <h2 style="margin-top:0">Buscar lote</h2>
   <div style="display:flex;gap:8px;align-items:center">
-    <input class="txt" id="fichaInputLote" placeholder="Numero de lote…" style="flex:1">
+    <input class="txt" id="fichaInputLote" inputmode="numeric" placeholder="Numero de lote…" style="flex:1">
     <button class="btn primary" id="fichaBtnVer">Ver</button>
   </div>
 </div>`;
@@ -106,6 +106,33 @@ function htmlFicha(f){
       </div>`).join('')}
     </div>
   </div>
+</div>`;
+
+  /* ---- resumen (lo primero que se ve en el celular) ----
+   * Variedad, litros, vasija, etapa y el último análisis con los mismos
+   * colores de veredicto que la pestaña Análisis (td.dentro / td.fuera). */
+  const ua = f.ultimo_analisis;
+  const METRICAS = [['ph', 'pH'], ['av', 'AV'], ['malico', 'Málico'], ['gluc_fruc', 'Gluc+Fruc'],
+    ['azucar_reductor', 'Az. red.'], ['so2_libre', 'SO₂ libre'], ['so2_molecular', 'SO₂ molec.']];
+  const celda = k => {
+    const v = k === 'so2_molecular' ? ua.so2_molec_calc : ua.analisis[k];
+    if (v == null || v === '') return '';
+    const cls = (ua.fuera || []).includes(k) ? 'fuera' : (ua.dentro || []).includes(k) ? 'dentro' : '';
+    const txt = typeof v === 'number' ? v.toLocaleString('es-AR', { maximumFractionDigits: 2 }) : String(v);
+    return `<tr><th scope="row">${esc(METRICAS.find(m => m[0] === k)[1])}</th><td class="num ${cls}">${esc(txt)}</td></tr>`;
+  };
+  const filasUa = ua ? METRICAS.map(([k]) => celda(k)).join('') : '';
+  const vasijaActual = ((f.recorrido_vasijas || []).find(v => v.hasta == null) || {}).vasija || lote.vasija_actual || '';
+  const secResumen = `
+<div class="card ficha-resumen">
+  <dl class="fr-datos">
+    <div><dt>Variedad</dt><dd>${esc(lote.variedad || '—')}</dd></div>
+    <div><dt>Litros</dt><dd>${lote.litros_actuales != null ? esc(String(lote.litros_actuales)) : '—'}</dd></div>
+    <div><dt>Vasija</dt><dd>${esc(vasijaActual || '—')}</dd></div>
+    <div><dt>Etapa</dt><dd>${esc(f.etapa || '—')}</dd></div>
+  </dl>
+  <h2>Último análisis${ua ? ' · ' + esc(fmtFecha(ua.analisis.fecha_analisis)) : ''}</h2>
+  ${filasUa ? `<table class="fr-analisis"><tbody>${filasUa}</tbody></table>` : '<p style="color:var(--muted)">Sin análisis con medición.</p>'}
 </div>`;
 
   /* ---- linea de tiempo ---- */
@@ -202,13 +229,13 @@ function htmlFicha(f){
   const secLinaje = `
 <div class="card">
   <h2>Linaje</h2>
-  <div style="display:flex;flex-wrap:wrap;gap:0;align-items:flex-start">
+  <div class="fr-linaje" style="display:flex;flex-wrap:wrap;gap:0;align-items:flex-start">
     ${colPadres}${colEste}${colHijos}
   </div>
   ${cadenaHtml}
 </div>`;
 
-  return cabecera + secTimeline + secVasijas + secLinaje;
+  return cabecera + secResumen + secTimeline + secVasijas + secLinaje;
 }
 
 /* ---------- renderFicha ---------- */
@@ -262,10 +289,10 @@ function _pintarFicha(sec, f){
 </div>
 ${htmlFicha(f)}`;
 
-  /* volver: ir al tab anterior (por ahora dashboard) */
+  /* volver: a la pantalla desde la que se abrió la ficha. No usa history.back():
+   * si la ficha se abrió con un link compartido o con F5, eso sacaría de Lotes. */
   $('fichaBtnVolver').addEventListener('click', () => {
-    /* ir al dashboard, que siempre tiene boton */
-    mostrarTab('dashboard');
+    mostrarTab(vistaAntesDeFicha());
   });
 
   /* toggle hitos */

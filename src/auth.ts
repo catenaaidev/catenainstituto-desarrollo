@@ -452,15 +452,21 @@ export async function autenticar(
  * El login propio se usa también para comprobar que D1 ya está migrada.
  */
 export async function baseInicializada(env: Env): Promise<boolean> {
+  // Una vez que las tablas están, no se van: se recuerda por instancia del
+  // Worker. Si no, era una consulta de ~150 ms (D1 queda lejos de Buenos
+  // Aires) delante de CADA pedido a la API.
+  if (_baseLista) return true;
   try {
     const fila = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='perfiles'",
     ).first();
-    return Boolean(fila);
+    _baseLista = Boolean(fila);
+    return _baseLista;
   } catch {
     return false;
   }
 }
+let _baseLista = false;
 
 /** Identidad + rol en un módulo concreto. */
 export async function identidad(

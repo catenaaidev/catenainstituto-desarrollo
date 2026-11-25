@@ -277,7 +277,8 @@ describe('evaluarEtapa, la entrada del servidor', () => {
     };
     const r = evaluarEtapa(lote, [], [], CONFIG, HOY);
     expect(r.etapa).toBe('crianza');
-    expect(r.etapa_sugerida).toBe('fa');
+    // El motor diría 'fa' (sin descube), pero no se retrocede de lo confirmado.
+    expect(r.etapa_sugerida).toBe('crianza');
   });
 
   it('usa la sugerida si el lote no tiene confirmada', () => {
@@ -499,5 +500,77 @@ describe('lotesConPadre', () => {
       { lote: '104', tipo: 'salida', destino_externo: 'X' },
     ];
     expect([...lotesConPadre(movs)].sort()).toEqual(['200', '201']);
+  });
+});
+
+/*
+ * Las etapas no retroceden (pedido del 2026-10-14). Antes, un análisis con
+ * málico alto DESPUÉS de cerrar la FML la volvía a "no finalizada", la bandeja
+ * proponía pasar el lote de crianza a fml y alguien lo confirmaba (26137,
+ * 26141, 26147, 26217). Manda lo confirmado por una persona, no el último
+ * número: un 0 mal cargado tampoco cierra nada solo.
+ */
+describe('las etapas no retroceden', () => {
+  const descubado = {
+    variedad: 'Malbec', litros_actuales: 1000,
+    fecha_ingreso: '2026-02-01', descube_fa: '2026-02-10',
+  };
+  const malicoQueVuelveASubir = (lote: string) => [
+    { lote, fecha_analisis: '2026-04-01', malico: 0.1 },
+    { lote, fecha_analisis: '2026-06-01', malico: 0.6 },
+  ];
+
+  it('un lote confirmado en crianza no vuelve a fml aunque el málico suba', () => {
+    const lote = { lote: '26950', ...descubado, etapa: 'crianza' };
+    const r = evaluarEtapa(lote, malicoQueVuelveASubir('26950'), [], CONFIG, HOY);
+    expect(r.etapa).toBe('crianza');
+    expect(r.etapa_sugerida).toBe('crianza');
+  });
+
+  it('con crianza confirmada la FML cuenta como finalizada (sin alarma)', () => {
+    const lote = { lote: '26951', ...descubado, etapa: 'crianza' };
+    const e = ev(lote, malicoQueVuelveASubir('26951'));
+    expect(e.fml_estado).toBe('finalizada');
+    expect(e.alarmas).not.toContain('fml_no_finalizada');
+  });
+
+  it('con crianza confirmada y sin málico cargado, la FML también cuenta como finalizada', () => {
+    const lote = { lote: '26952', ...descubado, etapa: 'crianza' };
+    expect(ev(lote).fml_estado).toBe('finalizada');
+  });
+
+  it('una blanca en crianza sigue excluida, no finalizada', () => {
+    const lote = { lote: '26953', ...descubado, variedad: 'Chardonnay', etapa: 'crianza' };
+    expect(ev(lote).fml_estado).toBe('excluida');
+  });
+
+  it('sin etapa confirmada, el málico que sube sigue reabriendo la FML', () => {
+    const lote = { lote: '26954', ...descubado };
+    const r = evaluarEtapa(lote, malicoQueVuelveASubir('26954'), [], CONFIG, HOY);
+    expect(r.etapa_sugerida).toBe('fml');
+  });
+
+  it('un lote confirmado en fml no vuelve a fa', () => {
+    const lote = { lote: '26955', variedad: 'Malbec', litros_actuales: 1000, fecha_ingreso: '2026-02-01', etapa: 'fml' };
+    expect(evaluarEtapa(lote, [], [], CONFIG, HOY).etapa_sugerida).toBe('fml');
+  });
+
+  it('la sugerida puede avanzar más allá de la confirmada', () => {
+    const lote = { lote: '26956', ...descubado, etapa: 'fml' };
+    const an = [{ lote: '26956', fecha_analisis: '2026-04-01', malico: 0.1 }];
+    expect(evaluarEtapa(lote, an, [], CONFIG, HOY).etapa_sugerida).toBe('crianza');
+  });
+
+  it('un cerrado que vuelve a tener vino sí puede salir de cerrado', () => {
+    const lote = { lote: '26957', ...descubado, etapa: 'cerrado' };
+    const an = [{ lote: '26957', fecha_analisis: '2026-04-01', malico: 0.1 }];
+    expect(evaluarEtapa(lote, an, [], CONFIG, HOY).etapa_sugerida).toBe('crianza');
+  });
+});
+
+describe('un cerrado sin litros no retrocede', () => {
+  it('confirmado cerrado, sin litros ni fecha de ingreso, sigue sugiriendo cerrado (no ingreso)', () => {
+    const lote = { lote: '25958', variedad: 'Malbec', litros_actuales: 0, etapa: 'cerrado' };
+    expect(evaluarEtapa(lote, [], [], CONFIG, HOY).etapa_sugerida).toBe('cerrado');
   });
 });

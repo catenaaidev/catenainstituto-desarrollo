@@ -6,52 +6,239 @@
 <title>Iniciar sesión · Catena Institute</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
-@font-face{font-family:Fraunces;src:url('/prensas/fonts/fraunces-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
-@font-face{font-family:Hanken;src:url('/prensas/fonts/hanken-grotesk-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
-@font-face{font-family:Hanken;src:url('/prensas/fonts/hanken-grotesk-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
-:root{--bg:#f7f5f1;--panel:#fff;--line:#e7e3da;--txt:#2a2622;--muted:#8c857b;--accent:#8a3340;--accent2:#6f2731}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:var(--bg);color:var(--txt);font-family:Hanken,system-ui,sans-serif;display:grid;place-items:center;padding:24px}
-.card{width:min(430px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:34px;box-shadow:0 18px 50px -35px rgba(42,38,34,.35)}
-h1{font-family:Fraunces,Georgia,serif;font-size:28px;font-weight:600;margin:0 0 4px}.sub{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:2.2px}
-p{color:var(--muted);font-size:14px;line-height:1.55}.field{margin:20px 0 0}label{display:block;font-size:12px;font-weight:600;margin-bottom:7px}
-input{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--txt);font:inherit;font-size:14px}input:focus{outline:2px solid rgba(138,51,64,.18);border-color:var(--accent)}
-button{width:100%;margin-top:22px;padding:12px;border:0;border-radius:8px;background:var(--accent);color:white;font:600 14px Hanken,system-ui;cursor:pointer}button:hover{background:var(--accent2)}button:disabled{opacity:.65;cursor:wait}
-.error{display:none;margin-top:16px;padding:11px 13px;border-radius:8px;background:#fdf3f2;border:1px solid #e9c9c5;color:#8c3b32;font-size:13px;line-height:1.45}
-.footer{margin-top:22px;text-align:center;color:var(--muted);font-size:11px}
+/* Ingreso "curvas de nivel": la provincia de Mendoza con sus departamentos y el
+   relieve real, la bodega en Agrelo y el formulario como una hoja de mapa. */
+@font-face{font-family:'Instrument Serif';src:url('/prensas/fonts/instrument-serif-latin-400-normal.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Instrument Serif';src:url('/prensas/fonts/instrument-serif-latin-400-italic.woff2') format('woff2');font-weight:400;font-style:italic;font-display:swap}
+@font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');font-weight:500;font-display:swap}
+:root{
+  --bg:#F3F4F1;--hoja:#FBFBF9;--ink:#15191D;--piz:#3E5566;--muted:#5C6669;--mal:#7A1631;--linea:#C9CFCF;
+  --serif:'Instrument Serif',Georgia,serif;--sans:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Consolas,'Cascadia Mono',monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+#mapa{position:fixed;inset:0;width:100%;height:100%;display:block}
+.titulo{position:fixed;left:clamp(16px,4vw,48px);top:clamp(16px,3.5vh,34px);font:500 11px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--piz);line-height:1.7;pointer-events:none}
+.titulo b{display:block;font-family:var(--serif);font-weight:400;font-size:24px;letter-spacing:0;text-transform:none;color:var(--ink)}
+.hoja{position:fixed;right:clamp(16px,5vw,80px);top:50%;transform:translateY(-50%);width:min(380px,calc(100% - 32px));background:var(--hoja);
+      border:1.5px solid var(--ink);box-shadow:8px 8px 0 rgba(21,25,29,.08);z-index:1}
+.hoja header{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid var(--ink);padding:10px 16px;font:500 10.5px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.cuerpo{padding:22px 22px 18px;display:flex;flex-direction:column;gap:16px}
+h1{margin:0;font-family:var(--serif);font-weight:400;font-size:44px;line-height:.95;letter-spacing:-.01em}
+h1 em{color:var(--mal)}
+.sub{margin:-8px 0 0;font-size:12.5px;line-height:1.5;color:var(--muted)}
+label{display:flex;justify-content:space-between;font:500 10.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--piz);margin-bottom:6px}
+input{width:100%;border:1px solid var(--linea);background:#fff;padding:11px 12px;font:14px var(--mono);color:var(--ink);border-radius:0}
+input:focus{outline:none;border-color:var(--ink);box-shadow:inset 3px 0 0 var(--mal)}
+button{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:var(--ink);color:#fff;padding:13px 16px;font:500 13px var(--mono);letter-spacing:.14em;text-transform:uppercase;cursor:pointer}
+button:hover{background:var(--mal)}
+button:focus-visible{outline:2px solid var(--mal);outline-offset:3px}
+button:disabled{opacity:.7;cursor:wait}
+.error{display:none;margin:0;padding:10px 12px;border-left:3px solid var(--mal);background:#F8EDEF;color:#6B1229;font-size:13px;line-height:1.45}
+.leyenda{border-top:1px dashed #B9C0C0;padding-top:12px;display:grid;grid-template-columns:auto 1fr;gap:6px 10px;font:400 11px var(--mono);color:var(--muted);align-items:center}
+.leyenda i{display:block;width:22px;height:0;border-top:1px solid var(--piz)}
+.leyenda i.d{border-top:1px dashed var(--ink)}
+.leyenda i.p{width:9px;height:9px;border:0;border-radius:50%;background:var(--mal);justify-self:center}
+@media (max-width:760px){
+  .hoja{top:auto;bottom:16px;transform:none;right:16px}
+  h1{font-size:36px}
+  .leyenda{display:none}
+}
 </style>
 </head>
 <body>
-<main class="card">
-  <h1>Plataforma CIW</h1>
-  <div class="sub">Catena Institute</div>
-  <p>Ingresá con tu usuario y contraseña para acceder a los módulos que tenés asignados.</p>
-  <form id="form" autocomplete="on">
-    <div class="field"><label for="usuario">Usuario</label><input id="usuario" name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></div>
-    <div class="field"><label for="password">Contraseña</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
-    <button id="submit" type="submit">Ingresar</button>
-    <div id="error" class="error">El usuario o la contraseña no son correctos.</div>
-  </form>
-  <div class="footer">Bodegas Esmeralda · Catena Institute</div>
-</main>
+<canvas id="mapa" aria-hidden="true"></canvas>
+<div class="titulo"><b>Provincia de Mendoza</b>Departamentos · curvas de nivel</div>
+
+<form class="hoja" id="form" autocomplete="on">
+  <header><span>Plataforma CIW</span><span>N ↑</span></header>
+  <div class="cuerpo">
+    <h1>Ingresá a <em>la bodega</em></h1>
+    <p class="sub">Catena Institute of Wine · usuario y contraseña de la plataforma.</p>
+    <div><label for="usuario"><span>Usuario</span><span>▸</span></label>
+      <input id="usuario" name="usuario" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></div>
+    <div><label for="password"><span>Contraseña</span><span>▸</span></label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required></div>
+    <p id="error" class="error" role="alert">El usuario o la contraseña no son correctos.</p>
+    <button id="submit" type="submit"><span id="submit-texto">Ingresar</span><span>→</span></button>
+    <div class="leyenda"><i class="d"></i><span>límite departamental</span><i></i><span>curva de nivel cada 250 m</span><i class="p"></i><span>Bodega Catena Zapata</span></div>
+  </div>
+</form>
+
+<script src="/shared/mapa-mendoza.js"></script>
 <script>
-(async()=>{
+/* ---------- El mapa ----------
+   Provincia de Mendoza con sus departamentos (IGN) sobre curvas de nivel reales
+   (Terrain Tiles / SRTM, ver /shared/mapa-mendoza.js). El cursor muestra la
+   altura del punto; la bodega late en Agrelo. Al entrar, el mapa se acerca a
+   la bodega antes de pasar al menú. */
+const Mapa = (() => {
+  const cv = document.getElementById('mapa'), ctx = cv.getContext('2d');
+  const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const { deptos: DEPTOS, dem: DEM } = window.MAPA_MENDOZA || { deptos: [], dem: null };
+  const BODEGA = { lon: -68.88, lat: -33.12 };   // Bodega Catena Zapata, Agrelo (Luján de Cuyo)
+  const CASOS = [[], [3, 0], [0, 1], [3, 1], [1, 2], [3, 0, 1, 2], [0, 2], [3, 2], [2, 3], [2, 0], [0, 1, 2, 3], [2, 1], [1, 3], [1, 0], [0, 3], []];
+  const LON0 = -70.6, LON1 = -66.45, LAT0 = -37.6, LAT1 = -31.97, COSF = Math.cos(34.8 * Math.PI / 180);
+  const MONO = '"IBM Plex Mono", ui-monospace, Consolas, "Cascadia Mono", monospace';
+  const EQUI = 250, MAESTRA = 1000;   // curva cada 250 m, maestra cada 1000 m
+  let W = 0, H = 0, dpr = 1, t = 0, mx = -1, my = -1, zoom = 0, zoomObj = 0;
+  let s = 1, x0 = 0, y0 = 0, deptos = [], finas = new Path2D(), maestras = new Path2D(), etiquetas = [];
+  const aPantalla = (lon, lat) => [x0 + (lon - LON0) * COSF * s, y0 + (LAT1 - lat) * s];
+  const aGeo = (x, y) => [LON0 + (x - x0) / (COSF * s), LAT1 - (y - y0) / s];
+
+  const alt = DEM ? Uint8Array.from(atob(DEM.datos), c => c.charCodeAt(0)) : null;
+  function altura(lon, lat) {   // metros sobre el nivel del mar, interpolado
+    if (!alt) return 0;
+    const fx = (lon - DEM.lon0) / DEM.paso, fy = (DEM.lat1 - lat) / DEM.paso;
+    if (fx < 0 || fy < 0 || fx >= DEM.cols - 1 || fy >= DEM.filas - 1) return 0;
+    const i = fx | 0, j = fy | 0, u = fx - i, v = fy - j, k = j * DEM.cols + i;
+    return DEM.escala * ((alt[k] * (1 - u) + alt[k + 1] * u) * (1 - v) + (alt[k + DEM.cols] * (1 - u) + alt[k + DEM.cols + 1] * u) * v);
+  }
+  const azar = (() => { let a = 26217; return () => (a = (a * 16807) % 2147483647) / 2147483647; })();
+  const metros = h => (Math.round(h / 10) * 10).toLocaleString('es-AR') + ' m';
+
+  function medir() {
+    const r = cv.getBoundingClientRect(); W = r.width; H = r.height; dpr = Math.min(devicePixelRatio || 1, 2);
+    cv.width = W * dpr; cv.height = H * dpr;
+    // la provincia ocupa la parte libre: a la izquierda de la hoja (arriba en el celular)
+    const angosto = W < 760, aw = angosto ? W - 32 : W * .58, ah = angosto ? H * .5 : H - 120;
+    s = Math.min(aw / ((LON1 - LON0) * COSF), ah / (LAT1 - LAT0));
+    x0 = (angosto ? 16 : W * .06) + (aw - (LON1 - LON0) * COSF * s) / 2;
+    y0 = (angosto ? 70 : 60) + (ah - (LAT1 - LAT0) * s) / 2;
+    deptos = DEPTOS.map(d => {
+      const path = new Path2D(); let sx = 0, sy = 0, xmin = 1e9, xmax = -1e9;
+      d.p.forEach(([lon, lat], i) => { const [x, y] = aPantalla(lon, lat); i ? path.lineTo(x, y) : path.moveTo(x, y); sx += x; sy += y; xmin = Math.min(xmin, x); xmax = Math.max(xmax, x); });
+      path.closePath();
+      return { n: d.n, path, cx: sx / d.p.length, cy: sy / d.p.length, ancho: xmax - xmin };
+    });
+    curvas();
+    if (quieto) dibujar();
+  }
+
+  // las curvas se calculan una sola vez por tamaño de pantalla (el terreno no cambia)
+  function curvas() {
+    const paso = W < 700 ? 5 : 6, cols = Math.ceil(W / paso) + 1, filas = Math.ceil(H / paso) + 1;
+    const G = new Float32Array(cols * filas);
+    for (let j = 0; j < filas; j++) for (let i = 0; i < cols; i++) { const [lon, lat] = aGeo(i * paso, j * paso); G[j * cols + i] = altura(lon, lat); }
+    finas = new Path2D(); maestras = new Path2D(); etiquetas = [];
+    for (let L = EQUI; L <= 6500; L += EQUI) {
+      const esMaestra = L % MAESTRA === 0, path = esMaestra ? maestras : finas;
+      for (let j = 0; j < filas - 1; j++) for (let i = 0; i < cols - 1; i++) {
+        const a = G[j * cols + i], b = G[j * cols + i + 1], c = G[(j + 1) * cols + i + 1], d = G[(j + 1) * cols + i];
+        const k = (a > L) | (b > L) << 1 | (c > L) << 2 | (d > L) << 3; if (k === 0 || k === 15) continue;
+        const x = i * paso, y = j * paso;
+        // punto donde la curva corta cada borde de la celda: 0 arriba, 1 derecha, 2 abajo, 3 izquierda
+        const borde = e => e === 0 ? [x + paso * (L - a) / (b - a), y] : e === 1 ? [x + paso, y + paso * (L - b) / (c - b)]
+          : e === 2 ? [x + paso * (L - d) / (c - d), y + paso] : [x, y + paso * (L - a) / (d - a)];
+        const segs = CASOS[k];
+        for (let q = 0; q < segs.length; q += 2) { const p = borde(segs[q]), r = borde(segs[q + 1]); path.moveTo(p[0], p[1]); path.lineTo(r[0], r[1]); }
+        if (esMaestra && y > 90 && y < H - 120 && x < W * .55 && azar() < .02) {
+          const p = borde(segs[0]);
+          if (etiquetas.every(e => Math.abs(e[0] - p[0]) + Math.abs(e[1] - p[1]) > 110)) etiquetas.push([p[0], p[1], L]);
+        }
+      }
+    }
+  }
+
+  function dibujar() {
+    t++;
+    zoom += (zoomObj - zoom) * .07;
+    const [bx, by] = aPantalla(BODEGA.lon, BODEGA.lat), z = 1 + zoom * 7;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    ctx.translate(bx, by); ctx.scale(z, z); ctx.translate(-bx, -by);
+    ctx.lineWidth = .8 / z; ctx.strokeStyle = 'rgba(62,85,102,.42)'; ctx.stroke(finas);
+    ctx.lineWidth = 1.6 / z; ctx.strokeStyle = 'rgba(62,85,102,.78)'; ctx.stroke(maestras);
+    ctx.font = `500 ${9.5 / z}px ${MONO}`;
+    for (const [x, y, m] of etiquetas) { ctx.fillStyle = 'rgba(243,244,241,.92)'; ctx.fillRect(x - 2 / z, y - 9 / z, 46 / z, 12 / z); ctx.fillStyle = '#3E5566'; ctx.fillText(m.toLocaleString('es-AR') + ' m', x, y); }
+
+    // departamentos: Luján de Cuyo (donde está la bodega) apenas teñido de malbec
+    for (const d of deptos) if (d.n === 'Luján de Cuyo') { ctx.fillStyle = 'rgba(122,22,49,.09)'; ctx.fill(d.path); }
+    ctx.setLineDash([5 / z, 4 / z]); ctx.lineWidth = 1 / z; ctx.strokeStyle = 'rgba(21,25,29,.55)';
+    for (const d of deptos) ctx.stroke(d.path);
+    ctx.setLineDash([]);
+    ctx.textAlign = 'center';
+    for (const d of deptos) {
+      if (d.ancho * z < 62) continue;   // los chicos aparecen cuando el mapa se acerca
+      const lujan = d.n === 'Luján de Cuyo';
+      ctx.font = `${lujan ? 600 : 500} ${(lujan ? 10.5 : 9.5) / z}px ${MONO}`;
+      ctx.fillStyle = lujan ? '#7A1631' : 'rgba(21,25,29,.62)';
+      ctx.fillText(d.n.toUpperCase(), d.cx, d.cy + (lujan ? 24 / z : 0));
+    }
+    ctx.textAlign = 'start';
+
+    // la bodega
+    const pulso = quieto ? 0 : (t % 120) / 120;
+    ctx.fillStyle = '#7A1631'; ctx.beginPath(); ctx.arc(bx, by, 4.5 / z, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `rgba(122,22,49,${1 - pulso})`; ctx.lineWidth = 1.5 / z; ctx.beginPath(); ctx.arc(bx, by, (6 + pulso * 22) / z, 0, Math.PI * 2); ctx.stroke();
+    // cartel hacia el oeste, sobre la cordillera, para no tapar los departamentos del
+    // Gran Mendoza; si no entra (celular), hacia el este
+    const oeste = bx > 260, sg = oeste ? 1 : -1, cx = bx - sg * 70 / z, cy = by - 46 / z;
+    ctx.strokeStyle = '#15191D'; ctx.lineWidth = 1 / z; ctx.beginPath(); ctx.moveTo(bx - sg * 6 / z, by - 6 / z); ctx.lineTo(cx + sg * 8 / z, cy + 8 / z); ctx.lineTo(cx, cy + 8 / z); ctx.stroke();
+    ctx.textAlign = oeste ? 'right' : 'left';
+    ctx.fillStyle = 'rgba(251,251,249,.94)'; ctx.fillRect(oeste ? cx - 172 / z : cx - 4 / z, cy - 12 / z, 176 / z, 30 / z);
+    ctx.font = `600 ${11 / z}px ${MONO}`; ctx.fillStyle = '#15191D'; ctx.fillText('BODEGA CATENA ZAPATA', cx, cy + 1 / z);
+    ctx.font = `400 ${10 / z}px ${MONO}`; ctx.fillStyle = '#3E5566';
+    ctx.fillText('Agrelo · ' + metros(altura(BODEGA.lon, BODEGA.lat)) + ' s. n. m.', cx, cy + 14 / z);
+    ctx.textAlign = 'start';
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // el cursor: cruz con la altura real y las coordenadas del punto
+    if (mx >= 0 && zoom < .05) {
+      const [lon, lat] = aGeo(mx, my), h = altura(lon, lat);
+      ctx.strokeStyle = 'rgba(122,22,49,.8)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(mx - 9, my); ctx.lineTo(mx - 3, my); ctx.moveTo(mx + 3, my); ctx.lineTo(mx + 9, my); ctx.moveTo(mx, my - 9); ctx.lineTo(mx, my - 3); ctx.moveTo(mx, my + 3); ctx.lineTo(mx, my + 9); ctx.stroke();
+      const txt = h > 0 ? metros(h) : '—', sub = Math.abs(lat).toFixed(2) + '° S · ' + Math.abs(lon).toFixed(2) + '° O';
+      ctx.font = `600 11px ${MONO}`; const w = Math.max(ctx.measureText(sub).width, ctx.measureText(txt).width) + 14;
+      ctx.fillStyle = 'rgba(21,25,29,.88)'; ctx.fillRect(mx + 14, my + 12, w, 34);
+      ctx.fillStyle = '#fff'; ctx.fillText(txt, mx + 21, my + 26);
+      ctx.font = `400 9.5px ${MONO}`; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillText(sub, mx + 21, my + 39);
+    }
+    // escala gráfica real (1° de latitud ≈ 111 km) y fuentes, abajo a la izquierda
+    const km50 = 50 / 111 * s * z, ex = Math.max(16, W * .03), ey = H - 52;
+    ctx.fillStyle = '#15191D'; ctx.strokeStyle = '#15191D'; ctx.lineWidth = 1; ctx.font = `500 10px ${MONO}`;
+    ctx.fillRect(ex, ey, km50 / 2, 3); ctx.strokeRect(ex + km50 / 2, ey, km50 / 2, 3);
+    ctx.fillText('0', ex - 3, ey - 6); ctx.fillText(zoom > .5 ? Math.round(50 / z) + ' km' : '50 km', ex + km50 - 14, ey - 6);
+    ctx.font = `400 9.5px ${MONO}`; ctx.fillStyle = '#67707A';
+    ctx.fillText('Relieve: Terrain Tiles (Mapzen, SRTM) · Límites: IGN', ex, ey + 18);
+  }
+
+  function bucle() { dibujar(); requestAnimationFrame(bucle); }
+  addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; if (quieto) dibujar(); });
+  document.addEventListener('pointerleave', () => { mx = my = -1; });
+  addEventListener('resize', medir);
+  medir();
+  if (!quieto) requestAnimationFrame(bucle);
+  // acercarse a la bodega: devuelve una promesa que se cumple al terminar
+  return { acercar: () => new Promise(r => { zoomObj = 1; setTimeout(r, quieto ? 0 : 1100); }) };
+})();
+
+/* ---------- El ingreso ---------- */
+(async () => {
   // Quien todavía tiene la contraseña inicial va directo a cambiarla.
-  const destino=j=>j&&j.debe_cambiar?'/cambiar-clave.html':'/';
-  try { const r=await fetch('/api/auth/me',{cache:'no-store'}); if(r.ok){location.replace(destino(await r.json()));return;} } catch(e){}
-  const form=document.getElementById('form'), btn=document.getElementById('submit'), err=document.getElementById('error');
-  form.addEventListener('submit',async e=>{
-    e.preventDefault(); err.style.display='none'; btn.disabled=true; btn.textContent='Ingresando…';
-    try{
-      const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usuario:form.usuario.value,password:form.password.value})});
-      if(r.ok){location.replace(destino(await r.json().catch(()=>({}))));return;}
-      const j=await r.json().catch(()=>({}));
-      err.textContent=r.status===401?'El usuario o la contraseña no son correctos.'
-        :r.status===429?((j.detalles&&j.detalles[0])||'Demasiados intentos fallidos. Probá de nuevo en unos minutos.')
-        :j.error==='base_sin_inicializar'?'El sistema todavía no está configurado.'
-        :'Error del servidor ('+r.status+')'+(j.detalles&&j.detalles[0]?': '+j.detalles[0]:'')+'. Avisá a quien administra la plataforma.';
-      err.style.display='block';
-    }catch(e){err.textContent='No se pudo conectar con el servidor. Intentá nuevamente.';err.style.display='block';}
-    btn.disabled=false; btn.textContent='Ingresar';
+  const destino = j => j && j.debe_cambiar ? '/cambiar-clave.html' : '/';
+  try { const r = await fetch('/api/auth/me', { cache: 'no-store' }); if (r.ok) { location.replace(destino(await r.json())); return; } } catch (e) {}
+  const form = document.getElementById('form'), btn = document.getElementById('submit'), txt = document.getElementById('submit-texto'), err = document.getElementById('error');
+  form.addEventListener('submit', async e => {
+    e.preventDefault(); err.style.display = 'none'; btn.disabled = true; txt.textContent = 'Ingresando…';
+    try {
+      const r = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usuario: form.usuario.value, password: form.password.value }) });
+      if (r.ok) {
+        const j = await r.json().catch(() => ({}));
+        await Mapa.acercar();
+        location.replace(destino(j));
+        return;
+      }
+      const j = await r.json().catch(() => ({}));
+      err.textContent = r.status === 401 ? 'El usuario o la contraseña no son correctos.'
+        : r.status === 429 ? ((j.detalles && j.detalles[0]) || 'Demasiados intentos fallidos. Probá de nuevo en unos minutos.')
+        : j.error === 'base_sin_inicializar' ? 'El sistema todavía no está configurado.'
+        : 'Error del servidor (' + r.status + ')' + (j.detalles && j.detalles[0] ? ': ' + j.detalles[0] : '') + '. Avisá a quien administra la plataforma.';
+      err.style.display = 'block';
+    } catch (e) { err.textContent = 'No se pudo conectar con el servidor. Intentá nuevamente.'; err.style.display = 'block'; }
+    btn.disabled = false; txt.textContent = 'Ingresar';
   });
 })();
 </script>

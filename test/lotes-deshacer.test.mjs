@@ -1,7 +1,7 @@
 /* Deshacer de toda la página de Lotes: la foto por fila y la diferencia
  * (spec 2026-10-05, sección 2). */
 import { describe, it, expect } from 'vitest';
-import { tomarFoto, diferencia, aplicar, crearHistorial, describirPaso, describirCambio } from '../public/lotes/js/deshacer.js';
+import { tomarFoto, diferencia, aplicar, crearHistorial, describirPaso, describirCambio, CLAVE_DE_SECCION } from '../public/lotes/js/deshacer.js';
 
 const doc = () => ({
   meta: { version: 7, autor: 'x' },
@@ -326,5 +326,16 @@ describe('descripciones', () => {
   });
   it('describirCambio de un análisis sin lote', () => {
     expect(describirCambio({ seccion: 'analisis', tipo: 'fila', clave: null, antes: '{}', despues: null, pos: 0 })).toBe('análisis');
+  });
+});
+
+describe('recorridas', () => {
+  it('se deshacen por id', () => {
+    expect(CLAVE_DE_SECCION.recorridas).toBe('id');
+  });
+  it('el aviso de deshacer las nombra en castellano', () => {
+    expect(describirCambio({ seccion: 'recorridas', tipo: 'fila', clave: 'rec-1', antes: null, despues: '{"id":"rec-1"}', pos: 0 }))
+      .toBe('recorrida de tanques');
+    expect(describirCambio({ seccion: 'recorridas', tipo: 'valor', clave: null })).toBe('recorridas de tanques');
   });
 });

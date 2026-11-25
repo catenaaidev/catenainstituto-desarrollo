@@ -42,13 +42,36 @@ export function celdaLote(i, r){
 /* Boton de agregar fila, al pie de la tabla de la ultima hoja. */
 export const BOTON_AGREGAR = '<button type="button" class="oh-agregar">＋ Agregar fila</button>';
 
+/* Celda Barril de la fila i. En modo "barriles especificos" lleva al lado el
+ * 🎲 chico que sortea solo esa fila (no se imprime). info = { lista, ph,
+ * aviso }: el <datalist> con los llenos del lote, el texto de ayuda si el lote
+ * no tiene barriles y el aviso amarillo si el numero no es un lleno del lote. */
+export function celdaBarril(i, r, { modo = false, info = {} } = {}){
+  const aviso = info.aviso || '';
+  const celda = celdaHoja(i, 'barril', r.barril || '', {
+    cls: 'c oh-barr' + (aviso ? ' oh-aviso' : ''),
+    lista: info.lista || '', ph: info.ph || '', titulo: aviso,
+  });
+  const dado = modo
+    ? `<button type="button" class="oh-dado" data-dadofila="${i}" title="Sortear un barril de este lote" aria-label="Sortear barril de la fila ${i + 1}">🎲</button>`
+    : '';
+  return `<td class="c oh-barril">${celda}${dado}</td>`;
+}
+
 /* Configuracion para pintarHojas (orden-hoja.js) de la orden de ANALISIS.
  * El papel lleva # / Lote / Variedad / Vasija / [Barril] / Cant. / Recipiente /
- * Check. BARRIL entra solo si alguna fila tiene barril (el dado o a mano): una
- * columna vacia en todas las hojas es ruido. */
-export function cfgHojasAnalisis({ filas, titulo, meta, banda, emitio, recibio, hojasExtra, listaRecipientes = '' }){
+ * Check. BARRIL entra si se eligio "barriles especificos" (modoBarril) o si
+ * alguna fila ya tiene barril (el dado general): la orden generica, la de
+ * siempre, sale sin esa columna. barrilInfo(fila) -> { lista, ph, aviso }. */
+export function cfgHojasAnalisis({ filas, titulo, meta, banda, emitio, recibio, hojasExtra, listaRecipientes = '',
+                                   modoBarril = false, barrilInfo = () => ({}) }){
   const f = filas || [];
-  const conBarril = f.some(r => String(r.barril || '').trim() !== '');
+  const conBarril = modoBarril || f.some(r => String(r.barril || '').trim() !== '');
+  /* Anchos pensados para la A4 (182 mm utiles ~ 688 px): el barril lleva
+   * hasta 8 cifras y la vasija rara vez pasa de "Barricas + t50 + t200". */
+  const colgroup = conBarril
+    ? '<colgroup><col style="width:28px"><col style="width:52px"><col><col style="width:124px"><col style="width:76px"><col style="width:36px"><col style="width:96px"><col style="width:44px"></colgroup>'
+    : '<colgroup><col style="width:28px"><col style="width:52px"><col><col style="width:150px"><col style="width:36px"><col style="width:110px"><col style="width:50px"></colgroup>';
   return {
     filas: f,
     porPagina: FILAS_POR_HOJA_ORDEN,
@@ -56,7 +79,7 @@ export function cfgHojasAnalisis({ filas, titulo, meta, banda, emitio, recibio, 
     editable: true,
     titulo, meta, banda, emitio, recibio,
     nota: 'Tomar muestra en un tubo falcon y luego sanitizar jeringa para cada lote.',
-    colgroup: `<colgroup><col style="width:34px"><col style="width:60px"><col><col style="width:140px">${conBarril ? '<col style="width:60px">' : ''}<col style="width:46px"><col style="width:110px"><col style="width:50px"></colgroup>`,
+    colgroup,
     thead: `<tr><th class="c oh-num">#</th><th class="c">LOTE</th><th>VARIEDAD</th><th>VASIJA</th>${conBarril ? '<th class="c">BARRIL</th>' : ''}<th class="c">Cant.</th><th>Recipiente</th><th class="oh-check">Check</th></tr>`,
     columnas: conBarril ? 8 : 7,
     textoVacio: 'Sin lotes. Elegí qué lotes entran, pegalos en «Pegar lotes» o agregá una fila.',
@@ -68,7 +91,7 @@ export function cfgHojasAnalisis({ filas, titulo, meta, banda, emitio, recibio, 
         `<td class="c">${celdaLote(i, r)}</td>` +
         `<td>${esc(r.variedad)}</td>` +
         `<td>${celdaHoja(i, 'vasija', r.vasija)}</td>` +
-        (conBarril ? `<td class="c">${celdaHoja(i, 'barril', r.barril || '', { cls: 'c' })}</td>` : '') +
+        (conBarril ? celdaBarril(i, r, { modo: modoBarril, info: barrilInfo(r) || {} }) : '') +
         `<td class="c">${celdaHoja(i, 'cantidad', String(r.cantidad ?? ''), { cls: 'c' })}</td>` +
         `<td>${celdaHoja(i, 'recipiente', r.recipiente || '', { lista: listaRecipientes })}</td>` +
         `<td class="oh-check"></td>` +

@@ -2,16 +2,28 @@
 'use strict';
 
 import { $, esc, escA, num, DATOS, dashData, dashLoading, cargarDashboard,
-         registrarVista, markDirty, guardar } from './nucleo.js';
+         registrarVista, markDirty, guardar, mostrarTab, usuarioActual } from './nucleo.js';
 import { clasificarLote, pasaFuente, pasaBusqueda, tiposDeVasija,
-         datosDeLote, claveLote, parsearListaLotes } from './orden-filas.js';
+         datosDeLote, claveLote, parsearListaLotes, lotesDeRonda } from './orden-filas.js';
 import { pasaMulti, opcionesValores, matchValor, initFiltrosMulti,
-         limpiarFiltrosMulti, cmpValores, normVal } from './tabla.js';
+         limpiarFiltrosMulti, cmpValores, normVal, setF } from './tabla.js';
+import { hojaSoloLectura } from './hoja-solo-lectura.js';
 import { pintarHojas, hojaTop, hojaMetaEditable, hojaBanda } from './orden-hoja.js';
 import { cfgHojasAnalisis, pegarLotesDesde, cantidadValida } from './orden-hoja-filas.js';
 import { hoyLocalISO, diaDeSemana } from './hoja-campos.js';
-import { sortearOrden, registrosDeImpresion } from './sorteo-barriles.js';
+import { sortearOrden, registrosDeImpresion, sortearFila, opcionesBarril,
+         avisoBarril, barrilesLlenos, vecesPorLote, expandirPorBarril,
+         colapsarPorLote } from './sorteo-barriles.js';
+import { resumenOrden } from './orden-resumen.js';
 import { textosMicro, cfgHojasMicro } from './orden-micro.js';
+import { proponerNumero, chipCarpeta, cablearChipsCarpeta, imprimirYGuardar } from './guardar-ot.js';
+import { avisar } from './dialogos.js';
+import { armarOrdenHoja, ordenHojaPorId } from './ordenes-hojas.js';
+import { htmlCabeceraOrden, cablearCabeceraOrden, guardarOrdenHojaConfirmando } from './vista-orden-guardada.js';
+import { fotoOrdenMuestras, cfgDeHojaGuardada } from './orden-foto.js';
+
+/* La foto que se guarda al imprimir es pura (orden-foto.js, testeable sin DOM). */
+export { fotoOrdenMuestras };
 
 /*
  * _otRows: array de objetos { lote, variedad, vasija, barril, litros, motivo, recipiente, cantidad }
@@ -23,9 +35,15 @@ let _otFuente     = 'vencidos_proximos';  // valor inicial del select
 let _otAtencionTipo = 'todos';            // criterio granular, solo aplica si _otFuente==='atencion'
 /* Un Set por columna filtrable, creados UNA vez: los widgets guardan estas
  * mismas referencias, asi que el estado sobrevive a los re-render. */
-const filtOt = { lote: new Set(), variedad: new Set(), proyecto: new Set(),
-                 etapa: new Set(), vasija: new Set() };
-let _otBusqueda = '';                     // buscador de texto libre de la barra
+const filtOt = { lote: setF('orden', 'lote'), variedad: setF('orden', 'variedad'),
+                 proyecto: setF('orden', 'proyecto'), etapa: setF('orden', 'etapa'),
+                 vasija: setF('orden', 'vasija') };
+/* El buscador sobrevive al F5 en esta pestaña (shared/filtros-sesion.js). El modo
+ * barril NO: volver con el arranca de cero los barriles y perderia el sorteo. */
+const _FS = typeof window !== 'undefined' && window.CIWFiltros;
+const _lf = (k, d) => _FS ? _FS.leer('lotes:orden:' + k, d) : d;
+const _gf = (k, v) => { if (_FS) _FS.guardar('lotes:orden:' + k, v); };
+let _otBusqueda = (v => typeof v === 'string' ? v : '')(_lf('busca', ''));  // buscador de texto libre de la barra
 let _descOt = [], _instOt = [];
 let _otRecipiente = 'Tubo falcon';
 let _otCantidad   = 1;
@@ -33,6 +51,19 @@ let _otTitulo     = 'Orden de Trabajo';   // titulo editable de la hoja, sincron
 /* Datos del encabezado y las firmas, editados SOBRE la hoja (vista previa
  * editable, ver hoja-campos.js). En memoria, como el resto de la orden. */
 const _otHoja = { nro: '', fecha: hoyLocalISO(), dia: diaDeSemana(hoyLocalISO()), emitio: '', recibio: '' };
+/* El N° se propone (carpeta de OT) una sola vez: si el usuario lo borra a
+ * proposito, no se vuelve a llenar solo. _otNroUltimo = el ultimo propuesto,
+ * para re-proponer al conectar la carpeta solo si nadie lo cambio. */
+let _otNroPropuesto = false;
+let _otNroUltimo    = '';
+/* Barriles especificos: con _otModoBarril la hoja muestra la columna Barril
+ * con un desplegable por fila (los llenos del lote) y un 🎲 por fila. Sin el,
+ * la orden sale generica, como siempre: sin columna. _otPorLote guarda lo que
+ * devolvio el Mapa por lote (solo lectura) y se vuelve a pedir al activar el
+ * modo o tirar el dado general, para no trabajar con un Mapa viejo. */
+let _otModoBarril = false;
+let _otPorLote    = {};
+const _otPedidos  = new Set();             // lotes ya pedidos al Mapa (aunque fallen)
 let _otMapas      = [];                   // {src,nombre,pie} -- imagenes de sesion, nunca se guardan
 let _otPegado     = '';                   // texto del recuadro "Pegar lotes", sobrevive al re-render
 
@@ -105,7 +136,10 @@ function _otBuildRows(){
 
   const fuente = _otFuente;
 
-  let lotes = (dashData().lotes || []).filter(l => pasaMulti(l, _descOt));
+  /* La ronda de tanques sale de TODOS los lotes con vino en tanque, de todos
+   * los años: el tablero solo trae los años del selector (lotesDeRonda). */
+  let lotes = (fuente === 'ronda_tanques' ? lotesDeRonda(DATOS().lotes, dashData().lotes) : (dashData().lotes || []))
+    .filter(l => pasaMulti(l, _descOt));
 
   if (fuente === 'hoja_en_blanco'){
     /* Hoja en blanco no trae nada POR SI SOLA, pero si se eligen lotes (o una
@@ -193,13 +227,93 @@ function _otPintarPaginas(){
     `</div>`;
   });
 
+  _otPintarListasBarril();
   const cfg = cfgHojasAnalisis({
     filas: _otRows, titulo: _otTitulo, meta, banda, emitio, recibio,
     hojasExtra: hojasMapas, listaRecipientes: 'otRecLista',
+    modoBarril: _otModoBarril, barrilInfo: _otBarrilInfo,
   });
   const sinSorteo = $('btnOtSinSorteo');
   if (sinSorteo) sinSorteo.style.display = cfg.columnas === 8 ? '' : 'none';
+  const elegir = $('btnOtBarrilElegir');
+  if (elegir) elegir.style.display = cfg.columnas === 8 ? 'none' : '';
   cont.innerHTML = pintarHojas(cfg);
+}
+
+/* id del <datalist> con los barriles llenos de un lote */
+const _otIdLista = lote => 'otBarr-' + String(lote).replace(/[^\w-]/g, '_');
+
+/* Lo que la celda Barril de una fila necesita saber del Mapa (orden-hoja-filas.js). */
+function _otBarrilInfo(r){
+  const lote = claveLote(r.lote);
+  const bs = _otPorLote[lote];
+  if (!lote || !Array.isArray(bs)) return {};
+  const hay = barrilesLlenos(bs).length > 0;
+  return {
+    lista: hay ? _otIdLista(lote) : '',
+    ph: hay ? (_otModoBarril ? 'elegí…' : '') : 'sin barriles',
+    aviso: avisoBarril(lote, r.barril, bs),
+  };
+}
+
+/* Un <datalist> por lote de la orden: el desplegable de la celda Barril.
+ * Cada opcion dice cuantas veces se muestreo ese barril. Vive fuera de
+ * #otPaginas, asi no se imprime. */
+function _otPintarListasBarril(){
+  const cont = $('otBarrListas');
+  if (!cont) return;
+  if (!_otModoBarril){ cont.innerHTML = ''; return; }
+  const veces = vecesPorLote(DATOS().muestreos_barriles || []);
+  const lotes = [...new Set(_otRows.map(r => claveLote(r.lote)).filter(k => k !== ''))];
+  cont.innerHTML = lotes.filter(l => Array.isArray(_otPorLote[l])).map(l =>
+    `<datalist id="${escA(_otIdLista(l))}">` +
+    opcionesBarril(_otPorLote[l], veces[l]).map(o =>
+      `<option value="${escA(o.num)}">${o.veces ? `muestreado ${o.veces} ${o.veces === 1 ? 'vez' : 'veces'}` : 'nunca muestreado'}</option>`).join('') +
+    `</datalist>`).join('');
+}
+
+/* Trae del Mapa los barriles de los lotes que falten (todos si fresco=true).
+ * Devuelve false si el Mapa no respondio. */
+async function _otCargarBarriles(fresco = false){
+  const lotes = [...new Set(_otRows.map(r => claveLote(r.lote)).filter(k => k !== ''))]
+    .filter(l => fresco || !_otPedidos.has(l));
+  if (!lotes.length) return true;
+  lotes.forEach(l => _otPedidos.add(l));
+  try {
+    const r = await fetch(API + '/barriles?lotes=' + encodeURIComponent(lotes.join(',')));
+    if (!r.ok){
+      const e = await r.json().catch(() => ({}));
+      _otAvisar('No pude leer el Mapa de Barriles' + (e.error ? ': ' + e.error : '.'), 'error');
+      return false;
+    }
+    Object.assign(_otPorLote, (await r.json()).por_lote || {});
+    return true;
+  } catch (e){
+    _otAvisar('No pude leer el Mapa de Barriles (¿sin conexión?).', 'error');
+    return false;
+  }
+}
+
+/* En modo barril, cada vez que entra un lote nuevo a la orden (pegado,
+ * tipeado, por filtro) se piden sus barriles y se repinta. */
+function _otCompletarBarriles(){
+  if (!_otModoBarril || _esMicro()) return;
+  const nuevos = new Set(_otRows.map(r => claveLote(r.lote)).filter(l => l && !_otPedidos.has(l)));
+  if (!nuevos.size) return;
+  /* el lote que entra trae TODOS sus barriles llenos, como los que ya estaban */
+  _otCargarBarriles().then(() => { _otRows = expandirPorBarril(_otRows, _otPorLote, nuevos); _otRepintar(); });
+}
+
+/* Aviso visible arriba de la hoja (y en la nota del panel que lo origino):
+ * los resultados del dado, del pegado y del guardado no se pierden en una
+ * nota chica lejos de la hoja. tipo: 'ok' | 'aviso' | 'error'. */
+function _otAvisar(texto, tipo = 'ok', nota = 'otDadoMsg'){
+  const n = nota && $(nota); if (n) n.textContent = texto;
+  const b = $('otAviso');
+  if (!b) return;
+  b.hidden = !texto;
+  b.className = 'ot-aviso ot-aviso-' + tipo;
+  const t = b.querySelector('.ot-aviso-t'); if (t) t.textContent = texto;
 }
 
 /* Repinta la hoja SIN perder donde estaba el cursor: si el foco estaba en una
@@ -242,6 +356,7 @@ function _otCeldaConfirmar(el){
    * el foco, y repintar ahi mismo lo mandaria a cualquier lado. Despues, el
    * foco ya esta en la celda de destino y _otRepintar lo devuelve alli. */
   if (k === 'lote'){ r.manual = true; _otAutocompletar(r); setTimeout(() => _otRepintar(), 0); return; }
+  if (k === 'barril'){ r.barril = String(el.value || '').trim(); setTimeout(() => _otRepintar(), 0); return; }
   if (k === 'cantidad'){ el.value = String(r.cantidad); return; }
   if (k === 'recipiente'){ const v = _recSumar(el.value); r.recipiente = v || _otRecipiente; el.value = r.recipiente; }
 }
@@ -279,7 +394,9 @@ function _otAplicarFiltros(){
    * la fuente, asi que rearmar desde la fuente las borraba: elegir un lote en
    * el filtro de una hoja en blanco se llevaba puesto lo que ya estaba
    * escrito. Se conservan y la fuente suma las que no estan. */
-  const manuales = _otRows.filter(r => r.manual);
+  /* Las filas de "barriles especificos" (una por barril) tampoco salen de la
+   * fuente: si se rearmaran, volverian los barriles que el usuario borro. */
+  const manuales = _otRows.filter(r => r.manual || r.porBarril);
   const ya = new Set(manuales.map(r => claveLote(r.lote)).filter(k => k !== ''));
   /* El barril que sorteo el dado tampoco sale de la fuente: se recuerda por
    * lote para que tocar un filtro no obligue a tirar el dado de nuevo. */
@@ -294,6 +411,32 @@ function _otRefrescar(){
   _otPintarPaginas();
   const c = $('otCount');
   if (c) c.textContent = _otRows.length + ' fila' + (_otRows.length !== 1 ? 's' : '');
+  _otPintarResumen();
+  _otEtiquetaImprimir();
+  _otCompletarBarriles();
+}
+
+/* "De donde salen estas filas", en una linea arriba de la hoja. */
+function _otPintarResumen(){
+  const el = $('otResumen');
+  if (!el) return;
+  const sel = $('otFuente');
+  const etiqueta = sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
+  const r = resumenOrden({
+    filas: _otRows, fuente: _esMicro() ? 'hoja_en_blanco' : _otFuente, etiquetaFuente: etiqueta,
+    filtros: _descOt.filter(d => d.set.size).map(d => d.label), busqueda: _otBusqueda,
+  });
+  el.innerHTML = `<span><b>${esc(r.titulo)}</b>${r.detalle ? ' · ' + esc(r.detalle) : ''}</span>` +
+    (_esMicro() ? '' : '<button type="button" class="ot-res-cambiar" id="btnOtCambiarFuente">cambiar</button>');
+}
+
+/* El boton Imprimir avisa cuantos barriles va a anotar como muestreados. */
+function _otEtiquetaImprimir(){
+  const b = $('btnOtImprimir');
+  if (!b) return;
+  const n = _esMicro() ? 0 : _otRows.filter(r => claveLote(r.lote) && String(r.barril || '').trim()).length;
+  b.textContent = '🖨️ Imprimir' + (n ? ` · anota ${n} barril${n !== 1 ? 'es' : ''}` : '');
+  b.title = n ? `Al imprimir, estos ${n} barriles quedan anotados como muestreados y el dado no los vuelve a proponer pronto.` : '';
 }
 
 /* Recuadro "Pegar lotes": cada numero se vuelve una fila autocompletada.
@@ -328,7 +471,7 @@ function _otCargarPegados(reemplazar){
     let t = `${nuevas.length} lote${nuevas.length !== 1 ? 's' : ''} cargado${nuevas.length !== 1 ? 's' : ''}.`;
     if (repetidos) t += ` ${repetidos} ya estaba${repetidos !== 1 ? 'n' : ''} en la orden.`;
     if (malos.length) t += ` No existe${malos.length !== 1 ? 'n' : ''}: ${malos.join(', ')} (marcado${malos.length !== 1 ? 's' : ''} en rojo).`;
-    msg.textContent = t;
+    _otAvisar(t, malos.length ? 'aviso' : 'ok', 'otPegarMsg');
   }
 }
 
@@ -340,50 +483,195 @@ function _otCargarPegados(reemplazar){
  * tiene otro. Los lotes en tanque no tienen barriles en el Mapa: quedan sin
  * barril y se avisan. */
 async function _otTirarDado(){
-  const msg = $('otDadoMsg');
   const btn = $('btnOtDado');
   const lotes = [...new Set(_otRows.map(r => claveLote(r.lote)).filter(k => k !== ''))];
-  if (!lotes.length){ if (msg) msg.textContent = 'No hay lotes en la orden.'; return; }
+  if (!lotes.length){ _otAvisar('No hay lotes en la orden.', 'aviso'); return; }
   if (btn) btn.disabled = true;
-  if (msg) msg.textContent = 'Sorteando…';
+  _otAvisar('Sorteando…');
   try {
-    const r = await fetch(API + '/barriles?lotes=' + encodeURIComponent(lotes.join(',')));
-    if (!r.ok){
-      const e = await r.json().catch(() => ({}));
-      if (msg) msg.textContent = 'No pude leer el Mapa de Barriles' + (e.error ? ': ' + e.error : '.');
-      return;
-    }
-    const { sinBarril } = sortearOrden(_otRows, (await r.json()).por_lote, Math.random,
+    if (!await _otCargarBarriles(true)) return;
+    /* el dado general es UN barril por lote: si estaban todos, se vuelve a uno */
+    _otRows = colapsarPorLote(_otRows);
+    const { sinBarril } = sortearOrden(_otRows, _otPorLote, Math.random,
                                        DATOS().muestreos_barriles || []);
+    /* despues del dado general se puede corregir fila por fila */
+    _otModoBarril = true;
     _otRefrescar();
-    if (msg){
-      const con = lotes.length - sinBarril.length;
-      let t = `🎲 ${con} barril${con !== 1 ? 'es' : ''} sorteado${con !== 1 ? 's' : ''}.`;
-      if (sinBarril.length) t += ` Sin barriles llenos en el Mapa: ${sinBarril.join(', ')}.`;
-      msg.textContent = t;
-    }
-  } catch (e){
-    if (msg) msg.textContent = 'No pude leer el Mapa de Barriles (¿sin conexión?).';
+    const con = lotes.length - sinBarril.length;
+    let t = `🎲 ${con} barril${con !== 1 ? 'es' : ''} sorteado${con !== 1 ? 's' : ''}.`;
+    if (sinBarril.length) t += ` Sin barriles llenos en el Mapa (¿en tanque?): ${sinBarril.join(', ')}.`;
+    _otAvisar(t, sinBarril.length ? 'aviso' : 'ok');
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
+/* "✎ Elegir barriles especificos": abre la columna Barril vacia, con el
+ * desplegable de cada lote. Lo que no se complete sale vacio en el papel. */
+async function _otActivarModoBarril(){
+  _otModoBarril = true;
+  _otAvisar('Buscando los barriles llenos de cada lote en el Mapa…');
+  if (!await _otCargarBarriles(true)){ _otRefrescar(); return; }
+  _otRows = expandirPorBarril(_otRows, _otPorLote);
+  _otRefrescar();
+  const n = _otRows.filter(r => String(r.barril || '').trim()).length;
+  const sin = [...new Set(_otRows.filter(r => claveLote(r.lote) && !String(r.barril || '').trim()).map(r => claveLote(r.lote)))];
+  _otAvisar(`Están los ${n} barriles llenos de la orden, uno por fila: quitá con ✕ los que no quieras.` +
+            (sin.length ? ` Sin barriles en el Mapa (¿en tanque?): ${sin.join(', ')}.` : ''), sin.length ? 'aviso' : 'ok');
+}
+
+/* 🎲 de una fila: sortea solo ese lote. */
+async function _otTirarDadoFila(i){
+  const r = _otRows[i];
+  const lote = r && claveLote(r.lote);
+  if (!lote){ _otAvisar('Esa fila no tiene lote.', 'aviso'); return; }
+  if (!Array.isArray(_otPorLote[lote]) && !await _otCargarBarriles(true)) return;
+  const b = sortearFila(_otRows, i, _otPorLote, Math.random, DATOS().muestreos_barriles || []);
+  _otRepintar({ fila: i, col: 'barril' });
+  _otAvisar(b ? `🎲 Lote ${lote}: barril ${b}.` : `El lote ${lote} no tiene barriles llenos en el Mapa (¿está en tanque?).`,
+            b ? 'ok' : 'aviso');
+}
+
 /* Al imprimir, los barriles de la orden pasan a contar como muestreados: se
- * anotan en DATOS().muestreos_barriles y se guarda solo, para que la proxima
- * orden (en esta PC o en otra) no los repita. Reimprimir no cuenta doble. */
-async function _otRegistrarMuestreo(){
+ * anotan en DATOS().muestreos_barriles para que la proxima orden (en esta PC o
+ * en otra) no los repita. Reimprimir no cuenta doble. NO guarda: lo hace
+ * _otTrasImprimir, una sola vez junto con la orden guardada. Devuelve cuantos
+ * barriles anoto. */
+function _otAnotarMuestreo(){
   const hist = DATOS().muestreos_barriles || [];
   const fecha = _otHoja.fecha || hoyLocalISO();
   const nuevos = registrosDeImpresion(_otRows, hist, fecha, _otHoja.nro);
-  if (!nuevos.length) return;
+  if (!nuevos.length) return 0;
   DATOS().muestreos_barriles = hist.concat(nuevos);
   markDirty();
-  const msg = $('otDadoMsg');
-  const ok = await guardar();
-  if (msg) msg.textContent = ok
-    ? `✓ ${nuevos.length} barril${nuevos.length !== 1 ? 'es' : ''} anotado${nuevos.length !== 1 ? 's' : ''} como muestreado${nuevos.length !== 1 ? 's' : ''}: la próxima orden no los repite.`
-    : 'Los barriles quedaron anotados pero NO se guardaron todavía: se van a guardar solos cuando vuelva la conexión (o apretá Ctrl+S).';
+  return nuevos.length;
+}
+
+/* Despues de imprimir: anota los barriles (solo analisis) y guarda la orden en
+ * ordenes_hojas, pendiente, con la foto de lo que salio en el papel (sin los
+ * mapas pegados). Un solo guardar() para las dos cosas. En modo ordenes la
+ * pantalla pasa a la orden guardada (como _ocGuardarOrden en
+ * vista-orden-correccion.js). */
+async function _otTrasImprimir(r){
+  const micro = _esMicro();
+  const tipo = micro ? 'micro' : 'muestras';
+  const nro = _otHoja.nro;
+  const nBarr = micro ? 0 : _otAnotarMuestreo();
+
+  const foto = fotoOrdenMuestras({
+    tipo, titulo: _otTitulo, hoja: _otHoja, filas: _otRows, textosMicro: _otMicro,
+    conBarril: _otModoBarril || _otRows.some(f => String(f.barril || '').trim() !== ''),
+  });
+  /* Una hoja en blanco (sin lotes ni vasijas: micro arranca así y se llena a
+   * mano) también se guarda, con lotes: [] y filas: []: queda en Pendientes
+   * y reserva el N°. */
+  let id = null;
+  const orden = armarOrdenHoja({
+    id: 'oh-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+    tipo, numero: nro, fecha: _otHoja.fecha || hoyLocalISO(),
+    quien: usuarioActual(), ahora: new Date().toISOString(),
+    lotes: foto.filas.map(f => f.lote), hoja: foto,
+  });
+  orden.pdf = { nombre: r.nombre, estado: r.guardado };
+  /* Otra pendiente con el mismo N°: se pregunta antes de reemplazarla. Al
+   * reemplazar, la guardada conserva el id de la anterior (res.id). */
+  const res = await guardarOrdenHojaConfirmando(orden);
+  if (res.ok){
+    markDirty();
+    id = res.id;
+  } else if (res.error === 'ejecutada'){
+    avisar('La orden ' + nro + ' ya está ejecutada: esta impresión no se guardó como orden nueva.', { tipo: 'mal' });
+  } else if (res.error === 'pendiente'){
+    avisar('Esta impresión no se guardó como orden: la ' + nro + ' pendiente quedó como estaba. Conviene imprimirla con otro N°.', { tipo: 'mal' });
+  }
+
+  let ok = true;
+  if (nBarr || id){
+    try { ok = await guardar(); } catch (_) { ok = false; }
+  }
+
+  const textoBarr = nBarr
+    ? `${nBarr} barril${nBarr !== 1 ? 'es' : ''} anotado${nBarr !== 1 ? 's' : ''} como muestreado${nBarr !== 1 ? 's' : ''}: la próxima orden no los repite.`
+    : '';
+
+  /* Modo ordenes: la orden ya esta en DATOS (aunque guardar() diga que no
+   * hubo red: quedo en el borrador local). La URL pasa a ?orden=<id>
+   * (conserva volver) para que F5 la reabra, y la banda se retitula. */
+  if (id && document.body.classList.contains('modo-ordenes')){
+    const p = new URLSearchParams(location.search); p.set('orden', id); p.delete('lotes');
+    history.replaceState(null, '', location.pathname + '?' + p.toString());
+    abrirOrdenMuestrasGuardada(id);
+    document.dispatchEvent(new CustomEvent('lotes:modo-orden-cambio'));
+    if (ok) avisar('✓ La orden ' + nro + ' quedó pendiente. Marcala ejecutada acá cuando esté terminada.' + (textoBarr ? ' ' + textoBarr : ''));
+    else avisar('La orden ' + nro + ' quedó guardada en este equipo y se va a subir sola cuando se pueda guardar.', { tipo: 'mal' });
+    return;
+  }
+
+  if (!ok){
+    _otAvisar('Quedó anotado en este equipo pero NO se guardó todavía: se va a guardar solo cuando vuelva la conexión (o apretá Ctrl+S).', 'error');
+    return;
+  }
+  const partes = [];
+  if (id) partes.push('✓ La orden ' + nro + ' quedó pendiente en Órdenes de trabajo' + (foto.filas.length ? '.' : ' (hoja en blanco).'));
+  if (textoBarr) partes.push((id ? '' : '✓ ') + textoBarr);
+  if (partes.length) _otAvisar(partes.join(' '), 'ok');
+}
+
+/* ---------- orden guardada (solo lectura) ----------
+ * _guardada = id de una orden de ordenes_hojas (muestras / micro). Con el
+ * puesto, renderOrden pinta solo su cabecera (estado, ejecutar, anular,
+ * reimprimir) y el papel armado desde orden.hoja, sin el panel de controles
+ * ni campos editables. Lo pone el modo ordenes (?orden=<id>). */
+let _guardada = null;
+
+/** Modo ordenes: Nueva · Orden de muestras / de microbiologia. */
+export function abrirOrdenMuestrasNueva(tipo){
+  _guardada = null;
+  const t = tipo === 'micro' ? 'micro' : 'analisis';
+  if (t === 'micro' && _otTipo !== 'micro'){
+    /* igual que el selector de tipo: arranca en hoja en blanco sin perder filas */
+    _otRows.forEach(r => { r.manual = true; });
+    _otFuente = 'hoja_en_blanco';
+  }
+  _otTipo = t;
+  mostrarTab('orden');
+}
+
+/** Modo ordenes: una orden de muestras / micro ya guardada, en solo lectura. */
+export function abrirOrdenMuestrasGuardada(id){
+  _guardada = id;
+  mostrarTab('orden');
+}
+
+/* Reimprimir = solo papel: sin volver a guardar el PDF ni pedir numero.
+ * printing-orden no se ajusta a una A4 (imprimirYGuardar tampoco lo hace:
+ * ajustarHojasA4 es solo para printing-ot-mov y printing-ordencorr). */
+function _otReimprimir(){
+  document.body.classList.add('printing-orden');
+  try { window.print(); }
+  finally { document.body.classList.remove('printing-orden'); }
+}
+
+function _otPintarGuardada(sec){
+  const o = ordenHojaPorId(DATOS(), _guardada);
+  if (!o){
+    sec.innerHTML = '<div class="msg info" style="margin-top:10px">Esta orden no existe (¿la borraron?)</div>';
+    return;
+  }
+  const puedeEditar = ['editor', 'admin'].includes((window.CIW || {}).rol);
+  /* La cabecera va en .ot-prev-cab: printing-orden ya la esconde al imprimir. */
+  sec.innerHTML = `
+<section class="ot-der" aria-label="Orden guardada">
+  <div class="ot-prev-cab" id="otGuardadaCab">${htmlCabeceraOrden(o, { puedeEditar })}</div>
+  <div id="otPaginas"></div>
+</section>`;
+
+  const cfg = cfgDeHojaGuardada(o.hoja, o.tipo, { fecha: o.fecha, nro: o.ot });
+  const pag = $('otPaginas');
+  pag.innerHTML = pintarHojas(cfg);
+  hojaSoloLectura(pag);
+
+  cablearCabeceraOrden($('otGuardadaCab'), o.id, { reimprimir: _otReimprimir, alCambiar: () => renderOrden() });
 }
 
 function initFiltrosOt(){
@@ -459,8 +747,20 @@ function initFiltrosOt(){
   _instOt = initFiltrosMulti('otFltBar', _descOt, _otAplicarFiltros);
 }
 
+/* La Agenda arma la orden del dia: muestra la pestana y carga esos lotes como
+ * si se hubieran pegado en "Pegar lotes" (reemplazando la orden). */
+export function precargarOrden(lotes){
+  mostrarTab('orden');
+  _otPegado = (lotes || []).join('\n');
+  const t = $('otPegar'); if (t) t.value = _otPegado;
+  _otCargarPegados(true);
+}
+
 export function renderOrden(){
   const sec = $('tab-orden'); if (!sec) return;
+
+  /* orden guardada abierta desde el modo ordenes: solo lectura */
+  if (_guardada){ _otPintarGuardada(sec); return; }
 
   /* --- si no hay datos del dashboard, mostrar placeholder y disparar carga --- */
   if (!dashData()){
@@ -526,9 +826,10 @@ export function renderOrden(){
     <h2>Orden de trabajo — ${micro ? 'microbiología' : 'muestras'}</h2>
     <span class="oc-count" id="otCount" aria-live="polite"></span>
     <div class="oc-tipo" role="radiogroup" aria-label="Tipo de orden">
-      ${tipoBtn('analisis', '🧪 Análisis')}${tipoBtn('micro', '🦠 Microbiología')}
+      ${tipoBtn('analisis', 'Análisis')}${tipoBtn('micro', 'Microbiología')}
     </div>
     <div class="oc-head-fin">
+      ${chipCarpeta('principal')}
       <button class="btn primary oc-print" id="btnOtImprimir">🖨️ Imprimir</button>
     </div>
   </div>
@@ -568,10 +869,11 @@ export function renderOrden(){
     <!-- 2. muestreo por barril -->
     <section class="oc-sec oc-panel" aria-labelledby="ocT2">
       <h3 class="oc-sec-t" id="ocT2"><span class="oc-n">2</span>Muestreo por barril</h3>
-      <p class="oc-hint">Sortea un barril lleno de cada lote, rotando entre los menos muestreados. Volver a sortear cambia el barril.</p>
+      <p class="oc-hint">Sin columna Barril, sacan la muestra de cualquier barril. «Barriles específicos» pone todos los barriles llenos de cada lote, uno por fila: quitá los que no quieras. «Sortear» elige uno por lote, rotando entre los menos muestreados.</p>
       <div class="oc-row">
+        <button class="btn oc-ghost" id="btnOtBarrilElegir" title="Pone todos los barriles llenos de cada lote (del Mapa de Barriles), uno por fila. Quitá con ✕ los que no quieras.">✎ Elegir barriles específicos</button>
         <button class="btn oc-strong" id="btnOtDado" title="Sortear un barril lleno al azar de cada lote de la orden (del inventario del Mapa de Barriles). Volver a apretar cambia el barril.">🎲 Sortear barriles</button>
-        <button class="btn oc-ghost" id="btnOtSinSorteo" title="Quitar los barriles sorteados: la orden vuelve a salir sin columna Barril y en la bodega sacan la muestra de cualquier barril. No se anota nada como muestreado." style="display:none">✕ Sin sorteo</button>
+        <button class="btn oc-ghost" id="btnOtSinSorteo" title="Quitar la columna Barril: la orden vuelve a ser genérica y en la bodega sacan la muestra de cualquier barril. No se anota nada como muestreado." style="display:none">✕ Quitar columna Barril</button>
       </div>
       <div class="oc-note" id="otDadoMsg" aria-live="polite"></div>
     </section>
@@ -622,13 +924,24 @@ export function renderOrden(){
 <!-- la orden de trabajo: la hoja tal cual se imprime, editable encima (no hay
      grilla aparte). Es la unica seccion visible al imprimir (printing-orden). -->
 <section class="ot-der" aria-label="Orden de trabajo">
+  <div class="ot-prev-cab ot-resumen" id="otResumen" aria-live="polite"></div>
+  <div class="ot-aviso" id="otAviso" role="status" hidden><span class="ot-aviso-t"></span><button type="button" class="ot-aviso-x" aria-label="Cerrar aviso">✕</button></div>
   <div class="ot-prev-cab">
     <span><b>La orden tal cual se imprime</b> · hacé clic para escribir · Enter baja de fila · pegá una columna de lotes en «Lote»</span>
     ${micro ? '<button class="btn oc-ghost oc-mini" id="btnOtMicroDef" title="Volver a los textos del Excel de microbiología (orden y cartel)">↺ Textos originales</button>' : ''}
   </div>
   <datalist id="otRecLista"></datalist>
+  <div id="otBarrListas" hidden></div>
   <div id="otPaginas"></div>
 </section>`;
+
+  /* aviso de arriba de la hoja: se cierra con su ✕; "cambiar" lleva a la fuente */
+  $('otAviso').querySelector('.ot-aviso-x').addEventListener('click', () => _otAvisar('', 'ok', ''));
+  $('otResumen').addEventListener('click', e => {
+    if (!e.target.closest('#btnOtCambiarFuente')) return;
+    const f = $('otFuente') || $('otPegar');
+    if (f){ f.scrollIntoView({ block: 'center', behavior: 'smooth' }); f.focus(); }
+  });
 
   /* --- construir filas iniciales si la tabla está vacía o si se cambia la fuente --- */
   _otAplicarFiltros();
@@ -683,6 +996,13 @@ export function renderOrden(){
   /* --- filtros multi (re-montados en cada render porque sec.innerHTML se recreo) --- */
   if (_descOt.length === 0){
     initFiltrosOt();
+    if (_descOt.some(d => d.set.size)){
+      /* Los Sets ya traian valores restaurados del F5, pero _otAplicarFiltros()
+         de la linea 808 corrio con _descOt todavia vacio (no existia hasta
+         ahora): armo la hoja sin filtrar. Se vuelve a aplicar una vez mas, ya
+         con los descriptores listos; el resto de este render sigue de largo. */
+      _otAplicarFiltros();
+    }
   } else {
     const bar = $('otFltBar');
     if (bar){
@@ -698,6 +1018,7 @@ export function renderOrden(){
    * _otRenderTabla() repinta, por eso conserva el cursor entre teclas. */
   $('otBuscar').addEventListener('input', e => {
     _otBusqueda = e.target.value;
+    _gf('busca', _otBusqueda);
     _otAplicarFiltros();
   });
 
@@ -706,6 +1027,7 @@ export function renderOrden(){
    * _otBusqueda se resetea ANTES para que ese unico repintado ya lo vea. */
   $('btnOtLimpiarFlt').addEventListener('click', () => {
     _otBusqueda = '';
+    if (_FS) _FS.borrar('lotes:orden:');
     limpiarFiltrosMulti(_descOt, 'otBuscar', _instOt, _otAplicarFiltros);
   });
 
@@ -722,11 +1044,12 @@ export function renderOrden(){
     /* sin sorteo: vaciar la columna Barril. Como el papel ya no lleva barriles,
      * imprimir despues no anota nada en muestreos_barriles. */
     $('btnOtSinSorteo').addEventListener('click', () => {
-      _otRows.forEach(r => { r.barril = ''; });
+      _otRows = colapsarPorLote(_otRows);
+      _otModoBarril = false;
       _otRefrescar();
-      const msg = $('otDadoMsg');
-      if (msg) msg.textContent = 'Sin sorteo: sacan la muestra de cualquier barril.';
+      _otAvisar('Orden genérica: sin columna Barril, sacan la muestra de cualquier barril.');
     });
+    $('btnOtBarrilElegir').addEventListener('click', _otActivarModoBarril);
 
     /* recipiente / cantidad por defecto */
     /* "✎ Otro…" cambia el selector por un campo de texto; al confirmarlo
@@ -805,14 +1128,47 @@ export function renderOrden(){
     _otPintarMapaChips();
   }
 
-  /* imprimir */
-  $('btnOtImprimir').addEventListener('click', () => {
-    document.body.classList.add('printing-orden');
-    window.print();
-    document.body.classList.remove('printing-orden');
-    /* microbiologia no usa el dado: no hay barriles que anotar */
-    if (!_esMicro()) _otRegistrarMuestreo();
+  /* N° de orden: el de la carpeta de OT, si el usuario todavia no puso uno */
+  if (!_otHoja.nro && !_otNroPropuesto){
+    _otNroPropuesto = true;
+    _otProponerNro();
+  }
+  cablearChipsCarpeta($('btnOtImprimir').parentElement, () => {
+    if (_otHoja.nro === _otNroUltimo) _otProponerNro();
   });
+
+  /* imprimir: guarda el PDF en la carpeta de OT (guardar-ot.js) */
+  $('btnOtImprimir').addEventListener('click', async () => {
+    const r = await imprimirYGuardar({
+      claseBody: 'printing-orden', contenedor: $('otPaginas'), serie: 'principal',
+      numero: _otHoja.nro, titulo: _otTitulo,
+    });
+    if (r.numeroLibre){
+      _otPonerNro(r.numeroLibre);
+      return;
+    }
+    if (!r.ok) return;
+    // Ya impreso: el numero queda fijo (conectar la carpeta no lo re-propone).
+    _otNroUltimo = null;
+    if (r.numero && r.numero !== _otHoja.nro) _otPonerNro(r.numero);
+    /* anota los barriles (microbiologia no usa el dado) y guarda la orden */
+    await _otTrasImprimir(r);
+  });
+}
+
+/* Pide el N° a la carpeta y lo pone solo si nadie lo cambio mientras tanto. */
+function _otProponerNro(){
+  const previo = _otHoja.nro;
+  proponerNumero('principal').then(p => {
+    if (_otHoja.nro !== previo) return;
+    _otNroUltimo = p.numero;
+    _otPonerNro(p.numero);
+  });
+}
+
+function _otPonerNro(nro){
+  _otHoja.nro = nro;
+  document.querySelectorAll('#otPaginas [data-campo="nro"]').forEach(i => { i.value = nro; });
 }
 
 /* Filas editadas sobre la hoja: confirmar, Enter, pegar columna, quitar y
@@ -832,6 +1188,8 @@ function _otCablearFilas(hoja){
     if (celda) _otPegarEnLote(celda, e);
   });
   hoja.addEventListener('click', e => {
+    const d = e.target.closest('[data-dadofila]');
+    if (d){ _otTirarDadoFila(+d.dataset.dadofila); return; }
     const q = e.target.closest('[data-quitar]');
     if (q){ _otRows.splice(+q.dataset.quitar, 1); _otRepintar(); return; }
     if (e.target.closest('.oh-agregar')){

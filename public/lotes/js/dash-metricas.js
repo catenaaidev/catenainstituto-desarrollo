@@ -135,45 +135,46 @@ function ultimoValido(ordenados, leer){
 
 /* ------------------------------------------------------------------ bandas */
 
-/* Cortes de la acidez volatil. El ultimo tramo no lleva 'hasta': todo lo que
- * pase el limite cae ahi, y el limite es el av_max del lote, que cambia por
- * variedad y por proyecto. Por eso los cortes se expresan como FRACCION del
- * limite y no en g/L absolutos: un lote con av_max 0,9 y otro con 0,7 tienen
- * que poder convivir en el mismo grafico sin que la banda "en el limite"
- * signifique cosas distintas para cada uno.
- * riesgo 0..4 indexa la escala --sc-0..--sc-4 del CSS. */
+/* Cortes de la acidez volatil, en g/L ABSOLUTOS (pedido del 2026-11-11: el
+ * grafico tiene que decir valores de AV, no porcentajes). Antes los cortes eran
+ * fraccion del av_max de cada lote; hoy todos los activos tienen maximo 0,8 g/L
+ * y la escala se armo alrededor de ese 0,8. Si algun dia un lote tiene otro
+ * maximo, igual cae por su valor medido: el grafico ya no mira av_max (la
+ * alarma de la tabla de abajo si).
+ * El ultimo tramo no lleva 'hasta': todo lo que pase 1,0 cae ahi.
+ * riesgo 0..4 indexa la escala --sc-0..--sc-4 del CSS. 'rango' es la segunda
+ * linea de la etiqueta del eje: el nombre solo no dice donde corta la banda.
+ * 'lineas' parte a mano una palabra que no entra en el ancho de su barra. */
 export const BANDAS_AV = [
-  { id: 'holgado',  etiqueta: 'Holgado',  hasta: 0.60, riesgo: 0, ayuda: 'Menos del 60 % del limite' },
-  { id: 'normal',   etiqueta: 'Normal',   hasta: 0.80, riesgo: 1, ayuda: '60-80 % del limite' },
-  /* techoInclusivo: un lote que da EXACTAMENTE su av_max entra aca y no en
-   * "Excedido". No es un capricho de redondeo: motor_fml.evaluar_av_alerta
-   * dispara la alarma con `ultimo > av_max`, estrictamente mayor, asi que un
-   * lote justo en el limite no tiene alarma. Si el grafico lo pintara como
-   * excedido, esta misma pantalla mostraria un lote rojo arriba que no aparece
-   * en la tabla de alarmas de abajo, y la primera reaccion de quien lo vea va a
-   * ser desconfiar de las dos cosas. */
-  { id: 'atencion', etiqueta: 'Atencion', hasta: 1.00, techoInclusivo: true, riesgo: 2, ayuda: '80-100 % del limite' },
-  { id: 'excedido', etiqueta: 'Excedido', hasta: 1.25, riesgo: 3, ayuda: 'Hasta 25 % por encima' },
-  { id: 'critico',  etiqueta: 'Critico',  hasta: null, riesgo: 4, ayuda: 'Mas de 25 % por encima' },
+  { id: 'holgado',  etiqueta: 'Baja',     rango: '< 0,6 g/L',   hasta: 0.60, riesgo: 0, ayuda: 'Menos de 0,6 g/L' },
+  { id: 'normal',   etiqueta: 'Moderada', rango: '0,6–0,7 g/L', hasta: 0.70, riesgo: 1, ayuda: 'De 0,6 a 0,7 g/L' },
+  /* techoInclusivo: un lote que da EXACTAMENTE 0,8 entra aca y no en
+   * "Fuera de especificacion". motor_fml.evaluar_av_alerta dispara la alarma
+   * con `ultimo > av_max`, estrictamente mayor, asi que un lote justo en el
+   * limite no tiene alarma; pintarlo como excedido mostraria un lote arriba que
+   * no aparece en la tabla de alarmas de abajo. */
+  { id: 'atencion', etiqueta: 'Próxima al límite', rango: '0,7–0,8 g/L', hasta: 0.80, techoInclusivo: true, riesgo: 2, ayuda: 'De 0,7 a 0,8 g/L' },
+  { id: 'excedido', etiqueta: 'Fuera de especificación', rango: '0,8–1,0 g/L', hasta: 1.00, techoInclusivo: true, riesgo: 3, ayuda: 'Más de 0,8 y hasta 1,0 g/L' },
+  { id: 'critico',  etiqueta: 'Crítica',  rango: '> 1,0 g/L',  hasta: null, riesgo: 4, ayuda: 'Más de 1,0 g/L' },
 ];
 
 /* Cortes del SO2 libre, medidos como DIFERENCIA contra el objetivo del lote
  * (libre - objetivo, en mg/L). El objetivo depende del pH de la muestra, asi
  * que la diferencia es lo unico comparable entre lotes. */
 export const BANDAS_SO2 = [
-  { id: 'deficit_alto',  etiqueta: 'Deficit > 10',  desde: null, hasta: -10, riesgo: 4, ayuda: 'Mas de 10 mg/L por debajo del objetivo' },
-  { id: 'deficit_medio', etiqueta: 'Deficit 5-10',  desde: -10,  hasta: -5,  riesgo: 3, ayuda: 'Entre 5 y 10 mg/L por debajo' },
-  { id: 'deficit_bajo',  etiqueta: 'Deficit < 5',   desde: -5,   hasta: 0,   riesgo: 2, ayuda: 'Hasta 5 mg/L por debajo' },
-  { id: 'en_objetivo',   etiqueta: 'En objetivo',   desde: 0,    hasta: 10,  riesgo: 0, ayuda: 'Cumple, hasta 10 mg/L de margen' },
-  { id: 'sobrado',       etiqueta: 'Sobrado > 10',  desde: 10,   hasta: null, riesgo: 1, ayuda: 'Mas de 10 mg/L por encima: revisar sobredosificacion' },
+  { id: 'deficit_alto',  etiqueta: 'Déficit severo',   rango: '< −10 mg/L',  desde: null, hasta: -10, riesgo: 4, ayuda: 'Más de 10 mg/L por debajo del objetivo' },
+  { id: 'deficit_medio', etiqueta: 'Déficit moderado', rango: '−10 a −5',    desde: -10,  hasta: -5,  riesgo: 3, ayuda: 'Entre 5 y 10 mg/L por debajo del objetivo' },
+  { id: 'deficit_bajo',  etiqueta: 'Déficit leve',     rango: '−5 a 0',      desde: -5,   hasta: 0,   riesgo: 2, ayuda: 'Hasta 5 mg/L por debajo del objetivo' },
+  { id: 'en_objetivo',   etiqueta: 'En objetivo',      rango: '0 a +10',     desde: 0,    hasta: 10,  riesgo: 0, ayuda: 'Cumple, con hasta 10 mg/L de margen' },
+  { id: 'sobrado',       etiqueta: 'Sobrecorregido',   lineas: ['Sobre-', 'corregido'], rango: '> +10 mg/L',  desde: 10,   hasta: null, riesgo: 1, ayuda: 'Más de 10 mg/L por encima del objetivo: revisar sobredosificación' },
 ];
 
-/** Indice de banda de AV para una relacion valor/limite. */
-function bandaAv(ratio){
+/** Indice de banda de AV para un valor en g/L. */
+function bandaAv(gl){
   for (let i = 0; i < BANDAS_AV.length; i++){
     const b = BANDAS_AV[i];
     if (b.hasta === null) return i;
-    if (b.techoInclusivo ? ratio <= b.hasta : ratio < b.hasta) return i;
+    if (b.techoInclusivo ? gl <= b.hasta : gl < b.hasta) return i;
   }
   return BANDAS_AV.length - 1;
 }
@@ -250,7 +251,7 @@ export function metricasPorLote(dash, datos){
       av:       av.valor,
       avLimite: avLimite,
       avRatio:  avRatio,
-      avBanda:  avRatio === null ? null : bandaAv(avRatio),
+      avBanda:  av.valor === null ? null : bandaAv(av.valor),
       avFecha:  av.fecha,
       ph:       ph.valor,
       phLimite: nm(eff.ph_max),
@@ -297,7 +298,7 @@ export const ALARMAS_HEATMAP = [
   ['fml_no_finalizada',  'FML'],
   ['fa_no_finalizada',   'FA'],
   ['frecuencia_vencida', 'Vencido'],
-  ['no_lleno',           'Mermo'],
+  ['no_lleno',           'Merma'],
 ];
 
 /**

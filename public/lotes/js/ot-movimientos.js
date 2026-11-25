@@ -6,6 +6,8 @@
  */
 'use strict';
 
+import { numerosWeb, formatearNumero } from './numero-ot.js';
+
 export const PENDIENTE = 'pendiente';
 export const EJECUTADO = 'ejecutado';
 
@@ -27,7 +29,11 @@ export function esEjecutado(mov){
   return !NO_EJECUTADOS.has(estado);
 }
 
-/* Siguiente numero de OT libre para el anio, con formato OT-<anio>-<NNN>.
+/* Siguiente numero de OT libre. Desde 2026-10 la numeracion es la de la
+ * carpeta de OneDrive (0939, ver numero-ot.js) y la propone guardar-ot.js
+ * leyendo la carpeta. Esto queda como respaldo sin carpeta: si la web ya
+ * tiene alguna OT con ese formato sigue desde ahi; si no, el formato viejo
+ * OT-<anio>-<NNN>.
  *
  * Se calcula del maximo existente en los movimientos y NO de un contador
  * guardado aparte: un contador se puede desincronizar de los datos (por un
@@ -40,6 +46,8 @@ export function esEjecutado(mov){
  * `ordenes` son las OT de trasiego (DATOS().ordenes_trabajo): comparten
  * numeracion con los movimientos sueltos, asi que se miran las dos listas. */
 export function proximoNumeroOT(movimientos, anio, ordenes = []){
+  const nuevos = numerosWeb({ movimientos, ordenes_trabajo: ordenes }, 'principal');
+  if (nuevos.length) return formatearNumero(Math.max(...nuevos) + 1, 'principal');
   const prefijo = `OT-${anio}-`;
   let max = 0;
   for (const m of [...(movimientos || []), ...(ordenes || [])]){

@@ -6,7 +6,7 @@
  * lotes-vacios.test.mjs.
  */
 import { describe, it, expect } from 'vitest';
-import { armarHijo, validarNumeroLote, ordenarConFijos, movimientoHijo, CAMPOS_ENVASE, PASOS }
+import { armarHijo, validarNumeroLote, siguienteLote, ordenarConFijos, movimientoHijo, CAMPOS_ENVASE, PASOS }
   from '../public/lotes/js/lote-nuevo.js';
 
 describe('armarHijo', () => {
@@ -113,5 +113,18 @@ describe('PASOS del asistente', () => {
   it('pregunta el origen: uva o vino ya hecho', () => {
     const p = PASOS.find(x => x.k === 'origen');
     expect(p.opciones).toEqual(['', 'Uva', 'Vino']);
+  });
+});
+
+describe('siguienteLote', () => {
+  it('el mayor del año + 1, como texto', () => {
+    expect(siguienteLote([{ lote: 26318 }, { lote: '26319' }, { lote: 25999 }], 2026)).toBe('26320');
+  });
+  it('sin lotes del año arranca en YY001', () => {
+    expect(siguienteLote([{ lote: 25310 }], 2026)).toBe('26001');
+    expect(siguienteLote([], 2027)).toBe('27001');
+  });
+  it('ignora lo que no es un lote de 5 digitos', () => {
+    expect(siguienteLote([{ lote: '26319' }, { lote: '2699999' }, { lote: 'X26400' }, { lote: null }], 2026)).toBe('26320');
   });
 });

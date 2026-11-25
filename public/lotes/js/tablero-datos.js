@@ -49,10 +49,11 @@ const EJES = [
     ok: 'Lleno', mal: 'No lleno',     okSi: 'lleno' },
 ];
 
-/* Los dos que solo aparecen cuando el motor los prende. */
+/* Los que solo aparecen cuando el motor los prende. */
 const EVENTUALES = [
   { clave: 'av_alerta',        cond: 'av_alerta',        texto: 'AV alerta' },
   { clave: 'so2_caida_alerta', cond: 'so2_caida_alerta', texto: 'Caída SO₂' },
+  { clave: 'reanalisis_correccion', cond: 'reanalisis_correccion', texto: 'Re-análisis' },
 ];
 
 const esOk = (valor, okSi) => Array.isArray(okSi) ? okSi.includes(valor) : valor === okSi;

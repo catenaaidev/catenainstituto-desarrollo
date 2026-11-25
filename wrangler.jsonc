@@ -8,6 +8,14 @@
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
 
+  // Smart Placement: el Worker corre cerca de la base D1, no en Buenos Aires.
+  // Medido el 2026-11-04 desde la bodega: cada consulta a D1 costaba ~145 ms
+  // (el borde EZE responde en 38 ms, pero D1 queda lejos), y un pedido hace
+  // 3-6 consultas en fila: /lotes/api/version tardaba 620 ms y la lista de
+  // Órdenes de trabajo 2,5 s. Los archivos estáticos se siguen sirviendo desde
+  // el borde; solo lo que pasa por el Worker se mueve.
+  "placement": { "mode": "smart" },
+
   // Archivos estáticos: el portal y las pantallas de cada módulo.
   // run_worker_first lista lo que TIENE que pasar por el Worker: las APIs, y
   // el index.html de cada módulo (para inyectarle la identidad de Office 365).
@@ -20,6 +28,7 @@
       "/prensas/api/*",
       "/barriles/api/*",
       "/lotes/api/*",
+      "/ordenes/api/*",
       "/prensas",
       "/prensas/",
       "/prensas/index.html",
@@ -28,7 +37,10 @@
       "/barriles/index.html",
       "/lotes",
       "/lotes/",
-      "/lotes/index.html"
+      "/lotes/index.html",
+      "/ordenes",
+      "/ordenes/",
+      "/ordenes/index.html"
     ]
   },
 

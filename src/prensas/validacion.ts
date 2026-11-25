@@ -25,8 +25,10 @@ export interface ConfigSecciones {
   requeridas: readonly string[];
 }
 
+/* `ordenes_hojas` (órdenes de papel de Prensas guardadas al imprimir — entrega 3
+ * de Órdenes de trabajo, 2026-11-04): opcional, con control de lista y freno. */
 export const SECCIONES_PRENSAS: ConfigSecciones = {
-  secciones: ['lotes', 'analisis', 'degustaciones', 'agregados'],
+  secciones: ['lotes', 'analisis', 'degustaciones', 'agregados', 'ordenes_hojas'],
   requeridas: ['lotes', 'analisis'],
 };
 
@@ -36,10 +38,14 @@ export const SECCIONES_PRENSAS: ConfigSecciones = {
  * (las OT de trasiego, 2026-09-23): va en `secciones` y no en `requeridas` para
  * que tenga el control de lista y el freno anti-borrado sin exigirla.
  * `vasijas` (padrón de vasijas fijas) y `mermas` (barricas mermas), 2026-10-01:
- * mismo criterio.
+ * mismo criterio. `agenda` (decisiones a mano de la Agenda, 2026-10-14), igual.
+ * `recorridas` (Inventario de tanques, 2026-10-14), igual.
+ * `ordenes_correccion` (Orden de corrección guardada al imprimir, 2026-11-02), igual.
+ * `ordenes_hojas` (Órdenes de papel guardadas al imprimir: muestras, micro,
+ * agregados — entrega 2 de Órdenes de trabajo, 2026-11-04), igual.
  */
 export const SECCIONES_LOTES: ConfigSecciones = {
-  secciones: ['lotes', 'analisis', 'movimientos', 'ordenes_trabajo', 'vasijas', 'mermas'],
+  secciones: ['lotes', 'analisis', 'movimientos', 'ordenes_trabajo', 'vasijas', 'mermas', 'agenda', 'recorridas', 'ordenes_correccion', 'ordenes_hojas'],
   requeridas: ['lotes', 'analisis'],
 };
 

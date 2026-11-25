@@ -45,3 +45,8 @@ jobs:
 
       - name: Tests
         run: npm test
+
+      # La lista de <link rel="modulepreload"> de cada pantalla tiene que
+      # coincidir con sus import: si quedó vieja, vuelve la carga en cascada.
+      - name: Precargas de módulos al día
+        run: node scripts/precargas.mjs --verificar

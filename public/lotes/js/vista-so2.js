@@ -7,34 +7,23 @@ import { activarGrilla, repintarGrilla } from './grilla.js';
 import { montarVirtual, soltarVirtual } from './tabla-virtual.js';
 import { anchoDeTexto } from './anchos-cols.js';
 import { pasaMulti, opcionesValores,
-         initFiltrosMulti, limpiarFiltrosMulti } from './tabla.js';
+         initFiltrosMulti, limpiarFiltrosMulti, setF } from './tabla.js';
 import { fmtFecha } from './fechas.js';
+import { calcCorreccionSO2 } from './so2-calculo.js';
 import { visible } from './selector-anios.js';
-
-/**
- * Calcula la corrección de SO2.
- * Fórmulas replicadas exactas desde motor_fml.py / Global Constraints.
- * @param {number|null} actual   SO2 libre actual (mg/L)
- * @param {number|null} deseado  SO2 libre deseado (mg/L)
- * @param {number|null} litros   Litros en vasija
- * @param {number|null} ph       pH (para SO2 molecular)
- * @returns {{ diferencia, mbk_a_agregar, ml_exactos, so2_molecular }|null}
- */
-function calcCorreccionSO2(actual, deseado, litros, ph){
-  if (actual == null || deseado == null || litros == null) return null;
-  const diferencia     = deseado - actual;
-  const mbk_a_agregar  = ((diferencia * litros * 1.5) / 1000) * 2;
-  const ml_exactos     = (diferencia * litros * 1.5) / 55;
-  const so2_molecular  = (ph != null) ? (actual / (1 + Math.pow(10, ph - 1.8))) : null;
-  return { diferencia, mbk_a_agregar, ml_exactos, so2_molecular };
-}
+import { confirmar } from './dialogos.js';
+import { pintarOrdenesCorreccion } from './vista-ordenes-correccion.js';
 
 /* Estado local de filtros de la bitacora */
 /* Un Set por columna filtrable, creado UNA vez: los widgets del filtro guardan
  * una referencia a este mismo objeto, asi que el estado sobrevive al re-render. */
-const filtSo2 = { variedad: new Set() };
+const filtSo2 = { variedad: setF('so2', 'variedad') };
 let _descSo2 = [], _instSo2 = [];
-let _so2FiltBusca = '';
+/* El buscador sobrevive al F5 en esta pestaña (shared/filtros-sesion.js). */
+const _FS = typeof window !== 'undefined' && window.CIWFiltros;
+const _lf = (k, d) => _FS ? _FS.leer('lotes:so2:' + k, d) : d;
+const _gf = (k, v) => { if (_FS) _FS.guardar('lotes:so2:' + k, v); };
+let _so2FiltBusca = (v => typeof v === 'string' ? v : '')(_lf('busca', ''));
 /* La bitacora es una tabla virtual (tabla-virtual.js): con los dos años son
  * ~2.200 correcciones, y dibujarlas todas eran 24.000 nodos que la pagina
  * cargaba en cada cambio de pestaña aunque esta no se estuviera viendo. */
@@ -44,8 +33,17 @@ let _virtualBit = null;
  * O(correcciones x lotes) en cada tecla del buscador. */
 let _loteMapFiltro = null;
 
+let _ordenUnica = null;
+/* Modo órdenes: el Registro muestra solo ESA orden de corrección, con su hoja. */
+export function fijarOrdenUnica(id){ _ordenUnica = id || null; }
+
 export function renderCorrecciones(){
   const sec = $('tab-so2'); if (!sec) return;
+  if (_ordenUnica){
+    sec.innerHTML = '<div id="so2Ordenes"></div>';
+    pintarOrdenesCorreccion($('so2Ordenes'), () => renderCorrecciones(), { soloId: _ordenUnica });
+    return;
+  }
 
   /* ---- mapa lote -> objeto lote (para litros, variedad) ---- */
   const loteMap = new Map();
@@ -122,9 +120,9 @@ export function renderCorrecciones(){
   <div id="so2Msg" style="margin-top:10px"></div>
 </div>
 
-<!-- Bitácora -->
+<!-- Correcciones registradas (por lote) -->
 <div class="card">
-  <h2>Bitácora de correcciones SO₂</h2>
+  <h2>Correcciones registradas</h2>
   <div class="toolbar" id="so2BitacoraToolbar">
     <input class="txt" id="so2BuscaBit" placeholder="🔎 Buscar por lote u OT…" style="min-width:180px" value="${escA(_so2FiltBusca)}">
     <div class="mfilt-bar" id="so2FltBar"></div>
@@ -184,11 +182,19 @@ export function renderCorrecciones(){
   /* ---- filtros bitácora ---- */
   $('so2BuscaBit').addEventListener('input', () => {
     _so2FiltBusca = $('so2BuscaBit').value.trim();
+    _gf('busca', _so2FiltBusca);
     _so2RepintarBitacora();
   });
   /* --- filtros multi (re-montados en cada render porque sec.innerHTML se recreo) --- */
   if (_descSo2.length === 0){
     initFiltrosSo2();
+    if (_descSo2.some(d => d.set.size)){
+      /* El Set ya traia variedad(es) restauradas del F5, pero la bitacora de
+         arriba (linea 140) se pinto con _descSo2 todavia vacio (no existia
+         hasta ahora). Se repinta -- solo la bitacora, no toda la pestaña --
+         ya con el descriptor listo; el resto de este render sigue de largo. */
+      _so2RepintarBitacora();
+    }
   } else {
     const bar = $('so2FltBar');
     if (bar){
@@ -198,6 +204,7 @@ export function renderCorrecciones(){
   }
   $('btnSo2LimpiarFlt').addEventListener('click', () => {
     _so2FiltBusca = '';
+    if (_FS) _FS.borrar('lotes:so2:');
     limpiarFiltrosMulti(_descSo2, 'so2BuscaBit', _instSo2, _so2RepintarBitacora);
   });
 
@@ -232,7 +239,7 @@ function _actualizarResultados(){
 }
 
 /** Registra la corrección en DATOS.analisis */
-function _registrarCorreccionSO2(){
+async function _registrarCorreccionSO2(){
   const msgEl = $('so2Msg'); if (!msgEl) return;
 
   const loteStr = $('so2SelLote') ? $('so2SelLote').value : '';
@@ -277,10 +284,11 @@ function _registrarCorreccionSO2(){
     String(a.lote ?? '') === loteStr && (a.fecha_analisis || '') === fecha &&
     a.correccion && typeof a.correccion === 'object' && !esAnulada(a.correccion) &&
     String(a.correccion.ot_n ?? '').trim() !== '' && String(a.correccion.ot_n).trim() !== otNueva);
-  if (otraOt && !confirm('El lote ' + loteStr + ' ya tiene una corrección el ' + fmtFecha(fecha) +
-      ' con la OT ' + String(otraOt.correccion.ot_n).trim() + '.\n\n' +
-      'Aceptar = registrar esta también (quedan las dos en la bitácora; no se pisa la anterior).\n' +
-      'Cancelar = no registrar nada y revisar la OT o la fecha.')) return;
+  if (otraOt && !await confirmar({
+      titulo: 'Ya hay una corrección ese día',
+      texto: 'El lote ' + loteStr + ' ya tiene una corrección el ' + fmtFecha(fecha) + ' con la OT ' +
+        String(otraOt.correccion.ot_n).trim() + '.\n\nSi registrás esta también, quedan las dos en la bitácora (no se pisa la anterior).',
+      si: 'Registrar también', no: 'Revisar OT o fecha' })) return;
 
   const { que, convive } = aplicarCorreccion(DATOS().analisis, loteStr, fecha, correccion);
 

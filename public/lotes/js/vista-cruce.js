@@ -6,6 +6,7 @@ import { $, esc, escA, registrarVista, irALote,
 import { resumenEnvases, CAPACIDADES } from './envases.js';
 import { litrosDelLote } from './mermas.js';
 import { queryAnios } from './selector-anios.js';
+import { avisar, confirmar } from './dialogos.js';
 
 const ETIQUETA = {
   coincide:            'Coincide',
@@ -56,12 +57,12 @@ function seleccionados(){
 
 async function aplicarSeleccion(){
   const elegidos = new Set(seleccionados());
-  if (!elegidos.size){ alert('No hay ningun lote tildado.'); return; }
+  if (!elegidos.size){ avisar('No hay ningún lote tildado.', { tipo: 'mal' }); return; }
 
   const porLote = new Map((DATOS().lotes || []).map(l => [String(l.lote), l]));
 
   // Calculamos el resumen de cambios sin mutar: solo leemos el estado actual
-  // y lo que quedaria, para armar el texto del confirm().
+  // y lo que quedaria, para armar el texto de la confirmación.
   // Los objetos se mutan SOLO si el usuario confirma.
   const planCambios = [];
   for (const v of (_informe.lotes || [])){
@@ -77,7 +78,7 @@ async function aplicarSeleccion(){
     planCambios.push({ lote: l, desglose: v.mapa,
                        texto: v.lote + ': ' + antes + ' → ' + despues });
   }
-  if (!planCambios.length){ alert('No hubo nada que cambiar.'); return; }
+  if (!planCambios.length){ avisar('No hubo nada que cambiar.', { tipo: 'info' }); return; }
 
   // B5: advertencia para lotes con vasija_grande (pueden inflar litros)
   const mixtos = planCambios.filter(c => {
@@ -108,7 +109,7 @@ async function aplicarSeleccion(){
         + 'El tanque grande no se toca desde aca.';
   }
 
-  if (!confirm(msg)) return;  // cancelar ya no deja estado a medias
+  if (!await confirmar({ titulo: 'Corregir ' + planCambios.length + ' lotes con el mapa', texto: msg, si: 'Corregir lotes', no: 'Cancelar' })) return;  // cancelar ya no deja estado a medias
 
   // Solo ahora, con confirmacion del usuario, se mutan los objetos reales.
   for (const c of planCambios) aplicarDesglose(c.lote, c.desglose);

@@ -424,19 +424,24 @@
 
       var ultimo = candidatos[candidatos.length - 1].valor.ts;
       var cuando = new Date(ultimo).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-      var si = g.confirm(
-        'En este equipo quedaron cambios SIN GUARDAR' +
-        (candidatos.length > 1 ? ' (de ' + candidatos.length + ' pestañas)' : '') + ', el último del ' + cuando + '.\n\n' +
-        'Aceptar = recuperarlos (se combinan con lo que cargaron los demás).\n' +
-        'Cancelar = descartarlos.');
+      var cuantas = candidatos.length > 1 ? ' (de ' + candidatos.length + ' pestañas)' : '';
+      var texto = 'En este equipo quedaron cambios sin guardar' + cuantas + ', el último del ' + cuando + (/\.$/.test(cuando) ? '' : '.') + '\n' +
+        'Si los recuperás, se combinan con lo que cargaron los demás.';
+      // CI.confirmar lo pone dialogo.js (lo inyecta el servidor antes que este
+      // archivo). Sin él (tests, página suelta) se usa el confirm de siempre.
+      var preguntar = g.CI && g.CI.confirmar
+        ? g.CI.confirmar({ titulo: 'Cambios sin guardar', texto: texto, si: 'Recuperar cambios', no: 'Descartarlos' })
+        : Promise.resolve(g.confirm(texto + '\n\nAceptar = recuperarlos · Cancelar = descartarlos.'));
       var claves = candidatos.map(function (b) { return b.clave; });
-      if (!si) { borrador.borrarClaves(claves); return null; }
-      var doc = servidor;
-      candidatos.forEach(function (b) { doc = fusionarDocumento(b.valor.base, b.valor.local, doc); });
-      // Los de pestañas cerradas pasan a ser de esta: el de esta pestaña se
-      // reescribe con todo junto en cuanto la app marque los cambios.
-      borrador.borrarClaves(claves.filter(function (k) { return k !== propia; }));
-      return doc;
+      return preguntar.then(function (si) {
+        if (!si) { borrador.borrarClaves(claves); return null; }
+        var doc = servidor;
+        candidatos.forEach(function (b) { doc = fusionarDocumento(b.valor.base, b.valor.local, doc); });
+        // Los de pestañas cerradas pasan a ser de esta: el de esta pestaña se
+        // reescribe con todo junto en cuanto la app marque los cambios.
+        borrador.borrarClaves(claves.filter(function (k) { return k !== propia; }));
+        return doc;
+      });
     });
   }
 

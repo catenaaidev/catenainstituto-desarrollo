@@ -4,192 +4,352 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Control de Prensas</title>
+<!-- precargas:inicio -->
+<link rel="modulepreload" href="/prensas/js/puente.js">
+<link rel="modulepreload" href="/shared/anios.js">
+<link rel="modulepreload" href="/shared/selector-anios.js">
+<link rel="modulepreload" href="/shared/filtro-llenado.js">
+<link rel="modulepreload" href="/prensas/js/reglas-lote.js">
+<link rel="modulepreload" href="/prensas/js/hojas-prensas.js">
+<link rel="modulepreload" href="/lotes/js/numero-ot.js">
+<link rel="modulepreload" href="/prensas/js/modo-ordenes-prensas.js">
+<link rel="modulepreload" href="/lotes/js/modo-ordenes.js">
+<link rel="modulepreload" href="/lotes/js/ot-plantillas.js">
+<link rel="modulepreload" href="/lotes/js/ot-movimientos.js">
+<link rel="modulepreload" href="/lotes/js/ordenes-hojas.js">
+<link rel="modulepreload" href="/lotes/js/agregados.js">
+<link rel="modulepreload" href="/lotes/js/fechas.js">
+<link rel="modulepreload" href="/lotes/js/entorno-ot.js">
+<link rel="modulepreload" href="/lotes/js/guardar-ot.js">
+<link rel="modulepreload" href="/lotes/js/dialogos.js">
+<link rel="modulepreload" href="/lotes/js/carpeta-ot.js">
+<link rel="modulepreload" href="/lotes/js/hoja-pdf.js">
+<link rel="modulepreload" href="/lotes/js/vista-orden-guardada.js">
+<link rel="modulepreload" href="/lotes/js/orden-guardada-cabecera.js">
+<!-- precargas:fin -->
+<script>/* Modo órdenes (/prensas/?orden=…): hasta que app.js abra la orden no se ven
+   las pestañas ni las vistas (si no, el Panel aparece ~2 s y recién después la
+   orden). app.js saca la clase al terminar de arrancar; por las dudas, si algo
+   falla antes, se saca sola a los 15 s para no dejar la página en blanco. */
+if (new URLSearchParams(location.search).get('orden')){
+  document.documentElement.classList.add('modo-ordenes-cargando');
+  setTimeout(function(){ document.documentElement.classList.remove('modo-ordenes-cargando'); }, 15000);
+}</script>
 <style>
-  @font-face{font-family:'Fraunces';src:url('fonts/fraunces-latin-400-normal.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
-  @font-face{font-family:'Fraunces';src:url('fonts/fraunces-latin-600-normal.woff2') format('woff2');font-weight:600;font-style:normal;font-display:swap}
-  @font-face{font-family:'Fraunces';src:url('fonts/fraunces-latin-400-italic.woff2') format('woff2');font-weight:400;font-style:italic;font-display:swap}
-  @font-face{font-family:'Hanken Grotesk';src:url('fonts/hanken-grotesk-latin-400-normal.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
-  @font-face{font-family:'Hanken Grotesk';src:url('fonts/hanken-grotesk-latin-500-normal.woff2') format('woff2');font-weight:500;font-style:normal;font-display:swap}
-  @font-face{font-family:'Hanken Grotesk';src:url('fonts/hanken-grotesk-latin-600-normal.woff2') format('woff2');font-weight:600;font-style:normal;font-display:swap}
-  @font-face{font-family:'Hanken Grotesk';src:url('fonts/hanken-grotesk-latin-700-normal.woff2') format('woff2');font-weight:700;font-style:normal;font-display:swap}
+  @font-face{font-family:'Cormorant Garamond';src:url('fonts/cormorant-garamond-latin-500-normal.woff2') format('woff2');font-weight:500;font-style:normal;font-display:swap}
+  @font-face{font-family:'Cormorant Garamond';src:url('fonts/cormorant-garamond-latin-600-normal.woff2') format('woff2');font-weight:600;font-style:normal;font-display:swap}
+  @font-face{font-family:'Cormorant Garamond';src:url('fonts/cormorant-garamond-latin-500-italic.woff2') format('woff2');font-weight:500;font-style:italic;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');font-weight:500;font-style:normal;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');font-weight:600;font-style:normal;font-display:swap}
+  /* Piedra y tinta. Los nombres de variable son los de siempre: todo el CSS de
+     abajo y los estilos en línea de app.js los heredan sin cambiar. */
   :root{
-    --bg:#f7f5f1; --panel:#ffffff; --panel2:#f1efe9; --line:#e7e3da;
-    --txt:#2a2622; --muted:#8c857b; --accent:#8a3340; --accent2:#6f2731;
-    --ok:#3f7d4f; --nook:#b03a2e; --warn:#b07d2c; --info:#5b7b86;
-    --serif:'Fraunces',Georgia,'Times New Roman',serif;
-    --sans:'Hanken Grotesk',system-ui,Segoe UI,sans-serif;
+    --bg:#ECE8E1; --panel:#F4F1EB; --panel2:#E4DFD6; --line:#D6D0C5; --rule:#1C1B19;
+    --txt:#1C1B19; --muted:#68625A; --accent:#5A1724; --accent2:#43101A;
+    --ok:#56684A; --nook:#8E2330; --warn:#7F622B; --info:#3F5560;
+    --ok-tinte:#E3E7DD; --nook-tinte:#F1E3E1; --warn-tinte:#F2EADB; --accent-tinte:rgba(90,23,36,.07);
+    --serif:'Cormorant Garamond',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;-webkit-font-smoothing:antialiased}
+  body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;line-height:1.4;-webkit-font-smoothing:antialiased}
   ::selection{background:var(--accent);color:#fff}
   ::-webkit-scrollbar{width:10px;height:10px}
-  ::-webkit-scrollbar-thumb{background:#dcd7cc;border-radius:6px;border:2px solid var(--bg)}
-  ::-webkit-scrollbar-thumb:hover{background:#cbc5b8}
-  header{background:transparent;padding:22px 30px 16px;display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
-  header h1{margin:0;font-family:var(--serif);font-size:26px;font-weight:500;letter-spacing:.2px}
-  header .sub{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:2.8px}
-  header .right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  ::-webkit-scrollbar-thumb{background:#C9C2B5;border-radius:2px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:#A9A196}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
   .status{font-size:12px;color:var(--muted)}
   .status.dirty{color:var(--warn)}
   .status.saved{color:var(--ok)}
   /* tabla del historial (overlay) */
   #overlayBox table.hist{width:100%;border-collapse:collapse;font-size:13px}
   #overlayBox table.hist th,#overlayBox table.hist td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-  #overlayBox table.hist th{color:var(--muted);font-weight:600}
-  /* banner de avisos (conflictos OneDrive / otro servidor activo) */
+  #overlayBox table.hist th{color:var(--muted);font-weight:500}
+  /* banner de avisos (conflictos / otro servidor activo) */
   #avisos{display:none}
-  #avisos .aviso{background:#7a2620;color:#fff;padding:9px 18px;font-size:13px;
-    border-bottom:1px solid #5b1b16;line-height:1.45}
-  #avisos .aviso b{color:#ffd766}
-  button.btn{background:transparent;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 15px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--sans);transition:border-color .15s,background .15s,color .15s}
-  button.btn:hover{border-color:var(--accent);color:var(--accent)}
-  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-  button.btn.primary:hover{background:var(--accent2);color:#fff}
-  button.btn.primary:disabled{opacity:.35;cursor:default}
-  button.btn.danger{color:var(--nook)}
-  .tabs{display:flex;gap:4px;background:transparent;padding:0 26px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-  .tabs button{background:transparent;border:none;color:var(--muted);padding:13px 14px;cursor:pointer;font-size:13.5px;font-weight:500;font-family:var(--sans);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s}
-  .tabs button.active{color:var(--txt);border-bottom-color:var(--accent);font-weight:600}
-  .tabs button:hover{color:var(--txt)}
-  main{padding:22px;max-width:1500px;margin:0 auto}
-  .view{display:none} .view.active{display:block;animation:fadeUp .35s ease}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
-  .controls{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
-  .controls label{color:var(--muted)}
-  select,input.txt,textarea{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:14px;font-family:inherit}
+  #avisos .aviso{background:var(--nook);color:#fff;padding:9px 22px;font-size:13px;line-height:1.45}
+  #avisos .aviso b{color:#fff;text-decoration:underline}
+  button.btn{background:transparent;color:var(--txt);border:1px solid var(--txt);border-radius:2px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:500;font-family:var(--sans);line-height:1.2;white-space:nowrap;transition:border-color .15s,background .15s,color .15s}
+  button.btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-tinte)}
+  button.btn.primary{background:var(--accent);color:#F3EEE6;border-color:var(--accent)}
+  button.btn.primary:hover{background:var(--accent2);border-color:var(--accent2);color:#fff}
+  button.btn.primary:disabled{opacity:.35;cursor:default;background:var(--accent)}
+  button.btn.danger{color:var(--nook);border-color:var(--nook)}
+  /* pestaña Configuración */
+  #v-config h2.cfg-grupo{font-family:var(--serif);font-size:17px;font-weight:500;margin:22px 0 10px}
+  .cfg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+  .cfg-card{margin-bottom:0;display:flex;flex-direction:column;gap:10px}
+  .cfg-card h3{margin:0;font-size:15px;font-weight:500;font-family:var(--serif)}
+  .cfg-card.cfg-propio{border-color:var(--accent)}
+  .cfg-valor{display:flex;align-items:center;gap:8px}
+  .cfg-valor input{width:110px;font-size:16px;font-variant-numeric:tabular-nums}
+  .cfg-valor input.cfg-mal{border-color:var(--nook);background:var(--nook-tinte)}
+  .cfg-unidad{color:var(--muted)}
+  .cfg-regla{font-size:13px;line-height:1.45}
+  .cfg-def{font-size:12px;color:var(--muted)}
+  .cfg-def b{color:var(--accent)}
+  #cfgAvisos .aviso{background:var(--warn-tinte);color:var(--warn);border:1px solid var(--line);border-radius:2px;padding:9px 14px;margin:12px 0 0;font-size:13px}
+  /* barra compacta: marca, pantallas, "Más" y acciones en una sola franja */
+  .barra{position:sticky;top:var(--ciw-h,0px);z-index:40;background:var(--bg);display:flex;align-items:center;gap:20px;padding:11px 26px;border-bottom:1px solid var(--rule)}
+  .barra .marca{font-family:var(--serif);font-size:27px;font-weight:500;line-height:1;letter-spacing:.2px}
+  .barra .right{margin-left:auto;display:flex;align-items:center;gap:14px}
+  .barra .right .btn{padding:6px 13px}
+  .tabs{display:flex;align-items:center;gap:2px}
+  .tabs button[data-v],.mas-btn{background:transparent;border:none;color:var(--muted);padding:6px 11px;cursor:pointer;font-size:13.5px;font-weight:500;font-family:var(--sans);border-radius:2px;white-space:nowrap}
+  .tabs button[data-v]:hover,.mas-btn:hover{color:var(--txt);background:var(--panel2)}
+  .tabs > button[data-v].active,.mas-btn.active{background:var(--txt);color:var(--bg)}
+  .mas{position:relative}
+  .mas-btn::after{content:' ▾';font-size:10px}
+  .mas-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:210px;background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--rule);border-radius:2px;box-shadow:0 12px 30px rgba(28,27,25,.16);padding:6px 0;display:none;z-index:45}
+  .mas-menu.open{display:block}
+  .mas-menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:7px 16px;font-size:13.5px;font-family:var(--sans);color:var(--txt);cursor:pointer;border-radius:0}
+  .mas-menu button:hover{background:var(--panel2);color:var(--txt)}
+  .mas-menu button.active{color:var(--accent);font-weight:600;background:var(--accent-tinte)}
+  .mas-grupo{font-size:9.5px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:10px 16px 4px}
+  .mas-angosto{display:none;border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px}
+  .status.saved::before,.status.dirty::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px}
+  .status.usuario{color:var(--txt);opacity:.75}
+  #status{white-space:nowrap}
+  @media(max-width:1100px){.barra .right .status.usuario{display:none}}
+  @media(max-width:900px){
+    .barra{flex-wrap:wrap;gap:10px 14px;padding:10px 16px}
+    .tabs > button[data-v]{display:none}
+    .mas-angosto{display:block}
+    .barra .right{gap:8px}
+    .barra .right .status:not(#status){display:none}
+    #status{font-size:0}
+    #status::before{margin-right:0}
+  }
+  main{padding:22px 26px 40px;max-width:1500px;margin:0 auto}
+  .view{display:none} .view.active{display:block;animation:fadeUp .3s ease}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.view.active{animation:none}}
+  .controls{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+  .controls label{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1.8px}
+  select,input.txt,textarea{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:2px;padding:7px 10px;font-size:13.5px;font-family:inherit}
+  select:focus,input.txt:focus,textarea:focus{border-color:var(--txt);outline:none}
   textarea{width:100%;min-height:160px;resize:vertical}
-  /* KPIs */
-  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:22px}
-  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;transition:border-color .15s}
-  .kpi:hover{border-color:#d8d2c6}
-  .kpi .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1.2px}
-  .kpi .num{font-family:var(--serif);font-size:42px;font-weight:500;margin-top:8px;line-height:1;font-variant-numeric:tabular-nums}
-  .kpi .pct{color:var(--muted);font-size:12px;margin-top:4px}
-  .kpi.total .num{color:var(--info)} .kpi.ok .num{color:var(--ok)}
-  .kpi.nook .num{color:var(--nook)} .kpi.sinmes .num{color:var(--warn)}
-  .kpi.prox .num{color:var(--warn)} .kpi.prox .bar{background:var(--warn)}
-  .kpi .bar{position:absolute;left:0;bottom:0;height:4px;width:100%}
-  .kpi.total .bar{background:var(--info)} .kpi.ok .bar{background:var(--ok)}
-  .kpi.nook .bar{background:var(--nook)} .kpi.sinmes .bar{background:var(--warn)}
-  @media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-bottom:22px}
-  .card h2{margin:0 0 16px;font-family:var(--serif);font-size:17px;font-weight:500;display:flex;align-items:center;gap:8px;letter-spacing:.2px}
-  .card h2 .count{margin-left:auto;background:var(--panel2);color:var(--muted);padding:2px 10px;border-radius:20px;font-size:12px;font-weight:400;font-family:var(--sans)}
+  label{font-size:13px}
+  /* KPIs: franja de números separados por filetes */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--rule);border-bottom:1px solid var(--line);margin-bottom:24px}
+  .kpi{padding:16px 18px 14px;border-left:1px solid var(--line)}
+  .kpi:first-child{border-left:none;padding-left:0}
+  .kpi .label{color:var(--txt);font-size:12px;margin-top:6px;order:2}
+  .kpi .num{font-family:var(--serif);font-size:46px;font-weight:500;line-height:.95;font-variant-numeric:lining-nums tabular-nums}
+  .kpi .pct{color:var(--muted);font-size:11.5px;margin-top:2px}
+  .kpi{display:flex;flex-direction:column}
+  .kpi .num{order:1}.kpi .pct{order:3}
+  .kpi.total .num{color:var(--txt)} .kpi.ok .num{color:var(--ok)}
+  .kpi.nook .num{color:var(--nook)} .kpi.sinmes .num,.kpi.prox .num{color:var(--warn)}
+  .kpi .bar{display:none}
+  @media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}.kpi{border-left:none;padding-left:0;border-bottom:1px solid var(--line)}}
+  .card{background:var(--panel);border:none;border-top:1px solid var(--rule);border-radius:0;padding:16px 18px 18px;margin-bottom:22px}
+  .card h2{margin:0 0 12px;font-family:var(--serif);font-size:21px;font-weight:500;display:flex;align-items:baseline;gap:10px}
+  .card h2 .count{margin-left:auto;color:var(--muted);font-size:12px;font-weight:400;font-family:var(--sans)}
   .grid2{display:grid;grid-template-columns:320px 1fr;gap:22px;align-items:start}
   @media(max-width:1000px){.grid2{grid-template-columns:1fr}}
   /* tablas */
   table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
-  th{color:var(--muted);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel);z-index:1}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--muted);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:1.3px;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel);z-index:1;border-bottom:1px solid var(--rule)}
   th:hover{color:var(--txt)}
-  th .arrow{font-size:10px;opacity:.6;margin-left:3px}
+  th.num{text-align:right}
+  th .arrow{font-size:9px;opacity:.7;margin-left:4px}
   tbody tr:hover{background:var(--panel2)}
   td.num{text-align:right;font-variant-numeric:tabular-nums}
-  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
-  .pill.bad{background:#f6e4e1;color:#9e3328;border:1px solid #ecccc6}
-  .pill.warn{background:#f6ecd6;color:#8a6219;border:1px solid #eaddb8}
-  .pill.ok{background:#e4efe2;color:#2f6b3f;border:1px solid #cbe1c7}
-  .crit-list .row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
-  .crit-list .row:last-child{border-bottom:none}
-  .crit-list .name{display:flex;flex-direction:column}
-  .crit-list .name small{color:var(--muted)}
-  .crit-list .val{font-family:var(--serif);font-size:26px;font-weight:600;color:var(--nook)}
-  .crit-list .val.zero{color:var(--ok)}
-  .scroll{max-height:560px;overflow:auto;border-radius:8px}
+  .pill{display:inline-block;padding:1px 7px;border-radius:2px;font-size:11px;font-weight:600;border:1px solid transparent}
+  .pill.bad{background:var(--nook-tinte);color:var(--nook);border-color:rgba(142,35,48,.25)}
+  .pill.warn{background:var(--warn-tinte);color:#7A5A22;border-color:rgba(154,116,52,.3)}
+  .pill.ok{background:var(--ok-tinte);color:var(--ok);border-color:rgba(86,104,74,.3)}
+  /* Panel: dos columnas, pendientes a la izquierda y criterios + gráficos a la derecha */
+  .dash-hoy{color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
+  .dash-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:34px;align-items:start}
+  .dash-grid > *,.doc > *{min-width:0}
+  @media(max-width:1000px){.dash-grid{grid-template-columns:minmax(0,1fr)}}
+  .solapas{display:flex;gap:20px;border-bottom:1px solid var(--line);margin-bottom:2px;flex-wrap:wrap}
+  .solapas button{background:none;border:none;padding:0 0 9px;font:500 13.5px var(--sans);color:var(--muted);cursor:pointer;box-shadow:inset 0 -2px 0 transparent}
+  .solapas button:hover{color:var(--txt)}
+  .solapas button.active{color:var(--txt);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+  .solapas button span{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:400;margin-left:3px}
+  .sol-panel{display:none}
+  .sol-panel.activo{display:block}
+  .sol-panel .scroll{max-height:620px}
+  .sol-tit{display:none}
+  /* En el HTML descargado no hay JS: se ven las cuatro tablas, cada una con su título. */
+  .descarga-cab + main .sol-panel{display:block;margin-bottom:22px}
+  .descarga-cab + main .sol-tit{display:block;font-family:var(--serif);font-weight:500;font-size:21px;margin:0 0 8px}
+  .dash-h{font-family:var(--serif);font-weight:500;font-size:21px;margin:0 0 10px;padding-top:12px;border-top:1px solid var(--rule)}
+  .dash-lado .dash-h:not(:first-child){margin-top:24px}
+  .crit-list .row{display:grid;grid-template-columns:118px 1fr 34px;align-items:center;gap:10px;padding:5px 0}
+  .crit-list .name{font-size:12.5px;line-height:1.2}
+  .crit-list .name small{color:var(--muted);margin-left:4px}
+  .crit-list .tr{height:6px;background:var(--panel2)}
+  .crit-list .tr i{display:block;height:6px;background:var(--accent)}
+  .crit-list .val{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+  .crit-list .val.zero{color:var(--muted);font-weight:400}
+  .scroll{max-height:560px;overflow:auto;background:var(--panel)}
   .scroll.tall{max-height:70vh}
   .val-bad{color:var(--nook);font-weight:600}
-  .foot{color:var(--muted);font-size:12px;margin-top:8px;text-align:center;font-style:italic}
-  .note{background:rgba(138,51,64,.05);border:1px dashed rgba(138,51,64,.32);border-radius:10px;padding:11px 15px;color:var(--muted);font-size:12px;margin-bottom:18px}
+  .foot{color:var(--muted);font-size:12px;margin-top:10px;text-align:center;font-style:italic}
+  .note{background:transparent;border:none;border-left:2px solid var(--accent);border-radius:0;padding:4px 0 4px 12px;color:var(--muted);font-size:12.5px;line-height:1.5;margin-bottom:16px;max-width:900px}
   /* charts */
   .charts-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
   @media(max-width:1000px){.charts-grid{grid-template-columns:1fr}}
-  .chart-box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
-  .chart-box h3{margin:0 0 12px;font-size:13px;color:var(--muted);font-weight:600}
+  .chart-box{background:transparent;border:none;padding:4px 0}
+  .chart-box h3{margin:0 0 10px;font-size:10px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:1.4px}
   .donut-wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
   .legend{display:flex;flex-direction:column;gap:7px;font-size:12px}
   .legend .lg{display:flex;align-items:center;gap:7px;min-width:140px}
-  .legend .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .legend .dot{width:9px;height:9px;border-radius:1px;display:inline-block}
   /* celdas editables */
-  td input.cell{width:100%;min-width:60px;background:transparent;border:1px solid transparent;border-radius:4px;color:var(--txt);padding:4px 6px;font-size:13px;font-family:inherit}
+  td input.cell{width:100%;min-width:60px;background:transparent;border:1px solid transparent;border-radius:2px;color:var(--txt);padding:3px 6px;font-size:13px;font-family:inherit}
   td input.cell:hover{border-color:var(--line)}
-  td input.cell:focus{border-color:var(--accent);background:var(--bg);outline:none}
-  td input.cell.num{text-align:right}
-  /* fila de filtros por columna */
-  tr.fltrow th{position:sticky;top:var(--hh,32px);background:var(--panel2);z-index:1;cursor:default;padding:4px 6px;border-bottom:1px solid var(--line);font-weight:400}
-  tr.fltrow th:hover{color:var(--muted)}
-  .fltcell{display:flex;gap:3px;align-items:center}
-  .fltcell input{width:100%;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--txt);padding:3px 5px;font-size:11px;font-family:inherit}
-  .fltcell input:focus{border-color:var(--accent);outline:none}
-  .fltcell input::placeholder{color:var(--muted);opacity:.7}
-  .fltclear{cursor:pointer;color:var(--muted);font-size:13px;background:none;border:none;padding:0 4px}
-  .fltclear:hover{color:var(--nook)}
+  td input.cell:focus{border-color:var(--txt);background:#fff;outline:none}
+  td input.cell.num{text-align:right;font-variant-numeric:tabular-nums}
   /* --- filtro multi-select (checkboxes) --- */
   .mfilt-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .mfilt{position:relative;display:inline-block}
-  .mfilt-btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;cursor:pointer;white-space:nowrap}
-  .mfilt-btn:hover{border-color:var(--accent)}
+  .mfilt-btn{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:2px;padding:6px 10px;font-size:13px;font-family:inherit;cursor:pointer;white-space:nowrap}
+  .mfilt-btn:hover{border-color:var(--txt)}
   .mfilt-btn.active{border-color:var(--accent);color:var(--accent);font-weight:600}
-  .mfilt-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:280px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;display:none}
+  .mfilt-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:210px;max-width:290px;background:var(--panel);border:1px solid var(--line);border-radius:2px;box-shadow:0 10px 28px rgba(28,27,25,.14);padding:8px;display:none;font-size:13px;color:var(--txt);text-transform:none;letter-spacing:0;font-weight:400;text-align:left;cursor:default}
   .mfilt-panel.open{display:block}
-  .mfilt-search{width:100%;box-sizing:border-box;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:13px;font-family:inherit;margin-bottom:6px}
+  .mfilt-search{width:100%;background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:2px;padding:6px 8px;font-size:13px;font-family:inherit;margin-bottom:6px}
   .mfilt-list{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:1px}
-  .mfilt-opt{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:5px;cursor:pointer;font-size:13px;white-space:nowrap}
+  .mfilt-opt{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:2px;cursor:pointer;font-size:13px;white-space:nowrap}
   .mfilt-opt:hover{background:var(--panel2)}
-  .mfilt-opt input{margin:0;cursor:pointer}
+  .mfilt-opt input{margin:0;cursor:pointer;accent-color:var(--accent)}
   .mfilt-opt.hide{display:none}
   .mfilt-all{font-weight:600;border-bottom:1px solid var(--line);margin-bottom:2px;padding-bottom:6px}
   .mfilt-foot{display:flex;justify-content:flex-end;align-items:center;margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
   .mfilt-foot button{background:transparent;border:none;color:var(--accent);cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;padding:2px 4px}
+  /* embudo de filtro dentro del <th> (como en Lotes web) */
+  th .th-flt{background:transparent;border:1px solid transparent;color:var(--muted);font:500 10px/1 var(--sans);letter-spacing:0;padding:2px 4px;margin-left:5px;border-radius:2px;cursor:pointer;vertical-align:1px}
+  th .th-flt:hover{color:var(--txt);border-color:var(--line);background:var(--panel2)}
+  th .th-flt.active{color:#fff;background:var(--accent);border-color:var(--accent)}
+  .mfilt-panel.mfilt-anclado{position:fixed;top:0;left:0;z-index:60}
+  .mfilt-rango-tit{font-size:9.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted);margin:2px 2px 5px}
+  .mfilt-rango{display:flex;gap:6px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .mfilt-rango input{width:50%;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:2px;padding:5px 7px;font:13px var(--sans);color:var(--txt)}
+  .mfilt-rango input:focus{border-color:var(--txt);outline:none}
+  /* cabecera de cada pantalla */
+  .pg-head{display:flex;align-items:flex-end;gap:18px;margin:2px 0 14px;flex-wrap:wrap}
+  .pg-head h1{margin:0;font-family:var(--serif);font-size:34px;font-weight:500;line-height:1}
+  .pg-head p{margin:0 0 3px;color:var(--muted);font-size:13px;max-width:620px;line-height:1.45}
+  .pg-acc{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  details.info{margin:-4px 0 14px;font-size:12.5px;color:var(--muted);max-width:900px}
+  details.info summary{cursor:pointer;color:var(--accent);font-weight:500;width:max-content;list-style:none}
+  details.info summary::-webkit-details-marker{display:none}
+  details.info summary::before{content:'+ ';font-weight:600}
+  details.info[open] summary::before{content:'− '}
+  details.info p{margin:8px 0 0;border-left:2px solid var(--accent);padding:2px 0 2px 12px;line-height:1.55}
+  /* barra mínima sobre la tabla */
+  .tbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--rule);margin-bottom:8px}
+  .tbar .buscar{min-width:220px;background:transparent;border:none;border-bottom:1px solid var(--line);border-radius:0;padding:6px 2px}
+  .tbar .buscar:focus{border-bottom-color:var(--txt)}
+  .tbar label,.nuevo label{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+  .tbar .tag{margin-left:auto}
+  .nuevo{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);padding:10px 14px;margin-bottom:14px;border-left:2px solid var(--accent)}
+  .nuevo-tit{font-size:9.5px;letter-spacing:1.8px;text-transform:uppercase;color:var(--muted);margin-right:4px}
+  /* armado de documentos: panel de campos + visor con la hoja */
+  .doc{display:grid;grid-template-columns:292px minmax(0,1fr);border-top:1px solid var(--rule);margin-top:4px}
+  .doc-panel{background:var(--panel2);padding:16px 18px 22px;border-right:1px solid var(--line)}
+  .doc-grupo{padding:4px 0 14px;margin-bottom:12px;border-bottom:1px solid var(--line)}
+  .doc-grupo:last-child{border-bottom:none;margin-bottom:0}
+  .doc-grupo h4{margin:6px 0 10px;font-size:9.5px;letter-spacing:1.8px;text-transform:uppercase;color:var(--muted);font-weight:500}
+  .campo{display:grid;grid-template-columns:96px minmax(0,1fr);align-items:center;gap:8px;margin:0 0 7px;font-size:12.5px}
+  .campo > span:first-child{color:var(--muted)}
+  .campo input.txt,.campo select,.campo textarea{width:100%;min-width:0;padding:6px 8px;font-size:13px}
+  .campo.apilado{grid-template-columns:1fr;gap:4px}
+  .campo .stepper input{width:46px;text-align:center}
+  .doc-linea{display:grid;grid-template-columns:1fr 70px 64px;gap:4px}
+  .doc-linea input,.doc-linea select{min-width:0;width:100%}
+  .doc-btns{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 6px}
+  .doc-btns .btn{padding:6px 11px;font-size:12.5px}
+  .doc-nota{margin:6px 0 0;font-size:11.5px;color:var(--muted);line-height:1.4}
+  .doc-panel .rel-chips{margin:2px 0 8px}
+  .doc-visor{background:#D9D3C8;padding:18px 22px 26px;min-width:0;overflow:auto}
+  .doc-visor-bar{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+  .doc-visor-bar .tag{color:var(--txt)}
+  .doc-visor-bar .doc-tope{font-size:12px;color:var(--muted)}
+  .doc-visor-bar .btn:first-of-type{margin-left:auto}
+  .doc-visor .orden-hoja{box-shadow:0 1px 4px rgba(28,27,25,.18)}
+  .doc-visor .lotes-lista{margin-top:12px;color:#4A453E}
+  .doc-titulo{font-family:var(--serif);font-weight:500;font-size:26px;margin:26px 0 10px}
+  @media(max-width:1000px){.doc{grid-template-columns:minmax(0,1fr)}.doc-panel{border-right:none;border-bottom:1px solid var(--line)}}
+  /* cargas desde Excel en tres pasos */
+  .pasos{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);margin:0 0 16px;padding:0;border-top:1px solid var(--rule)}
+  .pasos li{padding:10px 0 9px;font-size:13px;color:var(--muted);box-shadow:inset 0 -2px 0 transparent}
+  .pasos li b{font-family:var(--serif);font-size:24px;font-weight:500;margin-right:8px;vertical-align:-2px}
+  .pasos li.on{color:var(--txt);box-shadow:inset 0 -2px 0 var(--accent)}
+  .carga-acc{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px}
+  .carga-acc label{color:var(--muted);font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
+  .carga-acc .btn{margin-left:auto}
+  .carga-cols{font-size:12px;color:var(--muted);margin-bottom:10px}
+  .carga-cols-tit{font-size:9.5px;letter-spacing:1.8px;text-transform:uppercase;margin-bottom:7px}
+  .col-etq{display:inline-block;background:var(--panel2);color:var(--txt);padding:2px 7px;margin:0 4px 5px 0;font-size:11.5px;border-radius:2px}
+  .carga-cols p{margin:6px 0 0}
+  .carga-bloque{margin-top:8px}
   td.ro{color:var(--muted)}
   /* alto riesgo: dos filas por lote */
   #tRiesgo th{cursor:default}
-  #tRiesgo tr.rg-top>td{border-top:2px solid #ddd6c8}
-  #tRiesgo td.ro{font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  #tRiesgo tr.rg-top>td{border-top:1px solid var(--rule)}
+  #tRiesgo td.ro{font-size:10px;text-transform:uppercase;letter-spacing:1px}
   #tRiesgo td[rowspan]{vertical-align:middle;background:var(--panel)}
   /* degustación: botones estado / motivo */
-  .deg-estado,.deg-motivos{display:inline-flex;gap:4px;flex-wrap:wrap}
-  .degbtn{border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:6px;padding:4px 11px;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:border-color .15s,background .15s,color .15s}
-  .degbtn:hover{border-color:var(--accent);color:var(--accent)}
+  .deg-estado,.deg-motivos{display:inline-flex;gap:3px;flex-wrap:wrap}
+  .degbtn{border:1px solid var(--line);background:var(--panel);color:var(--txt);border-radius:2px;padding:3px 11px;cursor:pointer;font-size:12px;font-weight:500;font-family:inherit;transition:border-color .15s,background .15s,color .15s}
+  .degbtn:hover{border-color:var(--txt)}
   .degbtn.ok.active{background:var(--ok);color:#fff;border-color:var(--ok)}
   .degbtn.nook.active{background:var(--nook);color:#fff;border-color:var(--nook)}
   .degbtn.motivo.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-  .deg-otro{margin-left:6px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px;font-size:12px;font-family:inherit;color:var(--txt);min-width:120px}
-  .deg-otro:focus{border-color:var(--accent);outline:none}
+  .deg-otro{margin-left:6px;background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:3px 8px;font-size:12px;font-family:inherit;color:var(--txt);min-width:120px}
+  .deg-otro:focus{border-color:var(--txt);outline:none}
   input.cell.deg-com{min-width:220px}
-  .rowbtn{background:none;border:none;color:#ff8a7a;cursor:pointer;font-size:15px;padding:2px 6px}
-  .rowbtn:hover{color:#fff}
-  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .rowbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:2px}
+  .rowbtn:hover{color:var(--nook);background:var(--nook-tinte)}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
   .toolbar .spacer{flex:1}
-  .tag{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--muted)}
-  .import-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .toolbar label{color:var(--muted)}
+  .tag{background:transparent;border:none;padding:4px 0;font-size:12px;color:var(--muted)}
+  .import-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
   @media(max-width:1000px){.import-grid{grid-template-columns:1fr}}
-  .msg{padding:10px 14px;border-radius:8px;font-size:13px;margin:10px 0}
-  .msg.ok{background:#e4efe2;color:#2f6b3f;border:1px solid #cbe1c7}
-  .msg.err{background:#f6e4e1;color:#9e3328;border:1px solid #ecccc6}
-  .msg.info{background:rgba(138,51,64,.04);color:var(--muted);border:1px solid var(--line)}
-  .overlay{position:fixed;inset:0;background:rgba(42,38,34,.5);display:none;align-items:center;justify-content:center;z-index:50}
+  .msg{padding:9px 14px;border-radius:2px;font-size:13px;margin:10px 0;border-left:3px solid}
+  .msg.ok{background:var(--ok-tinte);color:#3F5035;border-color:var(--ok)}
+  .msg.err{background:var(--nook-tinte);color:var(--nook);border-color:var(--nook)}
+  .msg.info{background:var(--panel);color:var(--muted);border-color:var(--line)}
+  .overlay{position:fixed;inset:0;background:rgba(28,27,25,.45);display:none;align-items:center;justify-content:center;z-index:50}
   .overlay.show{display:flex}
-  .overlay .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px 28px;max-width:420px;text-align:center}
+  .overlay .box{background:var(--panel);border-top:2px solid var(--rule);border-radius:2px;padding:24px 28px;max-width:420px;text-align:center;box-shadow:0 20px 50px rgba(28,27,25,.25)}
+  .overlay .box h2,.overlay .box h3{font-family:var(--serif);font-weight:500;font-size:24px}
   /* filas separadoras y críticas */
-  tr.sep td{background:#f0ece2 !important;border-top:2px solid #ddd6c8}
-  tr.sep td input.cell{color:#a39684;font-style:italic}
-  tr.crit td{background:#fbeeeb}
+  tr.sep td{background:var(--panel2) !important;border-top:1px solid var(--rule)}
+  tr.sep td input.cell{color:var(--muted);font-style:italic}
+  tr.crit td{background:var(--nook-tinte)}
   tr.crit td:first-child{box-shadow:inset 3px 0 0 var(--nook)}
-  tr.venc td{background:#faf2e0}
+  tr.venc td{background:var(--warn-tinte)}
   tr.venc td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+  /* Lote vaciado (0 L): la fila se atenúa entera, en el <tr> y no en cada
+     celda, para componer con .crit/.venc. Vuelve a plena al pasar o editar:
+     está atenuada, no deshabilitada. Mismo criterio que Lotes web. */
+  tr.vacio{opacity:.45}
+  tr.vacio:hover,tr.vacio:focus-within{opacity:1}
+  .legend-inline .sw.vacio{background:var(--panel);border:1px solid var(--line);opacity:.45}
+  /* Control segmentado (Todos | Llenos | Vacíos y años): el estado lo lleva aria-pressed. */
+  .segm{display:inline-flex;border:1px solid var(--line);border-radius:2px;overflow:hidden;flex-shrink:0}
+  .segm[hidden]{display:none}
+  .segm button{background:transparent;color:var(--muted);border:none;border-left:1px solid var(--line);padding:6px 11px;font-size:13px;font-family:var(--sans);cursor:pointer}
+  .segm button:first-child{border-left:none}
+  .segm button:hover{color:var(--txt);background:var(--panel2)}
+  .segm button[aria-pressed="true"]{background:var(--txt);color:var(--bg)}
   td input.cell.bad2{color:var(--nook);font-weight:600}
-  .legend-inline{font-size:12px;color:var(--muted);margin:-6px 0 12px}
-  .legend-inline .sw{display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:2px}
-  .legend-inline .sw.sep{background:#f0ece2;border:1px solid #ddd6c8}
-  .legend-inline .sw.bad2{background:#f6e4e1;border:1px solid var(--nook)}
-  .legend-inline .sw.crit{background:#fbeeeb;border-left:3px solid var(--nook)}
-  .legend-inline .sw.venc{background:#faf2e0;border-left:3px solid var(--warn)}
-  /* evolución */
-  .evo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
-  @media(max-width:900px){.evo-grid{grid-template-columns:1fr}}
-  .evo-box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
-  .evo-box h4{margin:0 0 4px;font-size:13px;font-weight:600}
-  .evo-box .lim{font-size:11px;color:var(--muted);margin-bottom:8px}
+  .legend-inline{font-size:12px;color:var(--muted);margin:-2px 0 10px;display:flex;gap:16px;flex-wrap:wrap}
+  .legend-inline .sw{display:inline-block;width:12px;height:12px;border-radius:1px;vertical-align:-2px;margin-right:4px}
+  .legend-inline .sw.sep{background:var(--panel2);border:1px solid var(--line)}
+  .legend-inline .sw.bad2{background:var(--nook-tinte);border:1px solid var(--nook)}
+  .legend-inline .sw.crit{background:var(--nook-tinte);border-left:3px solid var(--nook)}
+  .legend-inline .sw.venc{background:var(--warn-tinte);border-left:3px solid var(--warn)}
   /* hoja orden de muestras (estilo papel, claro) */
   .orden-hoja{background:#fff;color:#111;max-width:820px;margin:0 auto;padding:28px 34px;border-radius:6px;font-family:Arial,sans-serif}
   .orden-hoja .oh-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:10px;color:#444;text-align:right;border-bottom:1px solid #999;padding-bottom:4px;margin-bottom:8px}
@@ -202,7 +362,7 @@
   .orden-hoja .oh-nota{font-size:12px;font-style:italic;margin-bottom:10px}
   .orden-hoja table{width:100%;border-collapse:collapse;font-size:13px;color:#111}
   .orden-hoja th,.orden-hoja td{border:1px solid #888;padding:5px 8px;text-align:left;white-space:normal}
-  .orden-hoja th{background:#e6e6e6;font-weight:700;color:#111;position:static}
+  .orden-hoja th{background:#e6e6e6;font-weight:700;color:#111;position:static;text-transform:none;letter-spacing:normal;font-size:inherit;cursor:default;font-family:inherit}
   .orden-hoja td.c{text-align:center}
   .orden-hoja .oh-check{width:34px}
   .orden-hoja .oh-num{width:34px}
@@ -217,8 +377,8 @@
   .orden-hoja .delcol{width:28px}
   #ordenPaginas .orden-hoja + .orden-hoja,#accionPaginas .orden-hoja + .orden-hoja,#rellenoPaginas .orden-hoja + .orden-hoja{margin-top:24px}
   .rel-chips{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .rel-chips .chip{background:var(--panel2);border:1px solid var(--accent);color:var(--txt);border-radius:16px;padding:3px 6px 3px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px}
-  .rel-chips .chip button{border:none;background:none;color:#c0392b;cursor:pointer;font-size:13px;line-height:1;padding:0}
+  .rel-chips .chip{background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:2px;padding:3px 6px 3px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px}
+  .rel-chips .chip button{border:none;background:none;color:var(--nook);cursor:pointer;font-size:13px;line-height:1;padding:0}
   .lotes-lista{margin:10px 2px 0;font-size:12px;line-height:1.6;color:var(--muted)}
   .orden-hoja .oh-nota.pre{white-space:pre-line;text-align:left}
   .orden-hoja .oh-checklist{list-style:none;margin:0 0 10px;padding:0}
@@ -230,34 +390,23 @@
   .orden-hoja .oh-mapa-pie:focus{border-bottom-color:#e08a2b;outline:none}
   .stepper{display:inline-flex;align-items:center;gap:4px}
   .stepper .btn{padding:6px 11px;font-weight:700}
-  /* chat asistente */
-  .chat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;min-height:340px;max-height:55vh;overflow:auto;display:flex;flex-direction:column;gap:12px}
-  .chat .msg-row{display:flex}
-  .chat .msg-row.user{justify-content:flex-end}
-  .chat .bubble{max-width:80%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.45;white-space:pre-wrap}
-  .chat .user .bubble{background:var(--accent);color:#fff}
-  .chat .bot .bubble{background:var(--panel2);border:1px solid var(--line)}
-  .chat .bubble.pensando{color:var(--muted);font-style:italic}
-  .chat .acciones{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
-  .chat .accion-card{background:rgba(138,51,64,.05);border:1px solid var(--accent);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px}
-  .chat .accion-card .tit{font-weight:600;color:var(--accent);margin-bottom:4px}
-  .chat .accion-card .btns{margin-top:8px;display:flex;gap:8px}
-  .chat .accion-card button{padding:6px 12px;font-size:12px;border-radius:6px;cursor:pointer;border:1px solid var(--line);font-weight:600}
-  .chat .accion-card .ap{background:var(--ok);color:#fff;border-color:var(--ok)}
-  .chat .accion-card .de{background:transparent;color:var(--muted)}
-  .chat .accion-card.aplicada{border-color:var(--ok);opacity:.7}
-  .chat .accion-card.descartada{border-color:var(--line);opacity:.5}
-  .chat-input{display:flex;gap:10px;margin-top:14px}
-  .chat-input .txt{flex:1}
-  .chat-ejemplos{margin-top:10px;color:var(--muted);font-size:12px}
-  .chip-ej{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:16px;padding:4px 10px;font-size:12px;cursor:pointer;margin:3px}
-  .chip-ej:hover{border-color:var(--accent)}
+  /* Pantallas táctiles: blancos de dedo. No cambia nada con mouse. */
+  @media (pointer:coarse){
+    .rowbtn{min-width:44px;min-height:44px;font-size:15px}
+    th .th-flt{min-width:44px;min-height:44px}
+    .degbtn{min-height:44px;padding:6px 14px}
+    button.btn{min-height:44px}
+    td input.cell{min-height:44px;font-size:16px}
+  }
   @media print{
     body *{visibility:hidden}
     #v-orden, #v-orden *, #accionPaginas, #accionPaginas *, #v-relleno, #v-relleno *, #agrOrdenPaginas, #agrOrdenPaginas *{visibility:visible}
     .no-print{display:none !important}
     #v-orden, #accionPaginas, #v-relleno, #agrOrdenPaginas{position:absolute;left:0;top:0;width:100%}
     .orden-hoja{box-shadow:none;border-radius:0;max-width:none;padding:0}
+    .doc{display:block;border:none;margin:0}
+    .doc-visor{background:none;padding:0;overflow:visible}
+    .doc-visor .orden-hoja{box-shadow:none}
     #ordenPaginas .orden-hoja + .orden-hoja,#accionPaginas .orden-hoja + .orden-hoja,#rellenoPaginas .orden-hoja + .orden-hoja,#agrOrdenPaginas .orden-hoja + .orden-hoja{page-break-before:always;margin-top:0}
     .orden-hoja .delcol,.orden-hoja .delrow{display:none !important}
     .orden-hoja input,.orden-hoja select{border:none !important;background:transparent !important}
@@ -266,423 +415,492 @@
     @page{margin:14mm}
   }
   /* ===== cellSelect — selección de celdas tipo Excel ===== */
-  .cs-sel{ background:rgba(138,51,64,.16); box-shadow:inset 0 0 0 1px var(--accent); }
+  .cs-sel{ background:rgba(90,23,36,.13); box-shadow:inset 0 0 0 1px var(--accent); }
   td.cs-sel > input, td.cs-sel > select, td.cs-sel > textarea,
-  td.cs-sel > .fltcell input{ background:rgba(138,51,64,.12); }
+  td.cs-sel > .fltcell input{ background:rgba(90,23,36,.10); }
   table.cs-arming{ cursor:cell; }
   table.cs-arming, table.cs-arming *{ user-select:none !important; -webkit-user-select:none !important; }
-  .cs-hud{ position:fixed; right:16px; bottom:16px; z-index:9999;
+  .cs-hud{ position:fixed; right:16px; bottom:16px; z-index:9999; border-radius:2px !important;
     background:var(--accent); color:#fff; padding:7px 13px; border-radius:8px;
     font:600 12px/1 var(--sans,system-ui,sans-serif); box-shadow:0 6px 20px rgba(0,0,0,.22);
     opacity:0; transform:translateY(6px); transition:opacity .15s,transform .15s; pointer-events:none; }
   .cs-hud.show{ opacity:1; transform:translateY(0); }
-  .cs-hud.cs-ok{ background:var(--ok,#3f7d4f); }
-  /* --- Evolución: lista scrolleable de tarjetas --- */
-  .btn.active{border-color:var(--accent);color:var(--accent);font-weight:600}
-  .evo-bar{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0;margin-bottom:10px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .evo-list{display:flex;flex-direction:column;gap:14px}
-  .evo-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-  .evo-cardhead{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;user-select:none}
-  .evo-cardhead:hover{background:var(--panel2)}
-  .evo-cardhead .tit{font-family:var(--serif,Georgia,'Times New Roman',serif);font-size:15px;font-weight:600;white-space:nowrap}
-  .evo-cardhead .sub{color:var(--muted);font-size:12px}
-  .evo-cardhead .caret{margin-left:auto;color:var(--muted);transition:transform .15s;font-size:11px}
-  .evo-card.open .evo-cardhead .caret{transform:rotate(90deg)}
-  .evo-badge{padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
-  .evo-badge.ok{background:#e5efe6;color:#2f6b3f;border:1px solid #cfe3d2}
-  .evo-badge.nook{background:#f6e4e1;color:#9e3328;border:1px solid #ecccc6}
-  .evo-charts{padding:0 16px 14px}
-  .evo-detalle{padding:0 16px 16px;border-top:1px solid var(--line)}
-  .evo-detalle h4{margin:14px 0 8px;font-size:13px;font-weight:600;color:var(--muted)}
+  .cs-hud.cs-ok{ background:var(--ok); }
+  /* Modo órdenes (/prensas/?orden=…): solo la orden que se abrió desde la
+   * sección Órdenes de trabajo. La banda solo se ve en pantalla: al imprimir
+   * no sale. Va con @media screen y no con @media print porque las reglas de
+   * impresión de arriba son la foto intocable del papel. */
+  .modo-ordenes-banda{display:none;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+  @media screen{.modo-ordenes-banda:not([hidden]){display:flex}}
+  .modo-ordenes-tit{font-family:var(--serif);font-size:20px}
+  body.modo-ordenes #tabs{display:none!important}
+  /* Mientras arranca en modo órdenes (clase puesta por el script del <head>). */
+  html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hidden}
+  /* Acción rápida: en modo órdenes se ve solo el panel de la hoja, nada del
+   * resto de Degustación. */
+  body.modo-p-accion #v-degustacion > :not(#accionWrap){display:none!important}
+  /* Orden guardada (ver-hoja, Task 8): solo lectura, sin nada editable
+   * alrededor — queda la hoja y la cabecera de la banda (#modoOrdenesCab).
+   * Pantalla únicamente (fuera de @media print: el papel que se imprime es
+   * la foto intocable de arriba). !important porque en Agregados el modo
+   * órdenes deja ver toda la pestaña (regla de arriba): esta tiene que
+   * ganarle ahí también. */
+  body.hoja-guardada .doc-panel,
+  body.hoja-guardada .doc-visor-bar,
+  body.hoja-guardada .pg-head,
+  body.hoja-guardada details.info,
+  body.hoja-guardada .tbar,
+  body.hoja-guardada .toolbar,
+  body.hoja-guardada .nuevo,
+  body.hoja-guardada .legend-inline,
+  body.hoja-guardada .scroll,
+  body.hoja-guardada #agrImportWrap,
+  body.hoja-guardada .doc-titulo,
+  body.hoja-guardada #ordenLotesLista,
+  body.hoja-guardada #rellenoLotesLista{display:none!important}
+  /* Con .doc-panel oculto, el grid de 2 columnas (292px + resto) de .doc
+   * dejaba la hoja apretada en los 292px de la columna angosta: una sola
+   * columna para que el papel ocupe todo el ancho. */
+  body.hoja-guardada .doc{display:block}
 </style>
 </head>
 <body>
-<header>
-  <h1>📊 Control de Prensas</h1>
-  <span class="sub">Calidad enológica</span>
+<header class="barra" id="barra">
+  <span class="marca">Prensas</span>
+  <nav class="tabs" id="tabs" aria-label="Pantallas">
+    <button data-v="dashboard" class="active">Panel</button>
+    <button data-v="riesgo">Alto riesgo</button>
+    <button data-v="lotes">Lotes</button>
+    <button data-v="analisis">Análisis</button>
+    <button data-v="degustacion">Degustación</button>
+    <div class="mas" id="masWrap">
+      <button type="button" class="mas-btn" id="masBtn" aria-haspopup="true" aria-expanded="false">Más</button>
+      <div class="mas-menu" id="masMenu">
+        <div class="mas-angosto">
+          <button data-v="dashboard">Panel</button>
+          <button data-v="riesgo">Alto riesgo</button>
+          <button data-v="lotes">Lotes</button>
+          <button data-v="analisis">Análisis</button>
+          <button data-v="degustacion">Degustación</button>
+        </div>
+        <div class="mas-grupo">Registro</div>
+        <button data-v="agregados">Agregados</button>
+        <div class="mas-grupo">Herramientas</div>
+        <button data-v="cargar">Cargar análisis</button>
+        <button data-v="config">Configuración</button>
+        <button type="button" id="btnHistorial" title="Quién guardó qué y cuándo">Historial</button>
+      </div>
+    </div>
+  </nav>
   <div class="right">
-    <button class="btn" id="btnConectar" style="display:none" title="Mostrar código QR para abrir la app desde el celular u otra PC de la misma red">📱 Conectar</button>
-    <span class="status" id="usuario" style="cursor:pointer" title="Quién está usando la app (queda registrado en cada guardado). Clic para cambiar.">👤 —</span>
+    <div class="segm sel-anios" id="selAnios" role="group" aria-label="Años de vendimia" hidden></div>
+    <button class="btn" id="btnConectar" style="display:none" title="Mostrar código QR para abrir la app desde el celular u otra PC de la misma red">Conectar</button>
     <span class="status" id="status">Cargando…</span>
-    <button class="btn" id="btnHistorial" title="Quién guardó qué y cuándo">🕘 Historial</button>
-    <button class="btn" id="btnExport">⬇️ Exportar a Excel</button>
-    <button class="btn primary" id="btnGuardar" disabled>💾 Guardar</button>
+    <span class="status usuario" id="usuario" style="cursor:pointer" title="Quién está usando la app (queda registrado en cada guardado). Clic para cambiar.">—</span>
+    <button class="btn" id="btnExport">Exportar</button>
+    <button class="btn primary" id="btnGuardar" disabled>Guardar</button>
   </div>
 </header>
+<div class="modo-ordenes-banda" id="modoOrdenes" hidden>
+  <a class="btn" id="modoOrdenesVolver" href="/ordenes/">← Órdenes de trabajo</a>
+  <span class="modo-ordenes-tit" id="modoOrdenesTit"></span>
+  <span id="modoOrdenesCab"></span>
+</div>
 
 <div id="avisos"></div>
-
-<div class="tabs" id="tabs">
-  <button data-v="dashboard" class="active">📊 Dashboard</button>
-  <button data-v="riesgo">⚠️ Alto riesgo</button>
-  <button data-v="lotes">📋 Lotes</button>
-  <button data-v="analisis">🧪 Análisis</button>
-  <button data-v="agregados">🧪➕ Agregados</button>
-  <button data-v="evolucion">📈 Evolución</button>
-  <button data-v="degustacion">🍷 Degustación</button>
-  <button data-v="orden">🧾 Orden de muestras</button>
-  <button data-v="relleno">🛢️ Rellenos</button>
-  <button data-v="cargar">⬆️ Cargar análisis</button>
-  <button data-v="asistente">🤖 Asistente</button>
-</div>
 
 <main>
   <!-- DASHBOARD -->
   <section class="view active" id="v-dashboard">
     <div class="controls">
-      <label>Mes en curso:</label><select id="selMes"></select>
-      <label>Fecha de referencia:</label><span id="hoy" style="color:var(--accent);font-weight:600"></span>
-      <button class="btn" style="margin-left:auto" data-descargar-html data-seccion="v-dashboard" data-titulo="Control de Prensas — Dashboard" data-archivo="dashboard-prensas" title="Baja una copia del dashboard tal como se ve ahora, en un .html que se abre sin internet">⬇️ Descargar HTML</button>
+      <label for="selMes">Mes en curso</label><select id="selMes"></select>
+      <label>Referencia</label><span id="hoy" class="dash-hoy"></span>
+      <button class="btn" style="margin-left:auto" data-descargar-html data-seccion="v-dashboard" data-titulo="Control de Prensas — Panel" data-archivo="dashboard-prensas" title="Baja una copia del panel tal como se ve ahora, en un .html que se abre sin internet">Descargar HTML</button>
     </div>
     <div class="kpis">
-      <div class="kpi total"><div class="label">Total lotes llenos</div><div class="num" id="kTotal">–</div><div class="pct">con litros &gt; 0</div><div class="bar"></div></div>
-      <div class="kpi ok"><div class="label">OK</div><div class="num" id="kOk">–</div><div class="pct" id="kOkPct"></div><div class="bar"></div></div>
-      <div class="kpi nook"><div class="label">No OK</div><div class="num" id="kNoOk">–</div><div class="pct" id="kNoOkPct"></div><div class="bar"></div></div>
-      <div class="kpi sinmes"><div class="label">Sin análisis del mes</div><div class="num" id="kSinMes">–</div><div class="pct" id="kSinMesPct"></div><div class="bar"></div></div>
-      <div class="kpi prox"><div class="label">Próximos a vencer</div><div class="num" id="kProx">–</div><div class="pct">21–30 días sin análisis</div><div class="bar"></div></div>
+      <div class="kpi total"><div class="label">Lotes llenos</div><div class="num" id="kTotal">–</div><div class="pct">con litros &gt; 0</div></div>
+      <div class="kpi ok"><div class="label">OK</div><div class="num" id="kOk">–</div><div class="pct" id="kOkPct"></div></div>
+      <div class="kpi nook"><div class="label">No OK</div><div class="num" id="kNoOk">–</div><div class="pct" id="kNoOkPct"></div></div>
+      <div class="kpi sinmes"><div class="label">Sin análisis del mes</div><div class="num" id="kSinMes">–</div><div class="pct" id="kSinMesPct"></div></div>
+      <div class="kpi prox"><div class="label">Próximos a vencer</div><div class="num" id="kProx">–</div><div class="pct"><span data-regla="proximo_dias">21</span>–<span data-regla="vencido_dias">30</span> días sin análisis</div></div>
     </div>
-    <div class="card">
-      <h2>Gráficos</h2>
-      <div class="charts-grid">
-        <div class="chart-box"><h3>Estado de lotes</h3><div id="chDonut"></div></div>
-        <div class="chart-box"><h3>Criterios fallidos (cant. de lotes)</h3><div id="chBars"></div></div>
-        <div class="chart-box"><h3>pH vs Acidez Volátil</h3><div id="chScatter"></div></div>
+    <div class="dash-grid">
+      <div class="dash-pend">
+        <div class="solapas" id="dashSolapas" role="tablist" data-no-exportar>
+          <button type="button" data-sol="tNoOk" role="tab">No OK <span id="cntNoOk"></span></button>
+          <button type="button" data-sol="tVenc" role="tab">Vencidos <span id="cntVenc"></span></button>
+          <button type="button" data-sol="tProx" role="tab">Próximos <span id="cntProx"></span></button>
+          <button type="button" data-sol="tUltAgr" role="tab">Últimos agregados <span id="cntUltAgr"></span></button>
+        </div>
+        <div class="sol-panel" data-sol="tNoOk"><h3 class="sol-tit">Lotes NO OK</h3><div class="scroll"><table id="tNoOk"></table></div></div>
+        <div class="sol-panel" data-sol="tVenc"><h3 class="sol-tit">Vencidos — análisis &gt; <span data-regla="vencido_dias">30</span> días</h3><div class="scroll"><table id="tVenc"></table></div></div>
+        <div class="sol-panel" data-sol="tProx"><h3 class="sol-tit">Próximos a vencer — <span data-regla="proximo_dias">21</span> a <span data-regla="vencido_dias">30</span> días</h3><div class="scroll"><table id="tProx"></table></div></div>
+        <div class="sol-panel" data-sol="tUltAgr"><h3 class="sol-tit">Últimos agregados</h3><div class="scroll"><table id="tUltAgr"></table></div></div>
       </div>
+      <aside class="dash-lado">
+        <h2 class="dash-h">Fallas por criterio</h2>
+        <div class="crit-list" id="critList"></div>
+        <h2 class="dash-h">pH vs Acidez volátil</h2>
+        <div id="chScatter"></div>
+        <h2 class="dash-h">Estado de lotes</h2>
+        <div id="chDonut"></div>
+        <h2 class="dash-h">Criterios fallidos</h2>
+        <div id="chBars"></div>
+      </aside>
     </div>
-    <div class="grid2">
-      <div class="card"><h2>Resumen por criterio</h2><div class="crit-list" id="critList"></div></div>
-      <div>
-        <div class="card"><h2>Lotes NO OK — Detalle <span class="count" id="cntNoOk"></span></h2><div class="scroll"><table id="tNoOk"></table></div></div>
-        <div class="card"><h2>Lotes vencidos — análisis &gt; 30 días <span class="count" id="cntVenc"></span></h2><div class="scroll"><table id="tVenc"></table></div></div>
-        <div class="card"><h2>Próximos a vencer — 21 a 30 días <span class="count" id="cntProx"></span></h2><div class="scroll"><table id="tProx"></table></div></div>
-        <div class="card"><h2>Últimos agregados <span class="count" id="cntUltAgr"></span></h2><div class="scroll"><table id="tUltAgr"></table></div></div>
-      </div>
-    </div>
-    <div class="foot">Reglas: pH &gt; 4 · AV &gt; 1 g/L · AV = −999 (inválida) · Gluc/Fruc &gt; 3 g/L · Ác. Málico &gt; 0.5 g/L · Vencido &gt; 30 días sin análisis · Próximo a vencer: 21–30 días sin análisis.</div>
+    <div class="foot">Reglas: pH &gt; <span data-regla="ph_max"></span> · AV &ge; <span data-regla="av_max"></span> g/L · AV = −999 (inválida) · Gluc/Fruc &gt; <span data-regla="gluc_max"></span> g/L · Ác. Málico &gt; <span data-regla="malico_max"></span> g/L · Vencido &gt; <span data-regla="vencido_dias"></span> días sin análisis · Próximo a vencer: <span data-regla="proximo_dias"></span>–<span data-regla="vencido_dias"></span> días sin análisis. Se cambian en Más › Configuración.</div>
   </section>
 
   <!-- ALTO RIESGO -->
   <section class="view" id="v-riesgo">
-    <div class="note">Lotes cuyo <b>último análisis</b> cumple
-      <b>(Ác. Málico &gt; 0.5 <u>y</u> AV &gt; 0.85)</b> <b><u>o</u></b> <b>Gluc/Fruc &gt; 3</b>,
-      <b><u>o</u></b> que tuvieron un <b>salto de AV ≥ 0.3 g/L</b> respecto del análisis anterior
+    <div class="pg-head">
+      <h1>Alto riesgo</h1>
+      <p>Lotes con málico y volátil altos, azúcar residual o un salto brusco de acidez volátil.</p>
+    </div>
+    <details class="info"><summary>Cómo se calcula</summary>
+      <p>Lotes cuyo <b>último análisis</b> cumple
+      <b>(Ác. Málico &gt; <span data-regla="malico_max">0.5</span> <u>y</u> AV &gt; <span data-regla="av_atencion">0.85</span>)</b> <b><u>o</u></b> <b>Gluc/Fruc &gt; <span data-regla="gluc_max">3</span></b>,
+      <b><u>o</u></b> que tuvieron un <b>salto de AV ≥ <span data-regla="av_salto">0.3</span> g/L</b> respecto del análisis anterior
       (aunque el AV siga por debajo del límite).
       Cada lote muestra <b>dos filas</b>: el penúltimo análisis (referencia) y el último, para ver la tendencia.
       En el salto de AV, un <b>AV = −999</b> no corta la comparación: se saltea y se compara contra el último
-      valor válido, por eso el motivo indica entre paréntesis los dos valores usados.</div>
-    <div class="toolbar">
-      <input class="txt" id="buscaRiesgo" placeholder="🔎 Buscar por lote…" style="min-width:160px">
-      <div class="mfilt-bar" id="fltRiesgoBar"></div>
-      <button class="btn" id="btnLimpiarFltRiesgo">🧹 Limpiar filtros</button>
+      valor válido, por eso el motivo indica entre paréntesis los dos valores usados.</p>
+    </details>
+    <div class="tbar">
+      <input class="txt buscar" id="buscaRiesgo" placeholder="Buscar lote…">
+      <button class="btn" id="btnLimpiarFltRiesgo">Limpiar filtros</button>
       <span class="tag" id="cntRiesgo"></span>
     </div>
-    <div class="legend-inline"><span class="sw bad2"></span> Valor que dispara el riesgo (AV &gt; 0.85 · Málico &gt; 0.5 · Gluc/Fruc &gt; 3 · AV con salto ≥ 0.3 g/L)</div>
+    <div class="legend-inline"><span class="sw bad2"></span> Valor que dispara el riesgo (AV &gt; <span data-regla="av_atencion"></span> · Málico &gt; <span data-regla="malico_max"></span> · Gluc/Fruc &gt; <span data-regla="gluc_max"></span> · AV con salto ≥ <span data-regla="av_salto"></span> g/L)</div>
     <div class="scroll tall"><table id="tRiesgo"></table></div>
   </section>
 
   <!-- LOTES -->
   <section class="view" id="v-lotes">
-    <div class="toolbar">
-      <input class="txt" id="buscaLotes" placeholder="🔎 Buscar lote, variedad, origen…" style="min-width:220px">
-      <div class="mfilt-bar" id="fltLotesBar"></div>
-      <button class="btn" id="btnLimpiarFltLotes">🧹 Limpiar filtros</button>
-      <span class="tag" id="lotesCount"></span>
-      <div class="spacer"></div>
-      <button class="btn" id="btnAddLote">➕ Agregar lote</button>
+    <div class="pg-head">
+      <h1>Lotes</h1>
+      <p>Maestro de lotes de prensa: litros, variedad y estado según su último análisis.</p>
+      <div class="pg-acc"><button class="btn" id="btnAddLote">Agregar lote</button></div>
     </div>
-    <div class="legend-inline"><span class="sw crit"></span> Lote NO OK (criterio fuera de rango) &nbsp;·&nbsp; <span class="sw venc"></span> Vencido (&gt;30 días sin análisis)</div>
+    <div class="tbar">
+      <input class="txt buscar" id="buscaLotes" placeholder="Buscar lote, variedad, origen…">
+      <span id="fltLlenadoLotes"></span>
+      <button class="btn" id="btnLimpiarFltLotes">Limpiar filtros</button>
+      <span class="tag" id="lotesCount"></span>
+    </div>
+    <div class="legend-inline"><span class="sw crit"></span> Lote NO OK (criterio fuera de rango) &nbsp;·&nbsp; <span class="sw venc"></span> Vencido (&gt;<span data-regla="vencido_dias"></span> días sin análisis) &nbsp;·&nbsp; <span class="sw vacio"></span> Vaciado (0 L)</div>
     <div class="scroll tall"><table id="tLotes"></table></div>
   </section>
 
   <!-- ANÁLISIS -->
   <section class="view" id="v-analisis">
-    <div class="toolbar">
-      <input class="txt" id="buscaAna" placeholder="🔎 Buscar por lote…" style="min-width:160px">
-      <div class="mfilt-bar" id="fltAnaBar"></div>
-      <button class="btn" id="btnLimpiarFltAna">🧹 Limpiar filtros</button>
-      <span class="tag" id="anaCount"></span>
-      <div class="spacer"></div>
-      <button class="btn" id="btnAddAna">➕ Agregar fila</button>
+    <div class="pg-head">
+      <h1>Análisis</h1>
+      <p>Historial de análisis de laboratorio de cada lote.</p>
+      <div class="pg-acc"><button class="btn" id="btnAddAna">Agregar fila</button></div>
     </div>
-    <div class="legend-inline"><span class="sw sep"></span> Separador (Mes 1, sin análisis) &nbsp;·&nbsp; <span class="sw bad2"></span> Valor fuera de criterio</div>
+    <div class="tbar">
+      <input class="txt buscar" id="buscaAna" placeholder="Buscar lote…">
+      <span id="fltLlenadoAna"></span>
+      <select id="anaMostrar" title="Qué filas mostrar"><option value="">Mostrar todo</option><option value="con">Con análisis</option><option value="sep">Solo separadores</option><option value="nook">Solo NO OK</option></select>
+      <button class="btn" id="btnLimpiarFltAna">Limpiar filtros</button>
+      <span class="tag" id="anaCount"></span>
+    </div>
+    <div class="legend-inline"><span class="sw sep"></span> Separador (Mes 1, sin análisis) &nbsp;·&nbsp; <span class="sw bad2"></span> Valor fuera de criterio &nbsp;·&nbsp; <span class="sw vacio"></span> Lote vaciado (0 L)</div>
     <div class="scroll tall"><table id="tAna"></table></div>
   </section>
 
   <!-- AGREGADOS -->
   <section class="view" id="v-agregados">
-    <div class="note">Bitácora de agregados a las prensas (TH2 = ácido tartárico, SO2 = anhídrido sulfuroso). Cada agregado tiene su propia fecha, independiente del análisis de laboratorio.</div>
-    <div class="toolbar">
-      <label>Lote:</label><input class="txt" id="agrLote" list="agrLotes" placeholder="N° lote" style="width:110px"><datalist id="agrLotes"></datalist>
-      <label>Fecha:</label><input type="date" id="agrFecha">
-      <label>Tipo:</label><select id="agrTipo"><option value="TH2">TH2 (ác. tartárico)</option><option value="SO2">SO2 (anh. sulfuroso)</option><option value="Otro">Otro</option></select>
-      <label>Cantidad:</label><input class="txt" id="agrCant" placeholder="cant." style="width:90px">
-      <label>Unidad:</label><input class="txt" id="agrUnidad" style="width:80px">
-      <button class="btn primary" id="btnAddAgr">＋ Agregar</button>
-      <button class="btn" id="btnImprimirAgr">🖨️ Imprimir</button>
+    <div class="pg-head">
+      <h1>Agregados</h1>
+      <p>Bitácora de agregados a las prensas (TH2, SO₂), cada uno con su propia fecha.</p>
+      <div class="pg-acc"><button class="btn" id="btnAgrImport">Cargar desde Excel</button><a class="btn" id="lnkAgrOrden" href="/prensas/?orden=nueva%3Aprensas-agregados&amp;volver=%2Fordenes%2F%3Fv%3Dpendientes">Orden de trabajo →</a></div>
     </div>
-    <div class="toolbar">
-      <input class="txt" id="buscaAgr" placeholder="🔎 Buscar por lote…" style="min-width:160px">
-      <div class="mfilt-bar" id="fltAgrBar"></div>
-      <button class="btn" id="btnLimpiarFltAgr">🧹 Limpiar filtros</button>
+    <details class="info"><summary>Cómo funciona</summary>
+      <p>Bitácora de agregados a las prensas (TH2 = ácido tartárico, SO2 = anhídrido sulfuroso). Cada agregado tiene su propia fecha, independiente del análisis de laboratorio.</p>
+    </details>
+    <div class="nuevo">
+      <span class="nuevo-tit">Nuevo agregado</span>
+      <label>Lote <input class="txt" id="agrLote" list="agrLotes" placeholder="N° lote" style="width:100px"></label><datalist id="agrLotes"></datalist>
+      <label>Fecha <input class="txt" type="date" id="agrFecha"></label>
+      <label>Tipo <select id="agrTipo"><option value="TH2">TH2 (ác. tartárico)</option><option value="SO2">SO2 (anh. sulfuroso)</option><option value="Otro">Otro</option></select></label>
+      <label>Cantidad <input class="txt" id="agrCant" placeholder="cant." style="width:80px"></label>
+      <label>Unidad <input class="txt" id="agrUnidad" style="width:70px"></label>
+      <button class="btn primary" id="btnAddAgr">Agregar</button>
+    </div>
+    <div class="tbar">
+      <input class="txt buscar" id="buscaAgr" placeholder="Buscar lote…">
+      <button class="btn" id="btnLimpiarFltAgr">Limpiar filtros</button>
       <span class="tag" id="agrCount"></span>
     </div>
     <div class="scroll tall"><table id="tAgr"></table></div>
-    <div style="margin-top:14px">
-      <button class="btn" id="btnAgrImport">⬆️ Cargar datos (pegar desde Excel)</button>
-      <button class="btn" id="btnAgrOrden">🧾 Orden de trabajo</button>
-    </div>
-    <div class="card" id="agrImportWrap" style="display:none;margin-top:12px">
-      <div class="note">Pegá los agregados copiados desde Excel (o un CSV). Columnas esperadas en este orden:
-        <b>Lote, Fecha, Tipo, Cantidad</b>. El Tipo acepta TH2, SO2 u Otro; la Unidad se completa sola
-        según el tipo (TH2 → g/L, SO2 → ppm). La app cruza con el maestro de Lotes y descarta los que no existen.</div>
-      <div class="import-grid">
-        <div>
-          <textarea id="agrPasteArea" placeholder="Pegá acá (Ctrl+V) o cargá un archivo…"></textarea>
-          <div class="toolbar" style="margin-top:10px">
-            <input type="file" id="agrFileCsv" accept=".csv,.txt" class="txt">
-            <label style="color:var(--muted)"><input type="checkbox" id="agrChkHeader" checked> primera fila = encabezado</label>
-          </div>
-          <button class="btn primary" id="btnAnalizarAgr">🔍 Analizar datos pegados</button>
-        </div>
-        <div>
-          <div id="agrImportMsg"></div>
-          <div class="scroll" style="max-height:340px"><table id="tAgrPreview"></table></div>
-          <button class="btn primary" id="btnConfirmarCargaAgr" style="margin-top:12px;display:none">✅ Cargar a la bitácora</button>
+    <div id="agrImportWrap" class="carga-bloque" style="display:none">
+      <h2 class="doc-titulo">Cargar agregados desde Excel</h2>
+    <ol class="pasos" id="pasosCargaAgr">
+      <li data-p="1" class="on"><b>1</b>Pegar</li>
+      <li data-p="2"><b>2</b>Revisar</li>
+      <li data-p="3"><b>3</b>Cargar a la bitácora</li>
+    </ol>
+    <div class="import-grid">
+      <div>
+        <textarea id="agrPasteArea" placeholder="Pegá acá (Ctrl+V) o cargá un archivo…"></textarea>
+        <div class="carga-acc">
+          <input type="file" id="agrFileCsv" accept=".csv,.txt" class="txt">
+          <label><input type="checkbox" id="agrChkHeader" checked> primera fila = encabezado</label>
+          <button class="btn primary" id="btnAnalizarAgr">Analizar</button>
         </div>
       </div>
+      <div>
+        <div class="carga-cols"><div class="carga-cols-tit">Columnas, en este orden</div><span class="col-etq">Lote</span><span class="col-etq">Fecha</span><span class="col-etq">Tipo</span><span class="col-etq">Cantidad</span><p>El tipo acepta TH2, SO2 u Otro; la unidad se completa sola (TH2 → g/L, SO2 → ppm).</p></div>
+        <div id="agrImportMsg"></div>
+        <div class="scroll" style="max-height:340px"><table id="tAgrPreview"></table></div>
+        <button class="btn primary" id="btnConfirmarCargaAgr" style="margin-top:12px;display:none">Cargar a la bitácora</button>
+      </div>
+    </div>
     </div>
     <div id="agrOrdenWrap" style="display:none;margin-top:12px">
-      <div class="toolbar no-print">
-        <b style="font-family:var(--serif);font-size:15px">Orden de Trabajo — Agregados</b>
-        <span class="tag" id="agrOrdCount"></span>
-        <button class="btn" id="btnAgrOrdFiltrados">➕ Agregar filtrados</button>
-        <button class="btn" id="btnAgrOrdVaciar">🗑️ Vaciar</button>
-        <div class="spacer"></div>
-        <button class="btn" id="btnAgrOrdOcultar">Ocultar</button>
-        <button class="btn primary" id="btnAgrOrdImprimir">🖨️ Imprimir</button>
+      <h2 class="doc-titulo no-print">Orden de trabajo — Agregados</h2>
+      <div class="doc">
+        <aside class="doc-panel no-print">
+          <div class="doc-grupo">
+            <h4>1 · Qué lotes</h4>
+            <div class="doc-btns"><button class="btn" id="btnAgrOrdFiltrados">Agregar filtrados</button><button class="btn" id="btnAgrOrdVaciar">Vaciar</button></div>
+            <div class="campo"><span>Agregar lote</span>
+              <span class="doc-linea"><input class="txt" id="agrOrdLote" list="agrLotes" placeholder="N° lote"><select id="agrOrdTipo"><option value="TH2">TH2</option><option value="SO2">SO2</option><option value="Otro">Otro</option></select><input class="txt" id="agrOrdCant" placeholder="cant."></span></div>
+            <div class="doc-btns"><button class="btn primary" id="btnAgrOrdAdd">Agregar</button></div>
+            <label class="campo apilado"><span>Pegar desde Excel</span><textarea id="agrOrdPaste" class="txt" rows="3" placeholder="3 columnas: Lote · Tipo · Cantidad"></textarea></label>
+            <div class="doc-btns"><button class="btn" id="btnAgrOrdPegar">Agregar pegados</button><span class="tag" id="agrOrdPasteMsg"></span></div>
+          </div>
+          <div class="doc-grupo">
+            <h4>2 · Encabezado</h4>
+            <label class="campo"><span>N° de orden</span><input class="txt" id="agrOrdNro"></label>
+            <label class="campo"><span>Fecha</span><input class="txt" type="date" id="agrOrdFecha"></label>
+            <label class="campo"><span>Emitió</span><input class="txt" id="agrOrdEmitio"></label>
+            <label class="campo"><span>Recibió</span><input class="txt" id="agrOrdRecibio"></label>
+          </div>
+        </aside>
+        <section class="doc-visor">
+          <div class="doc-visor-bar no-print"><span class="tag" id="agrOrdCount"></span><button class="btn primary" id="btnAgrOrdImprimir">Imprimir</button></div>
+          <div id="agrOrdenPaginas"></div>
+        </section>
       </div>
-      <div class="toolbar no-print">
-        <label>N° de Orden:</label><input class="txt" id="agrOrdNro" style="width:90px">
-        <label>Fecha:</label><input class="txt" type="date" id="agrOrdFecha">
-        <label>Emitió:</label><input class="txt" id="agrOrdEmitio" style="width:130px">
-        <label>Recibió:</label><input class="txt" id="agrOrdRecibio" style="min-width:200px">
-      </div>
-      <div class="toolbar no-print">
-        <b style="color:var(--muted);font-size:12px">Agregar lote:</b>
-        <input class="txt" id="agrOrdLote" list="agrLotes" placeholder="N° lote" style="width:100px">
-        <select id="agrOrdTipo"><option value="TH2">TH2</option><option value="SO2">SO2</option><option value="Otro">Otro</option></select>
-        <input class="txt" id="agrOrdCant" placeholder="cant." style="width:80px">
-        <button class="btn primary" id="btnAgrOrdAdd">➕ Agregar</button>
-      </div>
-      <div class="toolbar no-print" style="align-items:flex-start">
-        <textarea id="agrOrdPaste" placeholder="Pegá 3 columnas: Lote · Tipo · Cantidad (desde Excel)" style="min-width:280px;min-height:60px;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-family:inherit"></textarea>
-        <button class="btn" id="btnAgrOrdPegar">➕ Agregar pegados</button>
-        <span class="tag" id="agrOrdPasteMsg"></span>
-      </div>
-      <div id="agrOrdenPaginas"></div>
     </div>
-  </section>
-
-  <!-- EVOLUCIÓN -->
-  <section class="view" id="v-evolucion">
-    <div class="evo-bar">
-      <input class="txt" id="buscaEvo" placeholder="🔎 Buscar lote o variedad…" style="min-width:200px">
-      <button class="btn" id="btnEvoNoOk">🔴 Solo NO OK</button>
-      <div class="mfilt-bar" id="fltEvoBar"></div>
-      <button class="btn" id="btnLimpiarFltEvo">🧹 Limpiar filtros</button>
-      <label>Orden:</label>
-      <select id="ordenEvo">
-        <option value="lote">Lote n°</option>
-        <option value="estado">Estado (NO OK primero)</option>
-        <option value="variedad">Variedad</option>
-      </select>
-      <span class="tag" id="evoCount"></span>
-    </div>
-    <div id="evoVacio" class="note" style="display:none"></div>
-    <div class="evo-list" id="evoLista"></div>
   </section>
 
   <!-- DEGUSTACIÓN -->
   <section class="view" id="v-degustacion">
-    <div class="note">Registro de la <b>degustación mensual</b> para verificar el estado sensorial de los lotes. Se usa el <b>mes en curso</b> del Dashboard. Marcá <b>OK</b> / <b>NO OK</b> y, si es NO OK, el motivo. No olvides <b>Guardar</b> al terminar.</div>
-    <div class="toolbar">
-      <input class="txt" id="buscaDeg" placeholder="🔎 Buscar lote, ID origen…" style="min-width:200px">
-      <label>Mes:</label><select id="selMesDeg"></select>
-      <div class="mfilt-bar" id="fltDegBar"></div>
-      <button class="btn" id="btnLimpiarFltDeg">🧹 Limpiar filtros</button>
-      <label>Fecha:</label><input class="txt" type="date" id="degFecha" style="width:150px">
+    <div class="pg-head">
+      <h1>Degustación</h1>
+      <p>Degustación mensual: estado sensorial de cada lote. Marcá OK o NO OK y, si es NO OK, el motivo.</p>
+    </div>
+    <details class="info"><summary>Cómo funciona</summary>
+      <p>Registro de la <b>degustación mensual</b> para verificar el estado sensorial de los lotes. Se usa el <b>mes en curso</b> del Dashboard. Marcá <b>OK</b> / <b>NO OK</b> y, si es NO OK, el motivo. No olvides <b>Guardar</b> al terminar.</p>
+    </details>
+    <div class="tbar">
+      <input class="txt buscar" id="buscaDeg" placeholder="Buscar lote, ID origen…">
+      <span id="fltLlenadoDeg"></span>
+      <label>Mes <select id="selMesDeg"></select></label>
+      <label>Fecha <input class="txt" type="date" id="degFecha" style="width:150px"></label>
+      <button class="btn" id="btnLimpiarFltDeg">Limpiar filtros</button>
       <span class="tag" id="cntDeg"></span>
     </div>
+    <div class="legend-inline"><span class="sw crit"></span> NO OK en la degustación &nbsp;·&nbsp; <span class="sw vacio"></span> Lote vaciado (0 L)</div>
     <div class="scroll tall"><table id="tDeg"></table></div>
     <div class="toolbar no-print" style="margin-top:14px">
-      <button class="btn primary" id="btnGenAccion">⚡ Generar Acción Rápida (lotes NO OK)</button>
+      <a class="btn primary" id="lnkAccion" href="/prensas/?orden=nueva%3Aprensas-accion&amp;volver=%2Fordenes%2F%3Fv%3Dpendientes">Armar Acción rápida (lotes NO OK) →</a>
       <span class="tag" id="accionHint"></span>
     </div>
     <div id="accionWrap" style="display:none">
-      <div class="toolbar no-print">
-        <b style="font-family:var(--serif);font-size:15px">Orden de Trabajo — Acción Rápida (corrección de SO₂)</b>
-        <span class="tag" id="arCount"></span>
-        <button class="btn" id="btnArRegenerar">🔄 Regenerar desde NO OK</button>
-        <div class="spacer"></div>
-        <button class="btn" id="btnArOcultar">Ocultar</button>
-        <button class="btn primary" id="btnArImprimir">🖨️ Imprimir</button>
+      <h2 class="doc-titulo no-print">Acción rápida — corrección de SO₂</h2>
+      <div class="doc">
+        <aside class="doc-panel no-print">
+          <div class="doc-grupo">
+            <h4>1 · Qué lotes</h4>
+            <p class="doc-nota">Los lotes NO OK de la degustación del mes.</p>
+            <div class="doc-btns"><button class="btn" id="btnArRegenerar">Regenerar desde NO OK</button></div>
+          </div>
+          <div class="doc-grupo">
+            <h4>2 · Encabezado</h4>
+            <label class="campo"><span>N° de orden</span><input class="txt" id="arNro"></label>
+            <label class="campo"><span>Fecha</span><input class="txt" type="date" id="arFecha"></label>
+            <label class="campo"><span>Densidad</span><input class="txt" id="arDensidad" placeholder="(completar)"></label>
+            <label class="campo"><span>Emitió</span><input class="txt" id="arEmitio"></label>
+            <label class="campo"><span>Recibió</span><input class="txt" id="arRecibio"></label>
+          </div>
+          <div class="doc-grupo">
+            <h4>3 · Valores por defecto</h4>
+            <label class="campo"><span>Vasija</span><input class="txt" id="arVasija" value="Barricas"></label>
+            <label class="campo"><span>mL por vasija</span><input class="txt" id="arMl" value="250"></label>
+            <div class="doc-btns"><button class="btn" id="btnArAplicar">Aplicar a todos</button><button class="btn" id="btnArAddFila">Agregar fila</button></div>
+            <p class="doc-nota">Regla: por cada barril, <span data-regla="accion_ml">250</span> mL de Solución 1.030.</p>
+          </div>
+        </aside>
+        <section class="doc-visor">
+          <div class="doc-visor-bar no-print"><span class="tag" id="arCount"></span><button class="btn primary" id="btnArImprimir">Imprimir</button></div>
+          <div id="accionPaginas"></div>
+        </section>
       </div>
-      <div class="toolbar no-print">
-        <label>N° de Orden:</label><input class="txt" id="arNro" style="width:90px">
-        <label>Fecha:</label><input class="txt" type="date" id="arFecha">
-        <label>Densidad:</label><input class="txt" id="arDensidad" style="width:90px" placeholder="(completar)">
-        <label>Emitió:</label><input class="txt" id="arEmitio" style="width:130px">
-        <label>Recibió:</label><input class="txt" id="arRecibio" style="min-width:200px">
-      </div>
-      <div class="toolbar no-print">
-        <label>Vasija (defecto):</label><input class="txt" id="arVasija" style="width:110px" value="Barricas">
-        <label>mL por vasija:</label><input class="txt" id="arMl" style="width:70px" value="250">
-        <button class="btn" id="btnArAplicar">Aplicar a todos</button>
-        <button class="btn" id="btnArAddFila">➕ Agregar fila</button>
-        <span class="tag">Regla: por cada barril, 250 mL de Solución 1.030</span>
-      </div>
-      <div id="accionPaginas"></div>
     </div>
   </section>
 
   <!-- PENDIENTES -->
   <!-- ORDEN DE MUESTRAS -->
   <section class="view" id="v-orden">
-    <div class="toolbar no-print">
-      <label>Incluir:</label>
-      <select id="ordenFuente">
-        <option value="todos">Todos los lotes</option>
-        <option value="vencidos">Lotes vencidos (&gt;30 días)</option>
-        <option value="proximos">Próximos a vencer (21–30 días)</option>
-        <option value="venc_prox">Vencidos + próximos a vencer</option>
-        <option value="nook">Lotes NO OK</option>
-        <option value="atencion">Prioridad / AV &gt; 0.85 (atención)</option>
-        <option value="blanco">📝 Hoja en blanco (manual)</option>
-      </select>
-      <span id="wrapNookTipo" style="display:none">
-        <label>Criterio NO OK:</label>
-        <select id="ordenNookTipo">
-          <option value="todos">Todos los criterios</option>
-          <option value="fpH">pH &gt; 4</option>
-          <option value="fAVhi">AV &gt; 1</option>
-          <option value="fAVneg">AV inválida (−999)</option>
-          <option value="fGl">Gluc/Fruc &gt; 3</option>
-          <option value="fMal">Ác. Málico &gt; 0.5</option>
-        </select>
-      </span>
-      <div class="mfilt-bar" id="fltOrdenBar"></div>
-      <button class="btn" id="btnLimpiarFltOrden">🧹 Limpiar filtros</button>
-      <button class="btn" id="btnRegenerar">🔄 Regenerar lista</button>
-      <span class="tag" id="ordenCount"></span>
-      <div class="spacer"></div>
-      <button class="btn primary" id="btnImprimir">🖨️ Imprimir</button>
+    <div class="pg-head no-print">
+      <h1>Orden de muestras</h1>
+      <p>Arma la orden de toma de muestras para el laboratorio. La hoja de la derecha es la que se imprime.</p>
     </div>
-    <div class="toolbar no-print">
-      <label>N° de Orden:</label><input class="txt" id="ordNro" style="width:80px">
-      <label>Fecha:</label><input class="txt" type="date" id="ordFecha">
-      <label>Día:</label><input class="txt" id="ordDia" style="width:110px" value="miércoles">
-      <label>Recibió:</label><input class="txt" id="ordRecibio" style="min-width:200px">
+    <div class="doc">
+      <aside class="doc-panel no-print">
+        <div class="doc-grupo">
+          <h4>1 · Qué lotes</h4>
+          <label class="campo"><span>Incluir</span>
+            <select id="ordenFuente">
+              <option value="todos">Todos los lotes</option>
+              <option value="vencidos" data-plantilla="Lotes vencidos (>{vencido_dias} días)">Lotes vencidos (&gt;30 días)</option>
+              <option value="proximos" data-plantilla="Próximos a vencer ({proximo_dias}–{vencido_dias} días)">Próximos a vencer (21–30 días)</option>
+              <option value="venc_prox">Vencidos + próximos a vencer</option>
+              <option value="nook">Lotes NO OK</option>
+              <option value="atencion" data-plantilla="Prioridad / AV > {av_atencion} (atención)">Prioridad / AV &gt; 0.85 (atención)</option>
+              <option value="blanco">Hoja en blanco (manual)</option>
+            </select></label>
+          <span id="wrapNookTipo" style="display:none"><label class="campo"><span>Criterio NO OK</span>
+            <select id="ordenNookTipo">
+              <option value="todos">Todos los criterios</option>
+              <option value="fpH" data-plantilla="pH > {ph_max}">pH &gt; 4</option>
+              <option value="fAVhi" data-plantilla="AV ≥ {av_max}">AV ≥ 1</option>
+              <option value="fAVneg">AV inválida (−999)</option>
+              <option value="fGl" data-plantilla="Gluc/Fruc > {gluc_max}">Gluc/Fruc &gt; 3</option>
+              <option value="fMal" data-plantilla="Ác. Málico > {malico_max}">Ác. Málico &gt; 0.5</option>
+            </select></label></span>
+          <div class="campo"><span>Filtros</span><div class="mfilt-bar" id="fltOrdenBar"></div></div>
+          <div class="doc-btns"><button class="btn" id="btnRegenerar">Regenerar lista</button><button class="btn" id="btnLimpiarFltOrden">Limpiar filtros</button></div>
+        </div>
+        <div class="doc-grupo">
+          <h4>2 · Encabezado</h4>
+          <label class="campo"><span>N° de orden</span><input class="txt" id="ordNro"></label>
+          <label class="campo"><span>Fecha</span><input class="txt" type="date" id="ordFecha"></label>
+          <label class="campo"><span>Día</span><input class="txt" id="ordDia" value="miércoles"></label>
+          <label class="campo"><span>Recibió</span><input class="txt" id="ordRecibio"></label>
+        </div>
+        <div class="doc-grupo">
+          <h4>3 · Valores por defecto</h4>
+          <label class="campo"><span>Recipiente</span><select id="ordRecipiente"><option>Tubo falcon</option><option>Botella 120 mL</option><option>Tubo falcon + Botella 120 mL</option></select></label>
+          <div class="campo"><span>Cantidad</span><span class="stepper"><button class="btn" id="ordCantMenos" aria-label="Uno menos">−</button><input class="txt" id="ordCant" value="1"><button class="btn" id="ordCantMas" aria-label="Uno más">+</button></span></div>
+          <label class="campo"><span>Vasija</span><input class="txt" id="ordVasija" placeholder="(en blanco)"></label>
+          <div class="doc-btns"><button class="btn" id="btnAplicarTodos">Aplicar a todos</button><button class="btn" id="btnAddOrdenFila">Agregar fila</button></div>
+        </div>
+        <div class="doc-grupo">
+          <h4>4 · Mapas de barriles</h4>
+          <input type="file" id="ordMapaFile" accept="image/*" multiple style="display:none">
+          <div class="doc-btns"><button class="btn" id="btnOrdMapa">Adjuntar mapa…</button></div>
+          <span id="ordMapaChips" class="rel-chips"></span>
+          <p class="doc-nota">Cada imagen se agrega como hoja final al imprimir.</p>
+        </div>
+      </aside>
+      <section class="doc-visor">
+        <div class="doc-visor-bar no-print"><span class="tag" id="ordenCount"></span><span class="doc-tope">Máx 25 lotes por hoja</span><button class="btn primary" id="btnImprimir">Imprimir</button></div>
+        <div id="ordenPaginas"></div>
+        <div id="ordenLotesLista" class="lotes-lista no-print"></div>
+      </section>
     </div>
-    <div class="toolbar no-print">
-      <label>Recipiente (defecto):</label>
-      <select id="ordRecipiente"><option>Tubo falcon</option><option>Botella 120 mL</option><option>Tubo falcon + Botella 120 mL</option></select>
-      <label>Cantidad:</label>
-      <span class="stepper"><button class="btn" id="ordCantMenos">−</button><input class="txt" id="ordCant" value="1" style="width:44px;text-align:center"><button class="btn" id="ordCantMas">+</button></span>
-      <label>Vasija (defecto):</label><input class="txt" id="ordVasija" style="width:100px" placeholder="(en blanco)">
-      <button class="btn" id="btnAplicarTodos">Aplicar a todos</button>
-      <button class="btn" id="btnAddOrdenFila">➕ Agregar fila</button>
-      <span class="tag">Máx 25 lotes por hoja</span>
-    </div>
-    <div class="toolbar no-print" style="align-items:flex-start">
-      <label style="padding-top:4px">Mapas de barriles:</label>
-      <input type="file" id="ordMapaFile" accept="image/*" multiple style="display:none">
-      <button class="btn" id="btnOrdMapa">🗺️ Adjuntar mapa…</button>
-      <span id="ordMapaChips" class="rel-chips"></span>
-      <span class="note" style="font-size:11px">Cada imagen se agrega como hoja final al imprimir.</span>
-    </div>
-    <div id="ordenPaginas"></div>
-    <div id="ordenLotesLista" class="lotes-lista no-print"></div>
   </section>
 
   <!-- RELLENOS -->
   <section class="view" id="v-relleno">
-    <div class="toolbar no-print">
-      <label>Variedad:</label><select id="relVarAdd"><option value="">➕ Agregar variedad…</option></select>
-      <span id="relVarChips" class="rel-chips"></span>
-      <label>Lote origen:</label><select id="relOrigenAdd"><option value="">➕ Agregar lote origen…</option></select>
-      <span id="relOrigenChips" class="rel-chips"></span>
-      <label>Rellenar con (defecto):</label><select id="relRellenarCon"><option value="">(vacío)</option></select>
-      <button class="btn" id="btnRegenerarRelleno">🔄 Regenerar lista</button>
-      <span class="tag" id="rellenoCount"></span>
-      <div class="spacer"></div>
-      <button class="btn primary" id="btnImprimirRelleno">🖨️ Imprimir</button>
+    <div class="pg-head no-print">
+      <h1>Rellenos</h1>
+      <p>Arma la orden de rellenos por variedad y lote de origen. La hoja de la derecha es la que se imprime.</p>
     </div>
-    <div class="toolbar no-print">
-      <label>N° de Orden:</label><input class="txt" id="relNro" style="width:80px">
-      <label>Fecha:</label><input class="txt" type="date" id="relFecha">
-      <label>Día:</label><input class="txt" id="relDia" style="width:110px" value="miércoles">
-      <label>Emitió:</label><input class="txt" id="relEmitio" style="width:120px" value="Marcelo">
-      <label>Recibió:</label><input class="txt" id="relRecibio" style="min-width:200px">
+    <div class="doc">
+      <aside class="doc-panel no-print">
+        <div class="doc-grupo">
+          <h4>1 · Qué lotes</h4>
+          <label class="campo"><span>Variedad</span><select id="relVarAdd"><option value="">Agregar variedad…</option></select></label>
+          <span id="relVarChips" class="rel-chips"></span>
+          <label class="campo"><span>Lote origen</span><select id="relOrigenAdd"><option value="">Agregar lote origen…</option></select></label>
+          <span id="relOrigenChips" class="rel-chips"></span>
+          <label class="campo"><span>Rellenar con</span><select id="relRellenarCon"><option value="">(vacío)</option></select></label>
+          <div class="doc-btns"><button class="btn" id="btnRegenerarRelleno">Regenerar lista</button></div>
+        </div>
+        <div class="doc-grupo">
+          <h4>2 · Encabezado</h4>
+          <label class="campo"><span>N° de orden</span><input class="txt" id="relNro"></label>
+          <label class="campo"><span>Fecha</span><input class="txt" type="date" id="relFecha"></label>
+          <label class="campo"><span>Día</span><input class="txt" id="relDia" value="miércoles"></label>
+          <label class="campo"><span>Emitió</span><input class="txt" id="relEmitio" value="Marcelo"></label>
+          <label class="campo"><span>Recibió</span><input class="txt" id="relRecibio"></label>
+        </div>
+        <div class="doc-grupo">
+          <h4>3 · Valores por defecto</h4>
+          <label class="campo"><span>Vasija</span><input class="txt" id="relVasija" value="barril"></label>
+          <div class="campo"><span>Cantidad</span><span class="stepper"><button class="btn" id="relCantMenos" aria-label="Uno menos">−</button><input class="txt" id="relCant" value="1"><button class="btn" id="relCantMas" aria-label="Uno más">+</button></span></div>
+          <div class="doc-btns"><button class="btn" id="btnAddRellenoFila">Agregar fila</button></div>
+        </div>
+        <div class="doc-grupo">
+          <h4>4 · Instrucciones y pie</h4>
+          <label class="campo apilado"><span>Instrucciones</span><textarea id="relInstrucciones" class="txt" rows="5"></textarea></label>
+          <label class="campo apilado"><span>Pie</span><textarea id="relPie" class="txt" rows="4"></textarea></label>
+        </div>
+        <div class="doc-grupo">
+          <h4>5 · Mapas de barriles</h4>
+          <input type="file" id="relMapaFile" accept="image/*" multiple style="display:none">
+          <div class="doc-btns"><button class="btn" id="btnRelMapa">Adjuntar mapa…</button></div>
+          <span id="relMapaChips" class="rel-chips"></span>
+          <p class="doc-nota">Cada imagen se agrega como hoja final al imprimir.</p>
+        </div>
+      </aside>
+      <section class="doc-visor">
+        <div class="doc-visor-bar no-print"><span class="tag" id="rellenoCount"></span><span class="doc-tope">Máx 25 lotes por hoja</span><button class="btn primary" id="btnImprimirRelleno">Imprimir</button></div>
+        <div id="rellenoPaginas"></div>
+        <div id="rellenoLotesLista" class="lotes-lista no-print"></div>
+      </section>
     </div>
-    <div class="toolbar no-print">
-      <label>Vasija (defecto):</label><input class="txt" id="relVasija" style="width:100px" value="barril">
-      <label>Cantidad:</label>
-      <span class="stepper"><button class="btn" id="relCantMenos">−</button><input class="txt" id="relCant" value="1" style="width:44px;text-align:center"><button class="btn" id="relCantMas">+</button></span>
-      <button class="btn" id="btnAddRellenoFila">➕ Agregar fila</button>
-      <span class="tag">Máx 25 lotes por hoja</span>
-    </div>
-    <div class="toolbar no-print" style="align-items:flex-start">
-      <label style="padding-top:6px">Instrucciones:</label>
-      <textarea id="relInstrucciones" class="txt" rows="4" style="flex:1;min-width:320px;resize:vertical"></textarea>
-      <label style="padding-top:6px">Pie:</label>
-      <textarea id="relPie" class="txt" rows="4" style="flex:1;min-width:260px;resize:vertical"></textarea>
-    </div>
-    <div class="toolbar no-print" style="align-items:flex-start">
-      <label style="padding-top:4px">Mapas de barriles:</label>
-      <input type="file" id="relMapaFile" accept="image/*" multiple style="display:none">
-      <button class="btn" id="btnRelMapa">🗺️ Adjuntar mapa…</button>
-      <span id="relMapaChips" class="rel-chips"></span>
-      <span class="note" style="font-size:11px">Cada imagen se agrega como hoja final al imprimir.</span>
-    </div>
-    <div id="rellenoPaginas"></div>
-    <div id="rellenoLotesLista" class="lotes-lista no-print"></div>
   </section>
 
   <!-- CARGAR -->
   <section class="view" id="v-cargar">
-    <div class="note">Pegá los datos del laboratorio copiados desde Excel (o un CSV). Columnas esperadas en este orden:
-      <b>Lote, Vasija, Año, Fecha, Etanol, PH, AV, Gluc/Fruc, Ác. Málico, Ác. Láctico, AT, Azúcar Red, BRIX DMA, SO2 L</b>.
-      La app cruza con el maestro de Lotes, descarta los que no existen y agrega el resto al historial (el Mes se calcula con la fecha).</div>
+    <div class="pg-head">
+      <h1>Cargar análisis</h1>
+      <p>Pegá los datos del laboratorio copiados desde Excel (o un CSV). Se cruzan con el maestro de Lotes y se descartan los que no existen.</p>
+    </div>
+    <ol class="pasos" id="pasosCarga">
+      <li data-p="1" class="on"><b>1</b>Pegar</li>
+      <li data-p="2"><b>2</b>Revisar</li>
+      <li data-p="3"><b>3</b>Cargar al historial</li>
+    </ol>
     <div class="import-grid">
       <div>
         <textarea id="pasteArea" placeholder="Pegá acá (Ctrl+V) o cargá un archivo…"></textarea>
-        <div class="toolbar" style="margin-top:10px">
+        <div class="carga-acc">
           <input type="file" id="fileCsv" accept=".csv,.txt" class="txt">
-          <label style="color:var(--muted)"><input type="checkbox" id="chkHeader" checked> primera fila = encabezado</label>
+          <label><input type="checkbox" id="chkHeader" checked> primera fila = encabezado</label>
+          <button class="btn primary" id="btnAnalizar">Analizar</button>
         </div>
-        <button class="btn primary" id="btnAnalizar">🔍 Analizar datos pegados</button>
       </div>
       <div>
+        <div class="carga-cols"><div class="carga-cols-tit">Columnas, en este orden</div><span class="col-etq">Lote</span><span class="col-etq">Vasija</span><span class="col-etq">Año</span><span class="col-etq">Fecha</span><span class="col-etq">Etanol</span><span class="col-etq">pH</span><span class="col-etq">AV</span><span class="col-etq">Gluc/Fruc</span><span class="col-etq">Ác. málico</span><span class="col-etq">Ác. láctico</span><span class="col-etq">AT</span><span class="col-etq">Azúcar red.</span><span class="col-etq">Brix DMA</span><span class="col-etq">SO₂ L</span><p>El mes se calcula solo con la fecha.</p></div>
         <div id="importMsg"></div>
         <div class="scroll" style="max-height:340px"><table id="tPreview"></table></div>
-        <button class="btn primary" id="btnConfirmarCarga" style="margin-top:12px;display:none">✅ Cargar al historial</button>
+        <button class="btn primary" id="btnConfirmarCarga" style="margin-top:12px;display:none">Cargar al historial</button>
       </div>
     </div>
   </section>
 
-  <!-- ASISTENTE -->
-  <section class="view" id="v-asistente">
-    <div class="note">Asistente con <b>Workers AI</b> (modelo <span id="iaModelo">llama-3.1-8b</span>) — corre en la nube, así que funciona para todos y no depende de ninguna PC. Preguntá sobre los lotes o pedí cambios; las modificaciones se aplican solo si las confirmás.</div>
-    <div class="chat" id="chatBox"></div>
-    <div class="chat-input">
-      <input class="txt" id="chatPregunta" placeholder="Ej: ¿qué lotes Malbec están vencidos? · agregá un análisis al lote 26701 con pH 3.6 y AV 0.4 hoy" autocomplete="off">
-      <button class="btn primary" id="chatEnviar">Enviar</button>
+  <!-- CONFIGURACIÓN -->
+  <section class="view" id="v-config">
+    <div class="pg-head">
+      <h1>Configuración</h1>
+      <p>Los criterios de cada alerta. Son los mismos para todos los lotes y también los usa el reporte.</p>
+      <div class="pg-acc"><button class="btn danger" id="btnCfgRestaurar">Restaurar valores por defecto</button></div>
     </div>
-    <div class="chat-ejemplos">
-      Probá: <button class="chip-ej">¿Cuántos lotes están NO OK y por qué criterio?</button>
-      <button class="chip-ej">Listá los lotes vencidos de variedad Malbec</button>
-      <button class="chip-ej">Resumí el estado general de junio</button>
-    </div>
+    <details class="info"><summary>Cómo funciona</summary>
+      <p>Cada recuadro es el criterio de una alerta. Cambiá el valor y la app entera se recalcula en el momento;
+      queda firme para todos cuando guardás con <b>Guardar</b>. Si dejás un campo <b>vacío</b>, vuelve al valor por defecto.</p>
+    </details>
+    <div id="cfgAvisos"></div>
+    <div id="cfgCriterios"></div>
   </section>
 </main>
 
@@ -691,6 +909,9 @@
 <script src="vendor/qrcode.min.js"></script>
 <script src="/shared/reglas-av.js"></script>
 <script src="/shared/dashboard-html.js"></script>
+<script src="filtros-cabecera.js"></script>
+<script src="/shared/reglas-alertas.js"></script>
 <script src="app.js"></script>
+<script type="module" src="js/puente.js" onerror="window.__puenteFallo&&window.__puenteFallo()"></script>
 </body>
 </html>

@@ -142,3 +142,31 @@ describe('compare-and-swap de Prensas: test unitario determinista', () => {
     expect((await leerDoc()).meta.version).toBe(versionInicial + 1);
   });
 });
+
+describe('criterios de alerta (pestaña Configuración)', () => {
+  it('config.alertas se guarda y vuelve intacto', async () => {
+    const doc = { ...datos(await versionActual(), 'cfg'), config: { alertas: { ph_max: 3.8, vencido_dias: 25 } } };
+    expect((await guardar(doc)).status).toBe(200);
+    const leido = (await leerDoc()) as unknown as { config?: { alertas?: Record<string, number> } };
+    expect(leido.config?.alertas).toEqual({ ph_max: 3.8, vencido_dias: 25 });
+  });
+});
+
+describe('GET /prensas/api/version', () => {
+  it('devuelve la version del documento guardado, mismo formato que /lotes/api/version', async () => {
+    const doc = datos(await versionActual(), 'v1');
+    expect((await guardar(doc)).status).toBe(200);
+    const versionGuardada = await versionActual();
+
+    const req = new Request('https://catenainstitute.example/prensas/api/version', {
+      headers: { 'Cf-Access-Authenticated-User-Email': EDITOR },
+    });
+    const ctx = createExecutionContext();
+    const res = await rutasPrensas(req, env, ctx, '/version');
+    await waitOnExecutionContext(ctx);
+    const j = await res!.json<{ version: number; autor: string; guardado: string }>();
+    expect(j.version).toBe(versionGuardada);
+    expect(typeof j.autor).toBe('string');
+    expect(typeof j.guardado).toBe('string');
+  });
+});

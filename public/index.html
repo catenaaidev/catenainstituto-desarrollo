@@ -6,151 +6,140 @@
 <title>Plataforma CIW</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
-  /* Mismas fuentes y colores que las apps, para que el portal no se sienta
-     como otro programa. */
-  @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
-  @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
-  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
-  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-500-normal.woff2') format('woff2');font-weight:500;font-display:swap}
-  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
+  /* Diseño "Andes": claro como la cal y la nieve, con la figura de puntos en el
+     centro. Las letras viven en /prensas/fonts para no depender de Google. */
+  @font-face{font-family:'Instrument Serif';src:url('/prensas/fonts/instrument-serif-latin-400-normal.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+  @font-face{font-family:'Instrument Serif';src:url('/prensas/fonts/instrument-serif-latin-400-italic.woff2') format('woff2');font-weight:400;font-style:italic;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');font-weight:500;font-display:swap}
+  @font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
 
   :root{
-    --bg:#f7f5f1; --panel:#ffffff; --panel2:#f1efe9; --line:#e7e3da;
-    --txt:#2a2622; --muted:#8c857b; --accent:#8a3340; --accent2:#6f2731;
-    --ok:#3f7d4f; --warn:#b07d2c;
-    --serif:'Fraunces',Georgia,'Times New Roman',serif;
-    --sans:'Hanken Grotesk',system-ui,Segoe UI,sans-serif;
+    --bg:#EEF0EE; --sel:#E4E8E6; --txt:#15191D; --muted:#67707A; --line:#D3D8D6;
+    --mal:#7A1631; --pizarra:#3E5566;
+    --serif:'Instrument Serif',Georgia,'Times New Roman',serif;
+    --sans:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;
   }
   *{box-sizing:border-box}
   body{
     margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);
     font-size:14px;-webkit-font-smoothing:antialiased;
-    min-height:100vh;display:flex;flex-direction:column;
+    min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;overflow-x:hidden;
   }
-  header{
-    padding:22px 30px 16px;display:flex;align-items:baseline;gap:18px;
-    flex-wrap:wrap;border-bottom:1px solid var(--line);
-  }
-  header h1{margin:0;font-family:var(--serif);font-size:26px;font-weight:500;letter-spacing:.2px}
-  header .sub{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:2.8px}
-  header .right{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted)}
-  .salir{
-    color:var(--muted);text-decoration:none;border:1px solid var(--line);
-    border-radius:6px;padding:4px 10px;font-size:11.5px;transition:border-color .15s,color .15s;
-  }
-  .salir:hover{border-color:var(--accent);color:var(--accent)}
-  .salir:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  a{color:inherit;text-decoration:none}
+  a:focus-visible{outline:2px solid var(--mal);outline-offset:3px;border-radius:3px}
+  /* a lo ancho de toda la ventana; la figura ocupa el alto que sobra */
+  :root{--gut:clamp(16px,4vw,64px)}
+  .in{width:100%;margin:0 auto;padding-inline:var(--gut)}
 
-  main{flex:1;max-width:940px;width:100%;margin:0 auto;padding:44px 26px 70px}
-  .intro{margin:0 0 34px}
-  .intro h2{
-    font-family:var(--serif);font-size:23px;font-weight:500;margin:0 0 8px;
-  }
-  .intro p{margin:0;color:var(--muted);font-size:14px;line-height:1.6;max-width:62ch}
+  header .in{display:flex;align-items:baseline;gap:8px 20px;padding-block:22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .marca{font-family:var(--serif);font-size:24px;letter-spacing:-.01em}
+  .marca small{font-family:var(--sans);font-size:10.5px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);margin-left:12px}
+  .der{margin-left:auto;display:flex;align-items:baseline;gap:6px 22px;font-size:13.5px;color:var(--muted);flex-wrap:wrap}
+  .der a:hover{color:var(--txt)}
+  #quien{color:var(--txt)}
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:16px}
+  main{flex:1;display:flex;flex-direction:column;align-items:stretch;padding-bottom:24px}
+  .tit{text-align:center;margin:28px 0 0;position:relative;z-index:1}
+  .tit p{margin:0 0 6px;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  h1{font-family:var(--serif);font-weight:400;font-size:clamp(40px,5.4vw,72px);line-height:1;margin:0;letter-spacing:-.015em;text-wrap:balance}
+  h1 em{color:var(--mal)}
 
-  .card{
-    background:var(--panel);border:1px solid var(--line);border-radius:10px;
-    padding:22px;display:flex;flex-direction:column;gap:12px;
-    text-decoration:none;color:inherit;
-    transition:border-color .15s, box-shadow .15s, transform .15s;
-  }
-  a.card:hover{
-    border-color:var(--accent);box-shadow:0 6px 20px -12px rgba(42,38,34,.28);
-    transform:translateY(-1px);
-  }
-  a.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-  .card.off{opacity:.62;cursor:not-allowed}
+  .vis{position:relative;flex:1 1 auto;min-height:360px;margin:-12px calc(-1 * var(--gut)) 6px}
+  .vis canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 
-  .card .top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-  .card h3{margin:0;font-family:var(--serif);font-size:19px;font-weight:600}
-  .card .desc{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+  .lista{list-style:none;margin:0;padding:0;width:100%;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--txt)}
+  .op{display:flex;flex-direction:column;gap:8px;padding:20px 22px 16px;border-left:1px solid var(--line);height:100%;position:relative;transition:background .3s}
+  .lista li:first-child .op{border-left:0}
+  .op::before{content:"";position:absolute;left:0;right:0;top:-1px;height:3px;background:var(--mal);transform:scaleX(0);transform-origin:left;transition:transform .45s cubic-bezier(.3,.7,.2,1)}
+  .op.on::before{transform:scaleX(1)}
+  .op.on{background:var(--sel)}
+  .nm{font-family:var(--serif);font-size:clamp(28px,2.6vw,36px);line-height:1}
+  .ds{font-size:14px;line-height:1.5;color:var(--muted)}
+  .rl{font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--mal);margin-top:auto;padding-top:6px}
+  .op.off{cursor:not-allowed}
+  .op.off .nm,.op.off .ds{opacity:.55}
+  .op.off .rl{color:var(--muted)}
+  .op.off::before{background:var(--muted)}
+  .nota{margin:0;font-size:12px;line-height:1.5;color:#8a5a12;background:#F4EBDA;border-radius:4px;padding:7px 9px}
+  .cargando{grid-column:1/-1;text-align:center;color:var(--muted);font-size:13px;padding:22px 0}
 
-  .chip{
-    font-size:9.5px;font-weight:600;letter-spacing:1.6px;text-transform:uppercase;
-    padding:4px 8px;border-radius:20px;white-space:nowrap;
-  }
-  .chip.admin {background:#f3e7e9;color:var(--accent)}
-  .chip.editor{background:#e6efe8;color:var(--ok)}
-  .chip.lector{background:#f1efe9;color:var(--muted)}
-  .chip.prep  {background:#f7efe0;color:var(--warn)}
-  .chip.no    {background:#f1efe9;color:var(--muted)}
+  footer .in{padding-block:16px 20px;font-size:11.5px;color:var(--muted);display:flex;gap:6px 18px;flex-wrap:wrap;justify-content:center}
 
-  .card .nota{
-    margin:0;font-size:11.5px;line-height:1.5;color:var(--warn);
-    background:#f9f2e4;border-radius:6px;padding:8px 10px;
-  }
-
-  .card .pie{
-    margin-top:auto;padding-top:12px;border-top:1px solid var(--line);
-    font-size:11.5px;color:var(--muted);
-  }
-
-  footer{
-    border-top:1px solid var(--line);padding:16px 30px;
-    font-size:11.5px;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap;
-  }
-
-  .cargando{color:var(--muted);font-size:13px}
   .error{
-    background:#fdf3f2;border:1px solid #e9c9c5;color:#8c3b32;
-    border-radius:8px;padding:16px 18px;font-size:13px;line-height:1.55;
+    grid-column:1/-1;background:#fdf3f2;border:1px solid #e9c9c5;color:#8c3b32;
+    border-radius:6px;padding:16px 18px;font-size:13px;line-height:1.55;margin-top:18px;
   }
+  .error code{background:#fff;border:1px solid #e9c9c5;border-radius:4px;padding:2px 6px}
+
+  @media (max-width:760px){
+    .lista{grid-template-columns:1fr}
+    .op{border-left:0;border-top:1px solid var(--line);padding:16px 4px}
+    .lista li:first-child .op{border-top:0}
+    .der{margin-left:0;width:100%}
+    .vis{min-height:58vh}
+  }
+  @media (prefers-reduced-motion:reduce){.op,.op::before{transition:none}}
 </style>
 </head>
 <body>
 
-<header>
-  <h1>Plataforma CIW</h1>
-  <span class="sub">Catena Institute</span>
-  <div class="right">
+<header><div class="in">
+  <span class="marca">Plataforma CIW<small>Catena Institute of Wine</small></span>
+  <div class="der">
     <span id="quien"></span>
-    <a id="admin" class="salir" href="/admin.html" title="Crear, editar y eliminar usuarios" hidden>Usuarios</a>
-    <a id="clave" class="salir" href="/cambiar-clave.html" title="Cambiar tu contraseña" hidden>Contraseña</a>
+    <a id="admin" href="/admin.html" title="Crear, editar y eliminar usuarios" hidden>Usuarios</a>
+    <a id="clave" href="/cambiar-clave.html" title="Cambiar tu contraseña" hidden>Contraseña</a>
     <!-- Cerrar sesión importa en las PC compartidas de la bodega. -->
-    <a id="salir" class="salir" href="/api/auth/logout"
-       title="Cerrar sesión y volver al login" hidden>Salir</a>
+    <a id="salir" href="/api/auth/logout" title="Cerrar sesión y volver al login" hidden>Salir</a>
   </div>
-</header>
+</div></header>
 
-<main>
-  <div class="intro">
-    <h2>Elegí con qué querés trabajar</h2>
-    <p>Entraste con tu usuario de la plataforma. Cada módulo se abre con los permisos que
-       tenés asignados en él, y todo lo que edites queda registrado a tu nombre.</p>
-  </div>
-
-  <div id="grid" class="grid">
-    <p class="cargando">Cargando tus módulos…</p>
-  </div>
+<main class="in">
+  <div class="tit"><p id="fecha"></p><h1>¿Dónde trabajamos <em>hoy</em>?</h1></div>
+  <div class="vis" aria-hidden="true"><canvas id="cv"></canvas></div>
+  <ul id="lista" class="lista">
+    <li class="cargando">Cargando tus módulos…</li>
+  </ul>
 </main>
 
-<footer>
-  <span>Control de Prensas · Mapa de Barriles · Lotes</span>
+<footer><div class="in">
+  <span>Control de Prensas · Mapa de Barriles · Lotes · Órdenes de trabajo</span>
   <span>Los datos se guardan en la nube y se respaldan solos.</span>
-</footer>
+</div></footer>
 
 <script>
-/* Los tres módulos de la plataforma. El estado real (si están migrados) lo
-   define el backend; acá está la descripción de cada uno. */
+/* Los módulos de la plataforma, más Órdenes de trabajo (que no tiene rol
+   propio). El estado real (si están migrados) lo define el backend; acá está
+   la descripción de cada uno. `forma` es la figura que dibujan los puntos al
+   pasar el cursor. */
 const MODULOS = [
   {
     id: 'prensas',
     nombre: 'Control de Prensas',
     desc: 'Lotes, análisis, degustaciones y órdenes de trabajo. Riesgo de SO₂ y evolución.',
+    forma: 'prensa',
     listo: true,
   },
   {
     id: 'barriles',
     nombre: 'Mapa de Barriles',
     desc: 'Ubicación de barriles en la nave, con escaneo de códigos desde el celular.',
+    forma: 'mapa',
     listo: true,
   },
   {
     id: 'lotes',
     nombre: 'Lotes',
     desc: 'Trazabilidad, etapas, linaje, FML y movimientos. Cruce con el mapa de barriles.',
+    forma: 'barrica',
+    listo: true,
+  },
+  {
+    id: 'ordenes',
+    nombre: 'Órdenes de trabajo',
+    desc: 'Todas las órdenes de Prensas y Lotes en un lugar: nuevas, pendientes e historial.',
+    forma: 'orden',
     listo: true,
   },
 ];
@@ -161,6 +150,15 @@ const ROLES = {
   lector: 'Solo consulta',
 };
 
+/* Órdenes de trabajo no tiene rol propio: vale el mayor entre prensas y
+   lotes (espejo de rolOrdenes en src/ordenes/rutas.ts). */
+const PESO_ROL = { lector: 1, editor: 2, admin: 3 };
+function rolDe(m, modulos) {
+  if (m.id !== 'ordenes') return modulos[m.id];
+  return ['prensas', 'lotes'].map(k => modulos[k]).filter(r => PESO_ROL[r])
+    .sort((a, b) => PESO_ROL[b] - PESO_ROL[a])[0];
+}
+
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => (
     { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
@@ -168,17 +166,11 @@ function esc(s) {
 }
 
 function tarjeta(m, rol) {
-  const chip = !m.listo
-    ? '<span class="chip prep">En preparación</span>'
-    : rol
-      ? `<span class="chip ${rol}">${esc(rol)}</span>`
-      : '<span class="chip no">Sin acceso</span>';
-
   const pie = !m.listo
-    ? 'Todavía se usa desde la app local.'
+    ? 'En preparación · todavía se usa desde la app local'
     : rol
-      ? esc(ROLES[rol])
-      : 'Pedile acceso a un administrador.';
+      ? esc(ROLES[rol]) + ' →'
+      : 'Sin acceso · pedile acceso a un administrador';
 
   // Aviso de módulo a medio migrar: se dice de entrada, no cuando falla.
   const nota = m.listo && rol && m.parcial
@@ -186,32 +178,469 @@ function tarjeta(m, rol) {
     : '';
 
   const cuerpo =
-    `<div class="top"><h3>${esc(m.nombre)}</h3>${chip}</div>` +
-    `<p class="desc">${esc(m.desc)}</p>` +
+    `<span class="nm">${esc(m.nombre)}</span>` +
+    `<span class="ds">${esc(m.desc)}</span>` +
     nota +
-    `<div class="pie">${pie}</div>`;
+    `<span class="rl">${pie}</span>`;
 
   // Solo es un enlace si está migrado y la persona tiene algún rol.
   return (m.listo && rol)
-    ? `<a class="card" href="/${m.id}/">${cuerpo}</a>`
-    : `<div class="card off">${cuerpo}</div>`;
+    ? `<li><a class="op" href="/${m.id}/" data-forma="${m.forma}">${cuerpo}</a></li>`
+    : `<li><div class="op off" data-forma="${m.forma}">${cuerpo}</div></li>`;
 }
 
+/* ---------- La figura de puntos, en 3D ----------
+   Cada forma es una nube de puntos en el espacio (de -1 a 1 en cada eje),
+   armada con aristas, anillos y superficies. Las partículas viajan hacia su
+   punto y la escena gira despacio. Sin módulo elegido, la figura va pasando
+   por racimo → botella → pirámide; al pasar por un módulo arma la suya. */
+const Constelacion = (() => {
+  const TAU = Math.PI * 2, R = Math.random;
+  const quieto = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const angosto = matchMedia('(max-width: 760px)').matches;
+  const N = angosto ? 1900 : 3200, NA = 70;
+  const COLORES = ['#15191D', '#3E5566', '#7A1631'], PESOS = [.64, .24, .12];
+  const CICLO = ['racimo', 'botella', 'piramide'], SEG_FORMA = 4.8;
+  const INCL = .34;   // la escena se ve un poco desde arriba
+
+  /* --- piezas para armar las formas: cada una devuelve un punto al azar --- */
+  const rr = (a, b) => a + R() * (b - a);
+  const lerp = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t];
+  const anillo = (y, r, cx = 0, cz = 0) => () => { const a = R() * TAU; return [cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]; };
+  const disco = (y, r) => () => { const a = R() * TAU, q = r * Math.sqrt(R()); return [Math.cos(a) * q, y, Math.sin(a) * q]; };
+  const esfera = (c, r) => () => {
+    const u = R() * 2 - 1, a = R() * TAU, s = Math.sqrt(1 - u * u), n = [s * Math.cos(a), u, s * Math.sin(a)];
+    const p = [c[0] + r * n[0], c[1] + r * n[1], c[2] + r * n[2]]; p.n = n; return p;
+  };
+  // superficie de revolución alrededor del eje vertical; perfil(y) = radio
+  const revolucion = (perfil, y0, y1, rmax) => () => {
+    for (;;) { const y = rr(y0, y1), r = perfil(y); if (R() * rmax <= r) { const a = R() * TAU; return [Math.cos(a) * r, y, Math.sin(a) * r]; } }
+  };
+  // varios segmentos, elegidos según su largo
+  const lineas = segs => {
+    const largos = segs.map(([p, q]) => Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]));
+    const total = largos.reduce((a, b) => a + b, 0);
+    return () => { let x = R() * total, i = 0; while (x > largos[i] && i < segs.length - 1) x -= largos[i++]; return lerp(segs[i][0], segs[i][1], R()); };
+  };
+  const caja = (x0, x1, y0, y1, z0, z1) => {
+    const v = [[x0,y0,z0],[x1,y0,z0],[x1,y0,z1],[x0,y0,z1],[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]];
+    return [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]].map(([a, b]) => [v[a], v[b]]);
+  };
+  // mezcla piezas con pesos y devuelve N puntos
+  const mezcla = partes => {
+    const total = partes.reduce((a, [w]) => a + w, 0);
+    return Array.from({ length: N }, () => {
+      let x = R() * total;
+      for (const [w, f] of partes) { if ((x -= w) <= 0) return f(); }
+      return partes[0][1]();
+    });
+  };
+
+  const ESFERAS = {};   // formas con granos: centros y radio
+  const FORMAS = {
+    racimo() {
+      /* granos: la mayoría de los puntos dibuja el contorno del grano tal como
+         se ve desde la cámara (se recalcula al girar) y el resto le da volumen.
+         Al dibujar se ocultan las partes tapadas por los granos de adelante. */
+      const capas = [[.36, .28, 5], [.12, .33, 6], [-.12, .28, 5], [-.36, .19, 4], [-.58, .09, 3], [-.78, 0, 1]];
+      const uvas = [], RU = .15;
+      capas.forEach(([y, r, n], i) => {
+        for (let k = 0; k < n; k++) { const a = k / n * TAU + i * .5; uvas.push([Math.cos(a) * r, y, Math.sin(a) * r]); }
+        if (r > .25) uvas.push([0, y + .02, 0]);
+      });
+      ESFERAS.racimo = { centros: uvas, r: RU };
+      const grano = () => {
+        const g = R() * uvas.length | 0, p = esfera(uvas[g], RU)();
+        p.g = g; p.th = R() < .75 ? R() * TAU : null; return p;
+      };
+      const tallo = () => { const t = R(); return [.1 * t * t, .5 + .3 * t, 0]; };
+
+      /* Hoja de Malbec (ampelografía): orbicular y cuneiforme, entera o con
+         tres lóbulos apenas marcados, seno peciolar en V y dientes agudos y
+         rectos. Se arma en 2D (θ desde el nervio central) y se apoya en un
+         plano inclinado arriba a la derecha del racimo. */
+      const G = (x, m, s) => Math.exp(-((x - m) ** 2) / (2 * s * s));
+      const radio = th => {   // th en grados, -180..180
+        const ab = Math.abs(th);
+        const borde = t => {
+          const base = .5 * (.78 + .22 * Math.cos(t * Math.PI / 180));
+          const lobulos = 1 + .1 * G(t, 0, 16) + .1 * G(Math.abs(t), 62, 14) + .05 * G(Math.abs(t), 118, 14) - .11 * G(Math.abs(t), 34, 7) - .07 * G(Math.abs(t), 92, 7);
+          const f = (Math.abs(t) / 11) % 1, diente = .1 * (f < .7 ? f / .7 : (1 - f) / .3);
+          return base * lobulos * (1 + diente);
+        };
+        return ab <= 148 ? borde(th) : borde(Math.sign(th) * 148) * (180 - ab) / 32;  // seno peciolar en V
+      };
+      const J = [.18, .82, .06], U = [.6, -.5, .3], V = [.55, .62, .2], ESC = .75;
+      const enHoja = (x, y) => [J[0] + (U[0] * x + V[0] * y) * ESC, J[1] + (U[1] * x + V[1] * y) * ESC, J[2] + (U[2] * x + V[2] * y) * ESC];
+      const contorno = () => { const th = rr(-180, 180), r = radio(th), a = th * Math.PI / 180; return enHoja(Math.sin(a) * r, Math.cos(a) * r); };
+      const nervios = () => {
+        const dir = [0, 62, -62, 118, -118][R() * 5 | 0], t = R() * .9, a = dir * Math.PI / 180, r = radio(dir) * t;
+        return enHoja(Math.sin(a) * r, Math.cos(a) * r);
+      };
+      const lamina = () => { const th = rr(-150, 150), r = radio(th) * Math.sqrt(R()), a = th * Math.PI / 180; return enHoja(Math.sin(a) * r, Math.cos(a) * r); };
+      const peciolo = () => lerp([.08, .78, .02], J, R());
+
+      return mezcla([[.72, grano], [.04, tallo], [.13, contorno], [.06, nervios], [.03, lamina], [.02, peciolo]]);
+    },
+    botella() {
+      /* Botella de Nicolás Catena Zapata: bordelesa fina, cápsula larga en
+         malbec y la etiqueta blanca al frente (+z), con NICOLÁS / CATENA /
+         ZAPATA, los renglones chicos y el dibujo de la pirámide. La etiqueta
+         queda "en blanco": el vidrio no lleva puntos ahí, solo el texto. */
+      const perfil = y => {
+        if (y < .12) return .25;
+        if (y < .42) { const t = (y - .12) / .3, s = t * t * (3 - 2 * t); return .25 - .165 * s; }
+        return y < .62 ? .085 : .092;   // cuello y cápsula
+      };
+      const ET_Y0 = -.49, ET_Y1 = .15, ET_ANG = 1.01;   // etiqueta: alto y medio ángulo
+      const enEtiqueta = (f, y) => { const a = f * ET_ANG, r = perfil(y) + .004; return [Math.sin(a) * r, y, Math.cos(a) * r]; };
+      const conColor = (col, f) => () => { const p = f(); p.col = col; return p; };
+      const vidrio = () => {
+        for (;;) {
+          const p = revolucion(perfil, -.95, .62, .25)();
+          if (p[1] > ET_Y0 && p[1] < ET_Y1 && Math.abs(Math.atan2(p[0], p[2])) < ET_ANG) continue;
+          p.col = R() < .85 ? 0 : 1;   // vidrio oscuro: la cápsula queda como único malbec
+          return p;
+        }
+      };
+      const capsula = () => R() < .85 ? revolucion(perfil, .62, .95, .092)() : disco(.95, .092)();
+      const marco = () => {
+        const q = R();
+        if (q < .6) return enEtiqueta(rr(-1, 1), q < .3 ? ET_Y1 : ET_Y0);
+        return enEtiqueta(q < .8 ? -1 : 1, rr(ET_Y0, ET_Y1));
+      };
+      // renglones: [y, medio ancho (fracción), alto, paso de letra]; los huecos simulan letras
+      const renglon = filas => () => {
+        const [y, w, h, paso] = filas[R() * filas.length | 0];
+        let f; do { f = rr(-w, w); } while (((f + w) / paso) % 1 > .72);
+        return enEtiqueta(f, y + rr(-h, h));
+      };
+      const titulo = renglon([[.09, .6, .022, .2], [.035, .64, .022, .21], [-.02, .6, .022, .2]]);
+      const chicos = renglon([[-.065, .46, .007, .07], [-.088, .06, .006, .12], [-.108, .5, .007, .07],
+        [-.13, .06, .006, .12], [-.15, .62, .007, .065], [-.172, .58, .007, .065],
+        [-.37, .2, .006, .06], [-.4, .3, .006, .06], [-.425, .44, .006, .06], [-.45, .62, .005, .06]]);
+      const dibujo = lineas([   // la pirámide dibujada a mano en la etiqueta
+        [enEtiqueta(-.62, -.305), enEtiqueta(.62, -.305)],
+        [enEtiqueta(-.34, -.305), enEtiqueta(-.26, -.275)], [enEtiqueta(-.26, -.275), enEtiqueta(.26, -.275)], [enEtiqueta(.26, -.275), enEtiqueta(.34, -.305)],
+        [enEtiqueta(-.24, -.275), enEtiqueta(-.17, -.245)], [enEtiqueta(-.17, -.245), enEtiqueta(.17, -.245)], [enEtiqueta(.17, -.245), enEtiqueta(.24, -.275)],
+        [enEtiqueta(-.15, -.245), enEtiqueta(-.08, -.215)], [enEtiqueta(-.08, -.215), enEtiqueta(.08, -.215)], [enEtiqueta(.08, -.215), enEtiqueta(.15, -.245)],
+        [enEtiqueta(.36, -.305), enEtiqueta(.44, -.22)], [enEtiqueta(.44, -.22), enEtiqueta(.5, -.305)],
+        [enEtiqueta(-.22, -.35), enEtiqueta(.22, -.35)], [enEtiqueta(-.22, -.35), enEtiqueta(-.22, -.385)], [enEtiqueta(.22, -.35), enEtiqueta(.22, -.385)],
+      ]);
+      const pts = mezcla([
+        [.5, vidrio], [.03, anillo(-.95, .25)], [.02, disco(-.95, .25)],
+        [.14, conColor(2, capsula)], [.03, conColor(2, anillo(.62, .093))],
+        [.08, conColor(0, marco)], [.17, conColor(0, titulo)], [.11, conColor(0, chicos)], [.08, conColor(0, dibujo)],
+      ]);
+      // botella opaca: cada punto lleva su normal para no dibujar la cara de atrás
+      return pts.map(p => {
+        const r = Math.hypot(p[0], p[2]) || 1;
+        p.n = p[1] < -.945 ? [0, -1, 0] : p[1] > .948 ? [0, 1, 0] : [p[0] / r, 0, p[2] / r];
+        p.opaco = true;
+        const q = [p[0] * 1.12, p[1] * 1.12, p[2] * 1.12]; q.n = p.n; q.opaco = true; q.col = p.col; return q;
+      });
+    },
+    piramide() {
+      /* La bodega Catena Zapata vista desde afuera: tres niveles con paredes en
+         talud, ventanas en fila, la franja vidriada al centro del frente, el
+         remate con la cúpula de vidrio y la escalera de entrada. */
+      const niveles = [[-.45, -.04, .9, .82], [-.04, .28, .66, .58], [.28, .47, .34, .31]];  // y0, y1, medio ancho abajo/arriba
+      const ancho = (n, y) => n[2] + (n[3] - n[2]) * (y - n[0]) / (n[1] - n[0]);
+      // punto en la cara `lado` (0 = frente) a una fracción u del medio ancho
+      const enCara = (n, lado, u, y) => { const w = ancho(n, y), x = u * w; return [[x, y, w], [w, y, -x], [-x, y, -w], [-w, y, x]][lado]; };
+      const aristas = [];
+      niveles.forEach(([y0, y1, a, b]) => {
+        for (const [sx, sz] of [[1, 1], [1, -1], [-1, -1], [-1, 1]]) aristas.push([[sx * a, y0, sz * a], [sx * b, y1, sz * b]]);
+        for (const [y, w] of [[y0, a], [y1, b]]) aristas.push(
+          [[-w, y, -w], [w, y, -w]], [[w, y, -w], [w, y, w]], [[w, y, w], [-w, y, w]], [[-w, y, w], [-w, y, -w]]);
+      });
+      const cara = () => { const n = niveles[R() * 2 | 0]; return enCara(n, R() * 4 | 0, rr(-1, 1), rr(n[0], n[1])); };
+      const VENTANAS = [[0, [-.73, -.37, .37, .73], .09, .03, .21], [1, [-.7, -.4, .38, .68], .08, .08, .22]];
+      const ventana = () => {
+        const [i, us, du, d0, d1] = VENTANAS[R() * 2 | 0], n = niveles[i], lado = R() * 4 | 0, u0 = us[R() * 4 | 0];
+        const y0 = n[0] + d0, y1 = n[0] + d1, s = R() * 4 | 0, t = R();
+        const [u, y] = [[u0 - du + 2 * du * t, y0], [u0 - du + 2 * du * t, y1], [u0 - du, y0 + (y1 - y0) * t], [u0 + du, y0 + (y1 - y0) * t]][s];
+        return enCara(n, lado, u, y);
+      };
+      const franja = [[[-.12, -.45, .9], [-.12, .2, .9]], [[.12, -.45, .9], [.12, .2, .9]], [[-.12, .2, .9], [.12, .2, .9]],
+        [[-.12, .2, .9], [-.12, .2, .6]], [[.12, .2, .9], [.12, .2, .6]]];
+      for (let y = -.33; y < .2; y += .075) franja.push([[-.12, y, .9], [.12, y, .9]]);
+      const remate = [];   // vano al frente y atrás del último nivel, con su dintel
+      for (const z of [.33, -.33]) remate.push([[-.13, .28, z], [-.13, .43, z]], [[.13, .28, z], [.13, .43, z]], [[-.13, .43, z], [.13, .43, z]]);
+      const cupula = () => {
+        const q = R(), t = R(), y = .3 + t * .2, r = .14 - .04 * t, a = R() * TAU;
+        if (q < .6) { const k = (R() * 12 | 0) / 12 * TAU; return [Math.cos(k) * r, y, Math.sin(k) * r]; }   // nervios de vidrio
+        if (q < .85) { const yy = .3 + (R() * 5 | 0) * .05, rr2 = .14 - .04 * (yy - .3) / .2; return [Math.cos(a) * rr2, yy, Math.sin(a) * rr2]; }
+        return esfera([0, .52, 0], .055)();
+      };
+      const escalera = [];
+      for (let s = 0; s <= 6; s++) { const t = s / 6, y = -.45 - t * .17, z = .9 + t * .36, w = .3 + t * .12; escalera.push([[-w, y, z], [w, y, z]]); }
+      for (const sx of [-1, 1]) escalera.push([[sx * .32, -.43, .9], [sx * .45, -.6, 1.26]]);
+      const pts = mezcla([
+        [.26, lineas(aristas)], [.09, cara], [.17, ventana], [.12, lineas(franja)],
+        [.05, () => enCara(niveles[2], R() * 4 | 0, rr(-1, 1), rr(.28, .47))], [.06, lineas(remate)], [.13, cupula],
+        [.12, lineas(escalera)],
+      ]);
+      return pts.map(([x, y, z]) => [x * .85, y * .95 + .1, z * .85]);
+    },
+    prensa() {
+      const duelas = [];
+      for (let k = 0; k < 18; k++) { const a = k / 18 * TAU, x = Math.cos(a) * .46, z = Math.sin(a) * .46; duelas.push([[x, -.58, z], [x, .12, z]]); }
+      const bastidor = [
+        [[-.78, -.72, -.06], [-.78, .98, -.06]], [[-.78, -.72, .06], [-.78, .98, .06]],
+        [[.78, -.72, -.06], [.78, .98, -.06]], [[.78, -.72, .06], [.78, .98, .06]],
+        ...caja(-.92, .92, .98, 1.1, -.08, .08),
+      ];
+      const rosca = () => { const t = R(), a = t * TAU * 9; return [Math.cos(a) * .055, .2 + t * .78, Math.sin(a) * .055]; };
+      return mezcla([
+        [.28, lineas(duelas)], [.05, anillo(.06, .47)], [.05, anillo(-.5, .47)],
+        [.05, anillo(.18, .48)], [.03, anillo(.22, .48)],                              // plato
+        [.1, rosca], [.06, lineas([[[-.5, .6, 0], [.5, .6, 0]]])],                    // tornillo y manija
+        [.02, esfera([-.56, .6, 0], .06)], [.02, esfera([.56, .6, 0], .06)],
+        [.2, lineas(bastidor)],
+        [.06, anillo(-.62, .68)], [.04, anillo(-.74, .68)], [.02, disco(-.74, .68)],     // bandeja
+        [.02, lineas([[[.68, -.66, 0], [.92, -.74, 0]]])],                            // pico
+      ]);
+    },
+    mapa() {
+      // mapa plegado en el piso y un pin parado encima
+      const xs = [-.9, -.45, 0, .45, .9], ys = [-.55, -.38, -.55, -.38, -.55], Z = .62;
+      const enMapa = (x, z) => { const i = Math.min(3, Math.max(0, Math.floor((x + .9) / .45))), t = (x - xs[i]) / .45; return [x, ys[i] + (ys[i + 1] - ys[i]) * t, z]; };
+      const borde = [];
+      for (let i = 0; i < 4; i++) borde.push([[xs[i], ys[i], -Z], [xs[i + 1], ys[i + 1], -Z]], [[xs[i], ys[i], Z], [xs[i + 1], ys[i + 1], Z]]);
+      xs.forEach((x, i) => borde.push([[x, ys[i], -Z], [x, ys[i], Z]]));
+      const barriles = () => {
+        const col = R() * 3 | 0, fila = R() * 4 | 0, a = R() * TAU;
+        return enMapa(.52 + col * .13 + Math.cos(a) * .045, -.5 + fila * .13 + Math.sin(a) * .045);
+      };
+      const ruta = () => {   // recorrido punteado
+        let t; do { t = R(); } while ((t * 22 | 0) % 2);
+        return enMapa(-.8 + t * .95, .45 - Math.sin(t * Math.PI) * .55 - t * .3);
+      };
+      const pin = [.12, -.46, .05];
+      const cono = () => { const t = Math.sqrt(R()), a = R() * TAU, r = .15 * t; return [pin[0] + Math.cos(a) * r, pin[1] + t * .6, pin[2] + Math.sin(a) * r]; };
+      return mezcla([
+        [.24, lineas(borde)], [.07, () => enMapa(rr(-.9, .9), rr(-Z, Z))],
+        [.16, barriles], [.12, ruta],
+        [.26, esfera([pin[0], pin[1] + .72, pin[2]], .2)], [.15, cono],
+      ]);
+    },
+    barrica() {
+      const perfil = y => .5 + .14 * (1 - (y / .85) ** 2);
+      const duela = () => { const k = R() * 22 | 0, a = k / 22 * TAU, y = rr(-.85, .85), r = perfil(y); return [Math.cos(a) * r, y, Math.sin(a) * r]; };
+      const zuncho = y0 => () => { const y = y0 + rr(-.025, .025); return anillo(y, perfil(y) + .012)(); };
+      const tapon = () => { const a = R() * TAU; return [perfil(0) + .005, Math.sin(a) * .07, Math.cos(a) * .07]; };
+      return mezcla([
+        [.26, revolucion(perfil, -.85, .85, .64)], [.22, duela],
+        [.07, zuncho(.72)], [.07, zuncho(-.72)], [.06, zuncho(.5)], [.06, zuncho(-.5)],
+        [.07, anillo(.85, .5)], [.07, anillo(-.85, .5)], [.04, disco(.85, .5)], [.03, anillo(.85, .32)],
+        [.05, tapon],
+      ]);
+    },
+    orden() {
+      // una hoja de orden de trabajo, parada y apenas girada, con renglones y casilleros
+      const X = .56, Y = .82, Z = 0;
+      const borde = caja(-X, X, -Y, Y, -.01, .01);
+      const renglon = k => { const y = .52 - k * .2; return [[-.3, y, Z], [.44, y, Z]]; };
+      const casillero = k => { const y = .52 - k * .2, x = -.44, s = .05;
+        return [[[x - s, y - s, Z], [x + s, y - s, Z]], [[x + s, y - s, Z], [x + s, y + s, Z]],
+                [[x + s, y + s, Z], [x - s, y + s, Z]], [[x - s, y + s, Z], [x - s, y - s, Z]]]; };
+      const titulo = [[[-.44, .7, Z], [.2, .7, Z]]];
+      const renglones = [0, 1, 2, 3, 4, 5].map(renglon);
+      const casilleros = [0, 1, 2, 3, 4, 5].flatMap(casillero);
+      return mezcla([
+        [.3, lineas(borde)], [.1, () => [rr(-X, X), rr(-Y, Y), Z]],
+        [.1, lineas(titulo)], [.3, lineas(renglones)], [.2, lineas(casilleros)],
+      ]);
+    },
+  };
+
+  let cv, ctx, PUNTOS = {}, parts = [], actual = '', fijada = null, granos = null;
+  let W = 0, H = 0, dpr = 1, giro = .6, giroExtra = 0, giroMouse = 0, tCiclo = 0, iCiclo = 0, antes = 0;
+  let mx = -1e4, my = -1e4;   // cursor en píxeles del lienzo
+  const RADIO_CURSOR = 90;    // los puntos a menos de esto se apartan
+
+  function iniciar(canvas) {
+    cv = canvas; ctx = cv.getContext('2d');
+    for (const k in FORMAS) PUNTOS[k] = FORMAS[k]();
+    const elegir = () => { let r = R(), a = 0; for (let i = 0; i < PESOS.length; i++) { a += PESOS[i]; if (r < a) return i; } return 0; };
+    parts = Array.from({ length: N + NA }, (_, i) => {
+      const p = esfera([0, 0, 0], 1.4 * Math.cbrt(R()))();
+      return { x: p[0], y: p[1], z: p[2], vx: 0, vy: 0, vz: 0, tx: p[0], ty: p[1], tz: p[2],
+        c: elegir(), s: .8 + R() * .6, k: .045 + R() * .035, amb: i >= N, n: null, g: null, th: null, cf: null, op: false };
+    });
+    new ResizeObserver(medir).observe(cv);
+    // el cursor aparta los puntos que tiene cerca y gira apenas la figura hacia su lado
+    cv.parentElement.addEventListener('pointermove', e => {
+      const r = cv.getBoundingClientRect(); mx = e.clientX - r.left; my = e.clientY - r.top;
+      giroMouse = (mx / r.width - .5) * .5;
+    });
+    cv.parentElement.addEventListener('pointerleave', () => { giroMouse = 0; mx = my = -1e4; });
+    formar('racimo');
+    if (!quieto) requestAnimationFrame(function bucle(ms) { paso(ms); requestAnimationFrame(bucle); });
+  }
+
+  function medir() {
+    const r = cv.getBoundingClientRect(); if (!r.width) return;
+    dpr = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height;
+    cv.width = W * dpr; cv.height = H * dpr;
+    if (quieto) dibujar();
+  }
+
+  function formar(nombre) {
+    if (!cv || nombre === actual) return; actual = nombre;
+    const pts = PUNTOS[nombre];
+    granos = ESFERAS[nombre] || null;
+    for (let i = 0; i < N; i++) {
+      const p = parts[i], q = pts[i];
+      p.tx = q[0]; p.ty = q[1]; p.tz = q[2]; p.n = q.n || null; p.g = q.g ?? null; p.th = q.th ?? null; p.cf = q.col ?? null; p.op = !!q.opaco;
+      if (quieto) { p.x = q[0]; p.y = q[1]; p.z = q[2]; }
+      else { p.vx += (R() - .5) * .06; p.vy += (R() - .5) * .06; p.vz += (R() - .5) * .06; }
+    }
+    if (quieto) dibujar();
+  }
+
+  // forma de un módulo (al pasar el cursor) o null para volver al ciclo
+  function enfocar(nombre) {
+    fijada = nombre;
+    if (nombre) formar(nombre);
+    else { iCiclo = 0; tCiclo = 0; formar(CICLO[0]); }
+  }
+
+  // cómo se ve la escena en el lienzo: giro, inclinación, centro y escala
+  function camara() {
+    const a = giro + giroExtra;
+    return { ca: Math.cos(a), sa: Math.sin(a), ct: Math.cos(INCL), st: Math.sin(INCL), cx: W / 2, cy: H * .5, E: Math.min(W, H) * .36, CAM: 3.2 };
+  }
+  const proyectar = (c, x, y, z) => {
+    const x1 = x * c.ca + z * c.sa, z1 = -x * c.sa + z * c.ca, y2 = y * c.ct + z1 * c.st, z2 = z1 * c.ct - y * c.st, k = c.CAM / (c.CAM + z2);
+    return [c.cx + x1 * k * c.E, c.cy - y2 * k * c.E, z2, k];
+  };
+  // los puntos sueltos del fondo no giran: flotan de frente, a lo ancho del lienzo
+  const enPantalla = (c, p) => p.amb ? [c.cx + p.x * c.E, c.cy - p.y * c.E, 0, 1] : proyectar(c, p.x, p.y, p.z);
+
+  function paso(ms) {
+    const dt = Math.min(.05, (ms - (antes || ms)) / 1000); antes = ms;
+    if (!fijada) {
+      tCiclo += dt;
+      if (tCiclo > SEG_FORMA) { tCiclo = 0; iCiclo = (iCiclo + 1) % CICLO.length; formar(CICLO[iCiclo]); }
+    }
+    if (actual === 'botella' && !quieto) {
+      const objetivo = Math.PI + .55 * Math.sin(ms / 1400);
+      const dif = Math.atan2(Math.sin(objetivo - giro), Math.cos(objetivo - giro));
+      giro += dif * .04;
+    } else giro += dt * .38;
+    giroExtra += (giroMouse - giroExtra) * .05;
+    // ejes de la pantalla vistos desde el modelo: el contorno de un grano es el
+    // círculo que forman con su centro
+    const c = camara(), e1 = [c.ca, 0, c.sa], e2 = [-c.sa * c.st, c.ct, c.ca * c.st];
+    const ancho = H ? Math.max(1, W / H) : 1, cursor = mx > -1e3;
+    for (const p of parts) {
+      if (p.amb && Math.abs(p.tx - p.x) + Math.abs(p.ty - p.y) + Math.abs(p.tz - p.z) < .05) {
+        const q = esfera([0, 0, 0], 1.4 * Math.cbrt(R()))(); p.tx = q[0] * ancho; p.ty = q[1]; p.tz = q[2];
+      }
+      if (granos && p.th !== null && p.g !== null) {
+        const g = granos.centros[p.g], co = Math.cos(p.th) * granos.r, si = Math.sin(p.th) * granos.r;
+        p.tx = g[0] + co * e1[0] + si * e2[0]; p.ty = g[1] + co * e1[1] + si * e2[1]; p.tz = g[2] + co * e1[2] + si * e2[2];
+      }
+      if (cursor) {   // empujón en la dirección de la pantalla que lo aleja del cursor
+        const [X, Y] = enPantalla(c, p), dx = X - mx, dy = Y - my, d2 = dx * dx + dy * dy;
+        if (d2 < RADIO_CURSOR * RADIO_CURSOR) {
+          const d = Math.sqrt(d2) || 1, f = (1 - d / RADIO_CURSOR) * .05, ux = dx / d * f, uy = -dy / d * f;
+          if (p.amb) { p.vx += ux; p.vy += uy; }
+          else { p.vx += ux * e1[0] + uy * e2[0]; p.vy += uy * e2[1]; p.vz += ux * e1[2] + uy * e2[2]; }
+        }
+      }
+      const k = p.amb ? .0015 : p.k, f = p.amb ? .97 : .82;
+      p.vx = (p.vx + (p.tx - p.x) * k) * f; p.vy = (p.vy + (p.ty - p.y) * k) * f; p.vz = (p.vz + (p.tz - p.z) * k) * f;
+      p.x += p.vx; p.y += p.vy; p.z += p.vz;
+    }
+    dibujar();
+  }
+
+  function dibujar() {
+    if (!W) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const c = camara(), { ca, sa, ct, st, E } = c, chico = Math.min(W, H) < 420;
+    const vistos = granos && granos.centros.map(g => proyectar(c, g[0], g[1], g[2]));
+    const tapado = (X, Y, g) => {
+      for (let j = 0; j < vistos.length; j++) {
+        const v = vistos[j];
+        if (j !== g && v[2] < vistos[g][2] && (X - v[0]) ** 2 + (Y - v[1]) ** 2 < (granos.r * v[3] * E * .97) ** 2) return true;
+      }
+      return false;
+    };
+    // 3 colores × 3 profundidades (adelante más oscuro y grande) + ambiente
+    const capas = Array.from({ length: 12 }, () => new Path2D());
+    for (const p of parts) {
+      const [X, Y, z2, k] = enPantalla(c, p);
+      if (k <= 0) continue;
+      if (vistos && p.g !== null && !p.amb && tapado(X, Y, p.g)) continue;
+      let prof = p.amb ? 3 : z2 < -.25 ? 0 : z2 < .3 ? 1 : 2, r = p.s * k * (prof === 0 ? 1.25 : prof === 2 ? .85 : 1) * (chico ? .9 : 1.15);
+      if (vistos && p.g !== null && p.th === null) { prof = 3; r *= .8; }
+      else if (p.op) {   // objeto opaco: la cara de atrás no se ve
+        const nz1 = -p.n[0] * sa + p.n[2] * ca, nz2 = nz1 * ct - p.n[1] * st;
+        if (nz2 > .08) continue;
+      }
+      else if (p.n && !p.amb && p.g === null) {   // contorno de los granos: lo que mira de frente casi no se ve
+        const nz1 = -p.n[0] * sa + p.n[2] * ca, nz2 = nz1 * ct - p.n[1] * st;
+        if (Math.abs(nz2) > .55) { prof = 3; r *= .7; }
+      }
+      const col = p.cf ?? p.c, path = capas[prof === 3 ? 9 + col : prof * 3 + col];
+      path.moveTo(X + r, Y); path.arc(X, Y, r, 0, TAU);
+    }
+    const ALFAS = [.95, .62, .3, .2];
+    capas.forEach((path, i) => { ctx.fillStyle = COLORES[i % 3]; ctx.globalAlpha = ALFAS[i / 3 | 0]; ctx.fill(path); });
+    ctx.globalAlpha = 1;
+  }
+
+  return { iniciar, enfocar };
+})();
+
+/* Al pasar el cursor (o el foco del teclado) por un módulo, los puntos forman
+   su figura; al salir vuelve al ciclo racimo → botella → pirámide. En el celular
+   el primer toque la forma y el segundo entra. */
+function engancharOpciones(lista) {
+  const ops = [...lista.querySelectorAll('.op')];
+  const tactil = matchMedia('(hover: none)').matches;
+  const activar = op => {
+    ops.forEach(o => o.classList.toggle('on', o === op));
+    Constelacion.enfocar(op ? op.dataset.forma : null);
+  };
+  ops.forEach(op => {
+    op.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') activar(op); });
+    op.addEventListener('focus', () => activar(op));
+    op.addEventListener('click', e => {
+      if (tactil && !op.classList.contains('on')) { e.preventDefault(); activar(op); }
+    });
+  });
+  lista.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') activar(null); });
+  lista.addEventListener('focusout', e => { if (!lista.contains(e.relatedTarget)) activar(null); });
+}
+
+(function fecha() {
+  const f = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+  document.getElementById('fecha').textContent =
+    f.charAt(0).toUpperCase() + f.slice(1).replace(',', '') + ' · Vendimia ' + new Date().getFullYear();
+})();
+
+try { Constelacion.iniciar(document.getElementById('cv')); } catch (e) { /* sin figura, el menú sigue andando */ }
+
 (async function () {
-  const grid = document.getElementById('grid');
+  const lista = document.getElementById('lista');
 
   /* Esta página necesita el servidor: le pregunta al Worker quién sos y a qué
      módulos entrás. Abrirla con doble clic (file://) no puede funcionar. */
   if (location.protocol === 'file:') {
-    grid.innerHTML =
-      '<div class="error">' +
+    lista.innerHTML =
+      '<li class="error">' +
       '<strong>Esta página no se abre haciendo doble clic.</strong><br><br>' +
       'La plataforma necesita el servidor corriendo. En una consola, dentro de la ' +
       'carpeta <code>ciw-plataforma</code>:<br><br>' +
-      '<code style="display:block;padding:8px 10px;background:#fff;border-radius:5px;margin:6px 0">npm run dev</code>' +
+      '<code style="display:block;padding:8px 10px;margin:6px 0">npm run dev</code>' +
       'y después entrá a <a href="http://localhost:8787">http://localhost:8787</a>.<br><br>' +
       'Una vez publicada en Cloudflare, se entra por su dirección web y esto no vuelve a pasar.' +
-      '</div>';
+      '</li>';
     return;
   }
 
@@ -233,40 +662,40 @@ function tarjeta(m, rol) {
     }
     if (r.status === 503) {
       const j = await r.json().catch(() => ({}));
-      grid.innerHTML =
-        '<div class="error"><strong>La plataforma todavía no está lista</strong><br><br>' +
+      lista.innerHTML =
+        '<li class="error"><strong>La plataforma todavía no está lista</strong><br><br>' +
         (j.detalles || []).map(d => esc(d)).join('<br>') +
-        '</div>';
+        '</li>';
       return;
     }
 
     if (!r.ok) throw new Error('http ' + r.status);
     const yo = await r.json();
 
-    document.getElementById('quien').textContent = '👤 ' + (yo.nombre || yo.email);
+    document.getElementById('quien').textContent = yo.nombre || yo.email;
     document.getElementById('salir').hidden = false;
     document.getElementById('clave').hidden = false;
     document.getElementById('admin').hidden = !yo.es_admin;
 
-    const conAcceso = MODULOS.filter(m => yo.modulos[m.id]).length;
-    grid.innerHTML = MODULOS.map(m => tarjeta(m, yo.modulos[m.id])).join('');
+    const conAcceso = MODULOS.filter(m => rolDe(m, yo.modulos)).length;
+    lista.innerHTML = MODULOS.map(m => tarjeta(m, rolDe(m, yo.modulos))).join('');
+    engancharOpciones(lista);
 
     if (conAcceso === 0) {
       // Se muestra el email con el que entró: es el dato exacto que el
       // administrador necesita para darle permisos, y sin verlo la persona
       // tiene que adivinar con cuál de sus cuentas entró.
-      grid.insertAdjacentHTML('beforebegin',
-        '<div class="error" style="margin-bottom:18px">' +
+      lista.insertAdjacentHTML('afterend',
+        '<div class="error" style="width:100%">' +
         '<strong>Entraste bien, pero todavía no tenés permisos en ningún módulo.</strong><br><br>' +
-        'Pedile a un administrador que te dé acceso con este usuario:<br>' +
-        '<code style="display:inline-block;margin-top:6px;padding:5px 9px;background:#fff;' +
-        'border:1px solid #e9c9c5;border-radius:5px;font-size:13px">' + esc(yo.email) + '</code>' +
+        'Pedile a un administrador que te dé acceso con este usuario: ' +
+        '<code>' + esc(yo.email) + '</code>' +
         '</div>');
     }
   } catch (e) {
-    grid.innerHTML =
-      '<div class="error">No se pudo cargar tu información de usuario. ' +
-      'Probá recargar la página; si sigue igual, avisá a quien administra la plataforma.</div>';
+    lista.innerHTML =
+      '<li class="error">No se pudo cargar tu información de usuario. ' +
+      'Probá recargar la página; si sigue igual, avisá a quien administra la plataforma.</li>';
   }
 })();
 </script>

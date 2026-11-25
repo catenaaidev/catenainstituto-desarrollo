@@ -291,6 +291,10 @@ export function recorridoVasijas(lote: unknown, movimientos: Fila[]): Estadia[] 
     if (estadias.length && estadias[estadias.length - 1].hasta === null) {
       estadias[estadias.length - 1].hasta = fecha;
     }
+    // Traspaso, renombre y salida: el vino sale del lote. Si traen vasija_destino
+    // (p. ej. el traspaso del corte a un hijo del achique), esa vasija es la del
+    // otro lote, no una estadía de este.
+    if (tipo === 'traspaso' || tipo === 'renombre' || tipo === 'salida') continue;
     if (destino) estadias.push({ vasija: destino, desde: fecha, hasta: null, litros: m.litros });
   }
 

@@ -1,36 +1,63 @@
 /* ===== Lotes CIW — Correcciones → Otros agregados =====
  *
  * TH2, quitosano, levaduras, nutrientes... todo lo que se agrega a un lote y no
- * es SO2. Dos vistas:
- *   - Armar orden: tarjetas por lote con producto + cantidad + unidad (como el
- *     generador local generar_OT_v3.py), papel RCI 08 formato B015 y
- *     "Registrar en los lotes", que deja cada agregado en analisis.agregados
- *     del lote (ver agregados.js) y por lo tanto como fila en Analisis.
- *   - Bitacora: todo lo registrado, con anular (nunca se borra).
+ * es SO2. Tres vistas:
+ *   - Bitacora (la unica en la pestaña de siempre): todo lo registrado, con
+ *     anular (nunca se borra).
+ *   - Armar orden (solo en modo ordenes, /lotes/?orden=nueva:agregados):
+ *     tarjetas por lote con producto + cantidad + unidad (como el generador
+ *     local generar_OT_v3.py) y papel RCI 08 formato B015. Al imprimir, la
+ *     orden se guarda pendiente en ordenes_hojas con lo que salio en el papel;
+ *     al marcarla ejecutada se anota cada agregado en analisis.agregados del
+ *     lote (agregados.js / ordenes-hojas.js) y por lo tanto en Analisis.
+ *   - Orden guardada (modo ordenes, ?orden=<id>): cabecera + papel, solo
+ *     lectura.
  *
  * El borrador de la orden vive en memoria mientras la pagina este abierta. */
 'use strict';
 
-import { $, esc, escA, DATOS, markDirty, registrarVista, usuarioActual, irALote } from './nucleo.js';
+import { $, esc, escA, DATOS, markDirty, guardar, mostrarTab, registrarVista, usuarioActual, irALote } from './nucleo.js';
+import { avisar, confirmar } from './dialogos.js';
+import { armarOrdenHoja, ordenHojaPorId } from './ordenes-hojas.js';
+import { htmlCabeceraOrden, cablearCabeceraOrden, guardarOrdenHojaConfirmando } from './vista-orden-guardada.js';
 import { pintarHojas } from './orden-hoja.js';
 import { fmtFecha } from './fechas.js';
 import { visible } from './selector-anios.js';
-import { AGREGADOS_COMUNES, PLANTILLAS, UNIDADES, normalizarItem, registrarAgregados,
+import { proponerNumero, chipCarpeta, cablearChipsCarpeta, imprimirYGuardar } from './guardar-ot.js';
+import { normalizarNumero } from './numero-ot.js';
+import { AGREGADOS_COMUNES, PLANTILLAS, UNIDADES, normalizarItem,
          anularAgregado, esAgregadoAnulado, filasBitacora, sugerirOT, cantidadTexto,
          filasPapelAgregados, filaPapelAgregado, COLUMNAS_PAPEL_AG, COLGROUP_PAPEL_AG,
-         THEAD_PAPEL_AG, vasijasDeLote, litrosReferencia, totalLote, resumenVasijas } from './agregados.js';
+         THEAD_PAPEL_AG, vasijasDeLote, litrosReferencia, resumenVasijas,
+         registroDeTarjetas } from './agregados.js';
+
+/* Lo que se anota al ejecutar: es pura y vive en agregados.js, porque este
+ * archivo importa nucleo.js (toca el DOM) y no se puede testear. */
+export { registroDeTarjetas };
 
 const _hoyISO = () => {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 };
 
-let _sub = 'armar';          // 'armar' | 'bitacora'
-let _busca = '';
+/* El buscador sobrevive al F5 en esta pestaña (shared/filtros-sesion.js). La
+ * sub-pestaña no: fuera del modo órdenes solo existe 'bitacora'. */
+const _FS = typeof window !== 'undefined' && window.CIWFiltros;
+const _lf = (k, d) => _FS ? _FS.leer('lotes:agregados:' + k, d) : d;
+const _gf = (k, v) => { if (_FS) _FS.guardar('lotes:agregados:' + k, v); };
+let _sub = 'bitacora';       // 'armar' (solo en modo ordenes) | 'bitacora'
+/* Modo ordenes: _unica = una sola vista, sin selector (como vista-movimientos).
+ * _guardada = id de una orden de ordenes_hojas abierta en solo lectura. */
+let _unica = false;
+let _guardada = null;
+let _busca = (v => typeof v === 'string' ? v : '')(_lf('busca', ''));
 let _sigId = 1;
 const _itemVacio = () => ({ producto: '', cantidad: '', unidad: 'g' });
 const _tarjetaVacia = () => ({ id: _sigId++, lote: '', vasija: '', items: [_itemVacio()] });
-let _b = { fecha: _hoyISO(), ot: '', otTocada: false, emitio: '', recibio: '', tarjetas: [_tarjetaVacia()] };
+/* otTocada: el numero quedo fijo (lo escribio el usuario, o ya se imprimio o
+ * registro con el). otRespaldo: el numero es el de sugerirOT, todavia sin
+ * mirar la carpeta. */
+let _b = { fecha: _hoyISO(), ot: '', otTocada: false, otRespaldo: false, emitio: '', recibio: '', tarjetas: [_tarjetaVacia()] };
 
 /* ---------- lotes ---------- */
 function _loteDe(numero){
@@ -87,13 +114,9 @@ function _resumenTarjeta(t){
     (_barriles.get(L) === null ? ' · Mapa de Barriles no disponible' : '');
 }
 
-/* ---------- render ---------- */
-function _selector(){
-  const b = (k, txt) => `<button type="button" data-agsub="${k}" role="radio" aria-checked="${_sub === k}"` +
-    `${_sub === k ? ' class="on"' : ''}>${txt}</button>`;
-  return `<div class="corr-sub" role="radiogroup" aria-label="Vista de Otros agregados" style="margin-left:8px">` +
-    b('armar', '📝 Armar orden') + b('bitacora', '📋 Bitácora') + '</div>';
-}
+/* ---------- render ----------
+ * Sin selector de sub-pestañas: fuera del modo ordenes la pestaña es solo la
+ * Bitacora; en modo ordenes (_unica) es solo Armar, o la orden guardada. */
 
 function _htmlTarjeta(t){
   const filas = t.items.map((it, j) => `<tr data-item="${j}">
@@ -113,7 +136,7 @@ function _htmlTarjeta(t){
       <button type="button" class="btn danger" data-quitar-tarjeta title="Quitar este lote de la orden">✕</button>
     </div>
     <div class="ag-card-body">
-      <table><thead><tr><th>Agregado</th><th title="Por vasija: las de otros litros llevan la dosis proporcional">Cantidad por vasija</th><th>Unidad</th><th></th></tr></thead><tbody>${filas}</tbody></table>
+      <div class="scroll-x"><table><thead><tr><th>Agregado</th><th title="Por vasija: las de otros litros llevan la dosis proporcional">Cantidad por vasija</th><th>Unidad</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>
       <button type="button" class="btn" data-agregar-item style="margin-top:4px">+ Producto</button>
     </div>
     <div class="ag-tpl">Plantillas: ${PLANTILLAS.map(p => `<button type="button" data-tpl="${p.clave}">+ ${esc(p.nombre)}</button>`).join('')}</div>
@@ -121,14 +144,14 @@ function _htmlTarjeta(t){
 }
 
 function _htmlArmar(){
-  if (!_b.otTocada && !_b.ot) _b.ot = sugerirOT(DATOS().analisis);
+  if (!_b.otTocada && !_b.ot){ _b.ot = sugerirOT(DATOS().analisis); _b.otRespaldo = true; }
   const lotes = (DATOS().lotes || []).filter(l => visible(l.lote));
   return `
 <div class="card">
   <h2>Orden de agregados</h2>
   <div class="ag-grid">
     <div><label for="agFecha">Fecha</label><input class="txt" type="date" id="agFecha" data-g="fecha" value="${escA(_b.fecha)}"></div>
-    <div><label for="agOT">N° de OT</label><input class="txt" id="agOT" data-g="ot" value="${escA(_b.ot)}" placeholder="B232"></div>
+    <div><label for="agOT">N° de OT</label><input class="txt" id="agOT" data-g="ot" value="${escA(_b.ot)}" placeholder="B232"> ${chipCarpeta('B')}</div>
     <div><label for="agEmitio">Emitió</label><input class="txt" id="agEmitio" data-g="emitio" value="${escA(_b.emitio)}" placeholder="Quién emite"></div>
     <div><label for="agRecibio">Recibió</label><input class="txt" id="agRecibio" data-g="recibio" value="${escA(_b.recibio)}" placeholder="Quién recibe"></div>
   </div>
@@ -137,8 +160,7 @@ function _htmlArmar(){
   <div class="toolbar">
     <button type="button" class="btn" data-limpiar>🧹 Orden nueva</button>
     <div class="spacer"></div>
-    <button type="button" class="btn" data-imprimir>🖨️ Imprimir</button>
-    <button type="button" class="btn primary" data-registrar title="Deja cada agregado en el lote: aparece en Análisis y en la bitácora">✔ Registrar en los lotes</button>
+    <button type="button" class="btn primary" data-imprimir title="Al imprimir, la orden queda pendiente; al marcarla ejecutada se anotan los agregados en Análisis">🖨️ Imprimir</button>
   </div>
   <div id="agMsg" style="margin-top:10px"></div>
 </div>
@@ -193,8 +215,87 @@ function _htmlBitacora(){
 
 export function renderAgregados(){
   const sec = $('tab-agregados'); if (!sec) return;
-  sec.innerHTML = _selector() + (_sub === 'armar' ? _htmlArmar() : _htmlBitacora());
   if (!sec._wired){ sec._wired = true; _cablear(sec); }
+  if (_guardada){ _pintarGuardada(sec); return; }
+  if (!_unica) _sub = 'bitacora';
+  sec.innerHTML = _sub === 'armar' ? _htmlArmar() : _htmlBitacora();
+  if ($('agOT')) _cablearNumero();
+}
+
+/** Modo ordenes: Nueva · Otros agregados (solo Armar, sin selector). */
+export function abrirAgregadosNueva(){
+  _guardada = null; _unica = true; _sub = 'armar';
+  mostrarTab('agregados');
+}
+
+/** Modo ordenes: una orden de agregados ya guardada, en solo lectura. */
+export function abrirAgregadosGuardada(id){
+  _guardada = id; _unica = true;
+  mostrarTab('agregados');
+}
+
+/* ---------- orden guardada (solo lectura) ----------
+ * Cabecera (estado, ejecutar, anular, reimprimir) + el papel armado desde
+ * orden.hoja con las vasijas congeladas al imprimir: lo que se ve es lo que
+ * salio. Las dos piezas son hijas directas de #tab-agregados: asi
+ * printing-agregados esconde la cabecera y deja solo #agPaginas, que en
+ * pantalla queda visible porque aca no lleva display:none. */
+function _reimprimir(){
+  document.body.classList.add('printing-agregados');
+  try { window.print(); }
+  finally { document.body.classList.remove('printing-agregados'); }
+}
+
+function _pintarGuardada(sec){
+  const o = ordenHojaPorId(DATOS(), _guardada);
+  if (!o){
+    sec.innerHTML = '<div class="msg info" style="margin-top:10px">Esta orden no existe (¿la borraron?)</div>';
+    return;
+  }
+  const puedeEditar = ['editor', 'admin'].includes((window.CIW || {}).rol);
+  sec.innerHTML = `<div id="agGuardadaCab">${htmlCabeceraOrden(o, { puedeEditar })}</div><div id="agPaginas"></div>`;
+  const h = o.hoja || {};
+  const vpt = h.vasijasPorTarjeta || {};
+  const pag = $('agPaginas');
+  pag.innerHTML = _papel({ ...h, fecha: h.fecha || o.fecha, ot: h.ot || o.ot }, t => vpt[t.id] || []);
+  /* el papel B015 no trae campos, pero por las dudas: nada editable */
+  pag.querySelectorAll('input, textarea, select').forEach(i => { i.disabled = true; });
+  cablearCabeceraOrden($('agGuardadaCab'), o.id, { reimprimir: _reimprimir, alCambiar: () => renderAgregados() });
+}
+
+/* El papel B015: el mismo armado para imprimir y para la guardada. */
+function _papel(h, vasijasDe){
+  const fecha = String(h.fecha || '');
+  const p = fecha.split('-');
+  return pintarHojas({
+    filas: filasPapelAgregados(h.tarjetas || [], vasijasDe),
+    titulo: 'Orden de Trabajo — Agregados',
+    meta: { fechaTxt: p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : fecha, anio: p.length === 3 ? p[0] : '', nro: h.ot || '' },
+    banda: ['AGREGADOS', '', 'Bodega'],
+    emitio: h.emitio || '', recibio: h.recibio || '',
+    colgroup: COLGROUP_PAPEL_AG,
+    thead: THEAD_PAPEL_AG,
+    columnas: COLUMNAS_PAPEL_AG,
+    textoVacio: '',
+    renderFila: filaPapelAgregado,
+  });
+}
+
+/* N° de OT: el siguiente de la serie B de la carpeta de OT. El de sugerirOT
+ * queda de respaldo. renderAgregados corre en cada cambio de sub-pestaña: el
+ * render solo propone si la orden todavia no tiene numero propuesto (vacio o
+ * el de respaldo); al conectar la carpeta se vuelve a proponer mientras el
+ * numero no se haya escrito, impreso ni registrado (otTocada). El campo se
+ * rehace en cada render, asi que el chip se cablea cada vez. */
+function _cablearNumero(){
+  const sembrarAg = (alConectar) => proponerNumero('B').then(p => {
+    if (_b.otTocada) return;
+    if (!alConectar && _b.ot && !_b.otRespaldo) return;
+    _b.ot = p.numero; _b.otRespaldo = false;
+    if ($('agOT')) $('agOT').value = p.numero;
+  });
+  sembrarAg(false);
+  cablearChipsCarpeta($('agOT').parentElement, () => sembrarAg(true));
 }
 
 /* ---------- eventos (delegados en la seccion, una sola vez) ---------- */
@@ -214,6 +315,7 @@ function _cablear(sec){
     const el = e.target;
     if (el.id === 'agBusca'){
       _busca = el.value.trim();
+      _gf('busca', _busca);
       const pos = el.selectionStart;
       renderAgregados();
       const nuevo = $('agBusca');
@@ -256,10 +358,8 @@ function _cablear(sec){
       if (String(t.lote ?? '').trim() === L) card.querySelector('.ag-vasijas').innerHTML = _resumenTarjeta(t);
     });  });
 
-  sec.addEventListener('click', e => {
+  sec.addEventListener('click', async e => {
     const el = e.target;
-    const sub = el.closest('[data-agsub]');
-    if (sub){ _sub = sub.dataset.agsub; renderAgregados(); return; }
     const ir = el.closest('[data-iralote]');
     if (ir){ irALote(ir.dataset.iralote); return; }
     if (el.closest('[data-agregar-tarjeta]')){
@@ -268,12 +368,11 @@ function _cablear(sec){
       return;
     }
     if (el.closest('[data-limpiar]')){
-      if (!confirm('¿Empezar una orden nueva? Se borra lo que está cargado en pantalla (lo ya registrado queda en los lotes).')) return;
-      _b = { fecha: _hoyISO(), ot: '', otTocada: false, emitio: _b.emitio, recibio: _b.recibio, tarjetas: [_tarjetaVacia()] };
+      if (!await confirmar({ titulo: 'Empezar una orden nueva', texto: 'Se borra lo cargado en pantalla. Lo ya impreso queda en Órdenes de trabajo.', si: 'Empezar de cero', no: 'Cancelar', peligro: true })) return;
+      _b = { fecha: _hoyISO(), ot: '', otTocada: false, otRespaldo: false, emitio: _b.emitio, recibio: _b.recibio, tarjetas: [_tarjetaVacia()] };
       renderAgregados(); return;
     }
     if (el.closest('[data-imprimir]')){ _imprimir(); return; }
-    if (el.closest('[data-registrar]')){ _registrar(); return; }
     const an = el.closest('[data-anular]');
     if (an){ _anular(+an.dataset.anular); return; }
 
@@ -321,81 +420,88 @@ async function _imprimir(){
   _msg('<div class="msg">Leyendo los barriles del Mapa…</div>');
   await _cargarBarriles(_b.tarjetas.map(t => t.lote));
   _msg(_mapaFallo ? '<div class="msg err">El Mapa de Barriles no respondió: el papel sale con los envases del lote, sin número de barril.</div>' : '');
-  const filas = filasPapelAgregados(_b.tarjetas, _vasijasDe);
-  if (!filas.length){ _msg('<div class="msg err">Cargá al menos un lote con un producto para imprimir.</div>'); return; }
-  const p = (_b.fecha || '').split('-');
-  cont.innerHTML = pintarHojas({
-    filas,
-    titulo: 'Orden de Trabajo — Agregados',
-    meta: { fechaTxt: p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : _b.fecha, anio: p.length === 3 ? p[0] : '', nro: _b.ot },
-    banda: ['AGREGADOS', '', 'Bodega'],
-    emitio: _b.emitio, recibio: _b.recibio,
-    colgroup: COLGROUP_PAPEL_AG,
-    thead: THEAD_PAPEL_AG,
-    columnas: COLUMNAS_PAPEL_AG,
-    textoVacio: '',
-    renderFila: filaPapelAgregado,
+  if (!filasPapelAgregados(_b.tarjetas, _vasijasDe).length){ _msg('<div class="msg err">Cargá al menos un lote con un producto para imprimir.</div>'); return; }
+  /* Se congela ANTES de imprimir: lo que se guarda (y se anota al ejecutar)
+   * son las mismas vasijas que pintaron el papel, aunque el Mapa o las
+   * tarjetas cambien mientras está abierto el diálogo de impresión. */
+  const foto = _fotoParaGuardar();
+  cont.innerHTML = _papel({ fecha: _b.fecha, ot: _b.ot, emitio: _b.emitio, recibio: _b.recibio, tarjetas: _b.tarjetas },
+                          t => foto.vasijasPorTarjeta[t.id] || _vasijasDe(t));
+  const r = await imprimirYGuardar({
+    claseBody: 'printing-agregados', contenedor: cont, serie: 'B',
+    numero: _b.ot, titulo: 'OT agregados',
   });
-  document.body.classList.add('printing-agregados');
-  window.print();
-  document.body.classList.remove('printing-agregados');
+  if (r.numeroLibre){ _b.ot = r.numeroLibre; _b.otTocada = true; if ($('agOT')) $('agOT').value = r.numeroLibre; }
+  // Ya impreso con ese numero: queda fijo (un render no lo cambia).
+  if (r.ok){
+    _b.otTocada = true; _b.otRespaldo = false;
+    if (r.numero){ _b.ot = r.numero; if ($('agOT')) $('agOT').value = r.numero; }
+    await _trasImprimir(r, foto);
+  }
 }
 
-async function _registrar(){
-  const ot = String(_b.ot || '').trim();
-  const fecha = String(_b.fecha || '').trim();
-  if (!ot){ _msg('<div class="msg err">Ingresá el N° de OT: es lo que identifica el agregado en el lote y en Análisis.</div>'); return; }
-  if (!fecha){ _msg('<div class="msg err">Ingresá la fecha.</div>'); return; }
-  const validas = _tarjetasValidas();
-  if (!validas.length){ _msg('<div class="msg err">Cargá al menos un lote con un producto.</div>'); return; }
+/* Despues de imprimir: la orden se guarda pendiente en ordenes_hojas con la
+ * foto del papel (tarjetas + vasijas congeladas POR ID DE TARJETA, porque
+ * _vasijasDe depende del Mapa y de t.vasija) y el registro que se anota en
+ * Analisis al marcarla ejecutada: lo anotado = lo impreso, sin releer el
+ * Mapa. Reemplaza al viejo «Registrar en los lotes». En modo ordenes la
+ * pantalla pasa a la orden guardada (como _otTrasImprimir en vista-orden.js). */
+function _fotoParaGuardar(){
+  const fecha = String(_b.fecha || '').trim() || _hoyISO();
+  const tarjetas = structuredClone(_tarjetasValidas().map(x => x.t));
+  const vasijasPorTarjeta = Object.fromEntries(tarjetas.map(t => [t.id, structuredClone(_vasijasDe(t))]));
+  const registro = registroDeTarjetas(tarjetas, t => vasijasPorTarjeta[t.id], fecha);
+  return { fecha, tarjetas, vasijasPorTarjeta, registro, emitio: _b.emitio, recibio: _b.recibio };
+}
 
-  const noExisten = validas.filter(x => !_loteDe(x.t.lote)).map(x => String(x.t.lote).trim());
-  if (noExisten.length && !confirm('Estos lotes no están en la pestaña Lotes: ' + noExisten.join(', ') +
-      '.\n¿Registrar igual?')) return;
-
-  /* Dos tarjetas del mismo lote se juntan: registrarAgregados reemplaza lo de
-   * la misma OT, y registrarlas por separado dejaria solo la segunda. */
-  /* Lo que se registra en el lote es el TOTAL que lleva (la dosis de cada
-   * vasija sumada), con la dosis por vasija y los litros de referencia al
-   * lado para poder reconstruir la orden. */
-  _msg('<div class="msg">Leyendo los barriles del Mapa…</div>');
-  await _cargarBarriles(validas.map(x => x.t.lote));
-  if (_mapaFallo && !confirm('El Mapa de Barriles no respondió. El total se calcula con los envases que declara cada lote. ¿Registrar igual?')){
-    _msg(''); return;
-  }
-  const porLote = new Map();
-  for (const x of validas){
-    const L = String(x.t.lote).trim();
-    const vas = _vasijasDe(x.t);
-    const ref = litrosReferencia(vas);
-    if (!porLote.has(L)) porLote.set(L, []);
-    porLote.get(L).push(...x.items.map(it => ({ ...it,
-      cantidad: totalLote(it.cantidad, vas, ref),
-      dosis_vasija: it.cantidad, litros_ref: ref, vasijas: vas.length })));
-  }
-
-  const yaEstaba = [...porLote.keys()].filter(L => (DATOS().analisis || []).some(a =>
-    String(a.lote ?? '').trim() === L && a.fecha_analisis === fecha &&
-    (a.agregados || []).some(ag => !esAgregadoAnulado(ag) && String(ag.ot_n ?? '').trim() === ot)));
-  if (yaEstaba.length && !confirm('La OT ' + ot + ' ya estaba registrada el ' + fmtFecha(fecha) + ' en: ' +
-      yaEstaba.join(', ') + '.\nSe reemplaza por lo que está en pantalla. ¿Seguir?')) return;
-
-  if (!DATOS().analisis) DATOS().analisis = [];
-  const quien = usuarioActual() || 'desconocido', cuando = new Date().toISOString();
-  let n = 0;
-  for (const [lote, items] of porLote){
-    registrarAgregados(DATOS().analisis, { lote, fecha, items, ot, quien, cuando });
-    n += items.length;
+async function _trasImprimir(r, { fecha, tarjetas, vasijasPorTarjeta, registro, emitio, recibio }){
+  const numero = normalizarNumero(_b.ot || '', 'B'); // "b 223" -> "B223"
+  const hoja = { fecha, ot: numero, emitio, recibio, tarjetas, vasijasPorTarjeta };
+  const orden = armarOrdenHoja({
+    id: 'oh-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+    tipo: 'agregados', numero, fecha,
+    quien: usuarioActual(), ahora: new Date().toISOString(),
+    lotes: tarjetas.map(t => t.lote), hoja, registro,
+  });
+  orden.pdf = { nombre: r.nombre, estado: r.guardado };
+  /* Otra pendiente con el mismo N°: se pregunta antes de reemplazarla. Al
+   * reemplazar, la guardada conserva el id de la anterior (res.id). */
+  const res = await guardarOrdenHojaConfirmando(orden);
+  if (!res.ok){
+    if (res.error === 'ejecutada')
+      avisar('La orden ' + numero + ' ya está ejecutada: esta impresión no se guardó como orden nueva.', { tipo: 'mal' });
+    else if (res.error === 'pendiente')
+      avisar('Esta impresión no se guardó como orden: la ' + numero + ' pendiente quedó como estaba. Conviene imprimirla con otro N°.', { tipo: 'mal' });
+    return;
   }
   markDirty();
-  _msg(`<div class="msg ok">✔ Registrados ${n} agregado${n === 1 ? '' : 's'} en ${porLote.size} lote${porLote.size === 1 ? '' : 's'} (OT ${esc(ot)}). ` +
-    'Ya se ven en Análisis y en la Bitácora.</div>');
+  const id = res.id;
+
+  let ok;
+  try { ok = await guardar(); } catch (_) { ok = false; }
+
+  /* Modo ordenes: la orden ya esta en DATOS (aunque guardar() diga que no
+   * hubo red: quedo en el borrador local). La URL pasa a ?orden=<id>
+   * (conserva volver) para que F5 la reabra, y la banda se retitula. */
+  if (document.body.classList.contains('modo-ordenes')){
+    const p = new URLSearchParams(location.search); p.set('orden', id); p.delete('lotes');
+    history.replaceState(null, '', location.pathname + '?' + p.toString());
+    abrirAgregadosGuardada(id);
+    document.dispatchEvent(new CustomEvent('lotes:modo-orden-cambio'));
+    if (ok) avisar('✓ La orden ' + numero + ' quedó pendiente. Marcala ejecutada acá cuando esté hecha: ahí se anotan los agregados en Análisis.');
+    else avisar('La orden ' + numero + ' quedó guardada en este equipo y se va a subir sola cuando se pueda guardar.', { tipo: 'mal' });
+    return;
+  }
+
+  _msg(ok
+    ? `<div class="msg ok">✓ La orden ${esc(numero)} quedó pendiente en Órdenes de trabajo. Al marcarla ejecutada se anotan los agregados en Análisis.</div>`
+    : '<div class="msg err">La orden quedó anotada en este equipo pero NO se guardó todavía: se va a guardar sola cuando vuelva la conexión (o apretá Ctrl+S).</div>');
 }
 
-function _anular(i){
+async function _anular(i){
   const f = _filasBitacoraVisibles()[i]; if (!f) return;
   const ag = f.agregado;
-  if (!confirm(`¿Anular ${ag.producto} ${cantidadTexto(ag)} del lote ${f.lote} (${fmtFecha(f.fecha)}, OT ${ag.ot_n || '-'})?\n\nNo se borra: queda tachado con tu nombre.`)) return;
+  if (!await confirmar({ titulo: 'Anular agregado', texto: `${ag.producto} ${cantidadTexto(ag)} del lote ${f.lote} (${fmtFecha(f.fecha)}, OT ${ag.ot_n || '-'}).\n\nNo se borra: queda tachado con tu nombre.`, si: 'Anular', no: 'Cancelar', peligro: true })) return;
   if (anularAgregado(ag, usuarioActual() || 'desconocido', new Date().toISOString())){
     markDirty();
     renderAgregados();

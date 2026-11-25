@@ -1,0 +1,83 @@
+/* Estilo común de la plataforma: el de Prensas ("Piedra y tinta").
+ *
+ * Los tokens de :root son COPIA EXACTA de public/prensas/index.html; los vigila
+ * test/estilo-tokens.test.ts. Si se cambia un color, se cambia en los dos.
+ *
+ * Reglas de este archivo:
+ *  - Solo :root y clases ci-*. Nada sobre etiquetas sueltas (table, input…):
+ *    cada app re-estiliza sus propias clases con estos tokens.
+ *  - El aviso y el diálogo (ci-aviso, ci-dialogo) traen su CSS en dialogo.js,
+ *    para verse igual en los módulos que todavía no cargan este archivo. */
+
+@font-face{font-family:'Cormorant Garamond';src:url('/prensas/fonts/cormorant-garamond-latin-500-normal.woff2') format('woff2');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'Cormorant Garamond';src:url('/prensas/fonts/cormorant-garamond-latin-600-normal.woff2') format('woff2');font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:'Cormorant Garamond';src:url('/prensas/fonts/cormorant-garamond-latin-500-italic.woff2') format('woff2');font-weight:500;font-style:italic;font-display:swap}
+@font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-600-normal.woff2') format('woff2');font-weight:600;font-style:normal;font-display:swap}
+
+:root{
+  --bg:#ECE8E1; --panel:#F4F1EB; --panel2:#E4DFD6; --line:#D6D0C5; --rule:#1C1B19;
+  --txt:#1C1B19; --muted:#68625A; --accent:#5A1724; --accent2:#43101A;
+  --ok:#56684A; --nook:#8E2330; --warn:#7F622B; --info:#3F5560;
+  --ok-tinte:#E3E7DD; --nook-tinte:#F1E3E1; --warn-tinte:#F2EADB; --accent-tinte:rgba(90,23,36,.07);
+  --serif:'Cormorant Garamond',Georgia,'Times New Roman',serif;
+  --sans:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;
+
+  /* Propios de la base común (Prensas no los tiene). */
+  --ci-r:2px;
+  --ci-tap:44px;
+  --ci-ring:0 0 0 2px var(--bg),0 0 0 4px var(--accent);
+  --ci-z-sticky:40; --ci-z-menu:60; --ci-z-dialogo:1000; --ci-z-aviso:1100;
+}
+
+/* Botones: contorno de tinta, como button.btn de Prensas. */
+.ci-btn{display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--txt);border:1px solid var(--txt);border-radius:var(--ci-r);padding:7px 14px;cursor:pointer;font:500 13px/1.2 var(--sans);white-space:nowrap;text-decoration:none;transition:border-color .15s,background .15s,color .15s}
+.ci-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-tinte)}
+.ci-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ci-btn:disabled{opacity:.45;cursor:default}
+.ci-btn.primario{background:var(--accent);color:#F3EEE6;border-color:var(--accent)}
+.ci-btn.primario:hover{background:var(--accent2);border-color:var(--accent2);color:#fff}
+.ci-btn.peligro{color:var(--nook);border-color:var(--nook)}
+.ci-btn.peligro:hover{background:var(--nook-tinte)}
+.ci-btn.chico{padding:5px 10px;font-size:12px}
+
+/* Etiquetas rectas, como .pill de Prensas. */
+.ci-pill{display:inline-block;padding:1px 7px;border-radius:var(--ci-r);font:600 11px/1.5 var(--sans);border:1px solid transparent;white-space:nowrap}
+.ci-pill.ok{background:var(--ok-tinte);color:var(--ok);border-color:rgba(86,104,74,.3)}
+.ci-pill.mal{background:var(--nook-tinte);color:var(--nook);border-color:rgba(142,35,48,.25)}
+.ci-pill.aviso{background:var(--warn-tinte);color:var(--warn);border-color:rgba(127,98,43,.3)}
+.ci-pill.neutro{background:var(--panel2);color:var(--muted)}
+
+/* Cabecera de pantalla: título en Cormorant, bajada en gris, acciones a la derecha. */
+.ci-pg-head{display:flex;align-items:flex-end;gap:18px;margin:2px 0 14px;flex-wrap:wrap}
+.ci-pg-head h1{margin:0;font-family:var(--serif);font-size:34px;font-weight:500;line-height:1}
+.ci-pg-head p{margin:0 0 3px;color:var(--muted);font-size:13px;max-width:620px;line-height:1.45}
+.ci-pg-head .ci-acc{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+
+/* Barra mínima sobre una tabla: filete de tinta arriba. */
+.ci-tbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--rule);margin-bottom:8px}
+
+/* Campo de formulario. */
+.ci-campo{margin:14px 0 0}
+.ci-campo label,.ci-campo legend{display:block;font:500 10px var(--sans);text-transform:uppercase;letter-spacing:1.6px;color:var(--muted);margin-bottom:6px;padding:0}
+.ci-campo input[type=text],.ci-campo input[type=password],.ci-campo input[type=number],.ci-campo select,.ci-campo textarea{width:100%;background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:var(--ci-r);padding:8px 10px;font:13.5px var(--sans)}
+.ci-campo input:focus,.ci-campo select:focus,.ci-campo textarea:focus{border-color:var(--txt);outline:none;box-shadow:inset 3px 0 0 var(--accent)}
+.ci-campo .ci-ayuda{color:var(--muted);font-size:12px;line-height:1.5;margin:6px 0 0}
+fieldset.ci-campo{border:0;padding:0;min-width:0}
+
+/* Tabla de lista: filete de tinta bajo la cabecera, como las de Prensas. */
+.ci-tabla{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel)}
+.ci-tabla th,.ci-tabla td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.ci-tabla th{color:var(--muted);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:1.3px;border-bottom-color:var(--rule)}
+.ci-tabla td.num{text-align:right;font-variant-numeric:tabular-nums}
+.ci-tabla tbody tr:hover{background:var(--panel2)}
+
+/* Celular: blancos táctiles y campos sin zoom de iOS. */
+@media (max-width:760px){
+  .ci-btn{min-height:var(--ci-tap);padding:10px 16px}
+  .ci-btn.chico{min-height:var(--ci-tap)}
+  .ci-campo input[type=text],.ci-campo input[type=password],.ci-campo input[type=number],.ci-campo select,.ci-campo textarea{font-size:16px;min-height:var(--ci-tap)}
+  .ci-pg-head h1{font-size:28px}
+}
+@media (prefers-reduced-motion:reduce){.ci-btn{transition:none}}

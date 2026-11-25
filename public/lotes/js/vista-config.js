@@ -5,6 +5,8 @@ import { $, esc, escA, DATOS, markDirty, registrarVista } from './nucleo.js';
 import { CRITERIOS_DEFAULT } from './criterios.js';
 import { activarGrilla } from './grilla.js';
 import { renderVasijas } from './vista-vasijas.js';
+import { renderConfigAgenda } from './vista-config-agenda.js';
+import { avisar, confirmar, pedir } from './dialogos.js';
 
 /** Columnas de la tabla de configuración, en orden de presentación. */
 const COLS_CONFIG = [
@@ -24,6 +26,7 @@ const COLS_CONFIG = [
   { k:'av_delta_dias',          label:'AV delta días',          num:true, int:true },
   { k:'frecuencia_no_terminada',label:'Frecuencia no term. (d)',num:true, int:true },
   { k:'frecuencia_terminada',   label:'Frecuencia terminada (d)',num:true, int:true },
+  { k:'frecuencia_trasiego',    label:'Trasiego cada (d)',      num:true, int:true },
 ];
 
 const DESTINOS_DEFAULT = ['Destilería', 'Rellenos', 'Sangrías Bodega', 'Granel', 'Descarte'];
@@ -185,11 +188,11 @@ function _cfgOnChange(e){
   markDirty();
 }
 
-function _cfgOnClick(e){
+async function _cfgOnClick(e){
   const bVar = e.target.closest('[data-quitar-var]');
   if (bVar){
     const varNombre = bVar.dataset.quitarVar;
-    if (!confirm(`¿Quitar el override de "${varNombre}"? La variedad pasará a usar los valores del default.`)) return;
+    if (!await confirmar({ titulo: 'Quitar override', texto: `"${varNombre}" pasa a usar los valores del default.`, si: 'Quitar override', no: 'Cancelar', peligro: true })) return;
     _configEnsure();
     delete DATOS().config.criterios_fml.por_variedad[varNombre];
     markDirty();
@@ -199,7 +202,7 @@ function _cfgOnClick(e){
   const bProy = e.target.closest('[data-quitar-proy]');
   if (bProy){
     const proyNombre = bProy.dataset.quitarProy;
-    if (!confirm(`¿Quitar los criterios propios de "${proyNombre}"? Sus lotes vuelven a usar los de su variedad.`)) return;
+    if (!await confirmar({ titulo: 'Quitar criterios del proyecto', texto: `Los lotes de "${proyNombre}" vuelven a usar los de su variedad.`, si: 'Quitar criterios', no: 'Cancelar', peligro: true })) return;
     _configEnsure();
     delete DATOS().config.criterios_fml.por_proyecto[proyNombre];
     markDirty();
@@ -290,9 +293,11 @@ export function renderConfig(){
   }
 
   renderVasijas($('cfgVasijas'));
+
+  renderConfigAgenda();
 }
 
-export function agregarVariedadConfig(){
+export async function agregarVariedadConfig(){
   _configEnsure();
   const cfg = DATOS().config.criterios_fml;
   // variedades en DATOS.lotes que aún no tienen override
@@ -302,27 +307,23 @@ export function agregarVariedadConfig(){
   )].filter(v => !existentes.has(v)).sort((a,b)=>a.localeCompare(b,'es'));
 
   if (disponibles.length === 0){
-    alert('No hay variedades disponibles para agregar (todas tienen override o no hay lotes con variedad definida).');
+    avisar('No hay variedades para agregar: todas tienen criterios propios o no hay lotes con variedad.', { tipo: 'info' });
     return;
   }
-
   const elegida = disponibles.length === 1
     ? disponibles[0]
-    : prompt('Seleccioná la variedad (escribí exacto):\n\n' + disponibles.join('\n'), disponibles[0]);
-
+    : await pedir({ titulo: 'Agregar variedad', texto: 'Elegí la variedad que va a tener criterios propios.', si: 'Agregar',
+                    campo: { opciones: disponibles, valor: disponibles[0] } });
   if (!elegida || !elegida.trim()) return;
   const v = elegida.trim();
-  if (!disponibles.includes(v)){
-    alert(`"${v}" no está entre las variedades disponibles.`);
-    return;
-  }
+  if (!disponibles.includes(v)){ avisar(`"${v}" no está entre las variedades disponibles.`, { tipo: 'mal' }); return; }
 
   cfg.por_variedad[v] = {};
   markDirty();
   renderConfig();
 }
 
-export function agregarProyectoConfig(){
+export async function agregarProyectoConfig(){
   _configEnsure();
   const cfg = DATOS().config.criterios_fml;
   /* Los proyectos salen de DATOS().lotes y NO del dashboard: aca se configuran
@@ -335,28 +336,24 @@ export function agregarProyectoConfig(){
   )].filter(p => !existentes.has(p)).sort((a,b)=>a.localeCompare(b,'es'));
 
   if (disponibles.length === 0){
-    alert('No hay proyectos disponibles para agregar (todos tienen criterios propios o no hay lotes con proyecto definido).');
+    avisar('No hay proyectos para agregar: todos tienen criterios propios o no hay lotes con proyecto.', { tipo: 'info' });
     return;
   }
-
   const elegido = disponibles.length === 1
     ? disponibles[0]
-    : prompt('Seleccioná el proyecto (escribí exacto):\n\n' + disponibles.join('\n'), disponibles[0]);
-
+    : await pedir({ titulo: 'Agregar proyecto', texto: 'Elegí el proyecto que va a tener criterios propios.', si: 'Agregar',
+                    campo: { opciones: disponibles, valor: disponibles[0] } });
   if (!elegido || !elegido.trim()) return;
   const p = elegido.trim();
-  if (!disponibles.includes(p)){
-    alert(`"${p}" no está entre los proyectos disponibles.`);
-    return;
-  }
+  if (!disponibles.includes(p)){ avisar(`"${p}" no está entre los proyectos disponibles.`, { tipo: 'mal' }); return; }
 
   cfg.por_proyecto[p] = {};
   markDirty();
   renderConfig();
 }
 
-export function restaurarDefaultsConfig(){
-  if (!confirm('¿Restaurar los valores por defecto del default? Esto reemplaza la fila "General (default)" con los valores originales del motor FML.')) return;
+export async function restaurarDefaultsConfig(){
+  if (!await confirmar({ titulo: 'Restaurar valores por defecto', texto: 'La fila "General (default)" vuelve a los valores originales del motor FML.', si: 'Restaurar', no: 'Cancelar', peligro: true })) return;
   _configEnsure();
   DATOS().config.criterios_fml.default = Object.assign({}, CRITERIOS_DEFAULT);
   markDirty();

@@ -18,6 +18,9 @@ import {
   type Nodo,
 } from '../src/lotes/motores/linaje';
 import type { Fila } from '../src/lotes/motores/fml';
+// Modulo del navegador (JS sin tipos): el traspaso padre -> hijo de un tanque extra.
+// @ts-ignore
+import { movimientosDeExtras } from '../public/lotes/js/ot-destinos.js';
 
 const datos = (lotes: string[], movimientos: Fila[]) => ({
   lotes: lotes.map((l) => ({ lote: l })),
@@ -94,6 +97,17 @@ describe('grafo de linaje', () => {
     expect(n(g, '26400').hijos.map((h) => h.lote)).toEqual(['99999']);
     expect(g.has('99999')).toBe(true);
     expect(n(g, '99999').padres.map((p) => p.lote)).toEqual(['26400']);
+  });
+
+  it('el traspaso de un tanque destino extra de una OT (padre -> hijo) arma la arista', () => {
+    const ot = { ot: '0990', fecha: '2026-11-12', destino: 'T 212', lote_corte: null,
+      lotes: [{ lote: '26217', destinos_extra: [{ tipo: 'tanque', num: '214', litros: 1580, lote: '26330', nuevo: true, mov_id: 'ot-1-x0-0' }] }] };
+    const movs: Fila[] = movimientosDeExtras(ot, 'ana', '2026-11-12');
+    // Pendiente todavia no movio vino: sin arista.
+    expect(n(grafo(datos(['26217', '26330'], movs)), '26330').padres).toEqual([]);
+    const g = grafo(datos(['26217', '26330'], movs.map((m) => ({ ...m, estado: 'ejecutado' }))));
+    expect(n(g, '26217').hijos.map((h) => h.lote)).toEqual(['26330']);
+    expect(n(g, '26330').padres.map((p) => [p.lote, p.tipo, p.litros])).toEqual([['26217', 'traspaso', 1580]]);
   });
 
   it('todos los lotes aparecen aunque no tengan movimientos', () => {
@@ -219,6 +233,17 @@ describe('recorrido de vasijas', () => {
     expect(r).toHaveLength(1);
     expect(r[0].vasija).toBe('B1');
     expect(r[0].hasta).toBe('2026-06-01');
+  });
+
+  it('un traspaso CON vasija_destino tampoco abre estadía: esa vasija es la del otro lote', () => {
+    // Corte + achique: el lote del corte traspasa al hijo que va al T 209;
+    // el vino del corte no se mudó al T 209.
+    const movs = [
+      mov(1, '26323', 'trasiego', { fecha: '2026-10-14', vasija_destino: 'T 206' }),
+      mov(2, '26323', 'traspaso', { fecha: '2026-10-15', vasija_destino: 'T 209', lote_destino: '26324', litros: 900 }),
+      mov(3, '26323', 'salida', { fecha: '2026-10-20', vasija_destino: 'Camión' }),
+    ];
+    expect(recorridoVasijas('26323', movs).map((e) => e.vasija)).toEqual(['T 206']);
   });
 
   it('solo toma los movimientos del lote pedido', () => {

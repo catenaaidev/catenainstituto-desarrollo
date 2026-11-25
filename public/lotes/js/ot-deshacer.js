@@ -9,6 +9,7 @@
 'use strict';
 
 import { ENV_KEYS, fotoLote } from './propuesta-ot.js';
+import { extrasDeOT } from './ot-destinos.js';
 
 const CAMPOS = [...ENV_KEYS, 'litros_actuales', 'vasija_actual'];
 const igualCampo = (a, b) => (a ?? null) === (b ?? null) || (a == null && b === '') || (a === '' && b == null)
@@ -19,7 +20,7 @@ function sigueIgual(lote, despues){
   return CAMPOS.every(k => igualCampo(ahora[k], despues[k]));
 }
 
-/* { aplicada, corteParcial, items: [{lote, accion: 'volver'|'cambiado'|'falta', antes, ahora, porCorte?}],
+/* { aplicada, corteParcial, items: [{lote, accion: 'volver'|'cambiado'|'falta', antes, ahora, porCorte?, porGrupo?}],
  *   mermasBorrar: [id], mermasReabrir: [id] }
  * Las mermas de un lote cambiado o faltante tampoco se tocan.
  *
@@ -30,28 +31,70 @@ function sigueIgual(lote, despues){
  * con los litros que recibio: el mismo vino contado dos veces. Por eso, si en
  * un corte algun destino no puede volver, ninguno vuelve: los que si podian
  * quedan 'cambiado' con porCorte (para que la pantalla diga por que) y
- * corteParcial avisa que "Borrar y deshacer" no tiene nada que hacer. */
+ * corteParcial avisa que "Borrar y deshacer" no tiene nada que hacer.
+ * Los lotes hijos de un Corte + achique entran en la misma regla: son parte del corte.
+ * Los hijos de los tanques destino extra (ot-destinos.js) tambien entran en la
+ * misma regla de "entero o nada": los de un Corte son parte del corte, y los
+ * de un trasiego simple forman un grupo con su lote de origen (porGrupo). */
 export function planDeshacer(datos, ot){
-  const destinos = [...(ot.lotes || []), ...(ot.lote_corte ? [ot.lote_corte] : [])]
-    .filter(d => d && d.aplicado && typeof d.aplicado === 'object');
+  const destinos = _unoPorLote([...(ot.lotes || []), ...(ot.lote_corte ? [ot.lote_corte] : []),
+                                ...((ot.achique && ot.achique.destinos) || []), ...extrasDeOT(ot).map(x => x.d)]
+    .filter(d => d && d.aplicado && typeof d.aplicado === 'object'));
   const plan = { aplicada: destinos.length > 0, corteParcial: false, items: [], mermasBorrar: [], mermasReabrir: [] };
+  const mermasDe = new Map();
   for (const d of destinos){
     const a = d.aplicado;
     const lote = (datos.lotes || []).find(l => String(l.lote) === String(d.lote));
     if (!lote){ plan.items.push({ lote: String(d.lote), accion: 'falta', antes: a.antes, ahora: null }); continue; }
     const volver = sigueIgual(lote, a.despues || {});
-    plan.items.push({ lote: String(d.lote), accion: volver ? 'volver' : 'cambiado', antes: a.antes, ahora: fotoLote(lote) });
-    if (!volver) continue;
-    plan.mermasBorrar.push(...(a.mermas_creadas || []));
-    plan.mermasReabrir.push(...(a.mermas_cerradas || []));
+    const it = { lote: String(d.lote), accion: volver ? 'volver' : 'cambiado', antes: a.antes, ahora: fotoLote(lote) };
+    plan.items.push(it);
+    mermasDe.set(it, a);
   }
   if (ot.lote_corte && plan.items.some(it => it.accion !== 'volver')){
     for (const it of plan.items) if (it.accion === 'volver'){ it.accion = 'cambiado'; it.porCorte = true; }
     plan.corteParcial = true;
-    plan.mermasBorrar = [];
-    plan.mermasReabrir = [];
+  }
+  // Trasiego simple: cada lote de origen va entero o nada con los hijos de
+  // sus tanques extra. Si uno del grupo no puede volver, ninguno del grupo
+  // vuelve (porGrupo); los demas lotes de la OT se juzgan solos.
+  if (!ot.lote_corte){
+    const grupos = new Map();
+    for (const x of extrasDeOT(ot)){
+      if (x.i == null) continue;
+      if (!grupos.has(x.i)) grupos.set(x.i, new Set([String(((ot.lotes || [])[x.i] || {}).lote)]));
+      grupos.get(x.i).add(String(x.d.lote));
+    }
+    for (const lotes of grupos.values()){
+      const del = plan.items.filter(it => lotes.has(it.lote));
+      if (!del.some(it => it.accion !== 'volver')) continue;
+      for (const it of del) if (it.accion === 'volver'){ it.accion = 'cambiado'; it.porGrupo = true; }
+    }
+  }
+  // Las mermas de un lote que no vuelve no se tocan.
+  for (const it of plan.items){
+    if (it.accion !== 'volver') continue;
+    const a = mermasDe.get(it);
+    plan.mermasBorrar.push(...(a.mermas_creadas || []));
+    plan.mermasReabrir.push(...(a.mermas_cerradas || []));
   }
   return plan;
+}
+
+/* Un corte cuyo lote es tambien origen aplica ese lote DOS veces (primero
+ * como origen, despues como corte): vuelve al `antes` del primero y se juzga
+ * contra el `despues` del ultimo. */
+function _unoPorLote(destinos){
+  const por = new Map();
+  for (const d of destinos){
+    const k = String(d.lote), a = d.aplicado, previo = por.get(k);
+    if (!previo){ por.set(k, { lote: d.lote, aplicado: { ...a } }); continue; }
+    const p = previo.aplicado;
+    previo.aplicado = { ...p, despues: a.despues,
+      mermas_creadas: [...(p.mermas_creadas || []), ...(a.mermas_creadas || [])],
+      mermas_cerradas: [...new Set([...(p.mermas_cerradas || []), ...(a.mermas_cerradas || [])])] };
+  }
+  return [...por.values()];
 }
 
 /* Aplica el plan. Devuelve cuantos lotes volvieron al `antes`. Una merma

@@ -5,12 +5,17 @@ import { queryAnios } from './selector-anios.js';
 import { crearAutoguardado } from './autoguardado.js';
 import { tomarFoto, diferencia, aplicar, crearHistorial, describirPaso, describirCambio } from './deshacer.js';
 import { CADA_MS, decidirActualizacion, ocupadoSegun } from './en-vivo.js';
+import { marcarPestana } from './barra-lotes.js';
+import { avisar, informar, confirmar } from './dialogos.js';
+import { hashDeLote, loteDeHash } from './ficha-url.js';
+import { fijarEntornoOT } from './entorno-ot.js';
+import { numerosWeb } from './numero-ot.js';
 
 /* ---------- estado global ----------
  * DATOS es una variable mutable que comparten todas las vistas. Los modulos ES
  * no permiten reasignar un binding exportado desde afuera, asi que se expone
  * por accesor: DATOS() para leer, setDatos() para reemplazar.
- * Forma: {meta, config, lotes, analisis, estado_lote, excepciones_analisis, vasijas, mermas}
+ * Forma: {meta, config, lotes, analisis, estado_lote, excepciones_analisis, vasijas, mermas, recorridas}
  */
 let _datos = null;
 export function DATOS(){ return _datos; }
@@ -23,8 +28,16 @@ let _loteActivo = '';
 export function loteActivo(){ return _loteActivo; }
 export function setLoteActivo(v){ _loteActivo = String(v ?? ''); }
 
-export function irALote(loteStr){
+/* La ficha queda en la URL (#ficha/<lote>): se comparte, sobrevive al F5 y
+ * el botón Atrás del celular vuelve a donde se estaba (app.js, popstate). */
+let _antesDeFicha = 'dashboard';
+/** La pantalla desde la que se abrió la ficha (a donde vuelven Volver y Atrás). */
+export function vistaAntesDeFicha(){ return _antesDeFicha; }
+export function irALote(loteStr, op = {}){
+  if (vistaActiva() !== 'ficha') _antesDeFicha = vistaActiva();
   setLoteActivo(String(loteStr));
+  const h = hashDeLote(loteStr);
+  if (!op.sinHistorial && location.hash !== h) history.pushState(null, '', h);
   mostrarTab('ficha');
 }
 
@@ -62,8 +75,19 @@ function _guardarEnCola(forzar){
   return p;
 }
 
+/* Con una pregunta de CI (confirmar/pedir/informar) abierta, el autoguardado
+ * espera. Antes confirm() frenaba todo; ahora no, y un guardado con fusión
+ * (409) en el medio dejaría a la función que preguntó trabajando sobre
+ * objetos viejos de DATOS(). El overlay de formularios no cuenta: esos ya
+ * buscan el objeto "vivo" al aceptar. */
+function _sinPreguntasAbiertas(){
+  const hay = () => !!document.querySelector('dialog.ci-dialogo[open]');
+  if (!hay()) return Promise.resolve();
+  return new Promise(ok => { const t = setInterval(() => { if (!hay()){ clearInterval(t); ok(); } }, 250); });
+}
+
 const _auto = crearAutoguardado({
-  ejecutar: () => _guardarEnCola(false),
+  ejecutar: () => _sinPreguntasAbiertas().then(() => _guardarEnCola(false)),
   avisar(estadoAuto, info){
     if (estadoAuto === 'guardando') _estado('⟳ Guardando…', 'dirty');
     else if (estadoAuto === 'reintentando') _estado('⚠ Sin conexión — reintentando en ' + Math.round(info.ms / 1000) + ' s', 'dirty');
@@ -81,36 +105,18 @@ let _textoError = null;
 function _estado(texto, clase){
   const s = $('statusBar');
   s.textContent = texto;
+  s.title = texto;
   s.className = 'status ' + (clase || '');
 }
 
-/** Cartel corto al pie (deshacer, actualizaciones). Se pisa con el siguiente. */
-let _timerAviso = null;
+/** Cartel corto al pie (deshacer, actualizaciones). Ahora es CI.avisar: el
+ *  toast propio (z-index 9999) se encimaba con los avisos de la plataforma. */
 export function avisoBreve(texto, tipo){
-  let el = $('avisoBreve');
-  if (!el){
-    el = document.createElement('div');
-    el.id = 'avisoBreve';
-    el.setAttribute('role', 'status');
-    el.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;' +
-      'padding:8px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.35);' +
-      'background:#2b3340;color:#fff;max-width:80vw;pointer-events:none';
-    document.body.appendChild(el);
-  }
-  el.textContent = texto;
-  el.style.background = tipo === 'error' ? '#7a2b2b' : tipo === 'ok' ? '#24503a' : '#2b3340';
-  el.style.display = 'block';
-  clearTimeout(_timerAviso);
-  _timerAviso = setTimeout(() => { el.style.display = 'none'; }, 3000);
+  avisar(texto, { tipo: tipo === 'error' ? 'mal' : (tipo || 'info'), ms: 3000 });
 }
 
 export function hayCambiosSinGuardar(){ return dirty || _auto.pendiente(); }
 export function guardarAhora(){ return _auto.ahora(); }
-
-/* El nombre se pide con el primer cambio y una sola vez por pagina: con
- * autoguardado, pedirlo en medio de un guardado sacaba un cartel a los 2 s de
- * cualquier edicion. */
-let _nombrePedido = false;
 
 /* Marca el documento como cambiado sin abrir un paso de deshacer. Lo usan
  * markDirty (que ademas abre el paso, Tarea 6) y deshacer/rehacer. */
@@ -124,7 +130,6 @@ function _marcarCambiado(){
 }
 
 export function markDirty(){
-  if (!_nombrePedido && !usuarioActual()){ _nombrePedido = true; pedirUsuario(true); }
   _marcarCambiado();
   _abrirPaso();
 }
@@ -206,7 +211,7 @@ export function cerrarPaso(){
 function _nuevaFoto(){ _foto = _datos ? tomarFoto(_datos) : null; }
 
 const NOMBRE_VISTA = {
-  lotes: 'Lotes', analisis: 'Análisis', movimientos: 'Movimientos', so2: 'SO2', config: 'Config',
+  lotes: 'Lotes', analisis: 'Análisis', movimientos: 'Movimientos', so2: 'Registro de corrección de SO₂', config: 'Config',
   orden: 'Orden de muestras', ordencorr: 'Orden de corrección', agregados: 'Otros agregados',
   cargar: 'Cargar', ficha: 'Ficha',
   dashboard: 'Dashboard', tablero: 'Tablero', cruce: 'Cruce',
@@ -257,7 +262,7 @@ function _leerActivo(){
 }
 
 function _ocupado(){
-  return ocupadoSegun({ overlayAbierto: $('overlay').classList.contains('show'), activo: _leerActivo() });
+  return ocupadoSegun({ overlayAbierto: !!document.querySelector('dialog[open]'), activo: _leerActivo() });
 }
 
 /* probar: con la sesion vencida (_vivoParado) la consulta periodica no sale,
@@ -325,33 +330,130 @@ window.addEventListener('beforeunload', e => {
   if (hayCambiosSinGuardar()){ e.preventDefault(); e.returnValue = ''; }
 });
 
-/* ---------- usuario (trazabilidad) ---------- */
-export function usuarioActual(){ try { return localStorage.getItem('lotes_usuario') || ''; } catch(e) { return ''; } }
-export function pedirUsuario(forzar){
-  let u = usuarioActual();
-  if (!u || forzar){
-    const r = (prompt('¿Quién está usando la app?\n(Queda registrado en cada guardado, para el historial.)', u||'') || '').trim();
-    if (r){ u = r; try { localStorage.setItem('lotes_usuario', u); } catch(e){} }
-  }
-  $('usuario').textContent = '👤 ' + (u || '(sin nombre)');
+/* ---------- usuario (trazabilidad) ----------
+ * Es el de la sesión de la plataforma (window.CIW, lo pone el servidor) y ya
+ * no se pregunta: el servidor anota además el email de la sesión en el
+ * historial (src/lotes/rutas.ts, POST /datos). localStorage queda de respaldo
+ * para la página suelta sin servidor. */
+export function usuarioActual(){
+  const ciw = window.CIW || {};
+  if (ciw.nombre || ciw.email) return String(ciw.nombre || ciw.email);
+  try { return localStorage.getItem('lotes_usuario') || ''; } catch(e) { return ''; }
+}
+/** Compatibilidad: quien pedía el nombre ahora recibe el de la sesión. */
+export function pedirUsuario(){
+  const u = usuarioActual();
+  const el = $('usuario'); if (el) el.textContent = u || '(sin sesión)';
   return u;
 }
 
-/* ---------- overlay ---------- */
-export function mostrarOverlay(html){ $('overlayBox').innerHTML = html; $('overlay').classList.add('show'); }
-export function cerrarOverlay(){ $('overlay').classList.remove('show'); }
+/* ---------- overlay ----------
+ * Un <dialog> modal: Escape (evento cancel, cableado en app.js) y el clic en el
+ * fondo lo cierran; el foco vuelve a donde estaba. Volver a llamar a
+ * mostrarOverlay con uno abierto solo cambia su contenido (los asistentes
+ * pasan de paso así). */
+let _focoAntesOverlay = null;
+export function overlayAbierto(){ return !!$('overlay').open; }
+export function mostrarOverlay(html){
+  const dlg = $('overlay');
+  $('overlayBox').innerHTML = html;
+  // Un formulario abierto de cero arranca sin guardia (la pone quien la necesita).
+  if (!dlg.open){ _guardia = null; _focoAntesOverlay = document.activeElement; dlg.showModal(); }
+}
+export function cerrarOverlay(){
+  const dlg = $('overlay');
+  if (!dlg.open) return;
+  _guardia = null;
+  dlg.close();
+  const f = _focoAntesOverlay; _focoAntesOverlay = null;
+  if (f && f.isConnected && typeof f.focus === 'function') f.focus();
+}
+
+/* ---------- formularios que no se pierden (Emitir OT, asistente del Corte) ----------
+ * Con una guardia puesta y datos cargados, el clic en el fondo y Escape
+ * MINIMIZAN en vez de cerrar: los nodos del formulario se sacan del DOM tal
+ * cual (con sus listeners y lo tipeado), el dialog se cierra y queda una
+ * pastilla abajo para retomarlo. Mientras tanto se usa toda la web.
+ *   guardia = { titulo(): string, hayDatos(): bool, alRetomar(), alDescartar() } */
+let _guardia = null;
+let _minimizado = null;      // { nodos, guardia }
+
+export function protegerOverlay(guardia){ _guardia = guardia || null; }
+export function overlayMinimizado(){ return !!_minimizado; }
+
+/* Clic en el fondo / Escape (app.js). */
+export function cerrarOMinimizar(){
+  if (_guardia && _guardia.hayDatos()) return minimizarOverlay();
+  cerrarOverlay();
+}
+
+export function minimizarOverlay(){
+  const dlg = $('overlay');
+  if (!dlg.open || !_guardia) return;
+  const box = $('overlayBox');
+  _minimizado = { nodos: [...box.childNodes], guardia: _guardia, titulo: _guardia.titulo() };
+  box.replaceChildren();
+  cerrarOverlay();
+  _pintarPastilla();
+}
+
+export function retomarOverlay(){
+  if (!_minimizado) return false;
+  const dlg = $('overlay');
+  if (dlg.open){ avisar('Cerrá la ventana abierta para retomar «' + _minimizado.titulo + '».', { tipo: 'mal' }); return false; }
+  const m = _minimizado;
+  _minimizado = null;
+  _pintarPastilla();
+  $('overlayBox').replaceChildren(...m.nodos);
+  _focoAntesOverlay = document.activeElement;
+  dlg.showModal();
+  _guardia = m.guardia;
+  // Lo que llego mientras estaba minimizado (p. ej. los barriles del Mapa de
+  // un lote recien agregado) no se pudo pintar: se repinta.
+  if (m.guardia.alRetomar) m.guardia.alRetomar();
+  return true;
+}
+
+export function descartarMinimizado(){
+  const m = _minimizado;
+  _minimizado = null;
+  _pintarPastilla();
+  if (m && m.guardia.alDescartar) m.guardia.alDescartar();
+}
+
+function _pintarPastilla(){
+  let b = document.getElementById('overlayPastilla');
+  if (!_minimizado){ if (b) b.remove(); return; }
+  if (!b){
+    b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'overlayPastilla';
+    b.className = 'overlay-pastilla';
+    b.addEventListener('click', () => retomarOverlay());
+    document.body.appendChild(b);
+  }
+  b.textContent = '📝 ' + _minimizado.titulo + ' en curso · retomar';
+  b.title = 'Volver a la orden que estabas armando';
+}
+// La pastilla no sale en el papel. Por evento y no por @media print: las
+// reglas de impresion de Lotes son una foto fija (test/lotes-papel-intacto).
+if (typeof window !== 'undefined' && window.addEventListener){
+  const ver = oculta => { const b = document.getElementById('overlayPastilla'); if (b) b.hidden = oculta; };
+  window.addEventListener('beforeprint', () => ver(true));
+  window.addEventListener('afterprint', () => ver(false));
+}
 
 /* ---------- historial ---------- */
 export async function verHistorial(){
   try {
     const r = await fetch(API+'/historial');
-    if (!r.ok){ alert('No se pudo cargar el historial (' + r.status + ').'); return; }
+    if (!r.ok){ avisar('No se pudo cargar el historial (' + r.status + ').', { tipo: 'mal' }); return; }
     const j = await r.json();
     const filas = (j.historial || []).map(h =>
       `<tr><td class="num">v${esc(h.version)}</td><td style="white-space:nowrap">${esc(h.ts||'')}</td>`+
       `<td>${esc(h.autor||'')}</td><td>${esc(h.resumen||'')}</td></tr>`).join('');
     mostrarOverlay(
-      '<h2 style="margin-top:0">🕘 Historial de guardados</h2>'+
+      '<h2 style="margin-top:0">Historial de guardados</h2>'+
       '<p style="color:var(--muted);font-size:12px;margin-top:-6px">Quién guardó, cuándo y qué cambió.</p>'+
       '<div style="max-height:60vh;overflow:auto"><table class="hist">'+
       '<thead><tr><th>Versión</th><th>Fecha</th><th>Autor</th><th>Cambios</th></tr></thead>'+
@@ -359,7 +461,7 @@ export async function verHistorial(){
       '</tbody></table></div>'+
       '<div style="margin-top:12px;text-align:right"><button class="btn" onclick="cerrarOverlay()">Cerrar</button></div>'
     );
-  } catch(e) { alert('No se pudo cargar el historial.'); }
+  } catch(e) { avisar('No se pudo cargar el historial.', { tipo: 'mal' }); }
 }
 
 /* ---------- avisos (banner de estado) ---------- */
@@ -383,7 +485,7 @@ export async function refrescarInfo(){
     if (ip) {
       _urlRed = 'http://' + ip + ':' + j.port;
       const el = $('redInfo');
-      if (el) el.textContent = '📱 Red: ' + esc(ip) + ':' + j.port;
+      if (el){ el.textContent = 'Red: ' + ip + ':' + j.port; el.hidden = false; }
     }
   } catch(e) {}
 }
@@ -456,7 +558,8 @@ export async function cargarDatos(){
       if (r.status === 401){ location.replace('/login.html'); return; }
       const j = await r.json().catch(() => ({}));
       if (j.error === 'debe_cambiar_clave'){ location.replace('/cambiar-clave.html'); return; }
-      $('statusBar').textContent = 'Error al cargar ('+r.status+')' + (j.detalles && j.detalles[0] ? ': ' + j.detalles[0] : '');
+      { const txt = 'Error al cargar ('+r.status+')' + (j.detalles && j.detalles[0] ? ': ' + j.detalles[0] : '');
+        const s = $('statusBar'); s.textContent = txt; s.title = txt; }
       return;
     }
     setDatos(await r.json());
@@ -477,7 +580,7 @@ export async function cargarDatos(){
     _inits.forEach(fn => fn());
     renderActivo();
   } catch(e) {
-    $('statusBar').textContent = 'Sin conexión con el servidor';
+    const s = $('statusBar'); s.textContent = 'Sin conexión con el servidor'; s.title = s.textContent;
   }
 }
 
@@ -489,6 +592,7 @@ function completarSecciones(){
   DATOS().excepciones_analisis = DATOS().excepciones_analisis || [];
   DATOS().vasijas              = DATOS().vasijas || [];
   DATOS().mermas               = DATOS().mermas || [];
+  DATOS().recorridas           = DATOS().recorridas || [];
 }
 
 /* Funciones que corren justo antes de cada POST y pueden tocar DATOS(). Hoy:
@@ -548,16 +652,18 @@ async function _guardar(forzar, intento = 0){
     const j = await r.json().catch(() => ({}));
     if (j.error === 'validacion'){
       const det = (j.detalles || []).join('\n• ');
-      if (forzar){ alert('No se pudo guardar:\n• ' + det); return 'error'; }
-      if (confirm(
-        '⚠️ El servidor FRENÓ este guardado para proteger los datos:\n\n• ' + det +
-        '\n\n¿Era tu intención? Aceptar = guardar igual (queda registrado como FORZADO en el historial).\nCancelar = deshacer lo que hiciste desde el último guardado.'
-      )){
-        return _guardar(true);
-      }
+      if (forzar){ await informar({ titulo: 'No se pudo guardar', texto: '• ' + det }); return 'error'; }
+      const forzarGuardado = await confirmar({
+        titulo: 'El servidor frenó este guardado',
+        texto: 'Lo frenó para proteger los datos:\n\n• ' + det +
+          '\n\nSi era tu intención, guardalo igual: queda registrado como FORZADO en el historial. ' +
+          'Si no, se deshace lo que hiciste desde el último guardado.',
+        si: 'Guardar igual', no: 'Deshacer lo mío', peligro: true,
+      });
+      if (forzarGuardado) return _guardar(true);
       return _alCancelarFreno();
     }
-    alert('Error al guardar: ' + (j.error || r.status));
+    await informar({ titulo: 'Error al guardar', texto: String(j.error || r.status) });
     return 'error';
   }
   if (r.status === 409){
@@ -585,16 +691,16 @@ async function _guardar(forzar, intento = 0){
       return _guardar(forzar, intento + 1);
     }
     mostrarOverlay(
-      '<h2 style="margin-top:0;color:#ffd766">Conflicto de versión</h2>'+
+      '<h2 style="margin-top:0">Conflicto de versión</h2>'+
       '<p style="color:var(--muted)">Otra PC guardó cambios mientras editabas y no se pudieron combinar solos.</p>'+
       '<p style="color:var(--muted);font-size:13px">Tus cambios quedaron guardados en este equipo: al recargar se te ofrece recuperarlos.</p>'+
-      '<button class="btn primary" onclick="location.reload()">🔄 Recargar y recuperar</button>'
+      '<button class="btn primary" onclick="location.reload()">Recargar y recuperar</button>'
     );
     return 'conflicto';
   }
   if (r.status === 403){
     const j = await r.json().catch(() => ({}));
-    alert('No se pudo guardar: ' + ((j.detalles && j.detalles[0]) || 'tu usuario no tiene permiso para guardar en Lotes.'));
+    await informar({ titulo: 'No se pudo guardar', texto: (j.detalles && j.detalles[0]) || 'Tu usuario no tiene permiso para guardar en Lotes.' });
     return 'permiso';
   }
   if (!r.ok) return 'red';
@@ -741,7 +847,7 @@ function _alCancelarFreno(){
 export async function guardar(forzar){
   const r = await _guardarEnCola(!!forzar);
   if (r === 'red'){
-    alert('No se pudo guardar: no hay conexión con el servidor. Tus cambios siguen en pantalla y quedaron guardados en este equipo; se van a guardar solos cuando vuelva la señal.');
+    await informar({ titulo: 'Sin conexión', texto: 'No se pudo guardar: no hay conexión con el servidor. Tus cambios siguen en pantalla y quedaron guardados en este equipo; se van a guardar solos cuando vuelva la señal.' });
     _auto.cambio();
   }
   if (r === 'sesion') _auto.cambio();
@@ -750,19 +856,39 @@ export async function guardar(forzar){
 
 /* ---------- navegación de pestañas ----------
  * Correcciones es un grupo: un boton en la barra (data-v="so2") y tres
- * sub-pestañas (bitacora de SO2, orden de correccion y otros agregados), cada
- * una con su propia <section>. El selector #corrSub solo se ve en el grupo.
- * Tocar el boton vuelve a la ultima sub-pestaña que se uso (en memoria). */
-const GRUPO_CORRECCIONES = ['so2', 'ordencorr', 'agregados'];
+ * sub-pestañas (orden de correccion, registro de correccion de SO2 y otros
+ * agregados), cada una con su propia <section>. El selector #corrSub solo se
+ * ve en el grupo. Tocar el boton vuelve a la ultima sub-pestaña que se uso
+ * (en memoria). */
+const GRUPO_CORRECCIONES = ['ordencorr', 'so2', 'agregados'];
 let _ultimaCorreccion = 'so2';
 
-export function mostrarTab(nombre){
+/* La pantalla queda en la URL (#analisis, #ordencorr…; shared/pantalla-url.js):
+ * el F5 vuelve a ella y Atrás a la anterior (app.js, popstate). La ficha tiene
+ * su propio hash (#ficha/<lote>, lo anota irALote). */
+const _PU = () => window.CIWPantalla;
+/** La pantalla anotada en la URL, o null si no hay (o no es una conocida). */
+export function pantallaDeUrl(){
+  const pu = _PU();
+  return pu ? pu.pantallaDeHash(location.hash, Object.keys(_vistas).filter(n => n !== 'ficha')) : null;
+}
+
+/** op.sinHistorial: no anotar en la URL (Atrás/Adelante, o la pantalla ya está ahí). */
+/* Modo órdenes (/lotes/?orden=…): la pantalla NO se anota en el hash. Atrás
+ * tiene que volver a Órdenes de trabajo, y la orden ya se reabre por ?orden=. */
+export const enModoOrdenes = () => !!new URLSearchParams(location.search).get('orden');
+export function mostrarTab(nombre, op = {}){
   if (nombre === 'correcciones') nombre = _ultimaCorreccion;
+  if (nombre !== 'ficha' && !op.sinHistorial && _PU()){
+    // En modo órdenes, salir de la ficha saca el #ficha/<lote> (sin entrada nueva).
+    if (enModoOrdenes()){ if (loteDeHash(location.hash)) history.replaceState(null, '', location.pathname + location.search); }
+    else _PU().anotarPantalla(nombre);
+  }
   const enGrupo = GRUPO_CORRECCIONES.includes(nombre);
   if (enGrupo) _ultimaCorreccion = nombre;
   const boton = enGrupo ? 'so2' : nombre;
   _vistaMostrada = nombre;
-  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.v === boton));
+  marcarPestana(boton);
   const sub = $('corrSub');
   if (sub){
     sub.hidden = !enGrupo;
@@ -831,7 +957,7 @@ let _escuchandoFocusout = false;
 
 function _redibujarVistaDashboard(){
   const activa = vistaActiva();
-  if (['lotes', 'dashboard', 'orden', 'tablero'].includes(activa)) _dibujar(activa, true);
+  if (['lotes', 'dashboard', 'orden', 'tablero', 'agenda'].includes(activa)) _dibujar(activa, true);
 }
 
 function _redibujarODemorar(){
@@ -894,3 +1020,9 @@ async function _cargarDashboard(){
   }
   finally { _dashLoading = false; }
 }
+
+/* Órdenes de papel (guardar-ot.js, vista-orden-guardada.js): las piezas de Lotes. */
+fijarEntornoOT({
+  datos: DATOS, markDirty, guardar, usuarioActual, mostrarOverlay, cerrarOverlay,
+  api: '/lotes/api', numerosWeb, eventoModo: 'lotes:modo-orden-cambio',
+});

@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Mapa de Barriles — CIW</title>
 <script>/* Base de la API del modulo: al convivir los tres en un mismo sitio,
    cada uno tiene su propio prefijo. Unico cambio de la migracion. */
@@ -47,28 +47,94 @@ const API='/barriles/api';</script>
      palets y valores sueltos al reintentar un 409. Va acá, como script clásico,
      por lo mismo que los de arriba. Se testea en test/barriles-sync.test.mjs. -->
 <script src="js/sync.js"></script>
+<!-- Puerta única a CI.avisar/informar/confirmar/pedir (public/shared/dialogo.js);
+     cae a alert/confirm/prompt si ese script no cargó. Es el único archivo de
+     Barriles que puede llamarlas: test/barriles-sin-ventanas-nativas.test.ts. -->
+<script src="js/dialogos.js"></script>
+<script src="js/barra-barriles.js"></script>
+<link rel="stylesheet" href="/shared/estilo.css">
 <style>
   :root {
-    --vino: #6b1f3a; --vino-osc: #4a1428; --crema: #faf6f0;
-    --gris: #e8e2da; --ok: #2e7d32; --error: #c62828; --warn: #e65100;
+    /* Los tokens de interfaz (--bg, --panel, --accent, --ok, --serif, --sans…)
+     * vienen de /shared/estilo.css, copia exacta de los de Prensas
+     * (test/estilo-tokens.test.ts). Barriles NO los redefine
+     * (test/barriles-estilo.test.ts). Acá quedan solo los de significado. */
+    /* --- Colores con significado (congelados el 2026-10-19) ---------------
+     * Mapa, escáner, cámara, modo por lote, píldoras, Registro (que también se
+     * imprime): el equipo los lee de memoria y NO cambian con la estética.
+     * Los vigila test/barriles-colores-congelados.test.ts; el muestreo de
+     * scripts/muestreo-colores-barriles.js tiene que dar igual antes y después. */
+    --sem-ok: #2e7d32; --sem-error: #c62828; --sem-warn: #e65100;
+    --sem-vino: #6b1f3a; --sem-vino-osc: #4a1428; --sem-gris: #e8e2da; --sem-crema: #faf6f0;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--crema); color: #2b2b2b; }
-  header { background: var(--vino); color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-  header h1 { font-size: 1.2rem; font-weight: 600; }
-  header .estado-datos { font-size: .8rem; opacity: .85; margin-left: auto; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--txt); -webkit-font-smoothing: antialiased; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* ---- barra de la app: como la de Prensas (marca, pantallas, Más, estado) ----
+   * Clase app-barra (no "barra": .barra-libre ya existe). Sticky debajo de la
+   * barra de la plataforma (shared/barra.js publica su alto en --ciw-h); su
+   * propio alto lo publica barraPublicarAlto() en --barriles-h, para las barras
+   * sticky del modo libre. z-index 40: arriba de esas barras (5); los
+   * overlays de cámara y diálogos van más arriba. Dentro del header van
+   * también #navSubProg y #opAyuda (filas enteras): el @media print oculta
+   * "body > header", así no salen en la hoja. */
+  .app-barra { position: sticky; top: var(--ciw-h,0px); z-index: 40; background: var(--bg); display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; padding: 11px 26px; border-bottom: 1px solid var(--rule); }
+  .app-barra .marca { font-family: var(--serif); font-size: 27px; font-weight: 500; line-height: 1; letter-spacing: .2px; color: var(--txt); }
+  .app-barra .right { margin-left: auto; display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .tabs { display: flex; align-items: center; gap: 2px; }
+  .tabs button[data-grupo], .mas-btn { background: transparent; border: none; color: var(--muted); padding: 6px 11px; cursor: pointer; font-size: 13.5px; font-weight: 500; font-family: var(--sans); border-radius: 2px; white-space: nowrap; }
+  .tabs button[data-grupo]:hover, .mas-btn:hover { color: var(--txt); background: var(--panel2); }
+  .tabs > button[data-grupo].activo, .mas-btn.activo { background: var(--txt); color: var(--bg); }
+  .mas { position: relative; }
+  .mas-btn::after { content: ' ▾'; font-size: 10px; }
+  .mas-menu { position: absolute; top: calc(100% + 8px); left: 0; min-width: 210px; background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--rule); border-radius: 2px; box-shadow: 0 12px 30px rgba(28,27,25,.16); padding: 6px 0; display: none; z-index: 45; }
+  .mas-menu.open { display: block; }
+  .mas-menu button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 7px 16px; font-size: 13.5px; font-family: var(--sans); color: var(--txt); cursor: pointer; border-radius: 0; }
+  .mas-menu button:hover { background: var(--panel2); color: var(--txt); }
+  .mas-menu button.activo { color: var(--accent); font-weight: 600; background: var(--accent-tinte); }
+  .mas-grupo { font-size: 9.5px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); padding: 10px 16px 4px; }
+  .mas-angosto { display: none; border-bottom: 1px solid var(--line); padding-bottom: 6px; margin-bottom: 2px; }
+  .insignia-sync { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .insignia-sync::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; margin-right: 6px; vertical-align: 1px; }
+  .insignia-sync[data-tipo="ok"] { color: var(--ok); }
+  .insignia-sync[data-tipo="pendiente"] { color: var(--warn); }
+  .insignia-sync[data-tipo="offline"], .insignia-sync[data-tipo="sesion"] { color: var(--nook); }
+  .app-barra .estado-datos { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  /* sub-pestañas del grupo (Barriles, Mapa, Imprimir): botones rectos en una fila */
+  #navSubProg { display: none; }
+  body.rol-programador #navSubProg { display: flex; flex-basis: 100%; flex-wrap: wrap; gap: 4px; }
+  body.rol-programador #navSubProg:empty { display: none; }
+  #navSubProg button { background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 2px; padding: 5px 12px; font: 500 13px var(--sans); cursor: pointer; }
+  #navSubProg button:hover { color: var(--txt); border-color: var(--txt); }
+  #navSubProg button.activo { background: var(--txt); border-color: var(--txt); color: var(--bg); }
+  /* operario: "← Inicio" y el nombre de la pantalla; la ayuda, abajo */
+  #navOperario { display: none; align-items: center; gap: 16px; min-width: 0; }
+  #opInicio { background: transparent; border: 1px solid var(--txt); border-radius: 2px; color: var(--txt); font: 500 15px var(--sans); padding: 0 16px; min-height: var(--ci-tap); cursor: pointer; }
+  #opInicio:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-tinte); }
+  body.op-inicio #opInicio { display: none; }
+  #opTitulo { font-family: var(--serif); font-size: 26px; font-weight: 500; line-height: 1.1; color: var(--txt); }
+  .op-ayuda { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 15px; }
+  .op-ayuda:empty, body.rol-programador .op-ayuda { display: none; }
+  /* "Ver y cargar en" del operario (Mapa 2D / Vista 3D) y Barriles/Tanques del mapa */
+  #opVistaSel { display: none; gap: 8px; padding: 10px 26px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+  #opVistaLabel { font-size: 13px; color: var(--muted); font-weight: 500; }
+  #opVistaSel button { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 2px; padding: 8px 18px; font: 500 15px var(--sans); cursor: pointer; }
+  #opVistaSel button.activo { background: var(--txt); border-color: var(--txt); color: var(--bg); }
+  @media (max-width: 1100px) { .app-barra .right .estado-datos { display: none; } }
+  @media (max-width: 900px) {
+    .app-barra { gap: 8px 14px; padding: 10px 16px; }
+    #navProgramador > button[data-grupo] { display: none; }
+    .mas-angosto { display: block; }
+    .app-barra .right { gap: 8px; }
+  }
   /* El interruptor está en Administrar → Importar y modo; en el encabezado queda
      solo #chipModoLote, que se ve mientras el modo está prendido. */
-  #toggleModoLote { font-size: 1rem; display: inline-flex; align-items: center; gap: 8px; background: #f3ede5; border: 1px solid var(--gris); padding: 9px 16px; border-radius: 999px; cursor: pointer; user-select: none; }
-  #toggleModoLote input { cursor: pointer; width: 18px; height: 18px; }
-  body.modo-lote #toggleModoLote { background: #ffd600; border-color: #e0bc00; color: var(--vino-osc); font-weight: 700; }
-  #chipModoLote { display: none; font: inherit; font-size: .82rem; background: #ffd600; color: var(--vino-osc); font-weight: 700; border: none; padding: 5px 11px; border-radius: 14px; cursor: pointer; }
+  #toggleModoLote { font-size: 1rem; display: inline-flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); padding: 9px 16px; border-radius: 2px; cursor: pointer; user-select: none; }
+  #toggleModoLote input { cursor: pointer; width: 18px; height: 18px; accent-color: var(--accent); }
+  body.modo-lote #toggleModoLote { background: #ffd600; border-color: #e0bc00; color: var(--sem-vino-osc); font-weight: 700; }
+  #chipModoLote { display: none; font: inherit; font-size: .82rem; background: #ffd600; color: var(--sem-vino-osc); font-weight: 700; border: none; padding: 5px 11px; border-radius: 14px; cursor: pointer; }
   body.rol-programador.modo-lote #chipModoLote { display: inline-block; }
-  nav { display: flex; background: var(--vino-osc); flex-wrap: wrap; }
-  nav button { background: none; border: none; color: #d9c5cd; padding: 12px 22px; font-size: .95rem; cursor: pointer; border-bottom: 3px solid transparent; }
-  nav button.activo { color: #fff; border-bottom-color: #e8b4c8; font-weight: 600; }
-  nav button:hover { color: #fff; }
-  main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+  main { padding: 22px 26px 64px; max-width: 1400px; margin: 0 auto; }
   .panel { display: none; }
   .panel.activo { display: block; }
   /* Mientras el script grande todavía no eligió la pantalla, cada rol ve la suya
@@ -76,47 +142,48 @@ const API='/barriles/api';</script>
      operario veía unos segundos "Asociar vasija con lote" hasta que llegaban los datos. */
   body.rol-operario:not(.panel-elegido) #panel-inicio,
   body.rol-programador:not(.panel-elegido) #panel-tablero { display: block; }
-  .tarjeta { background: #fff; border: 1px solid var(--gris); border-radius: 10px; padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-  h2 { font-size: 1.05rem; margin-bottom: 12px; color: var(--vino); }
+  .tarjeta { background: var(--panel); border: none; border-top: 1px solid var(--rule); border-radius: 0; padding: 18px; margin-bottom: 18px; }
+  h2 { font-family: var(--serif); font-size: 1.45rem; font-weight: 500; line-height: 1.15; margin-bottom: 12px; color: var(--txt); }
   h3 { font-size: .95rem; margin: 10px 0 6px; }
-  button.btn { background: var(--vino); color: #fff; border: none; border-radius: 6px; padding: 9px 16px; font-size: .9rem; cursor: pointer; }
-  button.btn:hover { background: var(--vino-osc); }
-  button.btn.sec { background: #fff; color: var(--vino); border: 1px solid var(--vino); }
-  button.btn.peligro { background: var(--error); }
+  button.btn { background: var(--accent); color: #F3EEE6; border: 1px solid var(--accent); border-radius: 2px; padding: 9px 16px; font-size: .9rem; font-weight: 500; font-family: var(--sans); cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+  button.btn:hover { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+  button.btn.sec { background: transparent; color: var(--txt); border: 1px solid var(--txt); }
+  button.btn.sec:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-tinte); }
+  button.btn.peligro { background: var(--sem-error); border-color: var(--sem-error); }
   button.btn:disabled { opacity: .45; cursor: not-allowed; }
   button.btn.marca { padding: 4px 9px; font-size: .8rem; border: 1px solid transparent; }
   button.btn.marca.marca-on { background: #2e7d32; color: #fff; border-color: #2e7d32; }
   button.btn.marca.marca-on:hover { background: #276a2a; }
   button.btn.marca.marca-off { background: #fdecea; color: #c0392b; border-color: #f3c0ba; }
   button.btn.marca.marca-off:hover { background: #fbddd8; }
-  input, select { padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: .95rem; }
+  input, select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 2px; font-size: .95rem; font-family: inherit; }
   table.datos { border-collapse: collapse; width: 100%; font-size: .85rem; }
-  table.datos th, table.datos td { border: 1px solid var(--gris); padding: 6px 9px; text-align: left; }
-  table.datos th { background: #f3ede5; }
+  table.datos th, table.datos td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; }
+  table.datos th { background: var(--panel2); color: var(--muted); font-weight: 500; font-size: .74rem; text-transform: uppercase; letter-spacing: .8px; }
   .fila-flex { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
-  .pildora { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: .78rem; font-weight: 600; }
+  .pildora { display: inline-block; padding: 2px 10px; border-radius: 2px; font-size: .78rem; font-weight: 600; }
   .ped-tipo { display:inline-block; padding:2px 10px; border-radius:12px; font-size:.8rem; font-weight:700; color:#fff; }
   .ped-tipo.tanque { background:#00695c; }
   .ped-tipo.lote { background:#6a1b9a; }
-  .p-lleno { background: #e6f4e6; color: var(--ok); }
+  .p-lleno { background: #e6f4e6; color: var(--sem-ok); }
   .p-vacio { background: #eee; color: #666; }
-  .p-mermo { background: #fff3e0; color: var(--warn); }
+  .p-mermo { background: #fff3e0; color: var(--sem-warn); }
   /* ---- inventario: filtros y marca de revision ---- */
   .filtros-inv { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 14px 0 8px; }
-  .filtros-inv input[type="search"] { flex: 1 1 240px; min-width: 180px; padding: 9px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 1rem; }
-  .filtros-inv select { padding: 9px 10px; border: 1px solid #ccc; border-radius: 8px; font-size: .95rem; background: #fff; }
+  .filtros-inv input[type="search"] { flex: 1 1 240px; min-width: 180px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 2px; font-size: 1rem; }
+  .filtros-inv select { padding: 9px 10px; border: 1px solid var(--line); border-radius: 2px; font-size: .95rem; background: var(--panel); }
   /* ---- una cajita de filtro por columna, bajo los encabezados ---- */
-  table.datos tr.filtros-col th { background: #faf6f0; padding: 4px 5px; }
+  table.datos tr.filtros-col th { background: var(--bg); padding: 4px 5px; }
   table.datos tr.filtros-col input, table.datos tr.filtros-col select {
     width: 100%; box-sizing: border-box; padding: 4px 6px; font-size: .8rem;
-    border: 1px solid #d6cec2; border-radius: 5px; background: #fff; font-weight: 400; }
-  table.datos tr.filtros-col .con-filtro { border-color: var(--vino); background: #fdf6f7; }
+    border: 1px solid var(--line); border-radius: 2px; background: var(--panel); font-weight: 400; }
+  table.datos tr.filtros-col .con-filtro { border-color: var(--accent); background: var(--accent-tinte); }
   /* ---- alta de vasijas nuevas (modal) ---- */
   .alta-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 4px 0 12px; }
-  .alta-campos label { display: flex; flex-direction: column; gap: 3px; font-size: .8rem; color: #777; }
+  .alta-campos label { display: flex; flex-direction: column; gap: 3px; font-size: .8rem; color: var(--muted); }
   .alta-campos input, .alta-campos select { width: 100%; box-sizing: border-box; font-size: .92rem; }
   .alta-campos .ancho { grid-column: 1 / -1; }
-  #altaPrevio, #bajaPrevio { font-size: .85rem; border-radius: 8px; padding: 9px 11px; margin-bottom: 12px; background: #f3ede5; }
+  #altaPrevio, #bajaPrevio { font-size: .85rem; border-radius: 2px; padding: 9px 11px; margin-bottom: 12px; background: var(--panel2); }
   #altaPrevio.malo, #bajaPrevio.malo { background: #fdecea; color: #b3261e; }
   /* tipo de vasija: sale de la capacidad del Excel, el icono de la marca */
   .p-tanque { background: #e0f2f1; color: #00695c; }
@@ -130,21 +197,21 @@ const API='/barriles/api';</script>
   /* ---- correccion a mano: celda editable y su marca ---- */
   body:not(.rol-operario) .celda-ed { cursor: cell; }
   .motivo-edicion { font-size: .78rem; color: #1b5e20; line-height: 1.3; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .ed-input { width: 100%; min-width: 90px; box-sizing: border-box; padding: 4px 6px; font-size: .95rem; border: 2px solid var(--vino); border-radius: 6px; }
+  .ed-input { width: 100%; min-width: 90px; box-sizing: border-box; padding: 4px 6px; font-size: .95rem; border: 2px solid var(--accent); border-radius: 2px; }
   .celda-rev { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   tr.fila-cartel > td { padding-top: 2px; border-top: 0; }
   tr.fila-cartel .celda-rev + .celda-rev { margin-top: 6px; }
   #veloSinConexion { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(40,10,20,.72); align-items: center; justify-content: center; padding: 16px; }
   #veloSinConexion.abierto { display: flex; }
-  #veloSinConexion .caja { background: #fff; border-radius: 14px; border: 3px solid var(--error); max-width: 460px; padding: 20px; text-align: center; }
-  #veloSinConexion .titulo { font-size: 1.3rem; font-weight: 800; color: var(--error); margin-bottom: 10px; }
+  #veloSinConexion .caja { background: #fff; border-radius: 14px; border: 3px solid var(--sem-error); max-width: 460px; padding: 20px; text-align: center; }
+  #veloSinConexion .titulo { font-size: 1.3rem; font-weight: 800; color: var(--sem-error); margin-bottom: 10px; }
   #veloSinConexion p { margin-top: 8px; font-size: .95rem; }
   #veloSinConexion .pend { background: #fdecea; border-radius: 8px; padding: 8px; }
-  #veloSinConexion .login { display: inline-block; margin-top: 12px; background: var(--vino); color: #fff; padding: 10px 18px; border-radius: 8px; text-decoration: none; font-weight: 700; }
+  #veloSinConexion .login { display: inline-block; margin-top: 12px; background: var(--sem-vino); color: #fff; padding: 10px 18px; border-radius: 8px; text-decoration: none; font-weight: 700; }
   /* Solo lectura (rol lector, o el servidor dejó de aceptar cambios de este
      usuario): se esconden las puertas de carga más visibles. Lo que quede
      igual pasa por guardar(), que no encola nada y avisa. */
-  #avisoSoloLectura { display: none; background: #fff4e5; color: #7a4100; border-bottom: 2px solid var(--warn); padding: 8px 16px; font-size: .9rem; text-align: center; }
+  #avisoSoloLectura { display: none; background: #fff4e5; color: #7a4100; border-bottom: 2px solid var(--sem-warn); padding: 8px 16px; font-size: .9rem; text-align: center; }
   body.solo-lectura #avisoSoloLectura { display: block; }
   body.solo-lectura #barBtnCamara, body.solo-lectura #barBtnAsociar, body.solo-lectura #barBtnVacia,
   body.solo-lectura #btnImportar, body.solo-lectura #btnAltaVasijas, body.solo-lectura #btnBajaVasijas,
@@ -154,59 +221,60 @@ const API='/barriles/api';</script>
   body.solo-lectura button[data-hecho], body.solo-lectura #btnQuitarBarril, body.solo-lectura #btnQuitarTanque,
   body.solo-lectura #escHistorial [onclick^="escEditarOrden"], body.solo-lectura #escHistorial [onclick^="escBorrarOrden"] { display: none !important; }
   .btn-rev { padding: 3px 10px; font-size: .8rem; }
-  .link-rev { background: none; border: 0; padding: 0; color: #777; font-size: .78rem; text-decoration: underline; cursor: pointer; }
+  .link-rev { background: none; border: 0; padding: 0; color: var(--muted); font-size: .78rem; text-decoration: underline; cursor: pointer; }
   .tanda-alta { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
-                font-size: .82rem; padding: 4px 0; border-top: 1px solid #eee; }
+                font-size: .82rem; padding: 4px 0; border-top: 1px solid var(--line); }
   /* ---- escaneo ---- */
   @keyframes sacudir { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
   .fb-libre { padding: 14px; border-radius: 8px; margin-top: 12px; font-size: .95rem; }
-  .fb-libre.ok { background: #e6f4e6; border: 1px solid var(--ok); }
-  .fb-libre.err { background: #ffebee; border: 1px solid var(--error); }
-  .fb-libre.aviso { background: #fff3e0; border: 1px solid var(--warn); }
-  .inp-libre.error { border-color: var(--error); background: #ffebee; animation: sacudir .3s; }
+  .fb-libre.ok { background: #e6f4e6; border: 1px solid var(--sem-ok); }
+  .fb-libre.err { background: #ffebee; border: 1px solid var(--sem-error); }
+  .fb-libre.aviso { background: #fff3e0; border: 1px solid var(--sem-warn); }
+  .inp-libre.error { border-color: var(--sem-error); background: #ffebee; animation: sacudir .3s; }
   /* modo libre en el mapa 2D: celdas tocables y celda elegida como destino */
   .celda.tocable-libre { cursor: pointer; }
-  .celda.tocable-libre:hover { outline: 2px solid var(--vino); outline-offset: -2px; }
+  .celda.tocable-libre:hover { outline: 2px solid var(--sem-vino); outline-offset: -2px; }
   .celda.destino-libre { border-color: #ffd600 !important; box-shadow: 0 0 0 3px #ffd600; z-index: 3; }
-  .pos-actual { font-size: 1.1rem; font-weight: 700; color: var(--vino); }
+  .pos-actual { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
   /* ---- escáner llenado/vaciado ---- */
   .esc-tipos { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
-  .esc-tipo { flex: 1; min-width: 150px; padding: 20px 14px; font-size: 1.1rem; font-weight: 700; border: 2px solid var(--vino); background: #fff; color: var(--vino); border-radius: 12px; cursor: pointer; }
-  .esc-tipo:hover { background: #f6eef1; }
-  .esc-tipo.activo { background: var(--vino); color: #fff; }
-  .esc-contador { background: var(--vino); color: #fff; font-weight: 700; padding: 6px 14px; border-radius: 16px; font-size: 1rem; white-space: nowrap; }
-  #escInput { font-size: 1.4rem; padding: 14px; width: 100%; max-width: 460px; border: 2px solid var(--vino); border-radius: 8px; }
+  .esc-tipo { flex: 1; min-width: 150px; padding: 20px 14px; font-size: 1.1rem; font-weight: 600; font-family: var(--sans); border: 1px solid var(--txt); background: var(--panel); color: var(--txt); border-radius: 2px; cursor: pointer; }
+  .esc-tipo:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-tinte); }
+  .esc-tipo.activo { background: var(--txt); border-color: var(--txt); color: var(--bg); }
+  .esc-contador { background: var(--sem-vino); color: #fff; font-weight: 700; padding: 6px 14px; border-radius: 16px; font-size: 1rem; white-space: nowrap; }
+  #escInput { font-size: 1.4rem; padding: 14px; width: 100%; max-width: 460px; border: 2px solid var(--txt); border-radius: 2px; background: var(--panel); }
   #escFeedback { padding: 14px; border-radius: 8px; margin-top: 12px; font-size: .95rem; }
-  #escFeedback.ok { background: #e6f4e6; border: 1px solid var(--ok); }
-  #escFeedback.err { background: #ffebee; border: 1px solid var(--error); }
-  #escFeedback.aviso { background: #fff3e0; border: 1px solid var(--warn); }
-  #escResumen { display: none; background: #e6f4e6; border: 2px solid var(--ok); border-radius: 12px; padding: 18px; margin-bottom: 16px; text-align: center; }
-  .esc-res-num { font-size: 1.8rem; font-weight: 800; color: var(--ok); }
+  #escFeedback.ok { background: #e6f4e6; border: 1px solid var(--sem-ok); }
+  #escFeedback.err { background: #ffebee; border: 1px solid var(--sem-error); }
+  #escFeedback.aviso { background: #fff3e0; border: 1px solid var(--sem-warn); }
+  #escResumen { display: none; background: #e6f4e6; border: 2px solid var(--sem-ok); border-radius: 12px; padding: 18px; margin-bottom: 16px; text-align: center; }
+  .esc-res-num { font-size: 1.8rem; font-weight: 800; color: var(--sem-ok); }
   .esc-res-detalle { font-size: .95rem; color: #2b2b2b; margin-top: 6px; }
   /* la orden se guardo igual, pero algo quedo para mirar: mismo cartel, en rojo */
-  #escResumen.revisar { background: #ffebee; border-color: var(--error); }
-  #escResumen.revisar .esc-res-num { color: var(--error); font-size: 1.45rem; }
+  #escResumen.revisar { background: #ffebee; border-color: var(--sem-error); }
+  #escResumen.revisar .esc-res-num { color: var(--sem-error); font-size: 1.45rem; }
   .esc-res-avisos { list-style: none; margin: 12px auto 10px; padding: 0; max-width: 560px; text-align: left; }
-  .esc-res-avisos li { background: #fff; border-left: 4px solid var(--error); border-radius: 6px; padding: 9px 12px; margin-bottom: 7px; font-size: 1rem; line-height: 1.4; }
+  .esc-res-avisos li { background: #fff; border-left: 4px solid var(--sem-error); border-radius: 6px; padding: 9px 12px; margin-bottom: 7px; font-size: 1rem; line-height: 1.4; }
   /* orden fuera de la ventana de edicion: el boton sigue ahi y explica por que */
   .btn.esc-vencida { opacity: .4; filter: grayscale(1); }
+  .esc-quitar { padding: 3px 9px; }
 
   /* ---- historial plegable ---- */
   .esc-historial > summary { cursor: pointer; list-style: none; user-select: none; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   .esc-historial > summary::-webkit-details-marker { display: none; }
   .esc-historial > summary h2 { margin: 0; }
-  .esc-historial > summary::after { content: '⌄ mostrar'; margin-left: auto; color: var(--vino); font-weight: 700; font-size: .9rem; }
+  .esc-historial > summary::after { content: '⌄ mostrar'; margin-left: auto; color: var(--accent); font-weight: 600; font-size: .9rem; }
   .esc-historial[open] > summary::after { content: '⌃ ocultar'; }
-  .esc-historial[open] > summary { border-bottom: 1px solid #efe6dc; padding-bottom: 10px; }
+  .esc-historial[open] > summary { border-bottom: 1px solid var(--line); padding-bottom: 10px; }
   .esc-hist-cuerpo { margin-top: 12px; }
 
   /* ---- carteles de la pestana Escaner ---- */
   /* Sin `display` aca a proposito: quien lo muestra u oculta es .solo-operario, y
      un selector de id le ganaria por especificidad. */
-  #escInstrucciones { background: #ffebee; border: 3px solid var(--error); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
-  #escInstrucciones h2 { color: var(--error); margin: 0 0 10px; font-size: 1.25rem; }
+  #escInstrucciones { background: #ffebee; border: 3px solid var(--sem-error); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+  #escInstrucciones h2 { color: var(--sem-error); margin: 0 0 10px; font-size: 1.25rem; }
   #escInstrucciones ol { margin: 0; padding-left: 26px; font-size: 1.15rem; line-height: 1.85; color: #2b2b2b; }
-  #escInstrucciones b { color: var(--vino-osc); }
+  #escInstrucciones b { color: var(--sem-vino-osc); }
   #overlayCamaraEsc { position: fixed; inset: 0; background: #000; z-index: 100; display: none; flex-direction: column; }
   #overlayCamaraEsc.abierto { display: flex; }
   #escVideoCam { flex: 1; width: 100%; object-fit: cover; min-height: 0; }
@@ -215,7 +283,7 @@ const API='/barriles/api';</script>
   #escPieCam { background: #111; color: #fff; padding: 12px 16px; }
   #escPieCam .res { min-height: 44px; font-size: .95rem; padding: 6px 0; }
   #escPieCam .acciones { display: flex; gap: 10px; }
-  #escPieCam button { flex: 1; padding: 16px; font-size: 1.1rem; border-radius: 8px; border: none; cursor: pointer; background: var(--ok); color: #fff; font-weight: 700; }
+  #escPieCam button { flex: 1; padding: 16px; font-size: 1.1rem; border-radius: 8px; border: none; cursor: pointer; background: var(--sem-ok); color: #fff; font-weight: 700; }
   #escPieCam .lista { display: flex; flex-wrap: wrap; gap: 6px; max-height: 86px; overflow-y: auto; margin: 2px 0 10px; }
   #escPieCam .lista span { background: rgba(255,255,255,.16); border-radius: 10px; padding: 3px 9px; font-size: .8rem; }
   #escMarcoCam.ok { border-color: #00e676; box-shadow: 0 0 0 2000px rgba(0,0,0,.35), 0 0 26px #00e676; }
@@ -235,7 +303,7 @@ const API='/barriles/api';</script>
   #barBtnTipear { background: #424242; color: #fff; }
   #barBtnCancelarPar { background: #6d4c41; color: #fff; }
   #barBtnCerrarCam { background: #c62828; color: #fff; }
-  #barBtnConfirmarLote { background: var(--ok); color: #fff; }
+  #barBtnConfirmarLote { background: var(--sem-ok); color: #fff; }
   #barCandidatos { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
   #barCandidatos button { background: #fff; color: #111; border: 2px solid #40c4ff; border-radius: 10px; padding: 10px 18px; font-size: 1.15rem; font-weight: 800; cursor: pointer; }
   #barCandidatos button.elegido { background: #40c4ff; color: #002; }
@@ -253,40 +321,40 @@ const API='/barriles/api';</script>
   #paletPieCam { background: #111; color: #fff; padding: 12px 16px; }
   #paletPieCam .res { min-height: 44px; font-size: .95rem; padding: 6px 0; }
   #paletPieCam .acciones { display: flex; gap: 10px; }
-  #paletPieCam button { flex: 1; padding: 16px; font-size: 1.1rem; border-radius: 8px; border: none; cursor: pointer; background: var(--ok); color: #fff; font-weight: 700; }
+  #paletPieCam button { flex: 1; padding: 16px; font-size: 1.1rem; border-radius: 8px; border: none; cursor: pointer; background: var(--sem-ok); color: #fff; font-weight: 700; }
   /* ---- mapa ---- */
   .caja-box { margin-bottom: 26px; }
-  .titulo-box { font-weight: 700; font-size: 1rem; margin-bottom: 6px; color: var(--vino-osc); display: flex; gap: 10px; align-items: center; }
+  .titulo-box { font-family: var(--serif); font-weight: 500; font-size: 1.25rem; margin-bottom: 6px; color: var(--txt); display: flex; gap: 10px; align-items: center; }
   .grilla { display: inline-grid; gap: 6px; background: #d9d2c7; padding: 8px; border-radius: 8px; }
   .par { display: flex; gap: 3px; }
-  .celda { width: 58px; height: 52px; background: #fff; border-radius: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: .7rem; cursor: pointer; border: 2px solid transparent; overflow: hidden; text-align: center; }
+  .celda { width: 58px; height: 52px; background: #fff; color: #2b2b2b; border-radius: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: .7rem; cursor: pointer; border: 2px solid transparent; overflow: hidden; text-align: center; }
   .celda .num { font-weight: 700; font-size: .82rem; }
   .celda .lote { opacity: .85; }
   .celda.libre { background: repeating-linear-gradient(45deg, #f5f1ea, #f5f1ea 6px, #ece6dc 6px, #ece6dc 12px); color: #999; }
   .celda.hueco { background: #f0f0f0; color: #aaa; font-style: italic; }
   .celda.resaltada { border-color: #ffd600; box-shadow: 0 0 0 3px #ffd600; z-index: 2; }
   .celda.atenuada { opacity: .25; }
-  .celda.cursor-scan { border-color: var(--vino); border-style: dashed; }
-  .etiqueta-fila { width: 34px; height: 52px; display: flex; align-items: center; justify-content: center; font-size: .75rem; color: #777; font-weight: 600; }
-  .etiqueta-col { height: 22px; display: flex; align-items: center; justify-content: center; font-size: .75rem; color: #777; font-weight: 600; }
-  .enc-col { display: flex; flex-direction: column; justify-content: flex-end; font-size: .75rem; color: #777; font-weight: 600; padding-bottom: 2px; }
+  .celda.cursor-scan { border-color: var(--sem-vino); border-style: dashed; }
+  .etiqueta-fila { width: 34px; height: 52px; display: flex; align-items: center; justify-content: center; font-size: .75rem; color: var(--muted); font-weight: 600; }
+  .etiqueta-col { height: 22px; display: flex; align-items: center; justify-content: center; font-size: .75rem; color: var(--muted); font-weight: 600; }
+  .enc-col { display: flex; flex-direction: column; justify-content: flex-end; font-size: .75rem; color: var(--muted); font-weight: 600; padding-bottom: 2px; }
   .enc-col .num-col { text-align: center; }
   .enc-col .ld { display: flex; gap: 3px; margin-top: 1px; }
   .enc-col .ld span { flex: 1; text-align: center; font-size: .6rem; opacity: .75; font-weight: 500; }
   .leyenda { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
-  .leyenda .item { display: flex; align-items: center; gap: 5px; font-size: .8rem; background: #fff; border: 1px solid var(--gris); border-radius: 12px; padding: 3px 10px; cursor: pointer; }
+  .leyenda .item { display: flex; align-items: center; gap: 5px; font-size: .8rem; background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 3px 10px; cursor: pointer; }
   .leyenda .muestra { width: 14px; height: 14px; border-radius: 4px; }
-  .leyenda-colapsable { background: #fbf4ee; border: 1px solid #e7d8c8; border-radius: 10px; margin: 10px 0; font-size: .92rem; }
-  .leyenda-colapsable > summary { cursor: pointer; padding: 9px 14px; font-weight: 700; color: var(--vino); list-style: none; user-select: none; }
+  .leyenda-colapsable { background: var(--panel); border: 1px solid var(--line); border-radius: 2px; margin: 10px 0; font-size: .92rem; }
+  .leyenda-colapsable > summary { cursor: pointer; padding: 9px 14px; font-weight: 600; color: var(--txt); list-style: none; user-select: none; }
   .leyenda-colapsable > summary::-webkit-details-marker { display: none; }
-  .leyenda-colapsable > summary::after { content: ' ⌄'; color: #b08; opacity: .6; }
-  .leyenda-colapsable[open] > summary { border-bottom: 1px solid #e7d8c8; }
+  .leyenda-colapsable > summary::after { content: ' ⌄'; color: var(--muted); }
+  .leyenda-colapsable[open] > summary { border-bottom: 1px solid var(--line); }
   .leyenda-colapsable[open] > summary::after { content: ' ⌃'; }
   .leyenda-colapsable .leyenda { padding: 10px 14px; margin: 0; }
   .resultado-busqueda { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
-  .resultado-busqueda .item-resultado { display: flex; align-items: center; gap: 5px; font-size: .85rem; background: #fff; border: 1px solid var(--vino); color: var(--vino-osc); border-radius: 12px; padding: 4px 12px; cursor: pointer; font-weight: 600; }
-  .resultado-busqueda .item-resultado:hover { background: #f6eef1; }
-  .resultado-busqueda .sin-resultado { font-size: .85rem; color: #a33; font-style: italic; }
+  .resultado-busqueda .item-resultado { display: flex; align-items: center; gap: 5px; font-size: .85rem; background: var(--panel); border: 1px solid var(--accent); color: var(--accent); border-radius: 2px; padding: 4px 12px; cursor: pointer; font-weight: 600; }
+  .resultado-busqueda .item-resultado:hover { background: var(--accent-tinte); }
+  .resultado-busqueda .sin-resultado { font-size: .85rem; color: var(--nook); font-style: italic; }
   /* ---- vista 3d ---- */
   #cont3d { width: 100%; height: 70vh; min-height: 420px; position: relative; background: linear-gradient(#241a2b, #1a1320); border-radius: 10px; overflow: hidden; touch-action: none; }
   #cont3d canvas { display: block; }
@@ -296,40 +364,40 @@ const API='/barriles/api';</script>
   /* ---- cartel cambio de lado ---- */
   #cartelLado { position: fixed; inset: 0; background: rgba(0,0,0,.72); z-index: 200; display: none; align-items: center; justify-content: center; }
   #cartelLado.abierto { display: flex; }
-  #cartelLado .caja-cartel { background: #fff; border-radius: 16px; padding: 30px 28px; text-align: center; max-width: 90%; width: 380px; border-top: 8px solid var(--warn); animation: aparecer .25s; }
+  #cartelLado .caja-cartel { background: #fff; border-radius: 16px; padding: 30px 28px; text-align: center; max-width: 90%; width: 380px; border-top: 8px solid var(--sem-warn); animation: aparecer .25s; }
   @keyframes aparecer { from { transform: scale(.85); opacity: 0; } }
   #cartelLado .icono-cartel { font-size: 3rem; }
-  #cartelLado h2 { color: var(--warn); margin: 6px 0 10px; font-size: 1.4rem; }
+  #cartelLado h2 { color: var(--sem-warn); margin: 6px 0 10px; font-size: 1.4rem; }
   #cartelLado p { font-size: 1.1rem; margin-bottom: 20px; line-height: 1.4; }
-  #cartelLado p b { color: var(--vino); font-size: 1.25rem; }
+  #cartelLado p b { color: var(--sem-vino); font-size: 1.25rem; }
   #cartelLado button { font-size: 1.05rem; padding: 14px 24px; width: 100%; }
   /* ---- modal ---- */
   #modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: center; justify-content: center; z-index: 50; }
   #modal.abierto { display: flex; }
-  #modalContenido { background: #fff; border-radius: 12px; padding: 22px; max-width: 420px; width: 92%; max-height: 85vh; overflow: auto; }
-  #modalContenido h3 { color: var(--vino); margin-top: 0; }
+  #modalContenido { background: var(--panel); border-top: 2px solid var(--rule); border-radius: 2px; padding: 22px; max-width: 420px; width: 92%; max-height: 85vh; overflow: auto; box-shadow: 0 20px 50px rgba(28,27,25,.25); }
+  #modalContenido h3 { font-family: var(--serif); font-size: 1.4rem; font-weight: 500; color: var(--txt); margin-top: 0; }
   #modalContenido table { width: 100%; font-size: .88rem; }
-  #modalContenido td { padding: 4px 6px; border-bottom: 1px solid #f0ebe3; }
-  #modalContenido td:first-child { color: #777; width: 42%; }
+  #modalContenido td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  #modalContenido td:first-child { color: var(--muted); width: 42%; }
   .acciones-modal { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
   .mini-stats { display: flex; gap: 18px; flex-wrap: wrap; }
   .mini-stats .stat { text-align: center; }
-  .mini-stats .stat .valor { font-size: 1.6rem; font-weight: 700; color: var(--vino); }
-  .mini-stats .stat .desc { font-size: .78rem; color: #777; }
-  .nota { font-size: .82rem; color: #777; margin-top: 8px; }
+  .mini-stats .stat .valor { font-family: var(--serif); font-size: 1.9rem; font-weight: 500; color: var(--txt); font-variant-numeric: lining-nums tabular-nums; }
+  .mini-stats .stat .desc { font-size: .78rem; color: var(--muted); }
+  .nota { font-size: .82rem; color: var(--muted); margin-top: 8px; }
   /* ---- ayuda por pestaña (para operarios) ---- */
-  .ayuda { background: #fbf4ee; border: 1px solid #e7d8c8; border-radius: 10px; margin-bottom: 16px; font-size: .92rem; }
-  .ayuda > summary { cursor: pointer; padding: 11px 15px; font-weight: 700; color: var(--vino); list-style: none; user-select: none; }
+  .ayuda { background: var(--panel); border: none; border-left: 2px solid var(--accent); border-radius: 0; margin-bottom: 16px; font-size: .92rem; }
+  .ayuda > summary { cursor: pointer; padding: 11px 15px; font-weight: 600; color: var(--txt); list-style: none; user-select: none; }
   .ayuda > summary::-webkit-details-marker { display: none; }
   .ayuda > summary::before { content: 'ℹ️ '; }
-  .ayuda > summary::after { content: ' ⌄'; color: #b08; opacity: .6; }
-  .ayuda[open] > summary { border-bottom: 1px solid #e7d8c8; }
+  .ayuda > summary::after { content: ' ⌄'; color: var(--muted); }
+  .ayuda[open] > summary { border-bottom: 1px solid var(--line); }
   .ayuda[open] > summary::after { content: ' ⌃'; }
-  .ayuda .cuerpo { padding: 12px 16px; line-height: 1.65; color: #3a2b30; }
+  .ayuda .cuerpo { padding: 12px 16px; line-height: 1.65; color: var(--txt); }
   .ayuda .cuerpo ul { margin: 6px 0 0 4px; list-style: none; }
   .ayuda .cuerpo li { margin-bottom: 7px; padding-left: 2px; }
-  .ayuda .cuerpo b { color: var(--vino-osc); }
-  .ayuda .muestra-celda { display: inline-block; min-width: 34px; padding: 2px 6px; border-radius: 4px; border: 1px solid #ccc; font-weight: 700; font-size: .78rem; text-align: center; vertical-align: middle; }
+  .ayuda .cuerpo b { color: var(--txt); }
+  .ayuda .muestra-celda { display: inline-block; min-width: 34px; padding: 2px 6px; border-radius: 2px; border: 1px solid var(--line); font-weight: 700; font-size: .78rem; text-align: center; vertical-align: middle; }
   /* ---- camara ---- */
   #overlayCamara { position: fixed; inset: 0; background: #000; z-index: 100; display: none; flex-direction: column; }
   #overlayCamara.abierto { display: flex; }
@@ -346,9 +414,17 @@ const API='/barriles/api';</script>
   #btnReintentarCam { background: #424242; color: #fff; }
   #pieCamara.esperando { box-shadow: 0 0 0 3px #ffd600 inset; }
   #cabeceraCamara label { font-size: .8rem; opacity: .92; }
-  .insignia-sync { font-size: .72rem; padding: 2px 9px; border-radius: 10px; background: rgba(255,255,255,.18); }
+  /* Celular: la barra de gestos y la muesca no tapan los botones de la cámara
+     (con viewport-fit=cover; sin muesca, env() vale 0 y queda como antes). */
+  #escPieCam, #barPieCam, #paletPieCam, #pieCamara { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); padding-left: calc(16px + env(safe-area-inset-left, 0px)); padding-right: calc(16px + env(safe-area-inset-right, 0px)); }
+  #escCabeceraCam, #barCabeceraCam, #paletCabeceraCam, #cabeceraCamara { padding-top: calc(12px + env(safe-area-inset-top, 0px)); }
+  /* Capas: la barra de la plataforma (#ciw-barra) es z 1050; los avisos de CI
+     1100 y el velo sin conexión 9999 quedan arriba. */
+  #overlayCamara, #overlayCamaraEsc, #overlayCamaraBar, #overlayCamaraPalet, #overlayPedido, #modal, #cartelLado { z-index: 1060; }
+  .scroll-x { overflow-x: auto; max-width: 100%; }
+  .esc-hist-btn { padding: 4px 9px; }
   .qr-caja { background: #fff; padding: 14px; border-radius: 10px; display: inline-block; }
-  .url-grande { font-size: 1.05rem; font-weight: 700; color: var(--vino); word-break: break-all; }
+  .url-grande { font-size: 1.05rem; font-weight: 700; color: var(--accent); word-break: break-all; }
   /* Conectar el celular se explica distinto segun donde corra la app: en la
      bodega hay que emparejar por WiFi, en la web alcanza con la direccion y el
      login. Los dos textos viven en el HTML y se muestra el que corresponde
@@ -365,16 +441,9 @@ const API='/barriles/api';</script>
   }
 
   /* ===== vista según el rol de la plataforma (operario / programador) ===== */
-  #navOperario { display: none; background: var(--vino-osc); align-items: center; flex-wrap: wrap; }
-  #navOperario button { background: none; border: none; color: #d9c5cd; padding: 14px 24px; font-size: 1.05rem; cursor: pointer; border-bottom: 3px solid transparent; }
-  #navOperario button.activo { color: #fff; border-bottom-color: #e8b4c8; font-weight: 700; }
-  #navOperario button:hover { color: #fff; }
-  #opVistaSel { display: none; gap: 10px; padding: 10px 20px; background: #f0e6ea; align-items: center; }
-  #opVistaSel button { background: #fff; border: 1px solid var(--vino); color: var(--vino); border-radius: 8px; padding: 8px 18px; font-size: .95rem; cursor: pointer; font-weight: 600; }
-  #opVistaSel button.activo { background: var(--vino); color: #fff; }
 
   /* visibilidad según rol/sección */
-  body.rol-operario #navProgramador, body.rol-operario #toggleModoLote, body.rol-operario header .estado-datos { display: none; }
+  body.rol-operario #navProgramador, body.rol-operario #toggleModoLote, body.rol-operario #estadoDatos { display: none; }
   body.rol-operario #navOperario { display: flex; }
   body.rol-operario.op-cargar #opVistaSel, body.rol-operario.op-buscar #opVistaSel { display: flex; }
   body.rol-operario #btnExportarMapa, body.rol-operario #btnImprimir { display: none; }
@@ -396,10 +465,10 @@ const API='/barriles/api';</script>
      los dos botones van grandes. Solo bajo rol-operario, para no cambiarle la
      pantalla al programador, que ademas ve el historial y la trazabilidad. */
   body.rol-operario #panel-escaner .esc-tipo { padding: 30px 14px; font-size: 1.5rem; border-radius: 14px; }
-  body.rol-operario #panel-escaner .fila-flex > label { font-size: 1.15rem; font-weight: 700; color: var(--vino-osc); }
+  body.rol-operario #panel-escaner .fila-flex > label { font-size: 1.15rem; font-weight: 700; color: var(--txt); }
   body.rol-operario #panel-escaner #escFecha,
   body.rol-operario #panel-escaner #escOT,
-  body.rol-operario #panel-escaner #escLote { font-size: 1.4rem; padding: 12px 14px; height: 56px; border: 2px solid var(--vino); border-radius: 10px; }
+  body.rol-operario #panel-escaner #escLote { font-size: 1.4rem; padding: 12px 14px; height: 56px; border: 2px solid var(--txt); border-radius: 2px; }
   body.rol-operario #panel-escaner #escOT { width: 200px; }
   body.rol-operario #panel-escaner #escLote { width: 180px; }
   body.rol-operario #panel-escaner #escInput { font-size: 1.7rem; padding: 18px; }
@@ -408,159 +477,146 @@ const API='/barriles/api';</script>
   body.rol-operario #panel-escaner > .ayuda { display: none; }
   /* modo por lote: el mapa va sin inventario, pero los tanques igual se asocian a un lote */
   body.modo-lote .solo-barricas { display: none !important; }
-  .cam-btn-rotulo { background:#fff; color:var(--vino); border:none; border-radius:16px; padding:6px 12px; font-size:.9rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+  .cam-btn-rotulo { background:#fff; color:var(--sem-vino); border:none; border-radius:16px; padding:6px 12px; font-size:.9rem; font-weight:700; cursor:pointer; white-space:nowrap; }
   .cam-tipear { display:none; gap:8px; margin-top:8px; }
   .cam-tipear.abierto { display:flex; }
   .cam-tipear input { flex:1; font-size:1.3rem; padding:12px; border:none; border-radius:8px; text-align:center; font-weight:700; }
   .cam-tipear button { padding:12px 16px; font-size:1rem; border:none; border-radius:8px; cursor:pointer; font-weight:700; }
-  .cam-tipear .ok { background:var(--ok); color:#fff; }
+  .cam-tipear .ok { background:var(--sem-ok); color:#fff; }
   .cam-tipear .cancel { background:#616161; color:#fff; }
-  #overlayPedido { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:200; display:none; align-items:center; justify-content:center; padding:20px; }
+  #overlayPedido { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1060; display:none; align-items:center; justify-content:center; padding:20px; }
   #overlayPedido.abierto { display:flex; }
-  #overlayPedido .ped-caja { background:#fff; border-radius:14px; padding:22px; width:100%; max-width:380px; box-shadow:0 10px 40px rgba(0,0,0,.4); }
-  #overlayPedido h3 { margin:0 0 14px; color:var(--vino); }
+  #overlayPedido .ped-caja { background: var(--panel); border-top: 2px solid var(--rule); border-radius: 2px; padding: 22px; width: 100%; max-width: 380px; box-shadow: 0 20px 50px rgba(28,27,25,.25); }
+  #overlayPedido h3 { margin: 0 0 14px; font-family: var(--serif); font-size: 1.4rem; font-weight: 500; color: var(--txt); }
   .ped-opciones { display:flex; flex-direction:column; gap:10px; }
-  .ped-op { padding:16px; font-size:1.1rem; font-weight:700; border:2px solid var(--vino); background:#fff; color:var(--vino); border-radius:12px; cursor:pointer; }
-  #pedInput { width:100%; font-size:1.6rem; text-align:center; font-weight:700; padding:12px; border:2px solid var(--vino); border-radius:10px; box-sizing:border-box; }
+  .ped-op { padding: 16px; font-size: 1.1rem; font-weight: 600; font-family: var(--sans); border: 1px solid var(--txt); background: var(--panel); color: var(--txt); border-radius: 2px; cursor: pointer; }
+  #pedInput { width: 100%; font-size: 1.6rem; text-align: center; font-weight: 700; padding: 12px; border: 2px solid var(--txt); border-radius: 2px; box-sizing: border-box; }
   .ped-acciones { display:flex; gap:10px; margin-top:14px; }
   .ped-acciones .btn { flex:1; padding:13px; font-size:1rem; }
-  .ped-cerrar { margin-top:16px; width:100%; background:none; border:none; color:#888; font-size:.9rem; cursor:pointer; }
-  .ped-aviso { margin-top:12px; text-align:center; font-weight:700; color:var(--ok); min-height:22px; }
+  .ped-cerrar { margin-top: 16px; width: 100%; background: none; border: none; color: var(--muted); font-size: .9rem; cursor: pointer; }
+  .ped-aviso { margin-top:12px; text-align:center; font-weight:700; color:var(--sem-ok); min-height:22px; }
   /* número recién leído, agrandado para baja visión (solo en los pies de cámara) */
   #escResCam .n-barril, #resCamara .n-barril, #barResCam .n-barril {
     font-size: 2.2rem; font-weight: 800; line-height: 1.05; display: inline-block; vertical-align: middle;
   }
   #escListaCam span { font-size: 1.05rem; }
   #mapaTipoSel { display: flex; gap: 10px; margin-bottom: 10px; }
-  #mapaTipoSel button { background:#fff; border:1px solid var(--vino); color:var(--vino); border-radius:8px; padding:7px 16px; font-size:.92rem; cursor:pointer; font-weight:600; }
-  #mapaTipoSel button.activo { background:var(--vino); color:#fff; }
+  #mapaTipoSel button { background: var(--panel); border: 1px solid var(--line); color: var(--muted); border-radius: 2px; padding: 7px 16px; font: 500 .92rem var(--sans); cursor: pointer; }
+  #mapaTipoSel button.activo { background: var(--txt); border-color: var(--txt); color: var(--bg); }
   .palet { display:flex; gap:6px; flex-wrap:nowrap; }
   .palet .celda { width:58px; height:52px; }
-  .palet .cas-col { font-size:.6rem; color:#777; text-align:center; }
+  .palet .cas-col { font-size: .6rem; color: var(--muted); text-align: center; }
 
   /* ===== Modo operario: portada y barra de Inicio (2026-10-06) =====
      Todo bajo body.rol-operario o en clases que solo existen en la portada: el
      programador no ve ningún cambio. */
   body.rol-operario { font-size: 17px; }
   body.rol-operario main { max-width: 1280px; padding: 24px 28px; }
-  body.rol-operario .tarjeta { border-radius: 14px; padding: 22px; }
-  body.rol-operario button.btn { font-size: 1rem; padding: 11px 18px; border-radius: 8px; }
+  body.rol-operario .tarjeta { border-radius: 0; padding: 22px; }
+  body.rol-operario button.btn { font-size: 1rem; padding: 11px 18px; border-radius: 2px; }
   body.rol-operario #panel-inventario > details.ayuda { display: none; }
-  #navOperario #opInicio { color: #fff; font-weight: 700; }
-  body.op-inicio #navOperario #opInicio { display: none; }
-  #opTitulo { color: #fff; font-size: 1.15rem; font-weight: 700; padding: 14px 8px 14px 24px; }
-  body:not(.op-inicio) #opTitulo { border-left: 1px solid rgba(255,255,255,.25); padding-left: 18px; }
-  #opAyuda { color: #e8d3db; font-size: .98rem; padding: 14px 8px; }
   .ini-saludo { margin: 8px 0 24px; }
-  .ini-saludo h2 { font-size: 1.9rem; color: var(--vino-osc); margin: 0; }
-  .ini-saludo p { color: #6d6259; font-size: 1.1rem; margin-top: 4px; }
+  .ini-saludo h2 { font-family: var(--serif); font-size: 2.3rem; font-weight: 500; color: var(--txt); margin: 0; }
+  .ini-saludo p { color: var(--muted); font-size: 1.1rem; margin-top: 4px; }
   .ini-grandes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-  .ini-boton { background: #fff; border: 1px solid var(--gris); border-radius: 18px; padding: 26px 22px; text-align: left; cursor: pointer;
+  .ini-boton { background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--rule); border-radius: 2px; padding: 26px 22px; text-align: left; cursor: pointer;
                display: flex; flex-direction: column; gap: 8px; min-height: 150px; font: inherit; color: inherit;
-               transition: border-color .15s, transform .15s; }
-  .ini-boton:hover { border-color: var(--vino); transform: translateY(-2px); }
-  .ini-boton:focus-visible, .ini-chico:focus-visible { outline: 3px solid var(--vino); outline-offset: 2px; }
+               transition: border-color .15s, background .15s; }
+  .ini-boton:hover { border-color: var(--accent); border-top-color: var(--accent); background: var(--accent-tinte); }
+  .ini-boton:focus-visible, .ini-chico:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .ini-boton .ini-ico { font-size: 2.6rem; line-height: 1; }
-  .ini-boton b { font-size: 1.35rem; color: var(--vino-osc); margin-top: auto; }
-  .ini-boton span:last-child { color: #6d6259; font-size: 1rem; }
-  .ini-boton.ini-destacado { border: 2px solid var(--vino); background: #fdf6f7; }
+  .ini-boton b { font-size: 1.35rem; font-weight: 600; line-height: 1.4; color: var(--txt); margin-top: auto; }
+  .ini-boton span:last-child { color: var(--muted); font-size: 1rem; }
+  .ini-boton.ini-destacado { border: 1px solid var(--accent); border-top: 2px solid var(--accent); background: var(--accent-tinte); }
   .ini-chicos { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
-  .ini-chico { background: #fff; border: 1px solid var(--gris); border-radius: 999px; padding: 12px 20px; font: inherit; font-size: 1rem; cursor: pointer; color: var(--vino-osc); }
-  .ini-chico:hover { border-color: var(--vino); }
-  .ini-cuenta:not(:empty) { background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 9px; margin-left: 8px; font-size: .85rem; font-weight: 700; }
+  .ini-chico { background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 12px 20px; font: inherit; font-size: 1rem; cursor: pointer; color: var(--txt); min-height: var(--ci-tap); }
+  .ini-chico:hover { border-color: var(--txt); }
+  .ini-cuenta:not(:empty) { background: var(--sem-warn); color: #fff; border-radius: 999px; padding: 1px 9px; margin-left: 8px; font-size: .85rem; font-weight: 700; }
   @media (max-width: 700px) { .ini-grandes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
   /* ===== Programador: grupos, sub-pestañas e Inicio (2026-10-06) =====
      Todo bajo body.rol-programador o en elementos que solo existen para él: el
      operario no ve ningún cambio. Las pantallas y sus botones son los de siempre. */
-  #navSubProg { display: none; }
-  body.rol-programador #navSubProg { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 20px; background: #f0e6ea; border-bottom: 1px solid #e2d3d9; }
-  body.rol-programador #navSubProg:empty { display: none; }
-  #navSubProg button { background: #fff; border: 1px solid #d9c5cd; color: var(--vino-osc); border-radius: 999px; padding: 7px 16px; font: inherit; font-size: .92rem; cursor: pointer; }
-  #navSubProg button:hover { border-color: var(--vino); }
-  #navSubProg button.activo { background: var(--vino); border-color: var(--vino); color: #fff; font-weight: 600; }
-  #navProgramador button { padding: 13px 24px; font-size: 1rem; }
-  .prog-cuenta:not(:empty) { background: var(--warn); color: #fff; border-radius: 999px; padding: 1px 8px; margin-left: 7px; font-size: .78rem; font-weight: 700; }
+  .prog-cuenta:not(:empty) { background: var(--sem-warn); color: #fff; border-radius: 999px; padding: 1px 8px; margin-left: 7px; font-size: .78rem; font-weight: 700; }
   body.rol-programador main { max-width: 1320px; padding: 22px 26px; }
-  body.rol-programador .tarjeta { border-radius: 14px; padding: 20px 22px; }
+  body.rol-programador .tarjeta { border-radius: 0; padding: 20px 22px; }
   /* El programador no asocia vasijas a mano (pedido 2026-10-06): en Barriles → Inventario
      ve solo la lista. El operario sigue teniendo "Asociar vasija con lote" en su portada. */
   body.rol-programador #panel-inventario .tarjeta-asociar,
   body.rol-programador #barResumen,
   body.rol-programador #panel-inventario > details.ayuda { display: none !important; }
   /* Inicio */
-  .tab-subtitulo { font-size: .85rem; text-transform: uppercase; letter-spacing: .6px; color: #8a7f76; margin: 22px 0 10px; font-weight: 700; }
+  .tab-subtitulo { font-size: 10px; text-transform: uppercase; letter-spacing: 1.8px; color: var(--muted); margin: 22px 0 10px; font-weight: 500; }
   .tab-cifras { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
   @media (max-width: 700px) {
     .tab-cifras { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .tab-cifra { padding: 12px 14px; }
     .tab-cifra .tab-valor { font-size: 1.6rem; }
     body.rol-programador main { padding: 14px; }
-    body.rol-programador #navSubProg { padding: 8px 12px; }
   }
-  .tab-cifra { background: #fff; border: 1px solid var(--gris); border-radius: 14px; padding: 16px 18px; text-align: left; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color .15s, transform .15s; }
-  .tab-cifra:hover { border-color: var(--vino); transform: translateY(-1px); }
-  .tab-cifra:focus-visible { outline: 3px solid var(--vino); outline-offset: 2px; }
-  .tab-cifra .tab-valor { font-size: 2rem; font-weight: 800; color: var(--vino-osc); line-height: 1.1; }
-  .tab-cifra .tab-desc { font-weight: 600; color: #2b2b2b; }
-  .tab-cifra .tab-det { font-size: .85rem; color: #8a7f76; }
-  .tab-cifra.tab-alerta { border-left: 6px solid var(--warn); }
-  .tab-cifra.tab-alerta .tab-valor { color: var(--warn); }
-  .tab-cifra.tab-ok { border-left: 6px solid var(--ok); }
-  .tab-cifra.tab-ok .tab-valor { color: var(--ok); }
+  .tab-cifra { background: var(--panel); border: none; border-top: 1px solid var(--rule); border-radius: 0; padding: 16px 18px; text-align: left; font: inherit; color: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: background .15s; }
+  .tab-cifra:hover { background: var(--accent-tinte); }
+  .tab-cifra:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .tab-cifra .tab-valor { font-family: var(--serif); font-size: 2.4rem; font-weight: 500; color: var(--txt); line-height: 1; font-variant-numeric: lining-nums tabular-nums; }
+  .tab-cifra .tab-desc { font-weight: 600; color: var(--txt); }
+  .tab-cifra .tab-det { font-size: .85rem; color: var(--muted); }
+  .tab-cifra.tab-alerta { border-left: 6px solid var(--sem-warn); }
+  .tab-cifra.tab-alerta .tab-valor { color: var(--sem-warn); }
+  .tab-cifra.tab-ok { border-left: 6px solid var(--sem-ok); }
+  .tab-cifra.tab-ok .tab-valor { color: var(--sem-ok); }
   .tab-accesos .ini-boton { min-height: 120px; padding: 20px; }
   .tab-accesos .ini-boton .ini-ico { font-size: 2.1rem; }
   .tab-accesos .ini-boton b { font-size: 1.15rem; }
   /* ===== Registro del operario ===== */
   .reg-barra { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
-  .reg-buscador { flex: 1; display: flex; align-items: center; gap: 10px; background: #fff; border: 2px solid var(--vino); border-radius: 12px; padding: 2px 16px; font-size: 1.3rem; }
+  .reg-buscador { flex: 1; display: flex; align-items: center; gap: 10px; background: var(--panel); border: 2px solid var(--txt); border-radius: 2px; padding: 2px 16px; font-size: 1.3rem; }
   .reg-buscador input { flex: 1; border: none; outline: none; font-size: 1.35rem; padding: 12px 0; background: transparent; min-width: 0; }
-  .reg-como:not(:empty) { background: #f3e6ea; color: var(--vino-osc); border-radius: 999px; padding: 4px 12px; font-size: .9rem; font-weight: 600; white-space: nowrap; }
+  .reg-como:not(:empty) { background: var(--accent-tinte); color: var(--accent); border-radius: 2px; padding: 4px 12px; font-size: .9rem; font-weight: 600; white-space: nowrap; }
   .reg-meses { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
-  .reg-mes { background: #fff; border: 1px solid var(--gris); border-radius: 999px; padding: 8px 16px; font: inherit; font-size: .98rem; cursor: pointer; color: var(--vino-osc); }
-  .reg-mes:hover { border-color: var(--vino); }
-  .reg-mes.activo { background: var(--vino); border-color: var(--vino); color: #fff; font-weight: 700; }
+  .reg-mes { background: var(--panel); border: 1px solid var(--line); border-radius: 2px; padding: 8px 16px; font: inherit; font-size: .98rem; cursor: pointer; color: var(--txt); }
+  .reg-mes:hover { border-color: var(--txt); }
+  .reg-mes.activo { background: var(--txt); border-color: var(--txt); color: var(--bg); font-weight: 600; }
   .reg-grupo { margin-bottom: 24px; }
-  .reg-grupo h3 { font-size: 1.25rem; color: var(--vino-osc); margin: 0 0 12px; }
+  .reg-grupo h3 { font-size: 1.25rem; color: var(--sem-vino-osc); margin: 0 0 12px; }
   .reg-grupo h3 span { font-size: .95rem; color: #8a7f76; font-weight: 400; margin-left: 8px; }
   details.reg-grupo > summary { cursor: pointer; list-style: none; }
   details.reg-grupo > summary::-webkit-details-marker { display: none; }
   details.reg-grupo > summary h3::before { content: '▸ '; }
   details.reg-grupo[open] > summary h3::before { content: '▾ '; }
   .reg-grilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; align-items: start; }
-  .reg-tarjeta { background: #fff; border: 1px solid var(--gris); border-top: 6px solid #9e9e9e; border-radius: 12px; padding: 14px 16px; }
-  .reg-tarjeta.reg-llenado { border-top-color: var(--ok); }
+  .reg-tarjeta { background: #fff; border: 1px solid var(--sem-gris); border-top: 6px solid #9e9e9e; border-radius: 12px; padding: 14px 16px; }
+  .reg-tarjeta.reg-llenado { border-top-color: var(--sem-ok); }
   .reg-tarjeta.reg-vaciado { border-top-color: #e0a100; }
-  .reg-tarjeta.reg-mixto { border-top-color: var(--vino); }
+  .reg-tarjeta.reg-mixto { border-top-color: var(--sem-vino); }
   .reg-tarjeta.reg-con-barril { box-shadow: 0 0 0 3px #ffd54f; }
   .reg-cabeza { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .reg-lote { font-size: 1.9rem; font-weight: 800; color: #2b2b2b; letter-spacing: .5px; }
   .reg-tipo { font-size: .8rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; text-transform: uppercase; letter-spacing: .5px; background: #eee; color: #444; white-space: nowrap; }
   .reg-llenado .reg-tipo { background: #e3f1e4; color: #1b5e20; }
   .reg-vaciado .reg-tipo { background: #fff3d6; color: #7a5200; }
-  .reg-mixto .reg-tipo { background: #f3e6ea; color: var(--vino-osc); }
+  .reg-mixto .reg-tipo { background: #f3e6ea; color: var(--sem-vino-osc); }
   .reg-datos { color: #6d6259; font-size: .95rem; margin: 4px 0 10px; }
   .reg-barriles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
-  .reg-barril { font-family: Consolas, 'Courier New', monospace; font-size: 1.05rem; padding: 6px 0; border: 1px solid var(--gris); border-radius: 6px; background: #faf8f5; cursor: pointer; color: #2b2b2b; }
-  .reg-barril:hover { border-color: var(--vino); background: #fff; }
+  .reg-barril { font-family: Consolas, 'Courier New', monospace; font-size: 1.05rem; padding: 6px 0; border: 1px solid var(--sem-gris); border-radius: 6px; background: #faf8f5; cursor: pointer; color: #2b2b2b; }
+  .reg-barril:hover { border-color: var(--sem-vino); background: #fff; }
   .reg-barril.reg-hit { background: #ffd54f; border-color: #c79a00; font-weight: 700; }
   .reg-acciones { display: flex; gap: 8px; margin-top: 12px; }
   body.rol-operario .reg-acciones .btn { padding: 6px 12px; font-size: .9rem; }
-  .reg-vacio { background: #fff; border: 1px dashed var(--gris); border-radius: 12px; padding: 30px; text-align: center; font-size: 1.1rem; color: #6d6259; }
-  .reg-ficha { background: #fff; border: 2px solid var(--vino); border-radius: 14px; padding: 18px 22px; margin-bottom: 18px;
+  .reg-vacio { background: #fff; border: 1px dashed var(--sem-gris); border-radius: 12px; padding: 30px; text-align: center; font-size: 1.1rem; color: #6d6259; }
+  .reg-ficha { background: #fff; border: 2px solid var(--sem-vino); border-radius: 14px; padding: 18px 22px; margin-bottom: 18px;
                display: grid; grid-template-columns: auto 1fr auto; gap: 8px 26px; align-items: start; }
-  .reg-ficha-num { font-family: Consolas, 'Courier New', monospace; font-size: 2.2rem; font-weight: 800; color: var(--vino-osc); }
+  .reg-ficha-num { font-family: Consolas, 'Courier New', monospace; font-size: 2.2rem; font-weight: 800; color: var(--sem-vino-osc); }
   .reg-ficha dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 4px 0 0; }
   .reg-ficha dt { color: #8a7f76; }
   .reg-ficha dd { margin: 0; font-weight: 600; }
-  .reg-historia { grid-column: 1 / -1; border-top: 1px solid var(--gris); padding: 10px 0 0 22px; margin: 4px 0 0; }
+  .reg-historia { grid-column: 1 / -1; border-top: 1px solid var(--sem-gris); padding: 10px 0 0 22px; margin: 4px 0 0; }
   .reg-historia li { margin: 3px 0; }
   .reg-estado { padding: 2px 10px; border-radius: 999px; font-weight: 700; font-size: .9rem; background: #eceff1; color: #37474f; }
   .reg-estado.LLENO { background: #e3f1e4; color: #1b5e20; }
   .reg-estado.MERMO { background: #fff3d6; color: #7a5200; }
-  .reg-resumen { background: #fff; border: 1px solid var(--gris); border-left: 6px solid var(--vino); border-radius: 0 12px 12px 0; padding: 14px 18px; margin-bottom: 18px; font-size: 1.1rem; }
+  .reg-resumen { background: #fff; border: 1px solid var(--sem-gris); border-left: 6px solid var(--sem-vino); border-radius: 0 12px 12px 0; padding: 14px 18px; margin-bottom: 18px; font-size: 1.1rem; }
   .reg-alternativa { margin-top: 6px; font-size: .98rem; }
-  .reg-link { background: none; border: none; color: var(--vino); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
+  .reg-link { background: none; border: none; color: var(--sem-vino); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
   .reg-titulo-impresion { display: none; }
   /* ===== Rótulos de lote =====
      La hoja es la de Lotes (public/lotes/index.html, .ot-rotulo y compañía): nueve
@@ -568,9 +624,9 @@ const API='/barriles/api';</script>
      rótulos iguales de un barril. Mismas medidas para que salga idéntica. */
   .rot-arriba { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: stretch; margin-bottom: 20px; }
   .rot-form { display: flex; flex-direction: column; gap: 12px; margin: 0; }
-  .rot-form label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; color: var(--vino-osc); }
-  .rot-form input { font-size: 1.25rem; padding: 10px 12px; border: 2px solid var(--gris); border-radius: 10px; font-weight: 400; }
-  .rot-form input:focus { border-color: var(--vino); outline: none; }
+  .rot-form label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; color: var(--txt); }
+  .rot-form input { font-size: 1.25rem; padding: 10px 12px; border: 1px solid var(--line); border-radius: 2px; font-weight: 400; background: var(--panel); }
+  .rot-form input:focus { border-color: var(--txt); outline: none; }
   #rotLote { font-size: 1.6rem; font-weight: 700; letter-spacing: 1px; }
   .rot-form .nota { margin: 0; min-height: 1.2em; }
   .rot-form .btn { align-self: flex-start; font-size: 1.1rem; padding: 12px 22px; }
@@ -603,20 +659,71 @@ const API='/barriles/api';</script>
   .con-vista { margin-left: auto; }
   .con-n { display: inline-block; min-width: 22px; padding: 0 7px; margin-left: 4px; border-radius: 999px; background: rgba(0,0,0,.07); font-size: .85rem; }
   .reg-mes.activo .con-n { background: rgba(255,255,255,.25); }
-  .con-cuenta { color: #6d6259; margin-bottom: 8px; }
-  .con-tabla-wrap { background: #fff; border: 1px solid var(--gris); border-radius: 12px; overflow: auto; }
+  .con-cuenta { color: var(--muted); margin-bottom: 8px; }
+  .con-tabla-wrap { background: var(--panel); border: none; border-top: 1px solid var(--rule); border-radius: 0; overflow: auto; }
   .con-tabla { width: 100%; border-collapse: collapse; font-size: 1rem; }
-  .con-tabla th { text-align: left; background: #f6f0f2; color: var(--vino-osc); padding: 10px 14px; font-size: .9rem; white-space: nowrap; }
-  .con-tabla td { padding: 9px 14px; border-top: 1px solid #f0ebe5; }
-  .con-tabla tr:hover td { background: #fdf9f6; }
+  .con-tabla th { text-align: left; background: var(--panel2); color: var(--muted); padding: 10px 14px; font-size: .76rem; font-weight: 500; text-transform: uppercase; letter-spacing: .8px; white-space: nowrap; }
+  .con-tabla td { padding: 9px 14px; border-top: 1px solid var(--line); }
+  .con-tabla tr:hover td { background: var(--accent-tinte); }
   .con-tabla .num { text-align: right; }
   .con-num { font-family: Consolas, 'Courier New', monospace; font-size: 1.05rem; font-weight: 700; background: none; border: none;
-             color: var(--vino-osc); cursor: pointer; padding: 0; text-decoration: underline dotted; }
+             color: var(--accent); cursor: pointer; padding: 0; text-decoration: underline dotted; }
   body.rol-operario .con-tabla .btn { padding: 5px 12px; font-size: .9rem; }
 
   /* Los rótulos van en A4 vertical con 14 mm de margen (como en Lotes), aunque la
      impresión del mapa sea apaisada: página con nombre propio. */
   @page rotulos { size: A4 portrait; margin: 14mm; }
+
+  /* ===== Celular (≤ 760 px) =====
+   * La página nunca se pasa del ancho: lo ancho se scrollea dentro de su
+   * recuadro. Campos a 16 px para que iOS no haga zoom. */
+  @media (max-width:760px){
+    main, body.rol-operario main, body.rol-programador main { padding: 14px 16px 48px; }
+    .app-barra { padding: 8px 16px; gap: 6px 12px; }
+    .app-barra .marca { font-size: 23px; }
+    #opTitulo { font-size: 22px; }
+    #opVistaSel { padding: 8px 16px; }
+    input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; }
+    button.btn, select, input:not([type=checkbox]):not([type=radio]) { min-height: var(--ci-tap); }
+    #escCabeceraCam, #barCabeceraCam, #paletCabeceraCam { flex-wrap: wrap; }
+    .reg-ficha { grid-template-columns: minmax(0, 1fr); }
+    .esc-tipo { min-width: 0; flex: 1 1 100%; }
+    .reg-barra { flex-wrap: wrap; }
+    .reg-buscador { min-width: 0; flex: 1 1 100%; }
+    .rot-arriba { grid-template-columns: minmax(0, 1fr); }
+    input[type=file] { max-width: 100%; }
+    #panel-inicio .ini-grandes { padding-inline: 12px; }
+    /* El 16px de arriba es un MINIMO (que iOS no haga zoom), no un techo: estos
+       campos ya eran más grandes a propósito y lo siguen siendo en celular.
+       Especificidad igualada a la regla general (0,2,1) duplicando la clase,
+       para ganarle por venir después en la cascada (si no, el :not():not()
+       de la regla general le sigue ganando aunque esté antes en el archivo). */
+    .cam-tipear.cam-tipear input { font-size: 1.3rem; }
+    .reg-buscador.reg-buscador input { font-size: 1.35rem; }
+    .rot-form.rot-form input { font-size: 1.25rem; }
+  }
+  /* ===== Pantallas táctiles: blancos de 44 px. Con mouse no cambia nada. ===== */
+  @media (pointer:coarse){
+    .esc-quitar { min-width: var(--ci-tap); min-height: var(--ci-tap); margin-left: 12px; }
+    .esc-hist-btn { min-width: var(--ci-tap); min-height: var(--ci-tap); margin: 2px 4px; }
+    button.btn, button.btn.marca, .btn-rev, #navSubProg button, #mapaTipoSel button, #opVistaSel button, .reg-mes, .reg-barril,
+    .tabs button[data-grupo], .mas-btn, .mas-menu button, #chipModoLote, .ped-cerrar, .link-rev, .reg-link, .con-num, .cam-btn-rotulo,
+    .cam-tipear button, .leyenda .item, .resultado-busqueda .item-resultado { min-height: var(--ci-tap); }
+    body.rol-operario .reg-acciones .btn, body.rol-operario .con-tabla .btn { min-height: var(--ci-tap); }
+    .check-revisar input, #toggleModoLote input { width: 24px; height: 24px; }
+  }
+
+  /* ---- Papel igual que antes de la Etapa 3 de la estética (2026-10-19) ----
+   * La hoja del mapa (#areaImpresion) y el Registro impreso heredan la letra,
+   * el fondo crema (se imprime: print-color-adjust exact) y el título en
+   * negrita de la pantalla de antes. La pantalla cambia de estilo; el papel no.
+   * :where() deja la especificidad en 0 para que el @media print de abajo siga
+   * ganando donde se pisan. Las reglas de pantalla nuevas van ANTES de este
+   * bloque. Lo vigila test/barriles-papel-intacto.test.mjs. */
+  @media print {
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--sem-crema); color: #2b2b2b; }
+    :where(#panel-registro) h2 { font-family: 'Segoe UI', Arial, sans-serif; font-weight: bold; line-height: normal; }
+  }
 
   /* ===== Impresión: versión armada en #areaImpresion, B&N, boxes anchos en 2 tiras ===== */
   .solo-impresion { display: none; }
@@ -684,37 +791,53 @@ const API='/barriles/api';</script>
 <body>
 <script>/* El rol, antes de dibujar nada: decide qué barra y qué pantalla se ven primero. */
 document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-programador' : 'rol-operario');</script>
-<header>
-  <h1>🍷 Mapa de Barriles</h1>
-  <span class="insignia-sync" id="insigniaSync" title="Modo de datos">⏳</span>
-  <span class="estado-datos" id="estadoDatos">Sin inventario cargado</span>
-  <!-- El interruptor de "Modo por lote" vive en Administrar → Importar y modo; acá
-       queda solo el aviso de que está prendido (se toca y lleva al interruptor). -->
-  <button type="button" id="chipModoLote" title="El mapa se está cargando por número de lote. Tocá para ir al interruptor." onclick="progIr('datos')">🏷️ Modo por lote</button>
+<header class="app-barra" id="barraBarriles">
+  <span class="marca">Barriles</span>
+  <!-- Programador: cuatro grupos a la vista y Administrar en Más (como Prensas).
+       Los grupos y sus sub-pestañas están en PROG_GRUPOS (script). -->
+  <nav class="tabs" id="navProgramador" aria-label="Pantallas">
+    <button type="button" data-grupo="inicio" class="activo">Inicio</button>
+    <button type="button" data-grupo="barriles">Barriles</button>
+    <button type="button" data-grupo="mapa">Mapa</button>
+    <button type="button" data-grupo="imprimir">Imprimir<span class="prog-cuenta" id="progCuentaPedidos"></span></button>
+    <div class="mas" id="masWrap">
+      <button type="button" class="mas-btn" id="masBtn" aria-haspopup="true" aria-expanded="false" aria-controls="masMenu">Más</button>
+      <div class="mas-menu" id="masMenu">
+        <div class="mas-angosto">
+          <button type="button" data-grupo="inicio">Inicio</button>
+          <button type="button" data-grupo="barriles">Barriles</button>
+          <button type="button" data-grupo="mapa">Mapa</button>
+          <button type="button" data-grupo="imprimir">Imprimir</button>
+        </div>
+        <div class="mas-grupo">Administrar</div>
+        <button type="button" data-sub="datos">Importar y modo</button>
+        <button type="button" data-sub="boxes">Boxes y palets</button>
+        <button type="button" data-sub="respaldos">Respaldos</button>
+        <button type="button" data-sub="celular">Celular</button>
+      </div>
+    </div>
+  </nav>
+  <!-- Operario: sin pestañas. Se entra por la portada (#panel-inicio); esto
+       solo dice dónde estás y cómo volver. -->
+  <nav id="navOperario" aria-label="Volver al inicio">
+    <button type="button" id="opInicio" data-op="inicio">← Inicio</button>
+    <span id="opTitulo"></span>
+  </nav>
+  <div class="right">
+    <!-- El interruptor de "Modo por lote" vive en Administrar → Importar y modo; acá
+         queda solo el aviso de que está prendido (se toca y lleva al interruptor). -->
+    <button type="button" id="chipModoLote" title="El mapa se está cargando por número de lote. Tocá para ir al interruptor." onclick="progIr('datos')">Modo por lote</button>
+    <span class="insignia-sync" id="insigniaSync" data-tipo="" title="Modo de datos">Conectando…</span>
+    <span class="estado-datos" id="estadoDatos">Sin inventario cargado</span>
+  </div>
+  <div id="navSubProg"></div>
+  <p class="op-ayuda" id="opAyuda"></p>
 </header>
 <div id="avisoSoloLectura" role="status">👁 <b>Solo lectura:</b> tu usuario puede consultar el mapa, el inventario y las órdenes, pero no cargar cambios. Si necesitás cargar, pedile a un administrador permiso de edición.</div>
-<!-- Programador (2026-10-06): cinco grupos en vez de nueve pestañas sueltas; cada
-     grupo tiene sus sub-pestañas en #navSubProg. Los grupos y las sub-pestañas
-     están en PROG_GRUPOS (script); las pantallas son las mismas de siempre. -->
-<nav id="navProgramador">
-  <button data-grupo="inicio" class="activo">🏠 Inicio</button>
-  <button data-grupo="barriles">🛢️ Barriles</button>
-  <button data-grupo="mapa">🗺️ Mapa</button>
-  <button data-grupo="imprimir">🏷️ Imprimir<span class="prog-cuenta" id="progCuentaPedidos"></span></button>
-  <button data-grupo="admin">⚙️ Administrar</button>
-</nav>
-<div id="navSubProg"></div>
-<!-- Operario: ya no hay pestañas. Se entra por la portada (#panel-inicio) y esta
-     barra solo dice dónde estás y cómo volver. -->
-<nav id="navOperario">
-  <button id="opInicio" data-op="inicio">← Inicio</button>
-  <span id="opTitulo"></span>
-  <span id="opAyuda"></span>
-</nav>
 <div id="opVistaSel">
-  <span id="opVistaLabel" style="font-size:.85rem; color:#6b1f3a; font-weight:600;">Ver y cargar en:</span>
-  <button data-opvista="mapa" class="activo">🗺️ Mapa 2D</button>
-  <button data-opvista="mapa3d">🧊 Vista 3D</button>
+  <span id="opVistaLabel">Ver y cargar en:</span>
+  <button type="button" data-opvista="mapa" class="activo">Mapa 2D</button>
+  <button type="button" data-opvista="mapa3d">Vista 3D</button>
 </div>
 <main>
   <!-- ============ INICIO DEL PROGRAMADOR ============
@@ -766,7 +889,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       <div class="tarjeta rot-form">
         <label>Lote<input type="text" id="rotLote" inputmode="numeric" autocomplete="off" placeholder="ej. 26124"></label>
         <label>Título del lote<input type="text" id="rotTitulo" autocomplete="off" placeholder="se completa solo desde Lotes"></label>
-        <label>Cantidad de barriles<input type="number" id="rotCantidad" min="1" max="500" step="1"></label>
+        <label>Cantidad de barriles<input type="number" id="rotCantidad" min="1" max="500" step="1" inputmode="numeric"></label>
         <p class="nota" id="rotNota"></p>
         <button class="btn" id="rotImprimir">🖨️ Imprimir rótulos</button>
       </div>
@@ -826,7 +949,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
     </details>
 
     <!-- ---------- asociar vasija con lote (sirve para barricas, vasijas y tanques) ---------- -->
-    <div id="barResumen" style="display:none; background:#e6f4e6; border:2px solid var(--ok); border-radius:12px; padding:14px; margin-bottom:16px; text-align:center;"></div>
+    <div id="barResumen" style="display:none; background:#e6f4e6; border:2px solid var(--sem-ok); border-radius:12px; padding:14px; margin-bottom:16px; text-align:center;"></div>
     <!-- El programador ve esta tarjeta y la lista en sub-pestañas distintas
          (Barriles → Asociar vasija / Inventario); el operario, las dos juntas. -->
     <div class="tarjeta tarjeta-asociar">
@@ -841,7 +964,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       <div class="fila-flex" style="margin-top:12px; align-items:flex-end;">
         <label>Vasija: <input type="text" id="barInputTanque" placeholder="pistola o a mano" style="width:150px;" autocomplete="off" inputmode="numeric"></label>
         <label>Lote: <input type="text" id="barInputLote" placeholder="ej: 25006" style="width:130px;" autocomplete="off"></label>
-        <button class="btn" id="barBtnAsociar" style="background:var(--ok);">✓ Asociar</button>
+        <button class="btn" id="barBtnAsociar" style="background:var(--sem-ok); border-color:var(--sem-ok); color:#fff;">✓ Asociar</button>
         <button class="btn sec" id="barBtnVacia" title="la vasija quedó vacía">⊘ Vacía</button>
       </div>
       <div id="barFeedback" style="display:none; margin-top:10px;"></div>
@@ -939,7 +1062,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
         <label>Filas (altura): <input type="number" id="nuevoBoxFilas" value="5" min="1" max="10" style="width:60px;"></label>
         <button class="btn" id="btnAgregarBox">＋ Agregar box</button>
       </div>
-      <table class="datos" id="tablaBoxes" style="margin-top:12px;"></table>
+      <div class="scroll-x"><table class="datos" id="tablaBoxes" style="margin-top:12px;"></table></div>
     </div>
     <div class="tarjeta">
       <h2>Configuración de palets (tanques de 50 L)</h2>
@@ -949,7 +1072,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
         <label>Columnas: <input type="number" id="nuevoPaletCols" value="9" min="1" max="30" style="width:70px;"></label>
         <button class="btn" id="btnAgregarPalet">＋ Agregar palet</button>
       </div>
-      <table class="datos" id="tablaPalets" style="margin-top:12px;"></table>
+      <div class="scroll-x"><table class="datos" id="tablaPalets" style="margin-top:12px;"></table></div>
     </div>
   </section>
 
@@ -1007,7 +1130,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
              plan B si se rompe una, pero al operario le sacaba foco del casillero. -->
         <button class="btn solo-prog" id="escBtnCamara">📱 Escanear con cámara</button>
         <button class="btn sec" id="escBtnDeshacer">↩ Quitar último</button>
-        <button class="btn" id="escBtnGuardar" style="background:var(--ok);">✓ Guardar orden</button>
+        <button class="btn" id="escBtnGuardar" style="background:var(--sem-ok); border-color:var(--sem-ok); color:#fff;">✓ Guardar orden</button>
         <button class="btn sec" id="escBtnCancelar">✕ Cancelar</button>
       </div>
       <div id="escFeedback" style="display:none;"></div>
@@ -1052,10 +1175,10 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
     <h2>🏷️ Pedidos de rótulos</h2>
     <p class="nota" style="margin-bottom:10px;">Pedidos de reimpresión creados desde la cámara. Los atiende quien esté en la PC con la impresora de etiquetas. Tocá <b>✓ Impreso</b> cuando lo imprimiste.</p>
     <h3>Pendientes</h3>
-    <table class="datos" id="pedidosPendientes"></table>
+    <div class="scroll-x"><table class="datos" id="pedidosPendientes"></table></div>
     <details style="margin-top:16px;">
-      <summary style="cursor:pointer; font-weight:600; color:var(--vino);">Ya impresos</summary>
-      <table class="datos" id="pedidosHechos" style="margin-top:8px;"></table>
+      <summary style="cursor:pointer; font-weight:600; color:var(--accent);">Ya impresos</summary>
+      <div class="scroll-x"><table class="datos" id="pedidosHechos" style="margin-top:8px;"></table></div>
     </details>
   </section>
 
@@ -1079,12 +1202,12 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
     </details>
     <div class="tarjeta">
       <div id="mapaTipoSel">
-        <button type="button" data-mapatipo="barriles" class="activo">🛢️ Barriles</button>
-        <button type="button" data-mapatipo="tanques">🧴 Tanques</button>
+        <button type="button" data-mapatipo="barriles" class="activo">Barriles</button>
+        <button type="button" data-mapatipo="tanques">Tanques</button>
       </div>
       <h2 class="op-buscar-only">Buscar en el mapa</h2>
       <div class="fila-flex">
-        <input type="text" id="buscarMapa" class="op-buscar-only" placeholder="Lotes o números (separá con coma)…" style="width:280px;">
+        <input type="text" id="buscarMapa" class="op-buscar-only" placeholder="Lotes o números (separá con coma)…" style="width:280px; max-width:100%;">
         <button class="btn sec op-buscar-only" id="btnLimpiarBusqueda">✕ Limpiar</button>
         <button class="btn" id="btnExportarMapa">⬇ Exportar mapa a Excel</button>
         <button class="btn sec" id="btnImprimir">🖨 Imprimir</button>
@@ -1095,10 +1218,10 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
         <summary id="resumenLeyenda">📋 Ver lotes en existencia</summary>
         <div class="leyenda" id="leyendaLotes"></div>
       </details>
-      <p class="nota" id="nota2dLibre" style="margin-top:6px; display:none; color:var(--vino-osc); font-weight:600;">👆 Modo libre activo: tocá la celda (barril o hueco) donde querés cargar y después leé con la pistola o la cámara.</p>
+      <p class="nota" id="nota2dLibre" style="margin-top:6px; display:none; color:var(--txt); font-weight:600;">👆 Modo libre activo: tocá la celda (barril o hueco) donde querés cargar y después leé con la pistola o la cámara.</p>
     </div>
-    <div class="tarjeta barra-libre" id="barraLibre2d" style="display:none; position:sticky; top:6px; z-index:5;">
-      <div class="dest-libre" id="destinoLibre2d" style="font-weight:700; color:var(--vino-osc);">Tocá una celda en el mapa para elegir dónde cargar. 👆</div>
+    <div class="tarjeta barra-libre" id="barraLibre2d" style="display:none; position:sticky; top:calc(var(--ciw-h,0px) + var(--barriles-h,0px) + 6px); z-index:5;">
+      <div class="dest-libre" id="destinoLibre2d" style="font-weight:700; color:var(--txt);">Tocá una celda en el mapa para elegir dónde cargar. 👆</div>
       <div class="fila-flex" style="margin-top:10px; align-items:center;">
         <label class="pincel-libre" style="display:none; align-items:center; gap:6px; white-space:nowrap;"><input type="checkbox" class="chk-pincel"> 🖌 Pincel</label>
         <input type="text" class="inp-libre" id="inputScanLibre2d" placeholder="Escaneá con la pistola…" autocomplete="off" style="flex:1; min-width:160px;" disabled>
@@ -1107,8 +1230,8 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       </div>
       <div class="fb-libre" id="ultimoScanLibre2d" style="display:none; margin-top:10px;"></div>
     </div>
-    <div class="tarjeta" id="barraTanque2d" style="display:none; position:sticky; top:6px; z-index:5;">
-      <div id="destinoTanque2d" style="font-weight:700; color:var(--vino-osc);">Tocá un casillero del palet para elegir dónde cargar. 👆</div>
+    <div class="tarjeta" id="barraTanque2d" style="display:none; position:sticky; top:calc(var(--ciw-h,0px) + var(--barriles-h,0px) + 6px); z-index:5;">
+      <div id="destinoTanque2d" style="font-weight:700; color:var(--txt);">Tocá un casillero del palet para elegir dónde cargar. 👆</div>
       <div class="fila-flex" style="margin-top:10px; align-items:center;">
         <input type="text" id="inputTanque2d" placeholder="Escaneá con la pistola o tipeá el tanque…" autocomplete="off" style="flex:1; min-width:160px;" disabled>
         <button class="btn" id="btnCamaraTanque2d" disabled>📱 Escanear con cámara</button>
@@ -1136,12 +1259,12 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       <h2>Vista 3D <span class="nota">(prueba)</span></h2>
       <div class="fila-flex">
         <label>Box: <select id="box3d"></select></label>
-        <input type="text" id="buscar3d" placeholder="Lotes o números (separá con coma)…" style="width:260px;">
+        <input type="text" id="buscar3d" placeholder="Lotes o números (separá con coma)…" style="width:260px; max-width:100%;">
         <button class="btn sec" id="btnReset3d">🎯 Centrar cámara</button>
         <button class="btn" id="btnModoLibre">👆 Cargar tocando</button>
       </div>
       <p class="nota" id="nota3dNormal" style="margin-top:6px;">Arrastrá para girar · rueda del mouse para acercar · tocá un barril para ver su ficha. En el celular: un dedo gira, dos dedos zoom.</p>
-      <p class="nota" id="nota3dLibre" style="margin-top:6px; display:none; color:var(--vino-osc); font-weight:600;">👆 Modo libre activo: tocá el barril o el hueco donde querés cargar y después leé con la pistola o la cámara. Un dedo gira la vista; dos dedos, zoom.</p>
+      <p class="nota" id="nota3dLibre" style="margin-top:6px; display:none; color:var(--txt); font-weight:600;">👆 Modo libre activo: tocá el barril o el hueco donde querés cargar y después leé con la pistola o la cámara. Un dedo gira la vista; dos dedos, zoom.</p>
     </div>
     <div class="tarjeta" style="padding:0; overflow:hidden;">
       <div id="cont3d">
@@ -1150,7 +1273,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       </div>
     </div>
     <div class="tarjeta barra-libre" id="barraLibre" style="display:none;">
-      <div class="dest-libre" id="destinoLibre" style="font-weight:700; color:var(--vino-osc);">Tocá un barril o un hueco en el mapa para elegir dónde cargar. 👆</div>
+      <div class="dest-libre" id="destinoLibre" style="font-weight:700; color:var(--txt);">Tocá un barril o un hueco en el mapa para elegir dónde cargar. 👆</div>
       <div class="fila-flex" style="margin-top:10px; align-items:center;">
         <label class="pincel-libre" style="display:none; align-items:center; gap:6px; white-space:nowrap;"><input type="checkbox" class="chk-pincel"> 🖌 Pincel</label>
         <input type="text" class="inp-libre" id="inputScanLibre" placeholder="Escaneá con la pistola…" autocomplete="off" style="flex:1; min-width:160px;" disabled>
@@ -1249,7 +1372,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
   <div id="pieCamara">
     <div class="res" id="resCamara">Apuntá el recuadro amarillo al código de barras…</div>
     <div class="cam-tipear" id="posTipearBox">
-      <input type="text" id="posTipearInput" placeholder="Número del código" autocomplete="off">
+      <input type="text" id="posTipearInput" placeholder="Número del código" autocomplete="off" inputmode="numeric">
       <button type="button" class="ok" id="posTipearOk">✓</button>
       <button type="button" class="cancel" id="posTipearCancel">✕</button>
     </div>
@@ -1277,7 +1400,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
     <div class="res" id="escResCam">Apuntá el recuadro amarillo al código de barras…</div>
     <div class="lista" id="escListaCam"></div>
     <div class="cam-tipear" id="escTipearBox">
-      <input type="text" id="escTipearInput" placeholder="Número del código" autocomplete="off">
+      <input type="text" id="escTipearInput" placeholder="Número del código" autocomplete="off" inputmode="numeric">
       <button type="button" class="ok" id="escTipearOk">✓</button>
       <button type="button" class="cancel" id="escTipearCancel">✕</button>
     </div>
@@ -1303,7 +1426,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       <input type="text" id="barLoteInputCam" placeholder="Número de lote" autocomplete="off">
     </div>
     <div class="cam-tipear" id="barTipearBox">
-      <input type="text" id="barTipearInput" placeholder="Número de la vasija" autocomplete="off">
+      <input type="text" id="barTipearInput" placeholder="Número de la vasija" autocomplete="off" inputmode="numeric">
       <button type="button" class="ok" id="barTipearOk">✓</button>
       <button type="button" class="cancel" id="barTipearCancel">✕</button>
     </div>
@@ -1490,9 +1613,12 @@ const MSG_SOLO_LECTURA = 'Tu usuario es de solo lectura en el Mapa de Barriles: 
 // "pendiente" para siempre y la pantalla mostraría algo que el servidor no
 // tiene. Se avisa y se vuelve a la copia del servidor. El aviso no se repite en
 // ráfaga (una acción puede llamar a guardar() varias veces seguidas).
-let avisoLecturaTs = 0;
+let avisoLecturaTs = 0, avisoLecturaAbierto = false;
 async function descartarPorSoloLectura() {
-  if (Date.now() - avisoLecturaTs > 4000) { avisoLecturaTs = Date.now(); alert(MSG_SOLO_LECTURA); }
+  if (!avisoLecturaAbierto && Date.now() - avisoLecturaTs > 4000) {
+    avisoLecturaTs = Date.now(); avisoLecturaAbierto = true;
+    dlgInformar({ titulo: 'Solo lectura', texto: MSG_SOLO_LECTURA }).finally(() => { avisoLecturaAbierto = false; });
+  }
   await bajarYAdoptar();
 }
 
@@ -1510,8 +1636,10 @@ async function pasarASoloLectura() {
   const habiaPendiente = pendienteLocal;
   soloLectura = true;
   aplicarSoloLectura();
-  alert('El servidor no acepta cambios de tu usuario: quedó de solo lectura en el Mapa de Barriles.' +
-    (habiaPendiente ? '\n\nLo que cargaste desde la última sincronización NO se guardó. Pedile a un administrador permiso de edición.' : ''));
+  avisoLecturaAbierto = true;   // mientras esta noticia está abierta, descartarPorSoloLectura no apila otra encima
+  dlgInformar({ titulo: 'Quedaste en solo lectura', texto: 'El servidor no acepta cambios de tu usuario: quedó de solo lectura en el Mapa de Barriles.' +
+    (habiaPendiente ? '\n\nLo que cargaste desde la última sincronización NO se guardó. Pedile a un administrador permiso de edición.' : '') })
+    .finally(() => { avisoLecturaAbierto = false; });
   await bajarYAdoptar();
 }
 
@@ -1557,8 +1685,11 @@ window.addEventListener('beforeunload', e => {
 
 function dormir(ms) { return new Promise(ok => setTimeout(ok, ms)); }
 
-// Texto del aviso cuando el servidor frena un borrado grande (respuesta 412).
-function msgPerdidas(info) {
+// Pregunta cuando el servidor frena un borrado grande (respuesta 412).
+// "Descartar lo mío" llama a adoptar(): descarta lo que esta pestaña no llegó a
+// subir y baja la copia del servidor. Escape = lo mismo (igual que el Cancelar
+// del confirm() de antes).
+function confirmacionPerdidas(info) {
   const p = info.perdidas || { celdas: info.borradas || 0 };
   const partes = [];
   if (p.celdas) partes.push(p.celdas + ' casillero(s) del mapa');
@@ -1570,11 +1701,12 @@ function msgPerdidas(info) {
   if (p.tanques) partes.push(p.tanques + ' escaneo(s) viejos');
   if (p.revisiones) partes.push(p.revisiones + ' pendiente(s) viejos');
   if (p.ediciones) partes.push(p.ediciones + ' corrección(es) viejas');
-  // Responder "No" llama a adoptar(): descarta lo que esta pestaña no llegó a
-  // subir y baja la copia del servidor. Sin decirlo, parece "no borres".
-  return '⚠ Este cambio borra ' + (partes.join(', ') || 'datos ya cargados') +
-    '.\n\nSi elegís Aceptar, se borran.\nSi elegís Cancelar, se descarta lo que cargaste y todavía no se subió, y se baja de nuevo la copia del servidor.' +
-    '\n\n¿Continuar de todos modos?';
+  return {
+    titulo: 'Este cambio borra datos',
+    texto: 'Borra ' + (partes.join(', ') || 'datos ya cargados') + '.\n\n' +
+      'Si era tu intención, borralos. Si no, se descarta lo que cargaste y todavía no se subió, y se baja de nuevo la copia del servidor.',
+    si: 'Borrar igual', no: 'Descartar lo mío', peligro: true,
+  };
 }
 function programarPush() { clearTimeout(pushTimer); pushTimer = setTimeout(push, 400); }
 
@@ -1608,9 +1740,16 @@ async function push(confirmar) {
       await sincronizar();      // otro escribió: fusionar lo nuestro sobre lo del servidor
       return;
     } else if (tipo === 'freno') {
+      // pushEnCurso sigue en true mientras se pregunta Y mientras se termina de
+      // descartar: si se baja antes, un guardar() de otra parte (la cámara, el
+      // escáner) programa un push con el estado que el usuario eligió tirar,
+      // llega un 412 de nuevo y abre una segunda pregunta encima.
+      const borrar = await dlgConfirmar(confirmacionPerdidas(r.datos || {}));
+      if (borrar) { pushEnCurso = false; await push(true); return; }
+      clearTimeout(pushTimer); pushTimer = null;   // no dejar un push ya programado con lo que se descarta
+      escOlvidarPendientes();                      // eligió descartar lo no subido
+      await bajarYAdoptar();   // no tira: atrapa adentro (ver bajarYAdoptar)
       pushEnCurso = false;
-      if (confirm(msgPerdidas(r.datos || {}))) await push(true);
-      else { escOlvidarPendientes(); await bajarYAdoptar(); }   // eligió descartar lo no subido
       return;
     } else if (tipo === 'ok' && versionDe(r.datos) !== null) {
       versionServidor = r.datos.version;
@@ -1728,9 +1867,10 @@ async function sincronizar() {
       const t = clasificarRespuesta(r.status);
       if (t === 'conflicto') { await dormir(esperaReintento(vuelta)); continue; }   // alguien escribió justo
       if (t === 'freno') {
-        if (confirm(msgPerdidas(r.datos || {}))) { confirmar = true; continue; }
+        if (await dlgConfirmar(confirmacionPerdidas(r.datos || {}))) { confirmar = true; continue; }
         escOlvidarPendientes();                    // eligió descartar lo no subido
-        adoptar(d); refrescarInsignia(); return;
+        await bajarYAdoptar();   // `d` es de esta vuelta: puede llevar minutos (las vueltas duermen entre 409); mejor bajar de nuevo
+        return;
       }
       if (t === 'ok' && versionDe(r.datos) !== null) {
         versionServidor = r.datos.version;
@@ -1844,18 +1984,19 @@ document.addEventListener('visibilitychange', () => {
 });
 
 const INSIGNIAS = {
-  ok: ['🔗 sincronizado', 'Conectado al servidor: laptop y celular comparten el mapa.'],
+  ok: ['Sincronizado', 'Conectado al servidor: laptop y celular comparten el mapa.'],
   // Antes la insignia decía "sincronizado" aunque hubiera cambios sin confirmar.
-  pendiente: ['⏫ guardando…', 'Hay cambios de esta pantalla que el servidor todavía no confirmó. No cierres ni recargues hasta que diga "sincronizado".'],
-  offline: ['⛔ sin conexión', 'Sin conexión con el servidor: no se pueden cargar cambios hasta que vuelva.'],
-  sesion: ['🔒 sesión cerrada', 'Tu sesión se cerró: iniciá sesión en otra pestaña y esta se reconecta sola.'],
-  lectura: ['👁 solo lectura', 'Tu usuario puede consultar el mapa, pero no cargar cambios.'],
+  pendiente: ['Guardando…', 'Hay cambios de esta pantalla que el servidor todavía no confirmó. No cierres ni recargues hasta que diga "sincronizado".'],
+  offline: ['Sin conexión', 'Sin conexión con el servidor: no se pueden cargar cambios hasta que vuelva.'],
+  sesion: ['Sesión cerrada', 'Tu sesión se cerró: iniciá sesión en otra pestaña y esta se reconecta sola.'],
+  lectura: ['Solo lectura', 'Tu usuario puede consultar el mapa, pero no cargar cambios.'],
 };
 function ponerInsignia(tipo) {
   const i = $('insigniaSync');
   if (!i) return;
   const [texto, titulo] = INSIGNIAS[tipo] || INSIGNIAS.offline;
   i.textContent = texto; i.title = titulo;
+  i.dataset.tipo = INSIGNIAS[tipo] ? tipo : 'offline';
 }
 // La insignia sale del estado, no de quién la llamó último: así no puede decir
 // "sincronizado" con algo pendiente.
@@ -1980,7 +2121,7 @@ function confirmarMigracion(usarEscaneo) {
   clearTimeout(pushTimer); pushTimer = null;
   push(true);
   dibujarResumenInv(); barSetContador();
-  alert(`✅ Listo. ${n} vasijas quedaron con fecha. Desde ahora gana lo último que pasó.`);
+  dlgAvisar(`Listo: ${n} vasijas quedaron con fecha. Desde ahora gana lo último que pasó.`, { tipo: 'ok', ms: 6000 });
 }
 
 // Las vasijas dadas de alta a mano tampoco se escriben sobre el inventario: como
@@ -2219,25 +2360,36 @@ function activarPanel(nombre) {
 // Cada sub-pestaña abre un panel de siempre (activarPanel). La clase prog-sub-*
 // del body dice cuál está abierta.
 const PROG_GRUPOS = {
-  inicio:   [['tablero', '🏠 Inicio']],
-  barriles: [['inventario', '📋 Inventario'], ['escaner', '🛢️ Llenado / vaciado'], ['registro', '📒 Registro']],
-  mapa:     [['mapa', '🗺️ Mapa'], ['mapa3d', '🧊 Vista 3D']],   // Reportes se sacó a pedido (2026-10-06)
-  imprimir: [['rotulos', '🏷️ Rótulos'], ['pedidos', '📨 Pedidos de rótulos']],
-  admin:    [['datos', '📥 Importar y modo'], ['boxes', '📦 Boxes y palets'], ['respaldos', '💾 Respaldos'], ['celular', '📱 Celular']],
+  inicio:   [['tablero', 'Inicio']],
+  barriles: [['inventario', 'Inventario'], ['escaner', 'Llenado / vaciado'], ['registro', 'Registro']],
+  mapa:     [['mapa', 'Mapa'], ['mapa3d', 'Vista 3D']],   // Reportes se sacó a pedido (2026-10-06)
+  imprimir: [['rotulos', 'Rótulos'], ['pedidos', 'Pedidos de rótulos']],
+  admin:    [['datos', 'Importar y modo'], ['boxes', 'Boxes y palets'], ['respaldos', 'Respaldos'], ['celular', 'Celular']],
 };
 const PROG_PANEL = { datos: 'admin-datos', respaldos: 'admin-respaldos' };   // el resto: mismo nombre
 const progUltima = {};   // grupo -> última sub-pestaña abierta, para volver a donde estaba
 let progSubActual = 'tablero';
 function progGrupoDe(sub) { return Object.keys(PROG_GRUPOS).find(g => PROG_GRUPOS[g].some(([s]) => s === sub)); }
-function progIr(sub) {
+// La pantalla queda en la URL (#registro, #mapa…; shared/pantalla-url.js): el F5
+// vuelve a ella y Atrás a la anterior (popstate, más abajo). El programador anota
+// la sub-pestaña; el operario, la sección (opSeccion).
+const PU = window.CIWPantalla;
+// Filtros que sobreviven al F5 en esta pestaña (shared/filtros-sesion.js).
+const FS = window.CIWFiltros;
+const fsLeer = (k, d) => FS ? FS.leer('barriles:' + k, d) : d;
+const fsGuardar = (k, v) => { if (FS) FS.guardar('barriles:' + k, v); };
+function progDeUrl() { return PU ? PU.pantallaDeHash(location.hash, Object.values(PROG_GRUPOS).flat().map(x => x[0])) : null; }
+// op.sinHistorial: no anotar en la URL (Atrás/Adelante, o al arrancar).
+function progIr(sub, op = {}) {
   const grupo = progGrupoDe(sub);
   if (!grupo) return;
   if (sesion && sesion.modo === 'libre' && sub !== progSubActual) salirModoLibre();
+  if (!op.sinHistorial && PU) PU.anotarPantalla(sub);
   progSubActual = sub; progUltima[grupo] = sub;
-  document.querySelectorAll('#navProgramador button[data-grupo]').forEach(b => b.classList.toggle('activo', b.dataset.grupo === grupo));
+  barraMarcar(grupo, sub);
   const subs = PROG_GRUPOS[grupo];
-  $('navSubProg').innerHTML = subs.length < 2 ? '' : subs.map(([s, t]) =>
-    `<button data-sub="${s}" class="${s === sub ? 'activo' : ''}">${t}${s === 'pedidos' ? '<span class="prog-cuenta" id="progSubCuentaPedidos"></span>' : ''}</button>`).join('');
+  $('navSubProg').innerHTML = (subs.length < 2 || grupo === 'admin') ? '' : subs.map(([s, t]) =>
+    `<button type="button" data-sub="${s}" class="${s === sub ? 'activo' : ''}">${t}${s === 'pedidos' ? '<span class="prog-cuenta" id="progSubCuentaPedidos"></span>' : ''}</button>`).join('');
   for (const ss of Object.values(PROG_GRUPOS).flat().map(x => x[0])) document.body.classList.toggle('prog-sub-' + ss, ss === sub);
   activarPanel(PROG_PANEL[sub] || sub);
   progContarPedidos();
@@ -2248,6 +2400,9 @@ document.querySelectorAll('#navProgramador button[data-grupo]').forEach(b => b.a
   progIr(progUltima[g] || PROG_GRUPOS[g][0][0]);
 }));
 $('navSubProg').addEventListener('click', e => { const b = e.target.closest('button[data-sub]'); if (b) progIr(b.dataset.sub); });
+document.querySelectorAll('#masMenu button[data-sub]').forEach(b => b.addEventListener('click', () => progIr(b.dataset.sub)));
+barraMontarMas();
+barraPublicarAlto();
 document.querySelectorAll('#panel-tablero button[data-sub]').forEach(b => b.addEventListener('click', () => progIr(b.dataset.sub)));
 
 function progContarPedidos() {
@@ -2414,6 +2569,26 @@ function rolDeLaPlataforma() {
   const r = (window.CIW && window.CIW.rol) || '';
   return r === 'admin' ? 'programador' : 'operario';
 }
+// Operario: se entra por la portada; cada botón abre una sección. Cargar y
+// Buscar reusan los paneles de Mapa y Vista 3D; Registro es propio.
+// La barra de arriba (#navOperario) solo dice dónde estás y cómo volver.
+const OP_TITULOS = {
+  inicio: ['', ''],
+  cargar: ['Cargar box', 'Tocá la posición en el mapa y después leé el barril con la pistola.'],
+  buscar: ['Dónde está', 'Escribí un barril o un lote y se marca en el mapa.'],
+  escaner: ['Llenado / vaciado', 'Elegí la operación, completá la OT y el lote, y leé los barriles.'],
+  registro: ['Registro', 'Todo lo que se cargó, por mes. Buscá por lote, barril, OT o fecha.'],
+  rotulos: ['Rótulos', 'Escribí el lote: el título y la cantidad se completan solos. Mirá el color de etiqueta antes de imprimir.'],
+  consulta: ['Inventario', 'Cómo está cada barril hoy. Buscá un barril, un lote o una marca. Es solo para consultar.'],
+  inventario: ['Asociar vasija con lote', 'Leé la vasija y escribí el lote que tiene.'],
+  pedidos: ['Pedidos de rótulos', 'Rótulos pedidos para reimprimir.'],
+  celular: ['Conectar teléfono', 'Escaneá el código con el celular para usarlo como lector.'],
+};
+// Secciones del operario → sub-pestaña del programador. El Registro, la ficha del
+// barril y el Inventario de consulta llaman a opSeccion; al programador eso lo
+// tiene que llevar a su propia barra.
+const OP_A_PROG = { inicio: 'tablero', cargar: 'mapa', buscar: 'mapa', escaner: 'escaner', registro: 'registro',
+  rotulos: 'rotulos', consulta: 'inventario', inventario: 'inventario', pedidos: 'pedidos', celular: 'celular' };
 let rol = null, opVistaActual = 'mapa';
 // Clase puesta ya, antes de que termine de cargar: si no, un editor vería un
 // instante la barra del programador.
@@ -2421,16 +2596,31 @@ document.body.classList.add(rolDeLaPlataforma() === 'programador' ? 'rol-program
 // Lo mismo con el solo lectura: que el lector no vea un instante los botones de carga.
 if (soloLectura) document.body.classList.add('solo-lectura');
 // La pantalla de entrada, también ya: no esperar a los datos del servidor.
-if (rolDeLaPlataforma() === 'operario') { document.body.classList.add('op-inicio'); activarPanel('inicio'); }
+if (rolDeLaPlataforma() === 'operario') {
+  // La sección de la URL (F5 en otra) se marca ya, sin esperar a los datos:
+  // solo clase, panel y título; el dibujo con datos lo hace aplicarRol.
+  const sec = (PU && PU.pantallaDeHash(location.hash, Object.keys(OP_TITULOS))) || 'inicio';
+  if (sec === 'inicio') activarPanel('inicio');
+  else {
+    document.body.classList.add('op-' + sec);
+    $('panel-' + (sec === 'cargar' || sec === 'buscar' ? 'mapa' : sec)).classList.add('activo');
+    $('opTitulo').textContent = OP_TITULOS[sec][0];
+    $('opAyuda').textContent = OP_TITULOS[sec][1];
+  }
+  if (sec === 'inicio') document.body.classList.add('op-inicio');
+}
 else {
-  // Solo se marca: el Inicio se dibuja en aplicarRol, cuando ya están los datos.
-  $('panel-tablero').classList.add('activo');
-  document.body.classList.add('prog-sub-tablero');
+  // Solo se marca: se dibuja en aplicarRol, cuando ya están los datos. Es el
+  // Inicio, o la sub-pestaña de la URL si se apretó F5 en otra.
+  progSubActual = progDeUrl() || 'tablero';
+  $('panel-' + (PROG_PANEL[progSubActual] || progSubActual)).classList.add('activo');
+  document.body.classList.add('prog-sub-' + progSubActual);
   // La ayuda del mapa arranca abierta para el operario; el programador ya la conoce.
   const ayudaMapa = document.querySelector('#panel-mapa > details.ayuda');
   if (ayudaMapa) ayudaMapa.open = false;
 }
 document.body.classList.add('panel-elegido');
+if (PU) PU.restaurada();
 try { localStorage.removeItem('mapaBarriles_rol'); } catch (e) {}   // el rol que se elegía a mano
 
 function aplicarRol(r) {
@@ -2444,42 +2634,38 @@ function aplicarRol(r) {
   // o al cambiar de rol quedan los de antes.
   escDibujarHistorial();
   // Si el operario ya tocó un botón mientras cargaba, no lo devolvemos a la portada.
-  if (r === 'operario') { if ($('panel-inicio').classList.contains('activo')) opSeccion('inicio'); }
-  // Programador: lo vuelve a abrir donde está (al arrancar, el Inicio) para que se
-  // dibuje con los datos y quede marcada la pestaña.
-  else progIr(progSubActual);
+  // Si no, va a la sección de la URL (F5 en otra) o a la portada.
+  if (r === 'operario') {
+    // A la portada, o a la sección de la URL que el arranque ya marcó (F5 en otra).
+    const s = opDeUrl();
+    if ($('panel-inicio').classList.contains('activo') || document.body.classList.contains('op-' + s)) {
+      opSeccion(s || 'inicio', { sinHistorial: true });
+    }
+  }
+  // Programador: lo vuelve a abrir donde está (al arrancar, el Inicio o la
+  // sub-pestaña de la URL) para que se dibuje con los datos y quede marcada la pestaña.
+  else progIr(progSubActual, { sinHistorial: true });
   revisarMigracion();
   revisarCorreccionFechas();
 }
 
-// Operario: se entra por la portada; cada botón abre una sección. Cargar y
-// Buscar reusan los paneles de Mapa y Vista 3D; Registro es propio.
-// La barra de arriba (#navOperario) solo dice dónde estás y cómo volver.
-const OP_TITULOS = {
-  inicio: ['', ''],
-  cargar: ['📦 Cargar box', 'Tocá la posición en el mapa y después leé el barril con la pistola.'],
-  buscar: ['🔍 Dónde está', 'Escribí un barril o un lote y se marca en el mapa.'],
-  escaner: ['🛢️ Llenado / vaciado', 'Elegí la operación, completá la OT y el lote, y leé los barriles.'],
-  registro: ['📒 Registro', 'Todo lo que se cargó, por mes. Buscá por lote, barril, OT o fecha.'],
-  rotulos: ['🏷️ Rótulos', 'Escribí el lote: el título y la cantidad se completan solos. Mirá el color de etiqueta antes de imprimir.'],
-  consulta: ['📋 Inventario', 'Cómo está cada barril hoy. Buscá un barril, un lote o una marca. Es solo para consultar.'],
-  inventario: ['🧾 Asociar vasija con lote', 'Leé la vasija y escribí el lote que tiene.'],
-  pedidos: ['🏷️ Pedidos de rótulos', 'Rótulos pedidos para reimprimir.'],
-  celular: ['📱 Conectar teléfono', 'Escaneá el código con el celular para usarlo como lector.'],
-};
-// Secciones del operario → sub-pestaña del programador. El Registro, la ficha del
-// barril y el Inventario de consulta llaman a opSeccion; al programador eso lo
-// tiene que llevar a su propia barra.
-const OP_A_PROG = { inicio: 'tablero', cargar: 'mapa', buscar: 'mapa', escaner: 'escaner', registro: 'registro',
-  rotulos: 'rotulos', consulta: 'inventario', inventario: 'inventario', pedidos: 'pedidos', celular: 'celular' };
-function opSeccion(sec) {
+function opDeUrl() { return PU ? PU.pantallaDeHash(location.hash, Object.keys(OP_TITULOS)) : null; }
+// op.sinHistorial: no anotar en la URL (Atrás/Adelante, o al arrancar).
+function opSeccion(sec, op = {}) {
   if (rol === 'programador' || (rol === null && document.body.classList.contains('rol-programador'))) {
-    if (sec === 'buscar') { $('buscarMapa').value = ''; if ($('buscar3d')) $('buscar3d').value = ''; }
-    progIr(OP_A_PROG[sec] || 'tablero');
+    // op.sinHistorial: restaurando pantalla (F5, Atrás/Adelante), no una navegación nueva del
+    // usuario; no vaciar el buscador, al contrario, reaplicar lo que ya estaba guardado.
+    if (sec === 'buscar' && !op.sinHistorial) {
+      $('buscarMapa').value = ''; fsGuardar('mapa:busca', '');
+      if ($('buscar3d')) { $('buscar3d').value = ''; fsGuardar('mapa3d:busca', ''); }
+    }
+    progIr(OP_A_PROG[sec] || 'tablero', op);
+    if (sec === 'buscar' && op.sinHistorial && $('buscarMapa').value) aplicarBusqueda();
     return;
   }
   if (sesion && sesion.modo === 'libre') salirModoLibre();   // no mezclar cargar y buscar
   if (!OP_TITULOS[sec]) sec = 'inicio';
+  if (!op.sinHistorial && PU) PU.anotarPantalla(sec);
   for (const s of Object.keys(OP_TITULOS)) document.body.classList.toggle('op-' + s, s === sec);
   $('opTitulo').textContent = OP_TITULOS[sec][0];
   $('opAyuda').textContent = OP_TITULOS[sec][1];
@@ -2487,7 +2673,16 @@ function opSeccion(sec) {
   if (lbl) lbl.textContent = sec === 'buscar' ? 'Ver en:' : 'Ver y cargar en:';
   if (sec === 'cargar') opVista(opVistaActual);
   // Buscar arranca en Mapa 2D (el que se imprime); el selector permite pasar a 3D.
-  else if (sec === 'buscar') { $('buscarMapa').value = ''; if ($('buscar3d')) $('buscar3d').value = ''; opVista('mapa'); }
+  // op.sinHistorial: restaurando pantalla (F5, Atrás/Adelante): no vaciar el buscador,
+  // reaplicar lo que ya estaba guardado una vez que el mapa está a la vista.
+  else if (sec === 'buscar') {
+    if (!op.sinHistorial) {
+      $('buscarMapa').value = ''; fsGuardar('mapa:busca', '');
+      if ($('buscar3d')) { $('buscar3d').value = ''; fsGuardar('mapa3d:busca', ''); }
+    }
+    opVista('mapa');
+    if (op.sinHistorial && $('buscarMapa').value) aplicarBusqueda();
+  }
   else activarPanel(sec);   // inicio, registro, escaner, inventario, pedidos, celular
   window.scrollTo(0, 0);
 }
@@ -2498,6 +2693,12 @@ function opVista(vista) {
 }
 
 document.querySelectorAll('#navOperario button[data-op]').forEach(b => b.addEventListener('click', () => opSeccion(b.dataset.op)));
+// Atrás / Adelante del navegador: la URL dice a qué pantalla volver; sin hash es
+// la de entrada. Antes de aplicarRol (sin datos todavía) no se mueve.
+window.addEventListener('popstate', () => {
+  if (rol === 'programador') progIr(progDeUrl() || 'tablero', { sinHistorial: true });
+  else if (rol === 'operario') opSeccion(opDeUrl() || 'inicio', { sinHistorial: true });
+});
 
 document.querySelectorAll('#panel-inicio button[data-op]').forEach(b => b.addEventListener('click', () => opSeccion(b.dataset.op)));
 
@@ -2514,7 +2715,7 @@ function iniDibujar() {
 // La carpeta de Excel de antes, con buscador: una tarjeta por orden con el lote
 // arriba y los barriles abajo, agrupadas por mes. La lógica pura está en
 // js/registro.js; acá solo se dibuja.
-let regMes = null;   // 'aaaa-mm', 'todos' o null (= todavía no se eligió: arranca en el mes actual)
+let regMes = fsLeer('registro:mes', null);   // 'aaaa-mm', 'todos' o null (= todavía no se eligió: arranca en el mes actual)
 const REG_TIPO = {
   llenado: ['Llenado', 'reg-llenado'],
   vaciado: ['Vaciado', 'reg-vaciado'],
@@ -2650,12 +2851,15 @@ function regDibujar() {
 
 function regElegirMes(mes) {
   regMes = mes;
+  fsGuardar('registro:mes', mes);
   $('regBuscar').value = '';
+  fsGuardar('registro:busca', '');
   regDibujar();
 }
 // "barril X" fuerza la lectura de barril aunque el número sea también un lote.
 function regBuscarBarril(num) {
   $('regBuscar').value = 'barril ' + num;
+  fsGuardar('registro:busca', $('regBuscar').value);
   regDibujar();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -2666,6 +2870,7 @@ function regVerEnMapa(termino) {
   const enBox = (estado.boxes || []).some(b => Object.values(b.celdas || {}).some(v => String(v) === String(termino)));
   setMapaTipo(enPalet && !enBox ? 'tanques' : 'barriles');
   $('buscarMapa').value = String(termino);
+  fsGuardar('mapa:busca', String(termino));
   aplicarBusqueda();
 }
 // Editar es lo mismo que el ✏️ del historial: carga la orden en la pantalla de
@@ -2675,7 +2880,8 @@ function regEditar(id) {
   escEditarOrden(id);
 }
 
-$('regBuscar').addEventListener('input', regDibujar);
+$('regBuscar').value = fsLeer('registro:busca', '');
+$('regBuscar').addEventListener('input', () => { fsGuardar('registro:busca', $('regBuscar').value); regDibujar(); });
 
 // ================== RÓTULOS DE LOTE ==================
 // Se escribe el lote; el título y si es orgánico vienen de Lotes (GET
@@ -2741,7 +2947,7 @@ $('rotLote').addEventListener('keydown', e => { if (e.key === 'Enter') { clearTi
 $('rotTitulo').addEventListener('input', () => { rotTituloManual = true; rotDibujar(); });
 $('rotCantidad').addEventListener('input', rotDibujar);
 $('rotImprimir').addEventListener('click', () => {
-  if (!$('rotHojas').querySelector('.rot-hoja')) { alert('Escribí el lote y la cantidad de barriles.'); return; }
+  if (!$('rotHojas').querySelector('.rot-hoja')) { dlgAvisar('Escribí el lote y la cantidad de barriles.', { tipo: 'mal' }); $('rotLote').focus(); return; }
   document.body.classList.add('imprimiendo-rotulos');
   window.print();
 });
@@ -2750,7 +2956,7 @@ window.addEventListener('afterprint', () => document.body.classList.remove('impr
 // ================== INVENTARIO DEL OPERARIO (solo consulta) ==================
 // Lo mismo que la lista del programador, pero para leer: sin editar, sin altas ni
 // bajas, sin importar ni descargar. La lógica pura está en js/consulta-inv.js.
-let conFiltro = { estado: '', tipo: '', vista: 'barril' }, conMostrar = 200;
+let conFiltro = Object.assign({ estado: '', tipo: '', vista: 'barril' }, fsLeer('consulta:filtro', {})), conMostrar = 200;
 const CON_ESTADOS = [['', 'Todos'], ['LLENO', 'Llenos'], ['MERMO', 'Mermos'], ['VACIO', 'Vacíos']];
 const CON_TIPOS = [['', 'Todo'], ['barrica', 'Barricas y vasijas'], ['tanque50', 'Tanques de 50 L']];
 const CON_VISTAS = [['barril', 'Por barril'], ['lote', 'Por lote']];
@@ -2760,7 +2966,7 @@ function conChips(lista, actual, campo, contar) {
   return lista.map(([v, t]) => `<button class="reg-mes${v === actual ? ' activo' : ''}" onclick="conElegir(${argJs(campo)},${argJs(v)})">` +
     `${escapeHtml(t)}${contar ? ` <span class="con-n">${contar[v || 'total']}</span>` : ''}</button>`).join('');
 }
-function conElegir(campo, v) { conFiltro[campo] = v; conMostrar = 200; conDibujar(); }
+function conElegir(campo, v) { conFiltro[campo] = v; fsGuardar('consulta:filtro', conFiltro); conMostrar = 200; conDibujar(); }
 function conEstadoHtml(e) {
   const s = normEstado(e);
   return `<span class="reg-estado ${escapeHtml(s)}">${escapeHtml(s === 'VACIO' ? 'VACÍO' : (s || '—'))}</span>`;
@@ -2828,11 +3034,14 @@ function conVerBarril(num) { opSeccion('registro'); regBuscarBarril(num); }
 // Tocar un lote muestra sus barriles.
 function conVerLote(lote) {
   $('conBuscar').value = lote;
+  fsGuardar('consulta:busca', lote);
   conFiltro.vista = 'barril'; conMostrar = 200;
+  fsGuardar('consulta:filtro', conFiltro);   // si no, un F5 vuelve a 'lote' aunque la pantalla siga en 'barril'
   conDibujar();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-$('conBuscar').addEventListener('input', () => { conMostrar = 200; conDibujar(); });
+$('conBuscar').value = fsLeer('consulta:busca', '');
+$('conBuscar').addEventListener('input', () => { fsGuardar('consulta:busca', $('conBuscar').value); conMostrar = 200; conDibujar(); });
 
 // ================== CORRECCIÓN DE 19 FECHAS IMPORTADAS (una sola vez) ==================
 // Lista y criterio en js/correccion-fechas.js. Solo el programador la ve y la
@@ -2900,7 +3109,11 @@ $('archivoExcel').addEventListener('change', async e => {
 // actualiza la ficha (capacidad, marca, año…) y, donde la planilla dice otro
 // estado/lote/cosecha que la app, abre un cartel con las dos versiones para que
 // alguien elija. No borra filas: dar de baja es su propio botón.
-$('btnImportar').addEventListener('click', () => {
+let btnImportarEnCurso = false;
+$('btnImportar').addEventListener('click', async () => {
+  if (btnImportarEnCurso) return;
+  btnImportarEnCurso = true;
+  try {
   const hoja = hojasLibro.Sheets[$('selectorHoja').value];
   const filas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: null });
   // detectar fila de encabezados (la que contiene "NÚMERO" o "NUMERO")
@@ -2908,7 +3121,7 @@ $('btnImportar').addEventListener('click', () => {
   for (let i = 0; i < Math.min(filas.length, 10); i++) {
     if (filas[i].some(c => typeof c === 'string' && /n[úu]mero/i.test(c))) { idxEnc = i; break; }
   }
-  if (idxEnc < 0) { $('resultadoImport').innerHTML = '<b style="color:var(--error)">No encontré la fila de encabezados (busco la columna NÚMERO). Verificá la hoja elegida.</b>'; return; }
+  if (idxEnc < 0) { $('resultadoImport').innerHTML = '<b style="color:var(--sem-error)">No encontré la fila de encabezados (busco la columna NÚMERO). Verificá la hoja elegida.</b>'; return; }
   const enc = filas[idxEnc].map(c => String(c ?? '').toUpperCase());
   const col = nombre => enc.findIndex(e => e.includes(nombre));
   const ci = { num: col('MERO'), estado: col('ESTADO'), cap: col('CAPACIDAD'), litros: col('LITROS'),
@@ -2929,14 +3142,16 @@ $('btnImportar').addEventListener('click', () => {
     }
     inv.push(fila);
   }
-  const plan = planImportacion(inv, estado.inventario);
-  if (!confirm(`La planilla trae ${inv.length} vasijas:\n\n` +
+  let plan = planImportacion(inv, estado.inventario);
+  if (!await dlgConfirmar({ titulo: 'Importar planilla', texto: `La planilla trae ${inv.length} vasijas:\n\n` +
     `• ${plan.nuevas.length} nuevas, se agregan\n` +
     `• ${plan.ficha.length} con cambios de ficha (capacidad, marca…), se actualizan\n` +
     `• ${plan.carteles.length} dicen otro estado o lote que la app: quedan con cartel para revisar\n` +
     `• ${plan.iguales} coinciden con la app\n` +
-    (plan.faltan.length ? `• ${plan.faltan.length} de la app no están en la planilla: NO se borran\n` : '') +
-    '\n¿Importar?')) return;
+    (plan.faltan.length ? `• ${plan.faltan.length} de la app no están en la planilla: NO se borran\n` : ''), si: 'Importar' })) return;
+  // sondear() puede haber adoptado una copia nueva del servidor mientras la
+  // pregunta estaba abierta: se recalcula el plan contra el inventario vivo.
+  plan = planImportacion(inv, estado.inventario);
 
   const hoy = hoyISO(), ts = Date.now();
   for (const n of plan.nuevas) {
@@ -2957,10 +3172,11 @@ $('btnImportar').addEventListener('click', () => {
   estado.fechaInventario = new Date().toLocaleString('es-AR');
   estado.inventarioCorte = hoy;
   reindexar(); guardar();
-  $('resultadoImport').innerHTML = `<b style="color:var(--ok)">✅ Importado.</b> ${plan.nuevas.length} vasijas nuevas, ` +
+  $('resultadoImport').innerHTML = `<b style="color:var(--sem-ok)">✅ Importado.</b> ${plan.nuevas.length} vasijas nuevas, ` +
     `${plan.ficha.length} fichas actualizadas, <b>${plan.carteles.length}</b> con cartel para revisar. ` +
     'Los barriles ya ubicados en el mapa conservan su posición.';
   actualizarEncabezado(); dibujarResumenInv();
+  } finally { btnImportarEnCurso = false; }
 });
 
 function actualizarEncabezado() {
@@ -2991,7 +3207,7 @@ function filasInvTodas() {
 // Una cajita de filtro por columna, arriba de los datos. Se suman con AND entre
 // ellas y con los filtros de más arriba (el selector de tipo, el buscador y el
 // check de carteles).
-const filtrosCol = { cap: '', num: '', estado: '', marca: '', lote: '', cosecha: '' };
+const filtrosCol = Object.assign({ cap: '', num: '', estado: '', marca: '', lote: '', cosecha: '' }, fsLeer('inv:cols', {}));
 
 // Los desplegables comparan por igualdad exacta contra un valor que salió del
 // propio inventario; las cajas de texto, por "contiene".
@@ -3102,7 +3318,7 @@ function aplicarOpcionCartel(id, i) {
   if (!o) return;
   const res = escribirEnFila(c.num, o.estado === 'VACIO' ? { estado: 'VACIO' } : { estado: o.estado, lote: o.lote },
     { por: 'cartel' });
-  if (res.error) { alert(res.error); return; }
+  if (res.error) { dlgAvisar(res.error, { tipo: 'mal' }); return; }
   // escribirEnFila ya cerró los carteles de ese barril abiertos hasta hoy; este
   // se saca igual por si trae una fecha futura mal cargada.
   estado.carteles = (estado.carteles || []).filter(x => x !== c);
@@ -3113,7 +3329,7 @@ function aplicarOpcionCartel(id, i) {
 
 // Aplica lo que se tipeó en una celda. La marca es un dato de la ficha: no cambia
 // el estado de la vasija ni su fecha. Lo demás pasa por la puerta de escritura.
-function guardarCelda(num, campo, val) {
+async function guardarCelda(num, campo, val) {
   const r = indiceInv.get(String(num));
   if (!r) return;
   // La marca no lleva ts nuevo a propósito: planDeshacer usa el ts para saber si
@@ -3127,7 +3343,7 @@ function guardarCelda(num, campo, val) {
     cambio = { estado: est };
     // pasar una vacía a LLENO o MERMO necesita saber con qué vino
     if (est !== 'VACIO' && !String(r.lote || '').trim()) {
-      const lote = prompt(`¿Con qué lote queda ${est} la vasija ${num}?`);
+      const lote = await dlgPedir({ titulo: `Lote de la vasija ${num}`, texto: `Para dejarla ${est} hace falta el lote.`, si: 'Guardar', campo: { tipo: 'text', placeholder: 'ej: 25006' } });
       if (!lote || !lote.trim()) { dibujarResumenInv(); return; }
       cambio.lote = barNormLote(lote);
     }
@@ -3135,11 +3351,11 @@ function guardarCelda(num, campo, val) {
     const lote = barNormLote(val);
     cambio = PROPUESTA_VACIAR.includes(lote) ? { estado: 'VACIO' } : { lote };
   } else if (campo === 'cosecha') {
-    if (normEstado(r.estado) === 'VACIO') { alert('Una vasija VACÍA no tiene cosecha. Primero cargale el lote.'); dibujarResumenInv(); return; }
+    if (normEstado(r.estado) === 'VACIO') { dlgAvisar('Una vasija VACÍA no tiene cosecha. Primero cargale el lote.', { tipo: 'mal' }); dibujarResumenInv(); return; }
     cambio = { cosecha: val };
   } else return;
   const res = escribirEnFila(num, cambio);
-  if (res.error) alert(res.error);
+  if (res.error) dlgAvisar(res.error, { tipo: 'mal' });
   else guardar();
   dibujarResumenInv();
 }
@@ -3218,8 +3434,10 @@ function dibujarResumenInv() {
 function asegurarCabeceraInv(universo) {
   const t = $('tablaPreview');
   if (!t.querySelector('thead')) {
+    // Las cajas de texto arrancan con lo que haya en filtrosCol (ya restaurado del F5);
+    // los <select> se pueblan y validan aparte, en refrescarOpcionesFiltroCol.
     const caja = (campo, etiqueta) => etiqueta
-      ? `<th><input data-fcol="${campo}" placeholder="${etiqueta}" autocomplete="off"></th>`
+      ? `<th><input data-fcol="${campo}" placeholder="${etiqueta}" value="${escapeHtml(filtrosCol[campo] || '')}" autocomplete="off"></th>`
       : `<th><select data-fcol="${campo}"></select></th>`;
     t.innerHTML =
       '<thead>' +
@@ -3229,12 +3447,15 @@ function asegurarCabeceraInv(universo) {
       caja('cap') + caja('num', 'filtrar…') + caja('estado') + caja('marca') +
       caja('lote', 'filtrar…') + caja('cosecha') +
       '<th></th></tr></thead><tbody id="cuerpoInv"></tbody>';
-    t.querySelectorAll('[data-fcol]').forEach(el =>
+    t.querySelectorAll('[data-fcol]').forEach(el => {
+      if (el.tagName !== 'SELECT') el.classList.toggle('con-filtro', !!el.value);
       el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
         filtrosCol[el.dataset.fcol] = el.value;
+        fsGuardar('inv:cols', filtrosCol);
         el.classList.toggle('con-filtro', !!el.value);
         refrescarListaInv();
-      }));
+      });
+    });
   }
   refrescarOpcionesFiltroCol(universo);
 }
@@ -3248,10 +3469,15 @@ function refrescarOpcionesFiltroCol(universo) {
   const t = $('tablaPreview');
   const columnas = [['cap', 'Todas', v => v + ' L'], ['estado', 'Todos', v => v],
                     ['marca', 'Todas', v => v], ['cosecha', 'Todas', v => v]];
+  // Sin inventario (ej. la carga todavía no llegó o falló) no hay de dónde sacar
+  // opciones reales: tocar los <select> ahora soltaría y guardaría como '' los
+  // filtros restaurados del F5, aunque el inventario esté por aparecer. Cuando
+  // llegue, dibujarResumenInv llama de nuevo a esta función con datos de verdad.
+  if (!universo || !universo.length) return;
   for (const [campo, vacio, texto] of columnas) {
     const sel = t.querySelector(`select[data-fcol="${campo}"]`);
     if (!sel) continue;
-    const vals = [...new Set((universo || []).map(f => String(f.r[campo] ?? '').trim()).filter(Boolean))]
+    const vals = [...new Set(universo.map(f => String(f.r[campo] ?? '').trim()).filter(Boolean))]
       .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
     const firma = JSON.stringify(vals);   // comparar la lista entera, sin separador que se pueda confundir
     if (sel.dataset.firma === firma) continue;
@@ -3264,12 +3490,20 @@ function refrescarOpcionesFiltroCol(universo) {
     filtrosCol[campo] = sel.value;
     sel.classList.toggle('con-filtro', !!sel.value);
   }
+  // Recién acá quedó filtrosCol sin los valores que ya no existen (arriba): guardar después del descarte.
+  fsGuardar('inv:cols', filtrosCol);
 }
 
 function refrescarListaInv() { visiblesInv = TANDA_INV; dibujarResumenInv(); }
-$('filtroInv').addEventListener('input', refrescarListaInv);
-$('soloRevisar').addEventListener('change', refrescarListaInv);
-$('invTipo').addEventListener('change', refrescarListaInv);
+$('filtroInv').value = fsLeer('inv:busca', '');
+$('soloRevisar').checked = !!fsLeer('inv:revisar', false);
+// invTipo es un <select> de opciones fijas: si lo guardado ya no es una, asignarlo
+// queda sin efecto y se queda en la que esté por defecto (sin validar a mano).
+{ const invTipoGuardado = fsLeer('inv:tipo', 'todos');
+  if ([...$('invTipo').options].some(o => o.value === invTipoGuardado)) $('invTipo').value = invTipoGuardado; }
+$('filtroInv').addEventListener('input', () => { fsGuardar('inv:busca', $('filtroInv').value); refrescarListaInv(); });
+$('soloRevisar').addEventListener('change', () => { fsGuardar('inv:revisar', $('soloRevisar').checked); refrescarListaInv(); });
+$('invTipo').addEventListener('change', () => { fsGuardar('inv:tipo', $('invTipo').value); refrescarListaInv(); });
 // el doble click va delegado en la tabla: las filas se repintan todo el tiempo
 $('tablaPreview').addEventListener('dblclick', ev => {
   const td = ev.target.closest('td[data-ed]');
@@ -3410,7 +3644,7 @@ function confirmarAlta() {
   reindexar(); guardar();
   cerrarModal();
   actualizarEncabezado(); refrescarListaInv();
-  alert(`✅ Se ${n === 1 ? 'dio' : 'dieron'} de alta ${n} ${n === 1 ? 'vasija' : 'vasijas'}.`);
+  dlgAvisar(`Se ${n === 1 ? 'dio' : 'dieron'} de alta ${n} ${n === 1 ? 'vasija' : 'vasijas'}.`, { tipo: 'ok' });
 }
 
 $('btnAltaVasijas').addEventListener('click', abrirAltaVasijas);
@@ -3466,24 +3700,45 @@ function avisoDeUso(enUso) {
     `va a mostrar '?' hasta que la corrijas.\n\n`;
 }
 
-function deshacerTanda(id) {
+const deshacerTandaEnCurso = new Set();
+async function deshacerTanda(id) {
+  if (deshacerTandaEnCurso.has(String(id))) return;   // doble click en "deshacer"
+  deshacerTandaEnCurso.add(String(id));
+  try {
   // El plazo se vuelve a mirar acá: dejar la pantalla abierta no lo estira.
-  const t = tandasEnPlazo(estado.altas, Date.now()).find(x => x.id === String(id));
+  let t = tandasEnPlazo(estado.altas, Date.now()).find(x => x.id === String(id));
   if (!t) {
-    alert('Pasaron los 15 minutos: esta tanda ya no se puede deshacer entera. Para sacar una vasija, usá "dar de baja" en su fila.');
+    await dlgInformar({ titulo: 'Ya no se puede deshacer', texto: 'Pasaron los 15 minutos: esta tanda ya no se puede deshacer entera. Para sacar una vasija, usá "dar de baja" en su fila.' });
     dibujarTandasAltas(); return;
   }
 
   const rango = t.cuantas === 1 ? t.desde : `${t.desde} – ${t.hasta}`;
-  if (!confirm(avisoDeUso(usoDeVasijas(t.nums, estado)) +
-    `¿Deshacer el alta de ${t.cuantas} ${t.cuantas === 1 ? 'vasija' : 'vasijas'} (${rango})?\n\n` +
-    'Salen del inventario en este teléfono y en los demás.')) return;
+  if (!await dlgConfirmar({ titulo: 'Deshacer altas', texto: avisoDeUso(usoDeVasijas(t.nums, estado)) +
+    `Se deshace el alta de ${t.cuantas} ${t.cuantas === 1 ? 'vasija' : 'vasijas'} (${rango}). Salen del inventario en este teléfono y en los demás.`,
+    si: 'Deshacer altas', peligro: true })) return;
+
+  // sondear() pudo adoptar una copia nueva del servidor mientras la pregunta
+  // estaba abierta: se vuelve a mirar el plazo y que la tanda siga existiendo.
+  t = tandasEnPlazo(estado.altas, Date.now()).find(x => x.id === String(id));
+  if (!t) {
+    // Si ya no está entre las tandas vivas (sin mirar el plazo), es que otro
+    // dispositivo la deshizo mientras se preguntaba acá: no es lo mismo que
+    // "pasaron los 15 minutos".
+    const sigueViva = agruparTandas(estado.altas).some(x => x.id === String(id));
+    if (sigueViva) {
+      await dlgInformar({ titulo: 'Ya no se puede deshacer', texto: 'Pasaron los 15 minutos: esta tanda ya no se puede deshacer entera. Para sacar una vasija, usá "dar de baja" en su fila.' });
+    } else {
+      dlgAvisar('Esa tanda ya se deshizo desde otro dispositivo.', { tipo: 'mal' });
+    }
+    dibujarTandasAltas(); return;
+  }
 
   const r = marcarTandaBorrada(estado.altas, t.id, Date.now());
   estado.altas = r.altas;
   reindexar(); guardar();
   actualizarEncabezado(); refrescarListaInv();
-  alert(`✅ Se ${r.marcadas === 1 ? 'deshizo' : 'deshicieron'} ${r.marcadas} ${r.marcadas === 1 ? 'alta' : 'altas'}.`);
+  dlgAvisar(`Se ${r.marcadas === 1 ? 'deshizo' : 'deshicieron'} ${r.marcadas} ${r.marcadas === 1 ? 'alta' : 'altas'}.`, { tipo: 'ok' });
+  } finally { deshacerTandaEnCurso.delete(String(id)); }
 }
 
 // ---------- baja de barricas ----------
@@ -3544,7 +3799,7 @@ function confirmarBaja() {
   reindexar(); guardar();
   cerrarModal();
   actualizarEncabezado(); refrescarListaInv();
-  alert(`✅ La vasija ${n} se dio de baja.`);
+  dlgAvisar(`La vasija ${n} se dio de baja.`, { tipo: 'ok' });
 }
 
 $('btnBajaVasijas').addEventListener('click', abrirBajaVasijas);
@@ -3573,7 +3828,7 @@ function dibujarTablaBoxes() {
         <td>${ocup} / ${b.cols * b.filas * 2} barriles</td>
         <td><button class="btn peligro" data-borrar="${escapeHtml(b.id)}" style="padding:5px 10px;">Borrar</button></td></tr>`;
     }).join('');
-  t.querySelectorAll('input[data-id]').forEach(inp => inp.addEventListener('change', () => {
+  t.querySelectorAll('input[data-id]').forEach(inp => inp.addEventListener('change', async () => {
     const b = estado.boxes.find(x => x.id === inp.dataset.id); if (!b) return;
     if (inp.dataset.campo === 'nombre') b.nombre = inp.value.trim() || b.nombre;
     else {
@@ -3583,18 +3838,36 @@ function dibujarTablaBoxes() {
         const [c, f] = k.split('-').map(Number);
         return (inp.dataset.campo === 'cols' && c > v) || (inp.dataset.campo === 'filas' && f > v);
       });
-      if (fuera.length && !confirm(`Hay ${fuera.length} posiciones ocupadas fuera del nuevo tamaño. ¿Quitarlas del mapa?`)) { dibujarTablaBoxes(); return; }
-      fuera.forEach(k => delete b.celdas[k]);
-      b[inp.dataset.campo] = v;
+      if (fuera.length && !await dlgConfirmar({ titulo: 'Achicar box', texto: `Hay ${fuera.length} posiciones ocupadas fuera del nuevo tamaño.`, si: 'Quitar del mapa', no: 'Dejar como estaba', peligro: true })) { dibujarTablaBoxes(); return; }
+      // sondear() pudo adoptar una copia nueva del servidor mientras la pregunta
+      // estaba abierta: se vuelve a buscar el box por id y se recalcula "fuera"
+      // contra su estado vivo antes de borrar nada.
+      const boxVivo = estado.boxes.find(x => x.id === inp.dataset.id);
+      if (!boxVivo) { dibujarTablaBoxes(); return; }
+      const fueraVivo = Object.keys(boxVivo.celdas).filter(k => {
+        const [c, f] = k.split('-').map(Number);
+        return (inp.dataset.campo === 'cols' && c > v) || (inp.dataset.campo === 'filas' && f > v);
+      });
+      // si mientras preguntaba se ocuparon más posiciones de las que se mostraron,
+      // no se borra a ciegas: se avisa y se redibuja para que el usuario vuelva a intentar.
+      if (fueraVivo.length > fuera.length) { dlgAvisar('El box cambió mientras preguntaba. Probá de nuevo.', { tipo: 'mal' }); dibujarTablaBoxes(); return; }
+      fueraVivo.forEach(k => delete boxVivo.celdas[k]);
+      boxVivo[inp.dataset.campo] = v;
     }
     guardar(); dibujarTablaBoxes();
   }));
-  t.querySelectorAll('button[data-borrar]').forEach(btn => btn.addEventListener('click', () => {
-    const b = estado.boxes.find(x => x.id === btn.dataset.borrar);
+  t.querySelectorAll('button[data-borrar]').forEach(btn => btn.addEventListener('click', async () => {
+    const b = estado.boxes.find(x => x.id === btn.dataset.borrar); if (!b) return;
     const ocup = Object.values(b.celdas).filter(v => v !== 'HUECO').length;
-    if (!confirm(`¿Borrar "${b.nombre}"${ocup ? ` y sus ${ocup} barriles ubicados` : ''}?`)) return;
+    if (!await dlgConfirmar({ titulo: 'Borrar box', texto: `Se borra "${b.nombre}"${ocup ? ` y sus ${ocup} barriles ubicados` : ''}.`, si: 'Borrar box', peligro: true })) return;
+    // revalidar que el box sigue existiendo tras la pregunta (sondear() pudo
+    // haber traído una copia nueva del servidor mientras estaba abierta)
+    const boxVivo = estado.boxes.find(x => x.id === btn.dataset.borrar);
+    if (!boxVivo) { dibujarTablaBoxes(); return; }
+    const ocupVivo = Object.values(boxVivo.celdas).filter(v => v !== 'HUECO').length;
+    if (ocupVivo > ocup) { dlgAvisar('El box cambió mientras preguntaba. Probá de nuevo.', { tipo: 'mal' }); dibujarTablaBoxes(); return; }
     estado.boxes = estado.boxes.filter(x => x.id !== btn.dataset.borrar);
-    if (sesion && sesion.boxId === b.id) salirModoLibre();
+    if (sesion && sesion.boxId === boxVivo.id) salirModoLibre();
     guardar(); dibujarTablaBoxes();
   }));
 }
@@ -3622,22 +3895,34 @@ function dibujarTablaPalets() {
         <td>${ocup} / ${p.cols} tanques</td>
         <td><button class="btn peligro" data-borrar="${escapeHtml(p.id)}" style="padding:5px 10px;">Borrar</button></td></tr>`;
     }).join('');
-  t.querySelectorAll('input[data-id]').forEach(inp => inp.addEventListener('change', () => {
+  t.querySelectorAll('input[data-id]').forEach(inp => inp.addEventListener('change', async () => {
     const p = estado.palets.find(x => x.id === inp.dataset.id); if (!p) return;
     if (inp.dataset.campo === 'nombre') p.nombre = inp.value.trim() || p.nombre;
     else {
       const v = Math.min(30, Math.max(1, +inp.value || 1));
       const fuera = Object.keys(p.celdas).filter(k => Number(k) > v);
-      if (fuera.length && !confirm(`Hay ${fuera.length} tanque(s) ubicado(s) fuera del nuevo tamaño. ¿Quitarlos del mapa?`)) { dibujarTablaPalets(); return; }
-      fuera.forEach(k => delete p.celdas[k]);
-      p.cols = v;
+      if (fuera.length && !await dlgConfirmar({ titulo: 'Achicar palet', texto: `Hay ${fuera.length} tanque(s) ubicado(s) fuera del nuevo tamaño.`, si: 'Quitar del mapa', no: 'Dejar como estaba', peligro: true })) { dibujarTablaPalets(); return; }
+      // sondear() pudo adoptar una copia nueva del servidor mientras la pregunta
+      // estaba abierta: se vuelve a buscar el palet por id y se recalcula
+      // "fuera" contra su estado vivo antes de borrar nada.
+      const paletVivo = estado.palets.find(x => x.id === inp.dataset.id);
+      if (!paletVivo) { dibujarTablaPalets(); return; }
+      const fueraVivo = Object.keys(paletVivo.celdas).filter(k => Number(k) > v);
+      if (fueraVivo.length > fuera.length) { dlgAvisar('El palet cambió mientras preguntaba. Probá de nuevo.', { tipo: 'mal' }); dibujarTablaPalets(); return; }
+      fueraVivo.forEach(k => delete paletVivo.celdas[k]);
+      paletVivo.cols = v;
     }
     guardar(); dibujarTablaPalets();
   }));
-  t.querySelectorAll('button[data-borrar]').forEach(btn => btn.addEventListener('click', () => {
+  t.querySelectorAll('button[data-borrar]').forEach(btn => btn.addEventListener('click', async () => {
     const p = estado.palets.find(x => x.id === btn.dataset.borrar); if (!p) return;
     const ocup = Object.values(p.celdas).filter(v => v !== 'HUECO').length;
-    if (!confirm(`¿Borrar "${p.nombre}"${ocup ? ` y sus ${ocup} tanque(s) ubicado(s)` : ''}?`)) return;
+    if (!await dlgConfirmar({ titulo: 'Borrar palet', texto: `Se borra "${p.nombre}"${ocup ? ` y sus ${ocup} tanque(s) ubicado(s)` : ''}.`, si: 'Borrar palet', peligro: true })) return;
+    // revalidar que el palet sigue existiendo tras la pregunta
+    const paletVivo = estado.palets.find(x => x.id === btn.dataset.borrar);
+    if (!paletVivo) { dibujarTablaPalets(); return; }
+    const ocupVivo = Object.values(paletVivo.celdas).filter(v => v !== 'HUECO').length;
+    if (ocupVivo > ocup) { dlgAvisar('El palet cambió mientras preguntaba. Probá de nuevo.', { tipo: 'mal' }); dibujarTablaPalets(); return; }
     estado.palets = estado.palets.filter(x => x.id !== btn.dataset.borrar);
     guardar(); dibujarTablaPalets();
   }));
@@ -3673,8 +3958,8 @@ $('paletBtnCerrarCam').addEventListener('click', paletCerrarCamara);
 function iniciarModoLibre(boxIdInicial) {
   if (typeof salirModoLibreTanque === 'function') salirModoLibreTanque();
   // en modo por lote no hace falta inventario; en modo barril sí
-  if (!estado.modoLote && !estado.inventario.length) { alert('Primero importá el inventario (pestaña 📋 Inventario).'); return; }
-  if (!estado.boxes.length) { alert('Primero creá al menos un box (pestaña 📦 Boxes).'); return; }
+  if (!estado.modoLote && !estado.inventario.length) { dlgAvisar('Primero importá el inventario (Barriles → Inventario).', { tipo: 'mal' }); return; }
+  if (!estado.boxes.length) { dlgAvisar('Primero creá al menos un box (Más → Boxes y palets).', { tipo: 'mal' }); return; }
   sesion = { boxId: boxIdInicial || null, modo: 'libre', destino: null, pincel: false };
   historial = [];
   document.querySelectorAll('.chk-pincel').forEach(c => c.checked = false);
@@ -3820,7 +4105,7 @@ document.querySelectorAll('.chk-pincel').forEach(chk => chk.addEventListener('ch
   refrescarVistasLibre();
 }));
 document.querySelectorAll('.cam-libre').forEach(btn => btn.addEventListener('click', () => {
-  if (!sesion || !sesion.destino) { alert('Tocá primero una celda en el mapa.'); return; }
+  if (!sesion || !sesion.destino) { dlgAvisar('Tocá primero una celda en el mapa.', { tipo: 'mal' }); return; }
   abrirCamara();
 }));
 document.querySelectorAll('.dsh-libre').forEach(btn => btn.addEventListener('click', deshacerUltimo));
@@ -3868,7 +4153,8 @@ function textoPos(b) {
   return `${b.nombre} · ${LADO_NOMBRE[p.lado]} · Fila ${p.fila} · Pos ${p.col} (frente→fondo)`;
 }
 
-function procesarScan(bruto) {
+let preguntaScanAbierta = false;   // con una pregunta abierta, la cámara no lee
+async function procesarScan(bruto) {
   if (!sesion.destino) {
     beep(true);
     mostrarScan('aviso', 'Tocá primero un barril o un hueco en el mapa para elegir dónde va. 👆');
@@ -3884,24 +4170,50 @@ function procesarScan(bruto) {
     mostrarScan('err', `❌ <b>${escapeHtml(bruto)}</b> no figura en el inventario. Verificá el código o reimportá el Excel actualizado. <i>No se asignó posición.</i>`);
     return;
   }
-  const b = boxSesion();
+  let b = boxSesion();
   const clave = claveSesion();
   // En modo libre el destino puede estar ocupado por otro barril: avisar antes de pisarlo.
   const ocupanteDestino = b.celdas[clave];
   if (ocupanteDestino && ocupanteDestino !== 'HUECO' && ocupanteDestino !== num) {
-    if (!confirm(`⚠️ Esa posición ya tiene el barril ${ocupanteDestino}.\n\n¿Reemplazarlo por ${num}?`)) {
+    let reemplazar;
+    preguntaScanAbierta = true;
+    try {
+      reemplazar = await dlgConfirmar({ titulo: 'Posición ocupada',
+        texto: `Esa posición ya tiene el barril ${ocupanteDestino}. ¿Reemplazarlo por ${num}?`,
+        si: 'Reemplazar', no: 'Dejar el que está', peligro: true });
+    } finally {
+      preguntaScanAbierta = false;
+    }
+    if (!reemplazar) {
       mostrarScan('aviso', `Se mantuvo el barril <b>${escapeHtml(ocupanteDestino)}</b> en esa posición. No se cargó <b>${escapeHtml(num)}</b>.`);
       return;
     }
+    // mientras preguntaba pudo llegar una copia nueva del servidor o cambiar el destino
+    if (!sesion || !sesion.destino || claveSesion() !== clave) { mostrarScan('aviso', 'Cambió la posición mientras preguntaba. Volvé a leer el barril.'); return; }
+    b = boxSesion();
+    if (!b || b.celdas[clave] !== ocupanteDestino) { mostrarScan('aviso', 'Cambió la posición mientras preguntaba. Volvé a leer el barril.'); return; }
   }
-  const previa = buscarUbicacion(num);
+  let previa = buscarUbicacion(num);
   if (previa) {
     const dondePrevia = `${previa.box.nombre} col ${previa.col} ${LADO_NOMBRE[previa.lado]} fila ${previa.fila}`;
-    if (!confirm(`⚠️ El barril ${num} ya está ubicado en ${dondePrevia}.\n\n¿Moverlo a la posición actual?`)) {
+    let mover;
+    preguntaScanAbierta = true;
+    try {
+      mover = await dlgConfirmar({ titulo: 'Barril ya ubicado',
+        texto: `El barril ${num} ya está ubicado en ${dondePrevia}. ¿Moverlo a la posición actual?`,
+        si: 'Mover acá', no: 'No mover', peligro: true });
+    } finally {
+      preguntaScanAbierta = false;
+    }
+    if (!mover) {
       mostrarScan('aviso', `Barril <b>${escapeHtml(num)}</b> ya estaba en ${escapeHtml(dondePrevia)}. No se movió.`);
       return;
     }
-    delete previa.box.celdas[previa.col + '-' + previa.fila + '-' + previa.lado];
+    if (!sesion || !sesion.destino || claveSesion() !== clave) { mostrarScan('aviso', 'Cambió la posición mientras preguntaba. Volvé a leer el barril.'); return; }
+    b = boxSesion();
+    if (!b) { mostrarScan('aviso', 'Cambió la posición mientras preguntaba. Volvé a leer el barril.'); return; }
+    previa = buscarUbicacion(num);
+    if (previa) delete previa.box.celdas[previa.col + '-' + previa.fila + '-' + previa.lado];
   }
   b.celdas[clave] = num;
   historial.push({ boxId: b.id, clave, num, previa: previa ? { boxId: previa.box.id, clave: previa.col + '-' + previa.fila + '-' + previa.lado } : null });
@@ -4090,7 +4402,7 @@ function setMapaTipo(tipo) {
 let sesionTanque = null;   // { destino: { paletId, col } | null }
 
 function iniciarModoLibreTanque() {
-  if (!(estado.palets || []).length) { alert('Primero creá al menos un palet (pestaña 📦 Boxes y Palets).'); return; }
+  if (!(estado.palets || []).length) { dlgAvisar('Primero creá al menos un palet (Más → Boxes y palets).', { tipo: 'mal' }); return; }
   if (typeof sesion !== 'undefined' && sesion && sesion.modo === 'libre') salirModoLibre();  // no mezclar
   sesionTanque = { destino: null };
   $('barraTanque2d').style.display = '';
@@ -4138,7 +4450,7 @@ function colocarTanqueEnCasillero(paletId, col, numBruto) {
   p.celdas[col] = num;
   guardar();
   const lote = loteDeTanque(num);
-  const aviso = lote ? `lote <b>${escapeHtml(lote)}</b>` : '<span style="color:var(--warn)">⚠ sin lote (no está en el inventario de barricas)</span>';
+  const aviso = lote ? `lote <b>${escapeHtml(lote)}</b>` : '<span style="color:var(--sem-warn)">⚠ sin lote (no está en el inventario de barricas)</span>';
   const fb = $('ultimoTanque2d');
   fb.style.display = 'block'; fb.className = 'fb-libre ok';
   fb.innerHTML = `✅ Tanque <b>${escapeHtml(num)}</b> → ${escapeHtml(p.nombre)} · casillero ${escapeHtml(col)} · ${aviso}`;
@@ -4182,6 +4494,7 @@ function dibujarLeyenda() {
     `<span class="item" data-lote="${escapeHtml(l)}"><span class="muestra" style="background:${colorLote(l)}"></span>${escapeHtml(l)} (${n})</span>`).join('');
   $('leyendaLotes').querySelectorAll('.item').forEach(it => it.addEventListener('click', () => {
     $('buscarMapa').value = it.dataset.lote;
+    fsGuardar('mapa:busca', it.dataset.lote);
     aplicarBusqueda();
   }));
 }
@@ -4199,7 +4512,7 @@ function dibujarLeyendaTanques() {
   $('leyendaLotes').innerHTML = orden.map(([l, n]) =>
     `<span class="item" data-lote="${escapeHtml(l)}"><span class="muestra" style="background:${colorLote(l)}"></span>${escapeHtml(l)} (${n})</span>`).join('');
   $('leyendaLotes').querySelectorAll('.item').forEach(it => it.addEventListener('click', () => {
-    $('buscarMapa').value = it.dataset.lote; aplicarBusqueda();
+    $('buscarMapa').value = it.dataset.lote; fsGuardar('mapa:busca', it.dataset.lote); aplicarBusqueda();
   }));
 }
 
@@ -4230,15 +4543,19 @@ function dibujarResultadoBusquedaTanques(terms) {
   cont.style.display = '';
 }
 
-$('buscarMapa').addEventListener('input', aplicarBusqueda);
-$('btnLimpiarBusqueda').addEventListener('click', () => { $('buscarMapa').value = ''; aplicarBusqueda(); });
+// Restaurados al cargar el script: dibujarMapas()/Vista3D los van a usar apenas
+// se abra el mapa (2D o 3D), sin esperar una búsqueda nueva del operario.
+$('buscarMapa').value = fsLeer('mapa:busca', '');
+if ($('buscar3d')) $('buscar3d').value = fsLeer('mapa3d:busca', '');
+$('buscarMapa').addEventListener('input', () => { fsGuardar('mapa:busca', $('buscarMapa').value); aplicarBusqueda(); });
+$('btnLimpiarBusqueda').addEventListener('click', () => { $('buscarMapa').value = ''; fsGuardar('mapa:busca', ''); aplicarBusqueda(); });
 document.querySelectorAll('#mapaTipoSel button[data-mapatipo]').forEach(b =>
   b.addEventListener('click', () => setMapaTipo(b.dataset.mapatipo)));
 // Copia el término del buscador 2D al 3D y re-aplica el resaltado 3D.
 // Asignar .value no dispara 'input', así que no hay recursión entre buscadores.
 function sincronizarBusqueda3d() {
   const inp3d = $('buscar3d');
-  if (inp3d) inp3d.value = $('buscarMapa').value;
+  if (inp3d) { inp3d.value = $('buscarMapa').value; fsGuardar('mapa3d:busca', inp3d.value); }
   if (typeof Vista3D !== 'undefined' && Vista3D.buscar) Vista3D.buscar();
 }
 function aplicarBusqueda() {
@@ -4321,10 +4638,18 @@ function abrirFicha(num, box, col, fila, lado) {
   }
   $('modal').classList.add('abierto');
   $('btnCerrarModal').onclick = cerrarModal;
-  $('btnQuitarBarril').onclick = () => {
-    const msg = estado.modoLote ? `¿Vaciar esta posición (lote ${num})?` : `¿Quitar el barril ${num} del mapa? (no afecta al inventario)`;
-    if (!confirm(msg)) return;
-    delete box.celdas[col + '-' + fila + '-' + lado];
+  $('btnQuitarBarril').onclick = async () => {
+    const msg = estado.modoLote ? `Se vacía esta posición (lote ${num}).` : `El barril ${num} sale del mapa. No afecta al inventario.`;
+    if (!await dlgConfirmar({ titulo: estado.modoLote ? 'Vaciar posición' : 'Quitar del mapa', texto: msg, si: estado.modoLote ? 'Vaciar posición' : 'Quitar del mapa', peligro: true })) return;
+    const boxVivo = estado.boxes.find(x => x.id === box.id);
+    const k = col + '-' + fila + '-' + lado;
+    // mientras preguntaba pudo llegar una copia nueva del servidor: no borrar otro barril
+    if (!boxVivo || String(boxVivo.celdas[k]) !== String(num)) {
+      cerrarModal(); dibujarMapas();
+      dlgAvisar('Esa posición cambió mientras preguntaba. No se quitó nada.', { tipo: 'mal' });
+      return;
+    }
+    delete boxVivo.celdas[k];
     guardar(); cerrarModal(); dibujarMapas(); Vista3D.redibujar();
   };
 }
@@ -4346,9 +4671,16 @@ function abrirFichaTanque(num, paletId, col) {
     </div>`;
   $('modal').classList.add('abierto');
   $('btnCerrarModal').onclick = cerrarModal;
-  $('btnQuitarTanque').onclick = () => {
-    if (!confirm(`¿Quitar el tanque ${num} del mapa? (no afecta su asociación de lote)`)) return;
-    if (p) delete p.celdas[col];
+  $('btnQuitarTanque').onclick = async () => {
+    if (!await dlgConfirmar({ titulo: 'Quitar del mapa', texto: `El tanque ${num} sale del mapa. No afecta su asociación de lote.`, si: 'Quitar del mapa', peligro: true })) return;
+    const paletVivo = p && (estado.palets || []).find(x => x.id === p.id);
+    // mientras preguntaba pudo llegar una copia nueva del servidor: no borrar otro tanque
+    if (!paletVivo || String(paletVivo.celdas[col]) !== String(num)) {
+      cerrarModal(); dibujarMapas();
+      dlgAvisar('Esa posición cambió mientras preguntaba. No se quitó nada.', { tipo: 'mal' });
+      return;
+    }
+    delete paletVivo.celdas[col];
     guardar(); cerrarModal(); dibujarMapas();
   };
 }
@@ -4389,7 +4721,7 @@ function dibujarReportes() {
         const dist = [...m.entries()].map(([bx, n]) => `${escapeHtml(bx)}: ${n}`).join(' · ');
         return `<tr><td><span class="muestra" style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${colorLote(l)};margin-right:5px;"></span><b>${escapeHtml(l)}</b></td><td>${total}</td><td>${m.size}</td><td>${dist}</td></tr>`;
       }).join('')
-    : '<tr><td style="color:var(--ok);">✅ Ningún lote ubicado está repartido entre boxes.</td></tr>';
+    : '<tr><td style="color:var(--sem-ok);">✅ Ningún lote ubicado está repartido entre boxes.</td></tr>';
 
   // llenos sin ubicar
   const sinUbicar = llenos.filter(r => !ubicados.has(r.num));
@@ -4517,11 +4849,12 @@ $('archivoJSON').addEventListener('change', async e => {
   try {
     const d = JSON.parse(await f.text());
     if (!d.inventario || !d.boxes) throw new Error('formato');
-    if (!confirm('Esto reemplaza el inventario y el mapa actuales por los del respaldo. ¿Continuar?')) return;
+    if (!await dlgConfirmar({ titulo: 'Restaurar respaldo', texto: 'Esto reemplaza el inventario y el mapa actuales por los del respaldo.', si: 'Reemplazar con el respaldo', peligro: true })) return;
     estado = d; reindexar(); guardar();
     actualizarEncabezado(); dibujarResumenInv(); dibujarTablaBoxes();
-    alert('✅ Respaldo restaurado.');
-  } catch (err) { alert('El archivo no parece un respaldo válido.'); }
+    dlgAvisar('Respaldo restaurado.', { tipo: 'ok' });
+  } catch (err) { dlgAvisar('El archivo no parece un respaldo válido.', { tipo: 'mal' }); }
+  finally { e.target.value = ''; }   // si no, elegir el MISMO archivo de nuevo no dispara 'change'
 });
 
 // ================== CÁMARA (celular) ==================
@@ -4535,8 +4868,8 @@ $('btnCerrarCamara').addEventListener('click', cerrarCamara);
 $('btnConfirmarCam').addEventListener('click', confirmarCam);
 $('btnReintentarCam').addEventListener('click', reintentarCam);
 function posTipearAbrir() {
-  if (!sesion) { alert('Primero activá "👆 Cargar tocando" en el mapa.'); return; }
-  if (!sesion.destino) { alert('Primero tocá en el mapa el barril o hueco donde cargar.'); return; }
+  if (!sesion) { dlgAvisar('Primero activá "Cargar tocando" en el mapa.', { tipo: 'mal' }); return; }
+  if (!sesion.destino) { dlgAvisar('Primero tocá en el mapa el barril o hueco donde cargar.', { tipo: 'mal' }); return; }
   capturaManualAbierta = true;
   $('posTipearBox').classList.add('abierto');
   $('posTipearInput').value = '';
@@ -4546,14 +4879,14 @@ function posTipearCerrar() {
   $('posTipearBox').classList.remove('abierto');
   capturaManualAbierta = false;
 }
-function posTipearConfirmar() {
+async function posTipearConfirmar() {
   const v = $('posTipearInput').value.trim();
   posTipearCerrar();
   if (v) {
     // mismo camino que una lectura de cámara: previsualiza y espera Confirmar,
     // o carga directo si el operario desactivó la confirmación.
     if (confirmarCadaLectura) previsualizarCam(v);
-    else { procesarScan(v); reflejarEnCamara(); }
+    else { await procesarScan(v); reflejarEnCamara(); }
   }
 }
 $('btnTipearCam').addEventListener('click', posTipearAbrir);
@@ -4571,9 +4904,9 @@ $('btnSaltarCamara').addEventListener('click', () => {
 });
 
 async function abrirCamara() {
-  if (!sesion) { alert('Primero activá "👆 Cargar tocando" en el mapa y tocá la posición.'); return; }
+  if (!sesion) { dlgAvisar('Primero activá "Cargar tocando" en el mapa y tocá la posición.', { tipo: 'mal' }); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert(msgSinCamara());
+    dlgInformar({ titulo: 'Sin cámara', texto: msgSinCamara() });
     return;
   }
   $('overlayCamara').classList.add('abierto');
@@ -4604,12 +4937,13 @@ async function abrirCamara() {
     }
   } catch (e) {
     cerrarCamara();
-    alert('No pude acceder a la cámara: ' + e.message + '\n\nVerificá que diste permiso de cámara y que abriste la app por https:// (pestaña 📱 Celular).');
+    dlgInformar({ titulo: 'No pude abrir la cámara', texto: e.message + '\n\nVerificá que diste permiso de cámara y que abriste la app por https:// (Más → Celular).' });
   }
 }
 
-function detectadoPorCamara(codigo) {
+async function detectadoPorCamara(codigo) {
   if (capturaManualAbierta) return;
+  if (preguntaScanAbierta) return;
   codigo = String(codigo).trim();
   if (!codigo || !sesion) return;
   if (!sesion.destino) return;   // hay que tocar la posición en el mapa antes de leer
@@ -4619,7 +4953,11 @@ function detectadoPorCamara(codigo) {
   ultimoCodigoCam = codigo; ultimoCamTs = ahora;
   if (navigator.vibrate) navigator.vibrate(80);
   if (confirmarCadaLectura) previsualizarCam(codigo);
-  else { procesarScan(codigo); reflejarEnCamara(); }
+  else {
+    await procesarScan(codigo);
+    ultimoCamTs = Date.now();   // la pregunta pudo tardar: que no reabra de inmediato con el mismo código
+    reflejarEnCamara();
+  }
 }
 
 // Muestra la lectura y espera el OK del usuario antes de asignar la posición.
@@ -4644,11 +4982,11 @@ function previsualizarCam(codigo) {
   }
 }
 
-function confirmarCam() {
+async function confirmarCam() {
   if (!pendienteCam) return;
   const c = pendienteCam; pendienteCam = null;
   ocultarConfirmCam();
-  procesarScan(c);          // asigna la posición y avanza
+  await procesarScan(c);          // asigna la posición y avanza
   reflejarEnCamara();
 }
 
@@ -5109,7 +5447,9 @@ const Vista3D = (() => {
   $('btnReset3d') && $('btnReset3d').addEventListener('click', centrar);
   // escribir en el buscador 3D refleja el término en el 2D y resalta en ambas vistas
   $('buscar3d') && $('buscar3d').addEventListener('input', () => {
+    fsGuardar('mapa3d:busca', $('buscar3d').value);
     $('buscarMapa').value = $('buscar3d').value;
+    fsGuardar('mapa:busca', $('buscarMapa').value);
     window.aplicarBusqueda();
   });
 
@@ -5176,7 +5516,7 @@ function escFeedbackMostrar(clase, html, enCamara) {
 }
 
 function escAgregar(bruto, enCamara) {
-  if (!escSesion.tipo) { alert('Primero elegí el tipo de operación (Vaciado, Llenado o Llenado y Vaciado).'); return; }
+  if (!escSesion.tipo) { dlgAvisar('Primero elegí el tipo de operación (Vaciado, Llenado o Llenado y Vaciado).', { tipo: 'mal' }); return; }
   const num = normalizarCodigo(bruto);
   if (escSesion.codigos.includes(num)) {
     beep(true); if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
@@ -5204,17 +5544,39 @@ function escRender() {
   t.innerHTML = '<tr><th>#</th><th>Código</th><th>Lote</th><th>Marca / Vasija</th><th></th></tr>' +
     escSesion.codigos.map((c, i) => {
       const r = indiceInv.get(String(c));
-      const marca = r ? escapeHtml(r.marca || '') : '<span style="color:var(--warn)">⚠ no figura en inventario</span>';
+      const marca = r ? escapeHtml(r.marca || '') : '<span style="color:var(--sem-warn)">⚠ no figura en inventario</span>';
       return `<tr${r ? '' : ' style="background:#fff3e0;"'}>
         <td>${i + 1}</td><td><b>${escapeHtml(c)}</b></td>
         <td>${escapeHtml(r ? (r.lote || '—') : '')}</td><td>${marca}</td>
-        <td><button class="btn sec" style="padding:3px 9px;" onclick="escQuitar(${i})">✕</button></td></tr>`;
+        <td><button type="button" class="btn sec esc-quitar" onclick="escQuitar(${i})" aria-label="Quitar ${escapeHtml(c)} de la orden">✕</button></td></tr>`;
     }).join('');
 }
 
+let escAvisoQuitar = null;   // el aviso con Deshacer de la última ✕
+// Después de tocar ✕ (o Deshacer) el foco quedaba en body y la pistola ya no
+// escribía en #escInput. Con la cámara abierta no: abriría el teclado encima.
+function escEnfocarEscaner() {
+  if ($('escZona').style.display !== 'none' && !$('overlayCamaraEsc').classList.contains('abierto')) $('escInput').focus();
+}
 function escQuitar(i) {
+  const sesionDeAntes = escSesion;
+  const num = escSesion.codigos[i];
+  if (num === undefined) return;
   escSesion.codigos.splice(i, 1);
   escAutoLote(); escRender(); escGuardarBorrador();
+  escEnfocarEscaner();
+  if (escAvisoQuitar) escAvisoQuitar.cerrar();
+  escAvisoQuitar = dlgAvisar(`Quitaste ${num} de la orden.`, {
+    deshacer: () => {
+      escAvisoQuitar = null;
+      if (escSesion !== sesionDeAntes) return;           // se guardó, se canceló o se abrió otra orden
+      if (escSesion.codigos.includes(num)) return;       // lo volvieron a escanear mientras tanto
+      escSesion.codigos.splice(Math.min(i, escSesion.codigos.length), 0, num);
+      escAutoLote(); escRender(); escGuardarBorrador();
+      escFeedbackMostrar('ok', `↩ Volvió <b>${escapeHtml(num)}</b> a la orden.`, false);
+      escEnfocarEscaner();
+    },
+  });
 }
 
 function escDeshacer() {
@@ -5222,6 +5584,7 @@ function escDeshacer() {
   const r = escSesion.codigos.pop();
   escAutoLote(); escRender(); escGuardarBorrador();
   escFeedbackMostrar('aviso', `↩ Quité <b>${escapeHtml(r)}</b>.`, false);
+  escEnfocarEscaner();
 }
 
 // ---------- editar una orden ya guardada ----------
@@ -5275,103 +5638,122 @@ function escPintarModoEdicion() {
 // Editar es volver a cargar la orden en la planilla de carga: así se corrigen los
 // barriles con las mismas herramientas de siempre (la pistola, la cámara, tipear a
 // mano, la ✕ de cada fila) en vez de tener una segunda lista en otra ventana.
-function escEditarOrden(id) {
-  const o = (estado.escaneos || []).find(x => x.id === id);
-  // Se revalida acá y no sólo al dibujar: el historial no se redibuja solo, así
-  // que un botón dibujado a los 14 minutos sigue siendo clickeable a los 20.
-  const v = escPuedeEditar(o, rol);
-  if (!v.puede) {
-    if (v.motivo === 'no-existe') { alert('Esa orden ya no está.'); escDibujarHistorial(); return; }
-    $('modalContenido').innerHTML = escMotivoNoEditable(o, v.motivo);
-    $('modal').classList.add('abierto');
-    escDibujarHistorial();   // que el botón quede gris de una vez
-    return;
+let escEditarEnCurso = false;   // evita apilar una 2.ª pregunta con doble toque
+async function escEditarOrden(id) {
+  if (escEditarEnCurso) return;
+  escEditarEnCurso = true;
+  try {
+    const o = (estado.escaneos || []).find(x => x.id === id);
+    // Se revalida acá y no sólo al dibujar: el historial no se redibuja solo, así
+    // que un botón dibujado a los 14 minutos sigue siendo clickeable a los 20.
+    const v = escPuedeEditar(o, rol);
+    if (!v.puede) {
+      if (v.motivo === 'no-existe') { dlgAvisar('Esa orden ya no está.', { tipo: 'mal' }); escDibujarHistorial(); return; }
+      $('modalContenido').innerHTML = escMotivoNoEditable(o, v.motivo);
+      $('modal').classList.add('abierto');
+      escDibujarHistorial();   // que el botón quede gris de una vez
+      return;
+    }
+    if (escSesion.codigos.length && escSesion.editando !== id &&
+        !await dlgConfirmar({ titulo: 'Carga sin guardar', texto: 'Tenés una carga sin guardar con ' + escSesion.codigos.length + ' barriles. Si editás esta orden, esa carga se pierde.', si: 'Editar igual', no: 'Volver', peligro: true })) return;
+    if (v.aviso === 'marcada' &&
+        !await dlgConfirmar({ titulo: 'Orden marcada', texto: 'Esta orden figura como pasada al inventario (marca puesta a mano).\n\nSi le cambiás los datos, esa marca puede quedar diciendo algo que ya no es.', si: 'Editar igual', no: 'Volver' })) return;
+    // mientras preguntaba pudo cambiar o borrarse desde otro dispositivo
+    const oViva = (estado.escaneos || []).find(x => x.id === o.id);
+    if (!oViva || !escPuedeEditar(oViva, rol).puede) { dlgAvisar('Esa orden ya no se puede editar.', { tipo: 'mal' }); escDibujarHistorial(); return; }
+    $('modal').classList.remove('abierto');
+    if (escAvisoQuitar) { escAvisoQuitar.cerrar(); escAvisoQuitar = null; }
+    escSesion = { tipo: oViva.tipo, codigos: oViva.codigos.slice(), editando: oViva.id };
+    escLoteManual = true;   // el lote sale de la orden; que no lo pise el automático
+    $('escFecha').value = oViva.fecha || '';
+    $('escOT').value = oViva.ot || '';
+    $('escLote').value = oViva.lote || '';
+    document.querySelectorAll('.esc-tipo').forEach(b => b.classList.toggle('activo', b.dataset.tipo === oViva.tipo));
+    $('escTituloOp').textContent = ESC_TIPO_LABEL[oViva.tipo] || '';
+    $('escTipoCam').textContent = ESC_TIPO_LABEL[oViva.tipo] || '';
+    $('escZona').style.display = 'block';
+    $('escResumen').style.display = 'none';
+    escPintarModoEdicion();
+    escRender();
+    escSetContador();
+    escGuardarBorrador();
+    if ($('escZona').scrollIntoView) $('escZona').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } finally {
+    escEditarEnCurso = false;
   }
-  if (escSesion.codigos.length && escSesion.editando !== id &&
-      !confirm('Tenés una carga sin guardar con ' + escSesion.codigos.length +
-        ' barriles. Si editás esta orden, esa carga se pierde.\n\n¿Seguir igual?')) return;
-  if (v.aviso === 'marcada' &&
-      !confirm('Esta orden figura como pasada al inventario (marca puesta a mano).\n\n' +
-        'Si le cambiás los datos, esa marca puede quedar diciendo algo que ya no es.\n\n¿Editarla igual?')) return;
-  $('modal').classList.remove('abierto');
-  escSesion = { tipo: o.tipo, codigos: o.codigos.slice(), editando: o.id };
-  escLoteManual = true;   // el lote sale de la orden; que no lo pise el automático
-  $('escFecha').value = o.fecha || '';
-  $('escOT').value = o.ot || '';
-  $('escLote').value = o.lote || '';
-  document.querySelectorAll('.esc-tipo').forEach(b => b.classList.toggle('activo', b.dataset.tipo === o.tipo));
-  $('escTituloOp').textContent = ESC_TIPO_LABEL[o.tipo] || '';
-  $('escTipoCam').textContent = ESC_TIPO_LABEL[o.tipo] || '';
-  $('escZona').style.display = 'block';
-  $('escResumen').style.display = 'none';
-  escPintarModoEdicion();
-  escRender();
-  escSetContador();
-  escGuardarBorrador();
-  if ($('escZona').scrollIntoView) $('escZona').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function escGuardar() {
-  // Antes de mostrar "✅ orden guardada": el servidor no la va a aceptar.
-  if (soloLectura) { alert(MSG_SOLO_LECTURA); return; }
-  if (!escSesion.tipo) { alert('Elegí el tipo de operación.'); return; }
-  if (!escSesion.codigos.length) { alert('No escaneaste ningún barril todavía.'); return; }
-  // avisar si falta completar algún casillero de información
-  const fecha = $('escFecha').value.trim();
-  const ot = $('escOT').value.trim();
-  const lote = $('escLote').value.trim();
-  const faltan = [];
-  if (!fecha) faltan.push('Fecha');
-  if (!ot) faltan.push('N° de OT');
-  if (!lote) faltan.push('Lote');
-  if (faltan.length) {
-    if (!confirm('⚠ Falta completar: ' + faltan.join(', ') + '.\n\n¿Querés guardar la orden igual?')) {
-      if (!fecha) $('escFecha').focus(); else if (!ot) $('escOT').focus(); else $('escLote').focus();
+let escGuardarEnCurso = false;   // evita apilar una 2.ª pregunta con doble toque
+async function escGuardar() {
+  if (escGuardarEnCurso) return;
+  escGuardarEnCurso = true;
+  try {
+    // Antes de mostrar "✅ orden guardada": el servidor no la va a aceptar.
+    if (soloLectura) { dlgInformar({ titulo: 'Solo lectura', texto: MSG_SOLO_LECTURA }); return; }
+    if (!escSesion.tipo) { dlgAvisar('Elegí el tipo de operación.', { tipo: 'mal' }); return; }
+    if (!escSesion.codigos.length) { dlgAvisar('No escaneaste ningún barril todavía.', { tipo: 'mal' }); return; }
+    // avisar si falta completar algún casillero de información
+    let fecha = $('escFecha').value.trim();
+    let ot = $('escOT').value.trim();
+    let lote = $('escLote').value.trim();
+    const faltan = [];
+    if (!fecha) faltan.push('Fecha');
+    if (!ot) faltan.push('N° de OT');
+    if (!lote) faltan.push('Lote');
+    if (faltan.length) {
+      if (!await dlgConfirmar({ titulo: 'Faltan datos', texto: 'Falta completar: ' + faltan.join(', ') + '.', si: 'Guardar igual', no: 'Completar' })) {
+        if (!fecha) $('escFecha').focus(); else if (!ot) $('escOT').focus(); else $('escLote').focus();
+        return;
+      }
+      // mientras preguntaba, el operario pudo seguir tipeando
+      fecha = $('escFecha').value.trim();
+      ot = $('escOT').value.trim();
+      lote = $('escLote').value.trim();
+    }
+    if (!estado.escaneos) estado.escaneos = [];
+    // Editando: se actualiza la orden en su lugar. Conserva el id (otras pantallas la
+    // referencian por ahí) y la posición en la lista, así el historial no se reordena
+    // solo, y conserva las marcas de trazabilidad, que son de la orden y no de estos
+    // datos: haberla pasado a Lotes sigue siendo cierto después de corregir una fecha.
+    if (escSesion.editando) {
+      const o = estado.escaneos.find(x => x.id === escSesion.editando);
+      if (!o) {
+        dlgInformar({ titulo: 'La orden ya no está', texto: 'La borraron desde otro dispositivo mientras la editabas.\n\nLo que cargaste sigue acá. Si lo querés conservar, tocá "Cancelar edición" y guardalo como orden nueva.' });
+        return;
+      }
+      const antes = camposDeOrden(o);
+      o.fecha = fecha || hoyISO();
+      o.ot = ot;
+      o.lote = lote;
+      o.tipo = escSesion.tipo;
+      o.codigos = escSesion.codigos.slice();
+      // el mes se deduce de la fecha (escMesDe); dejar el viejo pegado mandaría la
+      // orden al mes equivocado en el listado de trasegados
+      delete o.mes;
+      guardar();
+      escRecordarPendiente(o, antes);   // hasta que el servidor la confirme
+      escMostrarResumen(o, true);
+      escLimpiarSesion();
+      escDibujarHistorial();
       return;
     }
-  }
-  if (!estado.escaneos) estado.escaneos = [];
-  // Editando: se actualiza la orden en su lugar. Conserva el id (otras pantallas la
-  // referencian por ahí) y la posición en la lista, así el historial no se reordena
-  // solo, y conserva las marcas de trazabilidad, que son de la orden y no de estos
-  // datos: haberla pasado a Lotes sigue siendo cierto después de corregir una fecha.
-  if (escSesion.editando) {
-    const o = estado.escaneos.find(x => x.id === escSesion.editando);
-    if (!o) {
-      alert('Esa orden ya no está: la borraron desde otro dispositivo mientras la editabas.\n\n' +
-        'Lo que cargaste sigue acá. Si lo querés conservar, tocá "Cancelar edición" y guardalo como orden nueva.');
-      return;
-    }
-    const antes = camposDeOrden(o);
-    o.fecha = fecha || hoyISO();
-    o.ot = ot;
-    o.lote = lote;
-    o.tipo = escSesion.tipo;
-    o.codigos = escSesion.codigos.slice();
-    // el mes se deduce de la fecha (escMesDe); dejar el viejo pegado mandaría la
-    // orden al mes equivocado en el listado de trasegados
-    delete o.mes;
+    const orden = {
+      id: 'e' + Date.now(),
+      fecha: fecha || hoyISO(),
+      ot: ot,
+      lote: lote,
+      tipo: escSesion.tipo,
+      codigos: escSesion.codigos.slice(),
+    };
+    estado.escaneos.push(orden);
     guardar();
-    escRecordarPendiente(o, antes);   // hasta que el servidor la confirme
-    escMostrarResumen(o, true);
+    escRecordarPendiente(orden, null);   // hasta que el servidor la confirme
+    escMostrarResumen(orden);
     escLimpiarSesion();
     escDibujarHistorial();
-    return;
+  } finally {
+    escGuardarEnCurso = false;
   }
-  const orden = {
-    id: 'e' + Date.now(),
-    fecha: fecha || hoyISO(),
-    ot: ot,
-    lote: lote,
-    tipo: escSesion.tipo,
-    codigos: escSesion.codigos.slice(),
-  };
-  estado.escaneos.push(orden);
-  guardar();
-  escRecordarPendiente(orden, null);   // hasta que el servidor la confirme
-  escMostrarResumen(orden);
-  escLimpiarSesion();
-  escDibujarHistorial();
 }
 
 // Qué quedó para revisar en una orden ya guardada. Si devuelve vacío, el cartel
@@ -5431,6 +5813,7 @@ function escMostrarResumen(o, editado) {
 }
 
 function escLimpiarSesion() {
+  if (escAvisoQuitar) { escAvisoQuitar.cerrar(); escAvisoQuitar = null; }
   escSesion = { tipo: null, codigos: [] };
   escLoteManual = false;
   document.querySelectorAll('.esc-tipo').forEach(b => b.classList.remove('activo'));
@@ -5446,19 +5829,26 @@ function escLimpiarSesion() {
   escBorrarBorrador();
 }
 
-function escCancelar() {
-  // Cancelar una edición no pierde nada: la orden queda como estaba. Cancelar una
-  // carga nueva sí, así que el aviso no puede ser el mismo.
-  const editando = !!escSesion.editando;
-  if (escSesion.codigos.length && !confirm(editando
-      ? '¿Cancelar la edición? La orden queda como estaba.'
-      : '¿Cancelar esta orden? Se perderán los ' + escSesion.codigos.length + ' barriles escaneados.')) return;
-  $('escResumen').style.display = 'none';
-  escLimpiarSesion();
+let escCancelarEnCurso = false;   // evita apilar una 2.ª pregunta con doble toque
+async function escCancelar() {
+  if (escCancelarEnCurso) return;
+  escCancelarEnCurso = true;
+  try {
+    // Cancelar una edición no pierde nada: la orden queda como estaba. Cancelar una
+    // carga nueva sí, así que el aviso no puede ser el mismo.
+    const editando = !!escSesion.editando;
+    if (escSesion.codigos.length && !await dlgConfirmar(editando
+        ? { titulo: 'Cancelar la edición', texto: 'La orden queda como estaba.', si: 'Cancelar edición', no: 'Seguir editando' }
+        : { titulo: 'Descartar la orden', texto: 'Se pierden los ' + escSesion.codigos.length + ' barriles escaneados.', si: 'Descartar', no: 'Seguir cargando', peligro: true })) return;
+    $('escResumen').style.display = 'none';
+    escLimpiarSesion();
+  } finally {
+    escCancelarEnCurso = false;
+  }
 }
 
 // --- filtros del historial: por mes (de la fecha), operación y búsqueda libre ---
-let escFiltro = { q: '', mes: '', tipo: '' };
+let escFiltro = Object.assign({ q: '', mes: '', tipo: '' }, fsLeer('esc:filtro', {}));
 
 function escMes(fecha) {
   const m = /^(\d{4})-(\d{2})/.exec(String(fecha || ''));
@@ -5478,11 +5868,15 @@ function escPoblarFiltros() {
     // el mes puede venir tal cual del campo `mes` de la orden (texto libre del
     // import, o de un POST armado a mano): se escapa como cualquier otro dato
     meses.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+  // Si el mes guardado ya no está entre las opciones (p. ej. se borraron las órdenes
+  // de ese mes), el <select> no lo selecciona: leer su value de vuelta lo descarta.
   selM.value = escFiltro.mes;
+  escFiltro.mes = selM.value;
   const selT = $('escFiltroTipo');
   selT.innerHTML = '<option value="">Todas</option>' +
     tipos.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(ESC_TIPO_EXCEL[t] || t)}</option>`).join('');
   selT.value = escFiltro.tipo;
+  escFiltro.tipo = selT.value;
 }
 
 function escFiltrar(arr) {
@@ -5538,9 +5932,9 @@ function escDibujarHistorial() {
       <td style="text-align:center; font-weight:700;">${o.codigos.length}</td>
       ${celdaMarcas}
       <td style="white-space:nowrap;">
-        <button class="btn sec" style="padding:4px 9px;" onclick="escVerOrden(${argJs(o.id)})">👁</button>
-        <button class="btn sec${gris}" style="padding:4px 9px;" title="${tituloEditar}" onclick="escEditarOrden(${argJs(o.id)})">✏️</button>
-        <button class="btn peligro${gris}" style="padding:4px 9px;" title="${vencida
+        <button class="btn sec esc-hist-btn" onclick="escVerOrden(${argJs(o.id)})">👁</button>
+        <button class="btn sec${gris} esc-hist-btn" title="${tituloEditar}" onclick="escEditarOrden(${argJs(o.id)})">✏️</button>
+        <button class="btn peligro${gris} esc-hist-btn" title="${vencida
           ? `pasaron más de ${ESC_MINUTOS_EDICION} minutos: sólo la puede borrar el programador`
           : 'borrar esta orden'}" onclick="escBorrarOrden(${argJs(o.id)})">🗑</button></td>
     </tr>`;
@@ -5841,28 +6235,44 @@ function invConfirmarRevertir(id) {
   const res = invRevertirOrden(o);
   invCerrarAccion();
   if (res && res.quedan && res.quedan.length)
-    alert('Deshacer parcial: ' + res.revertidos + ' barriles volvieron atrás. ' + res.quedan.length +
-      ' no se tocaron porque cambiaron después de esta orden: ' + res.quedan.map(q => q.num).join(', '));
+    dlgInformar({ titulo: 'Deshacer parcial', texto: res.revertidos + ' barriles volvieron atrás. ' + res.quedan.length +
+      ' no se tocaron porque cambiaron después de esta orden: ' + res.quedan.map(q => q.num).join(', ') });
 }
 
-function escBorrarOrden(id) {
-  const o = (estado.escaneos || []).find(x => x.id === id);
-  if (!o) return;
-  // Misma ventana de tiempo que el lápiz: dejar el tacho abierto sería peor que
-  // dejar abierta la edición, porque no hay forma de volver atrás. Sólo se mira
-  // 'vencida': borrar una orden ya aplicada sigue siendo cosa del programador,
-  // como hasta ahora.
-  const v = escPuedeEditar(o, rol);
-  if (v.motivo === 'vencida') {
-    $('modalContenido').innerHTML = escMotivoNoEditable(o, v.motivo);
-    $('modal').classList.add('abierto');
+const escBorrarEnCurso = new Set();   // ids de orden con la pregunta de borrado abierta
+async function escBorrarOrden(id) {
+  if (escBorrarEnCurso.has(id)) return;
+  escBorrarEnCurso.add(id);
+  try {
+    const o = (estado.escaneos || []).find(x => x.id === id);
+    if (!o) return;
+    // Misma ventana de tiempo que el lápiz: dejar el tacho abierto sería peor que
+    // dejar abierta la edición, porque no hay forma de volver atrás. Sólo se mira
+    // 'vencida': borrar una orden ya aplicada sigue siendo cosa del programador,
+    // como hasta ahora.
+    const v = escPuedeEditar(o, rol);
+    if (v.motivo === 'vencida') {
+      $('modalContenido').innerHTML = escMotivoNoEditable(o, v.motivo);
+      $('modal').classList.add('abierto');
+      escDibujarHistorial();
+      return;
+    }
+    if (!await dlgConfirmar({ titulo: 'Borrar orden', texto: `La orden ${o.ot || '(sin OT)'} de ${o.codigos.length} barriles se borra. No se puede deshacer.`, si: 'Borrar orden', peligro: true })) return;
+    // mientras preguntaba pudo cambiar o vencer desde otro dispositivo
+    const oViva = (estado.escaneos || []).find(x => x.id === id);
+    if (!oViva) { escDibujarHistorial(); return; }
+    const vViva = escPuedeEditar(oViva, rol);
+    if (vViva.motivo === 'vencida') {
+      dlgAvisar('Esa orden ya no se puede borrar.', { tipo: 'mal' });
+      escDibujarHistorial();
+      return;
+    }
+    estado.escaneos = (estado.escaneos || []).filter(x => x.id !== id);
+    guardar();
     escDibujarHistorial();
-    return;
+  } finally {
+    escBorrarEnCurso.delete(id);
   }
-  if (!confirm(`¿Borrar la orden ${o.ot || '(sin OT)'} de ${o.codigos.length} barriles? No se puede deshacer.`)) return;
-  estado.escaneos = estado.escaneos.filter(x => x.id !== id);
-  guardar();
-  escDibujarHistorial();
 }
 
 // --- borrador local: sobrevive a una recarga accidental del navegador ---
@@ -5916,9 +6326,7 @@ function escRecuperarPendientes() {
   escDibujarHistorial();
   const ots = plan.agregar.concat(plan.editar.map(e => e.campos))
     .map(o => o.ot || '(sin OT)').join(', ');
-  alert(`En este equipo quedaron ${plan.agregar.length + plan.editar.length} orden(es) del escáner que se ` +
-    `guardaron pero no llegaron al servidor (la página se cerró o recargó antes de que confirmara): ${ots}.\n\n` +
-    'Ya se volvieron a cargar. Revisalas en el historial del escáner.');
+  dlgInformar({ titulo: 'Órdenes recuperadas', texto: `En este equipo quedaron ${plan.agregar.length + plan.editar.length} orden(es) del escáner que se guardaron pero no llegaron al servidor (la página se cerró o recargó antes de que confirmara): ${ots}.\n\nYa se volvieron a cargar. Revisalas en el historial del escáner.` });
 }
 function escRestaurarBorrador() {
   let d = null;
@@ -5940,9 +6348,9 @@ function escRestaurarBorrador() {
 
 // --- cámara del escáner ---
 async function escAbrirCamara() {
-  if (!escSesion.tipo) { alert('Primero elegí el tipo de operación.'); return; }
+  if (!escSesion.tipo) { dlgAvisar('Primero elegí el tipo de operación.', { tipo: 'mal' }); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert(msgSinCamara());
+    dlgInformar({ titulo: 'Sin cámara', texto: msgSinCamara() });
     return;
   }
   $('overlayCamaraEsc').classList.add('abierto');
@@ -5968,7 +6376,7 @@ async function escAbrirCamara() {
     escRenderListaCam();
   } catch (e) {
     escCerrarCamara();
-    alert('No pude acceder a la cámara: ' + e.message + '\n\nVerificá que diste permiso de cámara y que abriste la app por https:// (pestaña 📱 Celular).');
+    dlgInformar({ titulo: 'No pude abrir la cámara', texto: e.message + '\n\nVerificá que diste permiso de cámara y que abriste la app por https:// (Más → Celular).' });
   }
 }
 
@@ -6013,9 +6421,9 @@ let paletStreamCam = null, paletIntervaloCam = null, paletLectorZX = null;
 let paletUltimoCod = '', paletUltimoTs = 0, paletCargadosCam = 0;
 
 async function paletAbrirCamara() {
-  if (!sesionTanque || !sesionTanque.destino) { alert('Primero tocá un casillero del palet.'); return; }
+  if (!sesionTanque || !sesionTanque.destino) { dlgAvisar('Primero tocá un casillero del palet.', { tipo: 'mal' }); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert(msgSinCamara());
+    dlgInformar({ titulo: 'Sin cámara', texto: msgSinCamara() });
     return;
   }
   $('overlayCamaraPalet').classList.add('abierto');
@@ -6040,7 +6448,7 @@ async function paletAbrirCamara() {
     }
   } catch (e) {
     paletCerrarCamara();
-    alert('No pude acceder a la cámara: ' + e.message + '\n\nVerificá que diste permiso de cámara y que abriste la app por https:// (pestaña 📱 Celular).');
+    dlgInformar({ titulo: 'No pude abrir la cámara', texto: e.message + '\n\nVerificá que diste permiso de cámara y que abriste la app por https:// (Más → Celular).' });
   }
 }
 
@@ -6079,7 +6487,7 @@ function paletCerrarCamara() {
 // --- exportar a Excel en el mismo formato de columnas que la planilla scanner ---
 function escExportar() {
   const ordenes = (estado.escaneos || []);
-  if (!ordenes.length) { alert('No hay órdenes registradas para exportar.'); return; }
+  if (!ordenes.length) { dlgAvisar('No hay órdenes registradas para exportar.', { tipo: 'mal' }); return; }
   const maxCod = ordenes.reduce((m, o) => Math.max(m, o.codigos.length), 0);
   const filas = [];
   filas.push(['Fecha', ...ordenes.map(o => o.fecha)]);
@@ -6110,10 +6518,11 @@ $('escBtnCamara').addEventListener('click', escAbrirCamara);
 $('escBtnDeshacer').addEventListener('click', escDeshacer);
 $('escBtnGuardar').addEventListener('click', escGuardar);
 $('escBtnCancelar').addEventListener('click', escCancelar);
-$('escFiltroQ').addEventListener('input', () => { escFiltro.q = $('escFiltroQ').value; escDibujarHistorial(); });
-$('escFiltroMes').addEventListener('change', () => { escFiltro.mes = $('escFiltroMes').value; escDibujarHistorial(); });
-$('escFiltroTipo').addEventListener('change', () => { escFiltro.tipo = $('escFiltroTipo').value; escDibujarHistorial(); });
-$('escFiltroLimpiar').addEventListener('click', () => { escFiltro = { q: '', mes: '', tipo: '' }; $('escFiltroQ').value = ''; escDibujarHistorial(); });
+$('escFiltroQ').value = escFiltro.q;
+$('escFiltroQ').addEventListener('input', () => { escFiltro.q = $('escFiltroQ').value; fsGuardar('esc:filtro', escFiltro); escDibujarHistorial(); });
+$('escFiltroMes').addEventListener('change', () => { escFiltro.mes = $('escFiltroMes').value; fsGuardar('esc:filtro', escFiltro); escDibujarHistorial(); });
+$('escFiltroTipo').addEventListener('change', () => { escFiltro.tipo = $('escFiltroTipo').value; fsGuardar('esc:filtro', escFiltro); escDibujarHistorial(); });
+$('escFiltroLimpiar').addEventListener('click', () => { escFiltro = { q: '', mes: '', tipo: '' }; $('escFiltroQ').value = ''; fsGuardar('esc:filtro', escFiltro); escDibujarHistorial(); });
 $('escBtnExportar').addEventListener('click', escExportar);
 $('escBtnCerrarCam').addEventListener('click', escCerrarCamara);
 function escTipearAbrir() {
@@ -6217,24 +6626,31 @@ function barFeedbackMostrar(clase, html) {
   fb.style.display = 'block'; fb.className = clase; fb.innerHTML = html;
 }
 
-function barAsociarManual() {
-  const num = $('barInputTanque').value.trim();
-  const lote = barNormLote($('barInputLote').value);
-  if (!num || !lote) { alert('Completá el número de la vasija y el lote.'); return; }
-  let r = barAsociar(num, lote, false);
-  if (r.pedirConfirmacion) {
-    if (!confirm(`⚠ El inventario dice que ${num} está ${r.estadoInv} con lote ${r.loteInv}.\n\nLeíste ${lote}. ¿Lo piso?`)) return;
-    r = barAsociar(num, lote, true);
+let barAsociarEnCurso = false;   // evita apilar una 2.ª pregunta (botón + Enter)
+async function barAsociarManual() {
+  if (barAsociarEnCurso) return;
+  barAsociarEnCurso = true;
+  try {
+    const num = $('barInputTanque').value.trim();
+    const lote = barNormLote($('barInputLote').value);
+    if (!num || !lote) { barFeedbackMostrar('err', 'Completá el número de la vasija y el lote.'); dlgAvisar('Completá el número de la vasija y el lote.', { tipo: 'mal' }); return; }
+    let r = barAsociar(num, lote, false);
+    if (r.pedirConfirmacion) {
+      if (!await dlgConfirmar({ titulo: 'Lote distinto', texto: `El inventario dice que ${num} está ${r.estadoInv} con lote ${r.loteInv}. Leíste ${lote}.`, si: 'Pisar con ' + lote, no: 'Dejar ' + r.loteInv, peligro: true })) return;
+      r = barAsociar(num, lote, true);
+    }
+    if (r.error) { beep(true); dlgAvisar(r.error, { tipo: 'mal' }); return; }
+    beep(false);
+    const aviso = barLoteConocido(lote) ? '' : ' · <span style="color:var(--sem-warn)">⚠ lote nuevo (no figura en el inventario)</span>';
+    const qué = barDescripcionVasija(r.num);
+    const fila = indiceInv.get(r.num);
+    barFeedbackMostrar('ok', `✅ <b>${escapeHtml(r.num)}</b>${qué ? ` <span class="nota" style="margin:0;">(${escapeHtml(qué)})</span>` : ''}` +
+      ` → <b>${escapeHtml(fila ? fila.estado : '')}</b> lote <b>${escapeHtml(lote)}</b>${aviso}`);
+    $('barInputTanque').value = ''; $('barInputLote').value = '';
+    $('barInputTanque').focus();
+  } finally {
+    barAsociarEnCurso = false;
   }
-  if (r.error) { beep(true); alert(r.error); return; }
-  beep(false);
-  const aviso = barLoteConocido(lote) ? '' : ' · <span style="color:var(--warn)">⚠ lote nuevo (no figura en el inventario)</span>';
-  const qué = barDescripcionVasija(r.num);
-  const fila = indiceInv.get(r.num);
-  barFeedbackMostrar('ok', `✅ <b>${escapeHtml(r.num)}</b>${qué ? ` <span class="nota" style="margin:0;">(${escapeHtml(qué)})</span>` : ''}` +
-    ` → <b>${escapeHtml(fila ? fila.estado : '')}</b> lote <b>${escapeHtml(lote)}</b>${aviso}`);
-  $('barInputTanque').value = ''; $('barInputLote').value = '';
-  $('barInputTanque').focus();
 }
 
 // "Esta vasija quedó vacía": el otro hecho que se observa en la bodega, además
@@ -6243,9 +6659,9 @@ function barAsociarManual() {
 // tanques en cadena. Se deshace desde la celda, como cualquier corrección.
 function barMarcarVacia(num) {
   num = String(num || '').trim();
-  if (!num) { alert('Poné el número de la vasija.'); return; }
+  if (!num) { dlgAvisar('Poné el número de la vasija.', { tipo: 'mal' }); return; }
   const r = barAsociar(num, '', true, true);
-  if (r.error) { alert(r.error); return; }
+  if (r.error) { dlgAvisar(r.error, { tipo: 'mal' }); return; }
   beep(false);
   const qué = barDescripcionVasija(num);
   barFeedbackMostrar('ok', `⊘ <b>${escapeHtml(num)}</b>${qué ? ` <span class="nota" style="margin:0;">(${escapeHtml(qué)})</span>` : ''} → <b>VACÍA</b>`);
@@ -6257,7 +6673,7 @@ function barMarcarVacia(num) {
 // "Mostrar más" (si filtraste 800 filas querés las 800, no las 300 pintadas).
 function barExportar() {
   const arr = filasInvFiltradas();
-  if (!arr.length) { alert('No hay filas para exportar (probá limpiar la búsqueda o el filtro).'); return; }
+  if (!arr.length) { dlgAvisar('No hay filas para exportar (probá limpiar la búsqueda o el filtro).', { tipo: 'mal' }); return; }
   const filas = [['Tipo', 'Número', 'Estado', 'Marca', 'Lote', 'Cosecha', 'Fecha']];
   for (const f of arr) filas.push([
     f.r.cap === '' || f.r.cap == null ? '' : f.r.cap + ' L',
@@ -6470,7 +6886,7 @@ function hojasExportTodo(est, ixInv, filasInv) {
 function exportTodo() {
   const hojas = hojasExportTodo(estado, indiceInv, filasInvTodas());
   // solo el Resumen quiere decir que no hay ni una fila de nada
-  if (hojas.length < 2) { alert('Todavía no hay datos para exportar.'); return; }
+  if (hojas.length < 2) { dlgAvisar('Todavía no hay datos para exportar.', { tipo: 'mal' }); return; }
   const wb = XLSX.utils.book_new();
   for (const h of hojas) {
     const ws = XLSX.utils.aoa_to_sheet(h.filas);
@@ -6708,7 +7124,7 @@ function barDetectado(codigo) {
 
 async function barAbrirCamara() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert(msgSinCamara());
+    dlgInformar({ titulo: 'Sin cámara', texto: msgSinCamara() });
     return;
   }
   $('overlayCamaraBar').classList.add('abierto');
@@ -6733,7 +7149,7 @@ async function barAbrirCamara() {
     }
   } catch (e) {
     barCerrarCamara();
-    alert('No pude acceder a la cámara: ' + e.message + '\n\nVerificá que diste permiso de cámara y que abriste la app por https:// (pestaña 📱 Celular).');
+    dlgInformar({ titulo: 'No pude abrir la cámara', texto: e.message + '\n\nVerificá que diste permiso de cámara y que abriste la app por https:// (Más → Celular).' });
   }
 }
 
@@ -6801,17 +7217,17 @@ $('barBtnCancelarPar').addEventListener('click', () => barFaseTanque(false));
 // admin). Era la descarga del .db del servidor.py, que solo andaba desde la PC
 // de la bodega; los textos de entonces mandaban a http://localhost:8766.
 $('btnDescargarDB').addEventListener('click', async () => {
-  if (!modoServidor) { alert('Todavía no hay conexión con el servidor.\nMientras tanto podés usar "⬇ Exportar respaldo", que baja lo que ves en esta pantalla.'); return; }
+  if (!modoServidor) { await dlgInformar({ titulo: 'Sin conexión', texto: 'Todavía no hay conexión con el servidor.\nMientras tanto podés usar "⬇ Exportar respaldo", que baja lo que ves en esta pantalla.' }); return; }
   const btn = $('btnDescargarDB');
   btn.disabled = true;
   try {
     const r = await fetch(API+'/backup');
     if (r.status === 401) return;   // el aviso de sesión cerrada ya lo muestra /shared/fusion.js
     if (r.status === 403) {
-      alert('La copia del servidor solo la puede bajar un administrador.\n\nPodés usar "⬇ Exportar respaldo" o los exports a Excel, que bajan lo que ves en esta pantalla.');
+      await dlgInformar({ titulo: 'Solo administradores', texto: 'La copia del servidor solo la puede bajar un administrador.\n\nPodés usar "⬇ Exportar respaldo" o los exports a Excel, que bajan lo que ves en esta pantalla.' });
       return;
     }
-    if (!r.ok) { alert('No pude generar la copia (error ' + r.status + ').'); return; }
+    if (!r.ok) { dlgAvisar('No pude generar la copia (error ' + r.status + ').', { tipo: 'mal' }); return; }
     const blob = await r.blob();
     const cd = r.headers.get('Content-Disposition') || '';
     const m = /filename="([^"]+)"/.exec(cd);
@@ -6821,7 +7237,7 @@ $('btnDescargarDB').addEventListener('click', async () => {
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   } catch (e) {
-    alert('No pude descargar la copia: ' + e.message);
+    dlgAvisar('No pude descargar la copia: ' + e.message, { tipo: 'mal' });
   } finally {
     btn.disabled = false;
   }

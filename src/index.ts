@@ -11,6 +11,7 @@
 import { rutasPrensas, snapshot } from './prensas/rutas';
 import { rutasBarriles } from './barriles/rutas';
 import { rutasLotes } from './lotes/rutas';
+import { rutasOrdenes, rolOrdenes } from './ordenes/rutas';
 import {
   emailDelUsuario,
   identidad,
@@ -26,10 +27,12 @@ import {
 import { rutasAdmin } from './admin';
 import { json } from './respuestas';
 import { PLANTILLA as PLANTILLA_PRENSAS } from './prensas/reporte-plantilla';
+import { recortarAlUltimoAnio } from './prensas/anio-reporte';
 import { construirReporte as construirReporteLotes } from './lotes/reporte';
 
 const MODULOS: Modulo[] = ['prensas', 'barriles', 'lotes'];
 const ICONO = '<link rel="icon" type="image/svg+xml" href="/favicon.svg">\n';
+const esPantallaOrdenes = (ruta: string) => ruta === '/ordenes' || ruta === '/ordenes/' || ruta === '/ordenes/index.html';
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -89,7 +92,8 @@ export default {
     const tocaLaBase =
       ruta.startsWith('/api/') ||
       MODULOS.some((m) => ruta.startsWith(`/${m}/api`) || ruta.startsWith(`/${m}/reporte`)) ||
-      MODULOS.some((m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`);
+      MODULOS.some((m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`) ||
+      ruta.startsWith('/ordenes/api') || esPantallaOrdenes(ruta);
 
     if (tocaLaBase && !(await baseInicializada(env))) {
       return json(503, {
@@ -109,7 +113,7 @@ export default {
     if (tocaLaBase) {
       const s = await sesion(req, env);
       if (s?.debeCambiar) {
-        const esPantalla = MODULOS.some((m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`);
+        const esPantalla = esPantallaOrdenes(ruta) || MODULOS.some((m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`);
         if (esPantalla) return Response.redirect(new URL('/cambiar-clave.html', req.url).toString(), 302);
         return json(403, {
           error: 'debe_cambiar_clave',
@@ -154,6 +158,16 @@ export default {
         return servirReporte(req, env, ctx, modulo);
       }
     }
+
+    // ---- Sección Órdenes de trabajo (sin rol propio: el de prensas o lotes) ----
+    if (ruta.startsWith('/ordenes/api/') || ruta === '/ordenes/api') {
+      if (!(await emailDelUsuario(req, env))) {
+        return json(401, { error: 'sin_sesion', detalles: ['Tu sesión se cerró. Iniciá sesión de nuevo.'] });
+      }
+      const r = await rutasOrdenes(req, env, ctx, ruta.slice('/ordenes/api'.length) || '/');
+      return r ?? json(404, { error: `no existe ${req.method} ${ruta}` });
+    }
+    if (esPantallaOrdenes(ruta)) return servirOrdenes(req, env);
 
     // ---- APIs de cada módulo ----
     for (const modulo of MODULOS) {
@@ -255,7 +269,55 @@ async function servirConIdentidad(
 
   const contexto = { email: id.email, nombre, rol: id.rol, modulo, modulos };
 
-  const inyeccion =
+  const inyeccion = armarInyeccion(contexto, nombre, modulo);
+
+  const html = (await res.text()).replace('</head>', inyeccion);
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store',
+  };
+  const cookie = renovarCookie(req);
+  if (cookie) headers['Set-Cookie'] = cookie;
+
+  return new Response(html, { status: res.status, headers });
+}
+
+/** /ordenes/: como servirConIdentidad, pero el rol sale de prensas o lotes. */
+async function servirOrdenes(req: Request, env: Env): Promise<Response> {
+  const email = await emailDelUsuario(req, env);
+  if (!email) return Response.redirect(new URL('/login.html', req.url).toString(), 302);
+  const { results } = await env.DB.prepare('SELECT modulo, rol, nombre FROM perfiles WHERE email = ?')
+    .bind(email).all<{ modulo: string; rol: string; nombre: string | null }>();
+  const modulos = Object.fromEntries((results ?? []).map((r) => [r.modulo, r.rol]));
+  const rol = rolOrdenes(modulos);
+  if (!rol) return Response.redirect(new URL('/', req.url).toString(), 302);
+
+  const url = new URL(req.url);
+  url.pathname = '/ordenes/';
+  const res = await env.ASSETS.fetch(new Request(url, { method: 'GET', headers: req.headers }));
+  if (!res.ok || !(res.headers.get('Content-Type') ?? '').includes('text/html')) return res;
+
+  const s = await sesion(req, env);
+  const nombre = s?.nombre ?? results?.[0]?.nombre ?? email.split('@')[0];
+  const contexto = { email, nombre, rol, modulo: 'ordenes', modulos };
+  const html = (await res.text()).replace('</head>', armarInyeccion(contexto, nombre, 'ordenes'));
+  const headers: Record<string, string> = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' };
+  const cookie = renovarCookie(req);
+  if (cookie) headers['Set-Cookie'] = cookie;
+  return new Response(html, { status: 200, headers });
+}
+
+/**
+ * Lo que se mete en el <head> de cada pantalla de módulo, ya con el </head>.
+ * Separado para poder testear el orden de los scripts.
+ */
+export function armarInyeccion(
+  contexto: { email: string; nombre: string; rol: string; modulo: string; modulos: Record<string, string> },
+  nombre: string,
+  modulo: string,
+): string {
+  return (
     // Ícono de la pestaña: sin él, el navegador muestra el globo genérico y
     // parece que la página no terminó de cargar.
     ICONO +
@@ -269,27 +331,28 @@ async function servirConIdentidad(
     // Sin defer: tiene que envolver fetch ANTES de que la app haga su primer
     // pedido, o el aviso no aparece.
     `<script src="/shared/pendientes.js"></script>\n` +
+    // Aviso y diálogo propios (CI.avisar / CI.confirmar / CI.pedir), en lugar
+    // de alert/confirm/prompt. Antes de fusion.js, que los usa al recuperar
+    // un borrador. Sin defer: las apps los llaman al cargar.
+    `<script src="/shared/dialogo-modelo.js"></script>\n` +
+    `<script src="/shared/dialogo.js"></script>\n` +
     // Fusión de cambios entre dispositivos, borrador local y aviso de sesión
     // cerrada. Sin defer: la app lo lee al cargar.
     `<script src="/shared/fusion.js"></script>\n` +
+    // La pantalla en la URL (#analisis…): el F5 y el botón Atrás vuelven a
+    // donde se estaba. Sin defer: la app la lee al arrancar.
+    `<script src="/shared/pantalla-url.js"></script>\n` +
+    // Filtros que sobreviven al F5 en esta pestaña (sessionStorage). Sin defer:
+    // las vistas los leen al crear sus filtros.
+    `<script src="/shared/filtros-sesion.js"></script>\n` +
     // La exportación a Excel se arma en el navegador, porque la nube no
     // ejecuta openpyxl. Solo se carga donde hay botón de exportar: es 950 KB.
     (modulo === 'prensas' || modulo === 'lotes'
       ? `<script defer src="/shared/xlsx.full.min.js"></script>\n` +
         `<script defer src="/shared/exportar.js"></script>\n`
       : '') +
-    `<script defer src="/shared/barra.js"></script>\n</head>`;
-
-  const html = (await res.text()).replace('</head>', inyeccion);
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'text/html; charset=utf-8',
-    'Cache-Control': 'no-store',
-  };
-  const cookie = renovarCookie(req);
-  if (cookie) headers['Set-Cookie'] = cookie;
-
-  return new Response(html, { status: res.status, headers });
+    `<script defer src="/shared/barra.js"></script>\n</head>`
+  );
 }
 
 /**
@@ -342,7 +405,10 @@ async function servirReporte(
     // Además, la plantilla (copia de reporte.py) arma sus tablas con innerHTML sin
     // escapar nada: los textos se escapan acá, antes de entrar. El reporte solo
     // muestra, así que se ven igual.
-    const datosJson = JSON.stringify(escaparTextos(datos))
+    //
+    // Solo la vendimia más nueva (lo mismo que muestra el Panel por defecto):
+    // con dos años cargados, las tablas y los totales mezclarían cosechas.
+    const datosJson = JSON.stringify(escaparTextos(recortarAlUltimoAnio(datos)))
       .replace(/</g, '\\u003c')
       .split(String.fromCharCode(0x2028)).join('\\u2028')
       .split(String.fromCharCode(0x2029)).join('\\u2029');

@@ -131,6 +131,15 @@ export function datosFicha(
   });
   const g = grafo(d);
 
+  // El último análisis usable con alguna medición química, con su veredicto:
+  // la ficha del celular lo muestra con los mismos colores que la pestaña
+  // Análisis. Una fila que es solo corrección (SO2 agregado) no cuenta.
+  const QUIMICOS = ['ph', 'av', 'malico', 'gluc_fruc', 'azucar_reductor', 'so2_libre', 'etanol', 'acidez_total'];
+  const conMedicion = ansUsables.filter((a) => QUIMICOS.some((k) => a[k] != null && a[k] !== ''));
+  const ultimo = conMedicion.reduce<Fila | null>(
+    (u, a) => (!u || String(a.fecha_analisis ?? '') >= String(u.fecha_analisis ?? '') ? a : u), null);
+  const criterios = ((config as Fila).criterios_fml as Record<string, unknown>) ?? {};
+
   return {
     lote: { ...fila },
     etapa: r.etapa,
@@ -141,6 +150,7 @@ export function datosFicha(
     recorrido_vasijas: recorridoVasijas(clave, movsTodos),
     linaje: g.get(clave) ?? { padres: [], hijos: [], salidas: [] },
     cadena_identidad: cadenaIdentidad(clave, g),
+    ultimo_analisis: ultimo ? { analisis: { ...ultimo }, ...veredictoDeFila(ultimo, fila, criterios) } : null,
   };
 }
 

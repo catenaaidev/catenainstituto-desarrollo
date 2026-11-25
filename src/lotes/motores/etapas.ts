@@ -289,6 +289,21 @@ export interface ResultadoEtapa {
 }
 
 /**
+ * Las etapas no retroceden: la sugerida nunca queda por debajo de la que una
+ * persona confirmó. Sin esto, un málico alto después de cerrar la FML hacía
+ * que la bandeja propusiera volver de crianza a fml (pedido del 2026-10-14).
+ * 'cerrado' es aparte: un lote vaciado que vuelve a recibir vino sí sale,
+ * pero sin litros sigue cerrado (sin fecha de ingreso el motor diría
+ * 'ingreso', como en los 2025 viejos).
+ */
+export function noRetroceder(sugerida: Etapa, confirmada: unknown, litros = 0): Etapa {
+  const c = String(confirmada ?? '');
+  if (c === 'cerrado') return litros > 0 ? sugerida : 'cerrado';
+  if (!(c in ORDEN)) return sugerida;
+  return ORDEN[sugerida] < ORDEN[c] ? (c as Etapa) : sugerida;
+}
+
+/**
  * Entrada única para el servidor: etapa confirmada, sugerida, hitos y avance.
  *
  * `config` es el dict de config del datos.json (con la clave criterios_fml).
@@ -322,7 +337,7 @@ export function evaluarEtapa(
   const eff = criteriosEfectivos(cfg, l.variedad, l.proyecto);
   const ev = evaluarLote(l, analisis ?? [], cfg, hoy);
   const vino = esLoteDeVino(l, Boolean(opciones.tienePadre));
-  const sug = etapaSugerida(l, ev, movs, vino);
+  const sug = noRetroceder(etapaSugerida(l, ev, movs, vino), l.etapa, ev.litros ?? 0);
 
   let etapa = String(l.etapa ?? '') || sug;
   if (!(ETAPAS as readonly string[]).includes(etapa)) etapa = sug;

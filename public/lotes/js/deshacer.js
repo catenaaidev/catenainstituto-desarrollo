@@ -15,7 +15,8 @@
  * excepciones_analisis, cualquiera que aparezca) se comparan por contenido,
  * como fusionarPorContenido de shared/fusion.js. */
 export const CLAVE_DE_SECCION = {
-  lotes: 'lote', movimientos: 'id', ordenes_trabajo: 'id', mermas: 'id', vasijas: 'num',
+  lotes: 'lote', movimientos: 'id', ordenes_trabajo: 'id', mermas: 'id', vasijas: 'num', recorridas: 'id',
+  ordenes_correccion: 'id', ordenes_hojas: 'id',
 };
 
 /* meta la maneja el servidor (version, autor, actualizado): deshacerla
@@ -334,6 +335,9 @@ const NOMBRES = {
   vasijas: ['vasija', 'vasijas'], mermas: ['merma', 'mermas'],
   estado_lote: ['estado de lote', 'estados de lote'], config: ['Config', 'ajustes de Config'],
   excepciones_analisis: ['excepción', 'excepciones'],
+  recorridas: ['recorrida de tanques', 'recorridas de tanques'],
+  ordenes_hojas: ['orden de papel', 'órdenes de papel'],
+  ordenes_correccion: ['orden de corrección', 'órdenes de corrección'],
 };
 const nombre = (s, plural) => (NOMBRES[s] || [s, s])[plural ? 1 : 0];
 

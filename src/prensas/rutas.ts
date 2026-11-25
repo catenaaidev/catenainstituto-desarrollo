@@ -93,6 +93,23 @@ export async function rutasPrensas(
     });
   }
 
+  // ---------- GET /version ----------
+  // Mismo propósito y formato que /lotes/api/version: lo pregunta cada
+  // pantalla abierta para ver en vivo lo que guardan los demás, sin parsear
+  // el documento entero.
+  if (ruta === '/version' && req.method === 'GET') {
+    const fila = await env.DB.prepare(
+      'SELECT version, autor, guardado FROM documento WHERE modulo = ?',
+    )
+      .bind(MODULO)
+      .first<{ version: number; autor: string | null; guardado: string | null }>();
+    return json(200, {
+      version: fila?.version ?? 0,
+      autor: fila?.autor ?? '',
+      guardado: fila?.guardado ?? '',
+    });
+  }
+
   // ---------- GET /datos ----------
   if (ruta === '/datos' && req.method === 'GET') {
     const d = await leerDocumento(env);

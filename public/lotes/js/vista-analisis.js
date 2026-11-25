@@ -5,16 +5,18 @@ import { $, esc, escA, DATOS, markDirty, registrarVista, registrarInit, irALote,
          vistaActiva, invalidarVista, hayCambiosSinGuardar, usuarioActual,
          renderActivoConservandoCelda } from './nucleo.js';
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
-         crearFiltroMulti, limpiarFiltrosMulti } from './tabla.js';
+         crearFiltroMulti, limpiarFiltrosMulti, setF, ordenValido } from './tabla.js';
 import { activarGrilla, repintarGrilla } from './grilla.js';
 import { montarVirtual } from './tabla-virtual.js';
-import { armarFilas, esQuimicaReal, esCorreccionReal, estadoCartelLote, firmaVeredicto } from './analisis-filas.js';
+import { armarFilas, esQuimicaReal, esCorreccionReal, estadoCartelLote, firmaVeredicto,
+         indicesPorObjeto } from './analisis-filas.js';
 import { agregadosVigentes, textoAgregados, otsDeAgregados, anularAgregado } from './agregados.js';
 import { crearFiltroLlenado } from './filtro-llenado.js';
 import { estaVacio } from './envases.js';
 import { crearAnchos, anchoDeTexto } from './anchos-cols.js';
 import { fmtFecha, fmtMes } from './fechas.js';
 import { visible } from './selector-anios.js';
+import { confirmar } from './dialogos.js';
 
 /* Columnas de la tabla de análisis. Las 2 ultimas son de la CORRECCION de SO2
  * (viven en analisis.correccion.*, no directo en el registro) y solo se ven
@@ -344,6 +346,9 @@ function _buildLoteObjMap(){
 /** Valor de una columna derivada del lote (Variedad, Vasija de crianza,
  *  Proyecto) para el analisis `a`. Un analisis cuyo lote ya no existe da ''. */
 function _delLote(a, colKey){
+  /* Si el analisis trae su propia vasija (se cargo en el pegado), manda esa:
+   * identifica la vasija puntual de la muestra. Sin ella, la del lote. */
+  if (colKey === 'vasija_crianza' && String(a.vasija ?? '').trim()) return String(a.vasija).trim();
   const l = _ctxRender.loteObjMap.get(String(a.lote ?? ''));
   return l ? (l[CAMPOS_DEL_LOTE.get(colKey)] ?? '') : '';
 }
@@ -410,12 +415,19 @@ let _ctxRender = null;
 // Ascendente por defecto: dentro de un lote tiene mas sentido leer de mas
 // viejo a mas nuevo. D1 dejaba -1 (mas reciente primero) para la tabla plana;
 // con el agrupamiento por lote, ese orden viejo ya no aplica.
-let sortAnalisis = { key:'fecha_analisis', dir:1 };
+//
+// Orden, buscador, mes y tipo sobreviven al F5 en esta pestaña
+// (shared/filtros-sesion.js).
+const _FS = typeof window !== 'undefined' && window.CIWFiltros;
+const _lf = (k, d) => _FS ? _FS.leer('lotes:analisis:' + k, d) : d;
+const _gf = (k, v) => { if (_FS) _FS.guardar('lotes:analisis:' + k, v); };
+const _txt = (k, d) => { const v = _lf(k, d); return typeof v === 'string' ? v : d; };
+let sortAnalisis = ordenValido(_lf('orden', null), { key:'fecha_analisis', dir:1 });
 
 /* Filtros simples (no multi-select) para análisis */
-let _filtAnalisisMes      = '';
-let _filtAnalisisTipo     = 'todas';  // 'todas' | 'fuera'
-let _filtAnalisisBusca    = '';
+let _filtAnalisisMes      = _txt('mes', '');
+let _filtAnalisisTipo     = _txt('tipo', 'todas') === 'fuera' ? 'fuera' : 'todas';  // 'todas' | 'fuera'
+let _filtAnalisisBusca    = _txt('busca', '');
 
 /* El buscador NO repinta en cada tecla: espera a que pares de tipear. Un render
  * rehace la <table> entera y vuelve a pasar por los tres filtros, asi que con
@@ -439,7 +451,7 @@ let _timerBusca = null;
  *
  * Un Set por columna, creados UNA vez: los widgets guardan estas mismas
  * referencias, asi que el estado sobrevive a los re-render. */
-const filtAn = {}; COLS_ANALISIS.forEach(c => filtAn[c.k] = new Set());
+const filtAn = {}; COLS_ANALISIS.forEach(c => filtAn[c.k] = setF('analisis', c.k));
 let _descAn = [], _instAn = [];
 /* columna -> {label, inst}, para que el render sepa que embudo pintar en cada
    <th> y el clic sepa que panel abrir. Lo llena initFiltrosAn. */
@@ -601,7 +613,7 @@ function _filaMedidora(filasDeDatos){
   let tr = `<tr><td class="ggutter">${filasDeDatos.length}</td>`;
   for (const c of COLS_ANALISIS){
     if (!c.ro){
-      tr += `<td data-k="${escA(c.k)}"><input class="cell${c.num ? ' num' : ''}" type="text" tabindex="-1"></td>`;
+      tr += `<td data-k="${escA(c.k)}"><input class="cell${c.num ? ' num' : ''}" type="text"${c.num ? ' inputmode="decimal"' : (c.k === 'lote' ? ' inputmode="numeric"' : '')} tabindex="-1"></td>`;
       continue;
     }
     let mejor = '', ancho = -1;
@@ -656,7 +668,7 @@ export function renderAnalisis(opciones){
   /* Se crea ACA y no al montarlo mas abajo porque el filtrado pasa antes de
      armar el HTML: si no existiera todavia, el primer render se dibujaria sin
      aplicar el modo elegido. */
-  if (!_fltAnLlenado) _fltAnLlenado = crearFiltroLlenado(renderAnalisis);
+  if (!_fltAnLlenado) _fltAnLlenado = crearFiltroLlenado(renderAnalisis, 'lotes:analisis:llenado');
   const loteDe = (a) => loteObjMap.get(String(a.lote ?? ''));
   /* Para el pintado, que tiene a mano el NUMERO de lote y no el analisis. */
   const esVacio = (numLote) => estaVacio(loteObjMap.get(String(numLote ?? '')));
@@ -668,6 +680,9 @@ export function renderAnalisis(opciones){
 
   /* -------- construir opciones de filtros -------- */
   const meses     = [...new Set(delAnio.map(a => (a.fecha_analisis||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  /* Un mes guardado (F5) que ya no esta entre las opciones (otro año apagado)
+     no deja la tabla vacia: vuelve a "Todos los meses". */
+  if (_filtAnalisisMes && !meses.includes(_filtAnalisisMes)){ _filtAnalisisMes = ''; _gf('mes', ''); }
 
   /* -------- filtrar el array crudo (mes/busca/variedad/proyecto, igual que
      antes: se filtran los REGISTROS, no las filas virtuales) -------- */
@@ -820,12 +835,16 @@ export function renderAnalisis(opciones){
    * Y queda sin color si no hay ningun veredicto: un lote que solo tiene
    * correcciones, o mediciones que no se pueden juzgar, NO sale verde. El verde
    * significa "lo mire y esta bien", no "no encontre nada". */
+  /* registrosFiltrados conserva el orden de DATOS().analisis (solo se filtro),
+   * asi que su posicion es el orden de carga: desempata el mismo dia. */
+  const ordenDeCarga = indicesPorObjeto(registrosFiltrados);
   const quimicasPorLote = new Map();
   for (const fila of filasDeDatos){
     if (fila.tipo !== 'quimica') continue;
     const lote = String(fila.analisis.lote ?? '');
     const v = veredictoDe(fila);
-    const item = { fecha: _fechaIso(fila.analisis), fuera: v.fuera, dentro: v.dentro };
+    const item = { fecha: _fechaIso(fila.analisis), fuera: v.fuera, dentro: v.dentro,
+                   orden: ordenDeCarga.get(fila.analisis) };
     const lista = quimicasPorLote.get(lote);
     if (lista) lista.push(item); else quimicasPorLote.set(lote, [item]);
   }
@@ -914,7 +933,7 @@ export function renderAnalisis(opciones){
       } else {
         const cls = [marca.trim(), c.num ? 'num' : ''].filter(Boolean).join(' ');
         tb += `<td class="${cls}" ${attrs}>` +
-              `<input class="cell${c.num?' num':''}${marca}" type="text" ` +
+              `<input class="cell${c.num?' num':''}${marca}" type="text"${c.num ? ' inputmode="decimal"' : (c.k === 'lote' ? ' inputmode="numeric"' : '')} ` +
               `${attrs} value="${escA(vista)}"></td>`;
       }
     }
@@ -943,6 +962,7 @@ export function renderAnalisis(opciones){
   /* -------- sort por clic en encabezado -------- */
   t.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => {
     toggleSort(sortAnalisis, th.dataset.k);
+    _gf('orden', sortAnalisis);
     renderAnalisis();
   });
 
@@ -1000,7 +1020,7 @@ export function renderAnalisis(opciones){
       }
       markDirty();
     });
-    t.addEventListener('click', e => {
+    t.addEventListener('click', async e => {
       // boton de lote del separador: no forma parte de t._rows (es un
       // colspan), asi que se resuelve aparte y antes del data-del.
       const a = e.target.closest('[data-iralote]');
@@ -1013,9 +1033,7 @@ export function renderAnalisis(opciones){
       if (fila.tipo === 'agregado'){
         /* Los agregados no se borran: se anulan, con quien y cuando, y quedan
          * tachados en la bitacora de Otros agregados (rastro de calidad). */
-        if (!confirm(`¿Anular los agregados del lote ${o.lote} (${fmtFecha(o.fecha_analisis)||'sin fecha'}): ${textoAgregados(o)}?
-
-Quedan tachados en Correcciones → Otros agregados.`)) return;
+        if (!await confirmar({ titulo: 'Anular agregados', texto: `Lote ${o.lote} (${fmtFecha(o.fecha_analisis) || 'sin fecha'}): ${textoAgregados(o)}.\n\nQuedan tachados en Correcciones → Otros agregados.`, si: 'Anular', no: 'Cancelar', peligro: true })) return;
         const en = new Date().toISOString();
         agregadosVigentes(o).forEach(ag => anularAgregado(ag, usuarioActual() || 'desconocido', en));
         markDirty();
@@ -1023,7 +1041,7 @@ Quedan tachados en Correcciones → Otros agregados.`)) return;
         return;
       }
       const etiqueta = esQuimica ? 'esta medición' : 'esta corrección';
-      if (!confirm(`¿Eliminar ${etiqueta} del lote ${esc(o.lote)} (${esc(fmtFecha(o.fecha_analisis)||'sin fecha')})?`)) return;
+      if (!await confirmar({ titulo: esQuimica ? 'Eliminar medición' : 'Eliminar corrección', texto: `Lote ${o.lote} (${fmtFecha(o.fecha_analisis) || 'sin fecha'}).`, si: 'Eliminar', no: 'Cancelar', peligro: true })) return;
 
       if (esQuimica){
         for (const campo of CAMPOS_QUIMICA_A_VACIAR) o[campo] = null;
@@ -1063,12 +1081,13 @@ Quedan tachados en Correcciones → Otros agregados.`)) return;
        * repintar. */
       if (q === _filtAnalisisBusca) return;
       _filtAnalisisBusca = q;
+      _gf('busca', q);
       renderAnalisis();
     }, MS_DEBOUNCE_BUSCA);
   });
 
   const fltMes = $('fltAnMes');
-  if (fltMes) fltMes.addEventListener('change', () => { _filtAnalisisMes = fltMes.value; renderAnalisis(); });
+  if (fltMes) fltMes.addEventListener('change', () => { _filtAnalisisMes = fltMes.value; _gf('mes', _filtAnalisisMes); renderAnalisis(); });
 
   /* --- filtros multi ---
    * Ya no hay que re-montar nada: en modo anclado los paneles cuelgan de <body>,
@@ -1088,7 +1107,7 @@ Quedan tachados en Correcciones → Otros agregados.`)) return;
   if (huecoLlenado) huecoLlenado.appendChild(_fltAnLlenado.el);
 
   const fltTipo = $('fltAnTipo');
-  if (fltTipo) fltTipo.addEventListener('change', () => { _filtAnalisisTipo = fltTipo.value; renderAnalisis(); });
+  if (fltTipo) fltTipo.addEventListener('change', () => { _filtAnalisisTipo = fltTipo.value; _gf('tipo', _filtAnalisisTipo); renderAnalisis(); });
 
   const btnLimpiar = $('btnLimpiarFltAn');
   if (btnLimpiar) btnLimpiar.addEventListener('click', () => {
@@ -1099,6 +1118,8 @@ Quedan tachados en Correcciones → Otros agregados.`)) return;
     _filtAnalisisMes = '';
     _filtAnalisisTipo = 'todas';
     _fltAnLlenado.reset();
+    /* Se borra lo guardado de la pantalla; el orden no es un filtro y se queda. */
+    if (_FS){ _FS.borrar('lotes:analisis:'); _gf('orden', sortAnalisis); }
     limpiarFiltrosMulti(_descAn, null, _instAn, renderAnalisis);
   });
 

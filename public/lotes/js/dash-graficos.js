@@ -99,8 +99,8 @@ function baseChart(){
   if (!window.Chart) return;
   const C = window.Chart;
   C.defaults.font.family = getComputedStyle(document.body).fontFamily;
-  C.defaults.font.size = 11.5;
-  C.defaults.color = tok('--muted', '#8c857b');
+  C.defaults.font.size = 12;
+  C.defaults.color = tok('--ch-txt', '#4f4840');
   C.defaults.animation.duration = 420;
   C.defaults.plugins.legend.display = false;
   C.defaults.plugins.tooltip.backgroundColor = 'rgba(42,38,34,.94)';
@@ -117,13 +117,26 @@ const ejeY = titulo => ({
   grid:   { color: tok('--line-soft', '#efece4'), drawTicks: false },
   border: { display: false },
   ticks:  { precision: 0, padding: 6 },
-  title:  { display: !!titulo, text: titulo, color: tok('--muted', '#8c857b'),
-            font: { size: 10.5 } },
+  title:  { display: !!titulo, text: titulo, color: tok('--ch-txt', '#4f4840'),
+            font: { size: 11.5, weight: '600' } },
 });
+/* Etiqueta de barra en renglones: el nombre partido por palabras (las bandas
+ * tecnicas son largas y en una tarjeta de un tercio de ancho se pisan) y el
+ * rango abajo. Chart.js dibuja un array como lineas separadas. */
+function etiquetaBarra(g, max = 9){
+  const lineas = g.lineas ? [...g.lineas] : [];
+  if (!g.lineas) for (const p of g.etiqueta.split(' ')){
+    const ult = lineas.length - 1;
+    if (ult >= 0 && (lineas[ult] + ' ' + p).length <= max) lineas[ult] += ' ' + p;
+    else lineas.push(p);
+  }
+  return g.rango ? [...lineas, g.rango] : lineas;
+}
+
 const ejeX = () => ({
   grid:   { display: false },
   border: { color: tok('--line', '#e7e3da') },
-  ticks:  { padding: 4, maxRotation: 0, autoSkip: false },
+  ticks:  { padding: 4, maxRotation: 0, autoSkip: false, font: { size: 11.5 } },
 });
 
 /* --------------------------------------------------------------- drill-down */
@@ -179,10 +192,8 @@ function vacio(idCanvas, texto){
 /**
  * Agrupamiento de acidez volatil por banda.
  *
- * El eje X no son g/L sino el porcentaje del limite de CADA lote, porque el
- * av_max se configura por variedad y por proyecto: un Malbec con limite 0,8 y
- * un lote de brandy con 0,9 no comparten escala absoluta pero si comparten la
- * pregunta "cuanto margen le queda".
+ * El eje X son tramos de AV en g/L (ver BANDAS_AV): hasta el 2026-11-11 eran
+ * porcentajes del limite de cada lote, pero se lee mejor el valor medido.
  */
 export function graficoAV(filas){
   const { grupos, sinDato } = agrupar(filas, BANDAS_AV, 'avBanda');
@@ -198,7 +209,7 @@ export function graficoAV(filas){
   pintar('chAv', {
     type: 'bar',
     data: {
-      labels: grupos.map(g => g.etiqueta),
+      labels: grupos.map(g => etiquetaBarra(g)),
       datasets: [{
         data: grupos.map(g => g.lotes.length),
         backgroundColor: grupos.map(g => conAlpha(colorRiesgo(g.riesgo), .82)),
@@ -213,10 +224,10 @@ export function graficoAV(filas){
       onClick: (_e, els) => {
         if (!els.length) return;
         const g = grupos[els[0].index];
-        mostrarDrill('chAvDrill', 'av-' + g.id, `AV — ${g.etiqueta} (${g.ayuda.toLowerCase()})`, g.lotes);
+        mostrarDrill('chAvDrill', 'av-' + g.id, `AV — ${g.etiqueta} (${g.rango})`, g.lotes);
       },
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
-      scales: { x: ejeX(), y: ejeY('lotes') },
+      scales: { x: ejeX(), y: ejeY('N.º de lotes') },
       plugins: {
         tooltip: {
           callbacks: {
@@ -237,9 +248,9 @@ export function graficoAV(filas){
   const enRiesgo = grupos.filter(g => g.riesgo >= 2).reduce((s, g) => s + g.lotes.length, 0);
   if (pie){
     pie.innerHTML = enRiesgo
-      ? `<b>${enRiesgo}</b> lote${enRiesgo !== 1 ? 's' : ''} al 80 % del limite o por encima.` +
+      ? `<b>${enRiesgo}</b> lote${enRiesgo !== 1 ? 's' : ''} con AV de 0,7 g/L o más.` +
         (sinDato.length ? ` ${sinDato.length} sin AV medida.` : '')
-      : `Ningun lote pasa el 80 % de su limite.` +
+      : `Ningún lote pasa 0,7 g/L de AV.` +
         (sinDato.length ? ` ${sinDato.length} sin AV medida.` : '');
   }
 
@@ -249,8 +260,8 @@ export function graficoAV(filas){
      * de un numero solo, que seria mentira en cuanto haya un override. */
     const lims = [...new Set(filas.map(f => f.avLimite).filter(v => v != null))].sort((a, b) => a - b);
     crit.textContent = lims.length === 1
-      ? `limite ${lims[0].toLocaleString('es-AR')} g/L`
-      : lims.length ? `limite ${lims[0]}–${lims[lims.length - 1]} g/L` : '';
+      ? `máx. ${lims[0].toLocaleString('es-AR')} g/L`
+      : lims.length ? `máx. ${lims[0]}–${lims[lims.length - 1]} g/L` : '';
   }
 }
 
@@ -280,7 +291,7 @@ export function graficoSO2(todas){
   pintar('chSo2', {
     type: 'bar',
     data: {
-      labels: grupos.map(g => g.etiqueta),
+      labels: grupos.map(g => etiquetaBarra(g)),
       datasets: [{
         data: grupos.map(g => g.lotes.length),
         backgroundColor: grupos.map(g => conAlpha(colorRiesgo(g.riesgo), .82)),
@@ -295,10 +306,10 @@ export function graficoSO2(todas){
       onClick: (_e, els) => {
         if (!els.length) return;
         const g = grupos[els[0].index];
-        mostrarDrill('chSo2Drill', 'so2-' + g.id, `SO2 — ${g.etiqueta}`, g.lotes);
+        mostrarDrill('chSo2Drill', 'so2-' + g.id, `SO₂ libre — ${g.etiqueta} (${g.rango})`, g.lotes);
       },
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
-      scales: { x: ejeX(), y: ejeY('lotes') },
+      scales: { x: ejeX(), y: ejeY('N.º de lotes') },
       plugins: {
         tooltip: {
           callbacks: {
@@ -384,10 +395,10 @@ export function graficoDispersion(filas, eff){
       datasets: [
         {
           type: 'line',
-          label: 'SO2 molecular objetivo',
+          label: 'SO₂ molecular objetivo',
           data: curva,
           parsing: false,
-          borderColor: tok('--accent', '#8a3340'),
+          borderColor: tok('--ver-acento', '#8a3340'),
           borderWidth: 1.75,
           borderDash: [5, 4],
           pointRadius: 0,
@@ -427,18 +438,18 @@ export function graficoDispersion(filas, eff){
           grid:   { color: tok('--line-soft', '#efece4'), drawTicks: false },
           border: { color: tok('--line', '#e7e3da') },
           ticks:  { padding: 4, callback: v => dec(v, 2) },
-          title:  { display: true, text: 'pH', color: tok('--muted', '#8c857b'), font: { size: 10.5 } },
+          title:  { display: true, text: 'pH', color: tok('--ch-txt', '#4f4840'), font: { size: 11.5, weight: '600' } },
         },
         /* El molecular se mueve entre 0 y 2 mg/L: el precision:0 del eje comun
          * dejaria tres rayas enteras y todos los puntos aplastados abajo. */
-        y: { ...ejeY('SO2 molecular (mg/L)'), beginAtZero: true,
+        y: { ...ejeY('SO₂ molecular (mg/L)'), beginAtZero: true,
              ticks: { padding: 6, callback: v => dec(v, 1) } },
       },
       plugins: {
         legend: {
           display: true, position: 'bottom', align: 'start',
           labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true, pointStyle: 'circle',
-                    padding: 11, font: { size: 10.5 } },
+                    padding: 11, font: { size: 11.5 } },
         },
         tooltip: {
           callbacks: {
@@ -449,8 +460,8 @@ export function graficoDispersion(filas, eff){
               const n = (v, d = 1) => v === null ? '—' : dec(v, d);
               return [
                 p.variedad,
-                `pH ${n(p.phSo2, 2)} · SO2 molecular ${n(p.so2Molec, 2)} mg/L`,
-                `SO2 libre ${n(p.so2)} mg/L · objetivo ${n(p.so2Objetivo)} mg/L (${p.so2Delta >= 0 ? '+' : ''}${n(p.so2Delta)})`,
+                `pH ${n(p.phSo2, 2)} · SO₂ molecular ${n(p.so2Molec, 2)} mg/L`,
+                `SO₂ libre ${n(p.so2)} mg/L · objetivo ${n(p.so2Objetivo)} mg/L (${p.so2Delta >= 0 ? '+' : ''}${n(p.so2Delta)})`,
                 'Clic para abrir la ficha',
               ];
             },
@@ -462,8 +473,8 @@ export function graficoDispersion(filas, eff){
 
   if (pie){
     const bajo = pts.filter(p => p.so2Delta !== null && p.so2Delta < 0).length;
-    pie.innerHTML = `Cada punto es un lote; la linea punteada es el SO2 molecular objetivo a ese pH ` +
-      `(sube a pH bajo, donde manda el piso de SO2 libre). <b>${bajo}</b> de ${pts.length} caen por debajo.`;
+    pie.innerHTML = `<b>${bajo}</b> de ${pts.length} lotes por debajo del SO₂ molecular objetivo. ` +
+      `A pH bajo la curva sigue el mínimo de SO₂ libre.`;
   }
 }
 

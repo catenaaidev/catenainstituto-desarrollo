@@ -154,11 +154,26 @@ describe('estadoCartelLote', () => {
     ])).toBe('ok');
   });
 
-  it('dos analisis del mismo ultimo dia se juntan', () => {
+  /* Caso real 26333 del 13/11: analisis con SO2 bajo, correccion, y otro
+   * analisis despues de corregir, todo el mismo dia. Manda el cargado ultimo. */
+  const vo = (fecha, orden, fuera = [], dentro = []) => ({ ...v(fecha, fuera, dentro), orden });
+
+  it('el mismo ultimo dia manda el analisis cargado ultimo', () => {
     expect(estadoCartelLote([
-      v('2026-09-14', [], ['ph']),
-      v('2026-09-14', ['av'], []),
+      vo('2026-11-13', 0, ['so2_libre', 'so2_molecular'], ['ph']),
+      vo('2026-11-13', 1, [], ['so2_libre', 'so2_molecular', 'ph']),
+    ])).toBe('ok');
+    expect(estadoCartelLote([
+      vo('2026-11-13', 0, [], ['ph']),
+      vo('2026-11-13', 1, ['av'], []),
     ])).toBe('mal');
+  });
+
+  it('el cargado ultimo se elige por orden de carga, no por posicion en la lista', () => {
+    expect(estadoCartelLote([
+      vo('2026-11-13', 5, [], ['ph']),
+      vo('2026-11-13', 2, ['so2_libre'], []),
+    ])).toBe('ok');
   });
 
   it('saltea los analisis sin ningun veredicto (sin medicion juzgable)', () => {

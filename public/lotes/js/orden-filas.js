@@ -6,12 +6,12 @@
  * el filtro granular (antes solo existia el booleano combinado). */
 'use strict';
 
-import { numPositivo } from './envases.js';
+import { numPositivo, litrosEnTanque } from './envases.js';
 
 /* Claves de dashData().lotes[i].alarmas que hoy arma _otClasificar() como
- * "atencion" (cualquiera de estas). Son un subconjunto de las 11 condiciones
+ * "atencion" (cualquiera de estas). Son un subconjunto de las 12 condiciones
  * de src/lotes/motores/fml.ts, que a su vez sigue el tablero aprobado.
- * El motor tiene 11 condiciones; esta lista cubre las 8 que dan prioridad a
+ * El motor tiene 12 condiciones; esta lista cubre las 8 que dan prioridad a
  * la orden de muestras. Quedan afuera: sin_analisis_valido, frecuencia_vencida
  * y datos_operativos_incompletos (se tratan por separado en pasaFuente). */
 const CRITERIOS_ATENCION = {
@@ -51,10 +51,23 @@ export function clasificarLote(l, info){
     sinAnalisis: alarmas.includes('sin_analisis_valido'),
     atencion,
     criterios,
-    /* Solo los litros de tanque cuentan: los cuatro capNNN son CANTIDADES de
-     * envases, no litros, y un lote de puras barricas no es de esta ronda. */
-    rondaTanques: numPositivo(info && info.vasija_grande) > 0,
+    /* Solo los litros de tanque cuentan, con la MISMA regla que el Inventario
+     * de tanques (litrosEnTanque): un lote de puras barricas no es de esta
+     * ronda, y uno migrado del Excel sin vasija_grande pero en un tanque si. */
+    rondaTanques: litrosEnTanque(info) > 0,
   };
+}
+
+/* Lotes de la ronda de tanques: TODO lote con vino en un tanque, de todos los
+ * años. La ronda es un recorrido fisico y no puede depender del selector de
+ * años de la cabecera (2026-11-18: con 2026 solo, la ronda salio sin los
+ * 2025). `datosLotes` = DATOS().lotes (todos los años); `dashLotes` = filas del
+ * tablero, que solo trae los años elegidos: se usa la fila del tablero si
+ * existe (trae vencido y alarmas para el Motivo) y si no una minima. */
+export function lotesDeRonda(datosLotes, dashLotes){
+  const dash = new Map((dashLotes || []).map(l => [claveLote(l && l.lote), l]));
+  return (datosLotes || []).filter(l => litrosEnTanque(l) > 0).map(l => dash.get(claveLote(l.lote))
+    || { lote: claveLote(l.lote), variedad: l.variedad ?? '', etapa: l.etapa ?? '', vencido: false, alarmas: [] });
 }
 
 export function pasaFuente(cls, fuente, criterioAtencion){
@@ -101,7 +114,7 @@ export function motivoDeFila(cls, fuente){
  * nombre. Un tanque que se llamara 'T 500' caeria aca por error y se
  * descartaria. Hoy no existe -- los tanques son de tres digitos (140, 177,
  * 203...) -- pero si algun dia aparece, esta es la linea que lo rompe. */
-const ENVASE_CHICO = /^(barricas?|t\s*(?:50|200|500))$/i;
+const ENVASE_CHICO = /^(?:\d+\s*(?:x\s*)?)?(barricas?|t\s*(?:50|200|500))$/i;   // "1 t200", "11 barricas": la OT escribe la cantidad
 
 /* Codigo del tanque dentro de vasija_actual: 'H 170 + Barricas' -> 'H 170'.
  * El que sale a hacer la ronda va al tanque, y que el lote ademas tenga dos

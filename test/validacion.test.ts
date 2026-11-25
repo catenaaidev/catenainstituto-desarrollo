@@ -251,10 +251,96 @@ describe('ordenes_trabajo en Lotes', () => {
   });
 });
 
+describe('ordenes_correccion en Lotes', () => {
+  const base = (ocs: unknown) => ({
+    meta: { version: 1 },
+    lotes: [{ lote: '26217' }],
+    analisis: [],
+    ordenes_correccion: ocs,
+  });
+  const oc = (i: number) => ({ id: 'oc-' + i, numero: 'B' + (200 + i), estado: 'pendiente', lotes: [] });
+
+  it('esta declarada y no es requerida', () => {
+    expect(SECCIONES_LOTES.secciones).toContain('ordenes_correccion');
+    expect(SECCIONES_LOTES.requeridas).not.toContain('ordenes_correccion');
+  });
+
+  it('rechaza ordenes_correccion que no es una lista', () => {
+    const e = validarDatos(base({ no: 'lista' }), base([]), false, SECCIONES_LOTES);
+    expect(e.join(' ')).toMatch(/ordenes_correccion/);
+  });
+
+  it('frena perder la mayoria de las ordenes en un solo guardado', () => {
+    const muchas = Array.from({ length: 30 }, (_, i) => oc(i + 1));
+    const e = validarDatos(base(muchas.slice(0, 5)), base(muchas), false, SECCIONES_LOTES);
+    expect(e.join(' ')).toMatch(/se perderían 25 de 30 ordenes_correccion/);
+  });
+});
+
+describe('ordenes_hojas en Lotes', () => {
+  const base = (ohs: unknown) => ({
+    meta: { version: 1 },
+    lotes: [{ lote: '26217' }],
+    analisis: [],
+    ordenes_hojas: ohs,
+  });
+  const oh = (i: number) => ({ id: 'oh-' + i, tipo: 'muestras', ot: String(950 + i), estado: 'pendiente', lotes: [] });
+
+  it('esta declarada y no es requerida', () => {
+    expect(SECCIONES_LOTES.secciones).toContain('ordenes_hojas');
+    expect(SECCIONES_LOTES.requeridas).not.toContain('ordenes_hojas');
+  });
+
+  it('rechaza ordenes_hojas que no es una lista', () => {
+    const e = validarDatos(base({ no: 'lista' }), base([]), false, SECCIONES_LOTES);
+    expect(e.join(' ')).toMatch(/ordenes_hojas/);
+  });
+
+  it('frena perder la mayoria de las ordenes en un solo guardado', () => {
+    const muchas = Array.from({ length: 30 }, (_, i) => oh(i + 1));
+    const e = validarDatos(base(muchas.slice(0, 5)), base(muchas), false, SECCIONES_LOTES);
+    expect(e.join(' ')).toMatch(/se perderían 25 de 30 ordenes_hojas/);
+  });
+});
+
+describe('ordenes_hojas en Prensas', () => {
+  it('acepta ordenes_hojas y le aplica el freno de borrado masivo', () => {
+    const hojas = Array.from({ length: 12 }, (_, i) => ({ id: 'oh-' + i, tipo: 'prensas-muestras', ot: String(900 + i) }));
+    const base = { meta: { version: 1 }, lotes: [], analisis: [], degustaciones: [], agregados: [], ordenes_hojas: hojas };
+    expect(validarDatos(base, base)).toEqual([]);
+    const nuevo = { ...base, ordenes_hojas: [] };
+    expect(validarDatos(nuevo, base).length).toBeGreaterThan(0);
+  });
+});
+
 describe('vasijas y mermas en Lotes', () => {
   it('estan declaradas pero no son requeridas', () => {
-    expect(SECCIONES_LOTES.secciones).toEqual(expect.arrayContaining(['vasijas', 'mermas']));
+    expect(SECCIONES_LOTES.secciones).toEqual(expect.arrayContaining(['vasijas', 'mermas', 'agenda']));
     expect(SECCIONES_LOTES.requeridas).not.toContain('vasijas');
     expect(SECCIONES_LOTES.requeridas).not.toContain('mermas');
+    expect(SECCIONES_LOTES.requeridas).not.toContain('agenda');
+  });
+});
+
+describe('recorridas en Lotes', () => {
+  const base = (recs: unknown) => ({
+    meta: { version: 1 }, lotes: [{ lote: '26217' }], analisis: [], recorridas: recs,
+  });
+  const rec = (i: number) => ({ id: 'rec-' + i, fecha: '2026-10-14', por: 'x', filas: [] });
+
+  it('esta declarada pero no es requerida', () => {
+    expect(SECCIONES_LOTES.secciones).toContain('recorridas');
+    expect(SECCIONES_LOTES.requeridas).not.toContain('recorridas');
+  });
+
+  it('rechaza recorridas que no es una lista', () => {
+    const e = validarDatos(base({ no: 'lista' }), base([]), false, SECCIONES_LOTES);
+    expect(e.join(' ')).toMatch(/recorridas/);
+  });
+
+  it('frena perder la mayoria de las recorridas en un solo guardado', () => {
+    const muchas = Array.from({ length: 30 }, (_, i) => rec(i + 1));
+    const e = validarDatos(base(muchas.slice(0, 5)), base(muchas), false, SECCIONES_LOTES);
+    expect(e.join(' ')).toMatch(/recorridas/);
   });
 });

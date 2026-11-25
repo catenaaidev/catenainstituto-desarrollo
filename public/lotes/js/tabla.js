@@ -5,7 +5,14 @@ import { $, num } from './nucleo.js';
 import { posicionDePanel } from './posicion-panel.js';
 import { aIso } from './fechas.js';
 
+/* Set de un embudo que sobrevive al F5 en esta pestaña (shared/filtros-sesion.js).
+   Sin CIWFiltros (tests, servidor de prueba viejo), un Set común. */
+export const setF = (pantalla, k) => (typeof window !== 'undefined' && window.CIWFiltros)
+  ? window.CIWFiltros.set('lotes:' + pantalla + ':f:' + k) : new Set();
+
 /* --- sort --- */
+/* ordenValido vive aparte (modulo puro) para poder testearlo sin nucleo.js. */
+export { ordenValido } from './orden-valido.js';
 export function toggleSort(st, k){ if (st.key===k) st.dir*=-1; else { st.key=k; st.dir=1; } }
 export function sortRows(rows, st){
   return [...rows].sort((a,b)=>{
@@ -84,6 +91,12 @@ export function crearFiltroMulti(cfg){
   const firmaDe=(lista)=>lista.map(o=>o.val).join('\u0000');
   function build(lista){
     const nuevas=lista||cfg.opciones();
+    /* Los Sets de CIWFiltros vuelven del F5 con lo de antes: la primera vez se
+       descarta lo que ya no es una opción (ver shared/filtros-sesion.js).
+       Si todavia no hay opciones (ej. la carga de datos fallo), no podar: con
+       la lista vacia se borraria TODO lo restaurado y se guardaria asi. Se deja
+       `restaurado` prendido para que el primer build con datos reales pode. */
+    if (set.podar && nuevas.length) set.podar(new Set(nuevas.map(o => o.val)));
     list.innerHTML=''; opts=[];
     for (const o of nuevas){
       const li=document.createElement('label'); li.className='mfilt-opt';

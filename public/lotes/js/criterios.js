@@ -20,6 +20,7 @@ export const CRITERIOS_DEFAULT = {
   av_delta_dias:          15,
   frecuencia_no_terminada:15,
   frecuencia_terminada:   30,
+  frecuencia_trasiego:    90,
   so2_caida_max:          12.0,
   so2_aplica:             'si',
   ph_max_inclusive:       'no',

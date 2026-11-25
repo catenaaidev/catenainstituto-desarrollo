@@ -4,43 +4,170 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lotes CIW</title>
+<script>/* Modo órdenes (/lotes/?orden=…): hasta que app.js abra la orden no se ven
+   las pestañas ni el Panel (si no, el Panel aparece ~2 s y recién después la
+   orden). app.js saca la clase al terminar de arrancar; por las dudas, si algo
+   falla antes, se saca sola a los 15 s para no dejar la página en blanco. */
+if (new URLSearchParams(location.search).get('orden')){
+  document.documentElement.classList.add('modo-ordenes-cargando');
+  setTimeout(function(){ document.documentElement.classList.remove('modo-ordenes-cargando'); }, 15000);
+}</script>
+<!-- precargas:inicio -->
+<link rel="modulepreload" href="/lotes/app.js">
+<link rel="modulepreload" href="/lotes/js/nucleo.js">
+<link rel="modulepreload" href="/lotes/js/selector-anios.js">
+<link rel="modulepreload" href="/shared/selector-anios.js">
+<link rel="modulepreload" href="/shared/anios.js">
+<link rel="modulepreload" href="/lotes/js/autoguardado.js">
+<link rel="modulepreload" href="/lotes/js/deshacer.js">
+<link rel="modulepreload" href="/lotes/js/en-vivo.js">
+<link rel="modulepreload" href="/lotes/js/barra-lotes.js">
+<link rel="modulepreload" href="/lotes/js/dialogos.js">
+<link rel="modulepreload" href="/lotes/js/ficha-url.js">
+<link rel="modulepreload" href="/lotes/js/entorno-ot.js">
+<link rel="modulepreload" href="/lotes/js/numero-ot.js">
+<link rel="modulepreload" href="/lotes/js/tabla.js">
+<link rel="modulepreload" href="/lotes/js/posicion-panel.js">
+<link rel="modulepreload" href="/lotes/js/fechas.js">
+<link rel="modulepreload" href="/lotes/js/orden-valido.js">
+<link rel="modulepreload" href="/lotes/js/exportar-completo.js">
+<link rel="modulepreload" href="/lotes/js/vista-dashboard.js">
+<link rel="modulepreload" href="/lotes/js/grilla.js">
+<link rel="modulepreload" href="/lotes/js/grilla-rect.js">
+<link rel="modulepreload" href="/lotes/js/grilla-tsv.js">
+<link rel="modulepreload" href="/lotes/js/criterios.js">
+<link rel="modulepreload" href="/lotes/js/dash-metricas.js">
+<link rel="modulepreload" href="/lotes/js/mermas.js">
+<link rel="modulepreload" href="/lotes/js/envases.js">
+<link rel="modulepreload" href="/lotes/js/dash-graficos.js">
+<link rel="modulepreload" href="/lotes/js/vista-lotes.js">
+<link rel="modulepreload" href="/lotes/js/grupos-cols.js">
+<link rel="modulepreload" href="/lotes/js/anchos-cols.js">
+<link rel="modulepreload" href="/lotes/js/tabla-virtual.js">
+<link rel="modulepreload" href="/lotes/js/ventana-virtual.js">
+<link rel="modulepreload" href="/lotes/js/filtro-llenado.js">
+<link rel="modulepreload" href="/shared/filtro-llenado.js">
+<link rel="modulepreload" href="/lotes/js/lote-nuevo.js">
+<link rel="modulepreload" href="/lotes/js/vista-ficha.js">
+<link rel="modulepreload" href="/lotes/js/vista-cargar.js">
+<link rel="modulepreload" href="/lotes/js/carga-cols.js">
+<link rel="modulepreload" href="/lotes/js/carga-duplicados.js">
+<link rel="modulepreload" href="/lotes/js/vista-analisis.js">
+<link rel="modulepreload" href="/lotes/js/analisis-filas.js">
+<link rel="modulepreload" href="/lotes/js/agregados.js">
+<link rel="modulepreload" href="/lotes/js/vista-tablero.js">
+<link rel="modulepreload" href="/lotes/js/tablero-ficha.js">
+<link rel="modulepreload" href="/lotes/js/tablero-datos.js">
+<link rel="modulepreload" href="/lotes/js/tablero-panel.js">
+<link rel="modulepreload" href="/lotes/js/tablero-export.js">
+<link rel="modulepreload" href="/lotes/js/vista-agenda.js">
+<link rel="modulepreload" href="/lotes/js/agenda.js">
+<link rel="modulepreload" href="/lotes/js/agenda-dias.js">
+<link rel="modulepreload" href="/lotes/js/vista-movimientos.js">
+<link rel="modulepreload" href="/lotes/js/ot-movimientos.js">
+<link rel="modulepreload" href="/lotes/js/vista-ot-emitir.js">
+<link rel="modulepreload" href="/lotes/js/ot-armado.js">
+<link rel="modulepreload" href="/lotes/js/ot-vasijas.js">
+<link rel="modulepreload" href="/lotes/js/vasijas-padron.js">
+<link rel="modulepreload" href="/lotes/js/ot-achique.js">
+<link rel="modulepreload" href="/lotes/js/ot-plantillas.js">
+<link rel="modulepreload" href="/lotes/js/ot-destinos.js">
+<link rel="modulepreload" href="/lotes/js/ot-hojas.js">
+<link rel="modulepreload" href="/lotes/js/orden-hoja.js">
+<link rel="modulepreload" href="/lotes/js/orden-filas.js">
+<link rel="modulepreload" href="/lotes/js/hoja-campos.js">
+<link rel="modulepreload" href="/lotes/js/ot-bloques.js">
+<link rel="modulepreload" href="/lotes/js/ot-muestras.js">
+<link rel="modulepreload" href="/lotes/js/propuesta-ot.js">
+<link rel="modulepreload" href="/lotes/js/cubicacion.js">
+<link rel="modulepreload" href="/lotes/js/cubicacion-tablas.js">
+<link rel="modulepreload" href="/lotes/js/vista-ot-corte.js">
+<link rel="modulepreload" href="/lotes/js/ot-corte.js">
+<link rel="modulepreload" href="/lotes/js/guardar-ot.js">
+<link rel="modulepreload" href="/lotes/js/carpeta-ot.js">
+<link rel="modulepreload" href="/lotes/js/hoja-pdf.js">
+<link rel="modulepreload" href="/lotes/js/ot-lista.js">
+<link rel="modulepreload" href="/lotes/js/ot-renumerar.js">
+<link rel="modulepreload" href="/lotes/js/ot-borrador.js">
+<link rel="modulepreload" href="/lotes/js/ot-editar.js">
+<link rel="modulepreload" href="/lotes/js/vista-ot-confirmar.js">
+<link rel="modulepreload" href="/lotes/js/ot-sobrante.js">
+<link rel="modulepreload" href="/lotes/js/mermas-mapa.js">
+<link rel="modulepreload" href="/lotes/js/vista-ot-lista.js">
+<link rel="modulepreload" href="/lotes/js/ot-pdf.js">
+<link rel="modulepreload" href="/lotes/js/ot-deshacer.js">
+<link rel="modulepreload" href="/lotes/js/vista-ot-correcciones.js">
+<link rel="modulepreload" href="/lotes/js/so2-bitacora.js">
+<link rel="modulepreload" href="/lotes/js/so2-calculo.js">
+<link rel="modulepreload" href="/lotes/js/ot-correcciones.js">
+<link rel="modulepreload" href="/lotes/js/modo-ordenes.js">
+<link rel="modulepreload" href="/lotes/js/ordenes-hojas.js">
+<link rel="modulepreload" href="/lotes/js/vista-mermas.js">
+<link rel="modulepreload" href="/lotes/js/vista-inventario-tanques.js">
+<link rel="modulepreload" href="/lotes/js/inventario-tanques.js">
+<link rel="modulepreload" href="/lotes/js/recorridas.js">
+<link rel="modulepreload" href="/lotes/js/hoja-recorrida.js">
+<link rel="modulepreload" href="/lotes/js/inventario-tanques-ui.js">
+<link rel="modulepreload" href="/lotes/js/vista-so2.js">
+<link rel="modulepreload" href="/lotes/js/vista-ordenes-correccion.js">
+<link rel="modulepreload" href="/lotes/js/orden-correccion-activables.js">
+<link rel="modulepreload" href="/lotes/js/orden-correccion-guardada.js">
+<link rel="modulepreload" href="/lotes/js/orden-correccion-papel.js">
+<link rel="modulepreload" href="/lotes/js/hoja-solo-lectura.js">
+<link rel="modulepreload" href="/lotes/js/vista-orden.js">
+<link rel="modulepreload" href="/lotes/js/orden-hoja-filas.js">
+<link rel="modulepreload" href="/lotes/js/sorteo-barriles.js">
+<link rel="modulepreload" href="/lotes/js/orden-resumen.js">
+<link rel="modulepreload" href="/lotes/js/orden-micro.js">
+<link rel="modulepreload" href="/lotes/js/vista-orden-guardada.js">
+<link rel="modulepreload" href="/lotes/js/orden-guardada-cabecera.js">
+<link rel="modulepreload" href="/lotes/js/orden-foto.js">
+<link rel="modulepreload" href="/lotes/js/vista-cruce.js">
+<link rel="modulepreload" href="/lotes/js/vista-orden-correccion.js">
+<link rel="modulepreload" href="/lotes/js/orden-correccion-orden.js">
+<link rel="modulepreload" href="/lotes/js/orden-correccion-planilla.js">
+<link rel="modulepreload" href="/lotes/js/orden-correccion-manual.js">
+<link rel="modulepreload" href="/lotes/js/vista-agregados.js">
+<link rel="modulepreload" href="/lotes/js/vista-config.js">
+<link rel="modulepreload" href="/lotes/js/vista-vasijas.js">
+<link rel="modulepreload" href="/lotes/js/vista-config-agenda.js">
+<!-- precargas:fin -->
+<link rel="stylesheet" href="/shared/estilo.css">
 <style>
   :root{
-    --bg:#f7f5f1; --panel:#ffffff; --panel2:#f1efe9; --line:#e7e3da;
-    --txt:#2a2622; --muted:#8c857b; --accent:#8a3340; --accent2:#6f2731;
-    --ok:#3f7d4f; --nook:#b03a2e; --warn:#b07d2c; --info:#5b7b86;
-    --serif:Georgia,'Times New Roman',serif;
-    --sans:system-ui,'Segoe UI',sans-serif;
-
-    /* --- Sistema visual (renovacion 2026-09) -----------------------------
-     * El acento sigue siendo EXACTAMENTE #8a3340. Media docena de reglas de
-     * la grilla y de la seleccion tienen ese color escrito a mano como
-     * rgba(138,51,64,...) porque CSS no sabia componer alpha sobre una var
-     * cuando se escribieron. Si algun dia se cambia el acento hay que buscar
-     * "138,51,64" en este archivo y cambiarlo en los dos lugares, o la
-     * seleccion de la grilla queda de otro color que el resto de la app.
+    /* Los tokens de interfaz (--bg, --panel, --accent, --ok, --serif, --sans…)
+     * vienen de /shared/estilo.css, que es copia exacta de los de Prensas
+     * (test/estilo-tokens.test.ts). Lotes NO los redefine
+     * (test/lotes-estilo.test.ts). Acá quedan solo los propios de Lotes.
      *
-     * Todo lo que sigue es aditivo: tokens nuevos que el bloque de
-     * "renovacion visual" del final del <style> consume. Ninguna regla vieja
-     * depende de ellos, asi que borrar ese bloque devuelve el aspecto
-     * anterior sin tocar nada mas. */
-    --accent-rgb:138,51,64;
-    --accent-soft:rgba(138,51,64,.07);
-    --accent-line:rgba(138,51,64,.18);
-    --bg-2:#f2efe9;             /* fondo del lienzo, un punto mas calido */
-    --panel-hi:#fbfaf7;         /* panel elevado (hover de card) */
-    --line-soft:#efece4;        /* divisor interno, mas suave que --line */
-    --r-sm:7px; --r-md:11px; --r-lg:16px; --r-pill:999px;
-    --sh-xs:0 1px 2px rgba(42,38,34,.05);
-    --sh-sm:0 1px 3px rgba(42,38,34,.06), 0 1px 2px rgba(42,38,34,.04);
-    --sh-md:0 2px 4px rgba(42,38,34,.04), 0 8px 24px rgba(42,38,34,.07);
-    --sh-lg:0 4px 8px rgba(42,38,34,.05), 0 18px 44px rgba(42,38,34,.11);
-    --ring:0 0 0 3px rgba(138,51,64,.16);
+     * Los de abajo son los nombres que usaba la "renovación visual" de
+     * 2026-09; las reglas de la Agenda, la Orden de muestras y Movimientos los
+     * siguen leyendo, así que se dejan con los valores de Prensas: esquina de
+     * 2 px, sin sombras. */
+    --accent-soft:var(--accent-tinte);
+    --accent-line:rgba(90,23,36,.18);
+    --bg-2:var(--bg);
+    --panel-hi:var(--panel);
+    --line-soft:var(--panel2);
+    --ch-txt:var(--muted);      /* letras de los gráficos */
+    --r-sm:2px; --r-md:2px; --r-lg:2px; --r-pill:2px;
+    --sh-xs:none; --sh-sm:none; --sh-md:none; --sh-lg:none;
+    --ring:var(--ci-ring);
     --ease:cubic-bezier(.32,.72,.34,1);
     /* Escala de riesgo, compartida por graficos, heatmap y chips. Va de
      * "todo bien" a "atender ya"; los graficos la leen con getComputedStyle
      * para que el color del dashboard y el del CSS nunca se desincronicen. */
     --sc-0:#4a8360; --sc-1:#8aa14a; --sc-2:#d0a133; --sc-3:#c9762f; --sc-4:#b03a2e;
+    /* --- Colores con significado (congelados el 2026-10-16) ---------------
+     * Son criterios que el equipo lee de memoria: NO cambian con la estética.
+     * Tienen los valores que tenían --ok/--nook/--warn/--info/--accent (y los
+     * grises de la escala) antes de que Lotes tomara los tokens de Prensas.
+     * Los vigila test/lotes-colores-congelados.test.ts; el muestreo de
+     * scripts/muestreo-colores-lotes.js tiene que dar igual antes y después. */
+    --ver-ok:#3f7d4f; --ver-mal:#b03a2e; --ver-alerta:#b07d2c; --ver-info:#5b7b86;
+    --ver-acento:#8a3340; --ver-acento-linea:rgba(138,51,64,.18);
+    --ver-dentro:#b7dba9; --ver-fuera:#e8a15f;
+    --ver-gris:#e7e3da; --ver-apagado:#8c857b; --ver-cero:#f1efe9; --ver-tinta:#2a2622;
     /* --- Tablero FML (paleta aprobada) ----------------------------------- */
     --tb-ok-bg:#DCFCE7;   --tb-ok-fg:#166534;
     --tb-mal-bg:#FDE8EC;  --tb-mal-fg:#8A1538;
@@ -49,31 +176,21 @@
     --tb-panel:#FFFFFF;   --tb-linea:#CBD5E1; --tb-tinta:#17212B;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;-webkit-font-smoothing:antialiased}
+  body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;line-height:1.4;-webkit-font-smoothing:antialiased}
   ::selection{background:var(--accent);color:#fff}
   ::-webkit-scrollbar{width:10px;height:10px}
-  ::-webkit-scrollbar-thumb{background:#dcd7cc;border-radius:6px;border:2px solid var(--bg)}
-  ::-webkit-scrollbar-thumb:hover{background:#cbc5b8}
-  header{background:transparent;padding:18px 26px 14px;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
-  header h1{margin:0;font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:.2px}
-  header .sub{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:2.8px}
-  header .right{margin-left:auto;display:flex;align-items:center;gap:10px}
-  .status{font-size:12px;color:var(--muted)}
-  .status.dirty{color:var(--warn)}
-  .status.saved{color:var(--ok)}
+  ::-webkit-scrollbar-thumb{background:#C9C2B5;border-radius:2px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:#A9A196}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
   #avisos{display:none}
-  #avisos .aviso{background:#7a2620;color:#fff;padding:9px 18px;font-size:13px;border-bottom:1px solid #5b1b16;line-height:1.45}
-  #avisos .aviso b{color:#ffd766}
-  button.btn{background:transparent;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 15px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--sans);transition:border-color .15s,background .15s,color .15s}
-  button.btn:hover{border-color:var(--accent);color:var(--accent)}
-  button.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-  button.btn.primary:hover{background:var(--accent2);color:#fff}
-  button.btn.primary:disabled{opacity:.35;cursor:default}
-  button.btn.danger{color:var(--nook)}
-  .tabs{display:flex;gap:4px;background:transparent;padding:0 22px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-  .tabs button{background:transparent;border:none;color:var(--muted);padding:13px 14px;cursor:pointer;font-size:13.5px;font-weight:500;font-family:var(--sans);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s}
-  .tabs button.active{color:var(--txt);border-bottom-color:var(--accent);font-weight:600}
-  .tabs button:hover{color:var(--txt)}
+  #avisos .aviso{background:var(--nook);color:#fff;padding:9px 22px;font-size:13px;line-height:1.45}
+  #avisos .aviso b{color:#fff;text-decoration:underline}
+  button.btn{background:transparent;color:var(--txt);border:1px solid var(--txt);border-radius:2px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:500;font-family:var(--sans);line-height:1.2;white-space:nowrap;transition:border-color .15s,background .15s,color .15s}
+  button.btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-tinte)}
+  button.btn.primary{background:var(--accent);color:#F3EEE6;border-color:var(--accent)}
+  button.btn.primary:hover{background:var(--accent2);border-color:var(--accent2);color:#fff}
+  button.btn.primary:disabled{opacity:.35;cursor:default;background:var(--accent)}
+  button.btn.danger{color:var(--nook);border-color:var(--nook)}
   /* ---- ancho del contenedor ----
    * El tope de ancho vive en .view y NO en main a proposito, para que la pestana
    * Lotes pueda pasarse de largo sin arrastrar a las otras doce. Con el tope en
@@ -92,7 +209,7 @@
    * Las reglas body.printing-* de mas abajo le siguen sacando el max-width a
    * main; quedan por compatibilidad y no molestan (en papel la hoja mide ~800px,
    * asi que ningun tope de 1552px llega a apretar nada). */
-  main{padding:20px 22px;margin:0 auto}
+  main{padding:24px 24px 64px;margin:0 auto}
   .view{display:none;max-width:calc(1600px - 48px);margin:0 auto}
   /* Lotes son 28 columnas y Analisis 15: las dos se llevan todo el ancho de la
    * ventana. Los -10px se comen 10 de los 24px de padding lateral de main y
@@ -126,29 +243,32 @@
    * Solo en screen: las reglas body.printing-* de abajo cuentan con que las
    * pestañas que no se imprimen esten en display:none. */
   @media screen{
-    #tab-analisis,#tab-lotes,#tab-movimientos,#tab-so2,#tab-dashboard,#tab-tablero{display:block;content-visibility:hidden}
-    #tab-analisis.active,#tab-lotes.active,#tab-movimientos.active,#tab-so2.active,#tab-dashboard.active,#tab-tablero.active{content-visibility:visible}
+    #tab-analisis,#tab-lotes,#tab-movimientos,#tab-so2,#tab-dashboard,#tab-tablero,#tab-agenda{display:block;content-visibility:hidden}
+    #tab-analisis.active,#tab-lotes.active,#tab-movimientos.active,#tab-so2.active,#tab-dashboard.active,#tab-tablero.active,#tab-agenda.active{content-visibility:visible}
   }
   @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.view.active{animation:none}}
   /* ---- controles ---- */
   .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
   .toolbar .spacer{flex:1}
   .controls{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
-  select,input.txt,textarea{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:14px;font-family:inherit}
+  .controls label{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1.8px}
+  select,input.txt,textarea{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:2px;padding:7px 10px;font-size:13.5px;font-family:inherit}
+  select:focus,input.txt:focus,textarea:focus{border-color:var(--txt);outline:none}
   textarea{width:100%;min-height:160px;resize:vertical}
-  .tag{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 10px;font-size:12px;color:var(--muted)}
+  .tag{background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:4px 9px;font-size:12px;color:var(--muted)}
   /* ---- tablas ---- */
   table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
-  th{color:var(--muted);font-weight:600;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel);z-index:1}
+  th{color:var(--muted);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:1.3px;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel);z-index:1;border-bottom:1px solid var(--rule)}
   /* Encabezado de dos filas (subsistema I): la fila de bandas queda arriba en
-   * top:0 y la de columnas se apoya justo abajo. El alto de la fila de bandas
-   * es padding 7px + linea + texto 13px = 30px; si se cambia el padding de las
-   * th hay que actualizar este numero. */
+   * top:0 y la de columnas se apoya justo abajo. El alto real de la fila de
+   * bandas (--lt-banda-h) lo mide vista-lotes.js: con Plex y line-height:1.4
+   * ya no son los 30px fijos de antes. */
   thead tr:first-child th.banda{top:0;z-index:6}
-  #tLotes thead tr:nth-child(2) th{top:30px;z-index:5}
+  #tLotes thead tr:nth-child(2) th{top:var(--lt-banda-h,30px);z-index:5}
   th.banda{cursor:default;text-align:center;color:var(--txt);font-size:12px;
-    letter-spacing:.02em;background:var(--panel2);border-bottom:1px solid var(--line)}
+    text-transform:none;letter-spacing:.02em;background:var(--panel2);border-bottom:1px solid var(--line)}
   th.banda:hover{color:var(--txt)}
   /* Chip de colapsar/expandir un grupo de columnas (subsistema I) */
   th.banda button.chip-grupo{background:transparent;border:1px solid var(--line);
@@ -193,9 +313,9 @@
   #otTable td input.cell.ot-noexiste{border-color:var(--nook);background:#fbeceb;color:var(--nook)}
   /* ---- colores de fila ---- */
   tr.crit td{background:#fbeeeb}
-  tr.crit td:first-child{box-shadow:inset 3px 0 0 var(--nook)}
+  tr.crit td:first-child{box-shadow:inset 3px 0 0 var(--ver-mal)}
   tr.venc td{background:#faf2e0}
-  tr.venc td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+  tr.venc td:first-child{box-shadow:inset 3px 0 0 var(--ver-alerta)}
   /* ---- lote organico: verde pastel ----
    * Va DESPUES de .crit y .venc a proposito: misma especificidad (0,1,1), asi
    * que gana la ultima y un lote organico se ve verde aunque tenga alarmas. Es
@@ -229,7 +349,7 @@
    * vencido. Un lote nuevo arranca en 0 litros y quedaria atenuado por
    * tr.vacio justo cuando se lo esta completando: se lo deja opaco. */
   #tLotes tr.nuevo{opacity:1}
-  #tLotes tr.nuevo td{border-top:2px solid var(--info);border-bottom:2px solid var(--info)}
+  #tLotes tr.nuevo td{border-top:2px solid var(--ver-info);border-bottom:2px solid var(--ver-info)}
   .btn-hijo{background:none;border:1px solid var(--line);border-radius:6px;color:var(--info);
     cursor:pointer;font-size:12px;padding:1px 8px;white-space:nowrap}
   .btn-hijo:hover{border-color:var(--accent);color:var(--accent)}
@@ -282,47 +402,52 @@
    * ancho de cada columna (es lo que hace visibility:collapse en una fila de
    * tabla). Ver _filaMedidora en vista-analisis.js. */
   tfoot.vmedidor tr{visibility:collapse}
-  .rowbtn{background:none;border:none;color:#ff8a7a;cursor:pointer;font-size:15px;padding:2px 6px}
-  .rowbtn:hover{color:var(--nook)}
+  .rowbtn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:2px}
+  .rowbtn:hover{color:var(--nook);background:var(--nook-tinte)}
   /* ---- scroll ---- */
-  .scroll{max-height:560px;overflow:auto;border-radius:8px}
+  .scroll{max-height:560px;overflow:auto;background:var(--panel)}
   .scroll.tall{max-height:72vh}
+  .scroll-x{overflow-x:auto;max-width:100%}
   /* ---- leyenda ---- */
   .legend-inline{font-size:12px;color:var(--muted);margin:-6px 0 12px}
-  .legend-inline .sw{display:inline-block;width:13px;height:13px;border-radius:3px;vertical-align:-2px;margin-right:2px}
-  .legend-inline .sw.crit{background:#fbeeeb;border-left:3px solid var(--nook)}
-  .legend-inline .sw.venc{background:#faf2e0;border-left:3px solid var(--warn)}
+  .legend-inline .sw{display:inline-block;width:13px;height:13px;border-radius:1px;vertical-align:-2px;margin-right:2px}
+  .legend-inline .sw.crit{background:#fbeeeb;border-left:3px solid var(--ver-mal)}
+  .legend-inline .sw.venc{background:#faf2e0;border-left:3px solid var(--ver-alerta)}
   .legend-inline .sw.vacio{background:var(--panel2);border:1px solid var(--line);opacity:.45}
   .legend-inline .sw.org{background:#b7dba9;border:1px solid #9cc98c}
   /* Los tres de la pestaña Análisis: los dos veredictos de celda y la banda del
      lote con algo fuera de criterio. Mismos colores que las reglas td.dentro,
      td.fuera y tr.analisis-separador.mal de más abajo. */
-  .legend-inline .sw.dentro{background:#b7dba9;border:1px solid #9ccb8a}
-  .legend-inline .sw.fuera{background:#e8a15f;border:1px solid #d98a43}
+  .legend-inline .sw.dentro{background:var(--ver-dentro);border:1px solid #9ccb8a}
+  .legend-inline .sw.fuera{background:var(--ver-fuera);border:1px solid #d98a43}
   .legend-inline .sw.sep-mal{background:#e08e42;border:1px solid #c47a33}
   /* ---- pill ---- */
-  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
-  .pill.bad{background:#f6e4e1;color:#9e3328;border:1px solid #ecccc6}
-  .pill.warn{background:#f6ecd6;color:#8a6219;border:1px solid #eaddb8}
-  .pill.ok{background:#e4efe2;color:#2f6b3f;border:1px solid #cbe1c7}
+  .pill{display:inline-block;padding:1px 7px;border-radius:2px;font-size:11px;font-weight:600;border:1px solid transparent}
+  .pill.bad{background:var(--nook-tinte);color:var(--nook);border-color:rgba(142,35,48,.25)}
+  .pill.warn{background:var(--warn-tinte);color:#7A5A22;border-color:rgba(154,116,52,.3)}
+  .pill.ok{background:var(--ok-tinte);color:var(--ok);border-color:rgba(86,104,74,.3)}
   /* ---- msg ---- */
-  .msg{padding:10px 14px;border-radius:8px;font-size:13px;margin:10px 0}
-  .msg.ok{background:#e4efe2;color:#2f6b3f;border:1px solid #cbe1c7}
-  .msg.err{background:#f6e4e1;color:#9e3328;border:1px solid #ecccc6}
-  .msg.info{background:rgba(138,51,64,.04);color:var(--muted);border:1px solid var(--line)}
-  /* ---- overlay ---- */
-  .overlay{position:fixed;inset:0;background:rgba(42,38,34,.5);display:none;align-items:center;justify-content:center;z-index:50}
-  .overlay.show{display:flex}
-  .overlay .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px 28px;max-width:460px;width:90%;text-align:center;position:relative}
+  .msg{padding:9px 14px;border-radius:2px;font-size:13px;margin:10px 0;border-left:3px solid}
+  .msg.ok{background:var(--ok-tinte);color:#3F5035;border-color:var(--ok)}
+  .msg.err{background:var(--nook-tinte);color:var(--nook);border-color:var(--nook)}
+  .msg.warn{background:var(--warn-tinte);color:#7A5A22;border-color:var(--warn)}
+  .msg.info{background:var(--panel);color:var(--muted);border-color:var(--line)}
+  /* ---- overlay: los formularios de Lotes, en un <dialog> modal ----
+   * showModal: Escape cierra, el foco queda adentro y vuelve al cerrar
+   * (nucleo.js mostrarOverlay/cerrarOverlay). Estilo de .overlay .box de Prensas. */
+  #overlay{border:none;border-top:2px solid var(--rule);border-radius:2px;padding:0;background:var(--panel);color:var(--txt);width:90%;max-width:min(460px,calc(100vw - 24px));max-height:calc(100dvh - 32px);box-shadow:0 20px 50px rgba(28,27,25,.25)}
+  #overlay::backdrop{background:rgba(28,27,25,.45)}
+  #overlay .box{padding:24px 28px;text-align:center;position:relative}
+  #overlay .box h2,#overlay .box h3{font-family:var(--serif);font-weight:500;font-size:24px}
   .overlay-cerrar{position:absolute;top:8px;right:10px;background:none;border:none;color:var(--muted);
     cursor:pointer;font-size:18px;line-height:1;padding:4px 6px}
   .overlay-cerrar:hover{color:var(--txt)}
-  /* ---- confirmar una OT de trasiego: tabla de 5 columnas con campos ----
-   * No entra en la caja comun de 460 px: se ensancha solo este cartel, los
-   * campos van a su medida y la descripcion del lote baja de renglon. */
-  .overlay .box:has(.otc-tabla){max-width:760px}
-  /* paso 2 trae ademas las columnas de envases (.otc-envs): no entra en 760px */
-  .overlay .box:has(.otc-envs){max-width:1100px}
+  .overlay-cerrar.overlay-min{right:42px}
+  /* confirmar una OT de trasiego: 5 columnas con campos; el paso 2 trae además los envases */
+  #overlay:has(.otc-tabla){max-width:min(760px,calc(100vw - 24px))}
+  #overlay:has(.otc-envs){max-width:min(1100px,calc(100vw - 24px))}
+  #overlay:has(.otc-vac){max-width:min(1100px,calc(100vw - 24px))}
+  @media (max-width:760px){#overlay{width:calc(100vw - 16px);max-width:none}#overlay .box{padding:18px 16px}}
   #overlayBox .otc-scroll{max-height:50vh;overflow:auto;text-align:left}
   #overlayBox .otc-tabla td{vertical-align:middle}
   #overlayBox .otc-tabla td:first-child{white-space:normal;min-width:150px}
@@ -339,28 +464,38 @@
   .otc-coincide{color:#54d38a}.otc-difiere{color:#ffb35c}.otc-sin-escanear,.otc-sin-datos{color:var(--muted)}
   tr.otc-bloq td{opacity:.7}
   tr.otc-revisar td{background:rgba(255,179,92,.08)}
+  tr.otc-notocar td{opacity:.45}
+  .otc-fuente{font-size:12px;white-space:normal;max-width:230px;margin-top:2px}
+  #overlayBox .otc-tabla td:first-child .otc-aviso{white-space:normal;max-width:230px}
+  #overlayBox .otc-tabla table.otc-vac{border-collapse:collapse;margin:2px 0 6px;font-size:12px}
+  #overlayBox .otc-tabla .otc-vac th{font-weight:normal;color:var(--muted);padding:0 6px 2px;text-align:left;font-size:11px;text-transform:none;letter-spacing:0}
+  #overlayBox .otc-tabla .otc-vac td{padding:2px 6px;min-width:0;white-space:nowrap;border:0}
+  #overlayBox .otc-tabla .otc-vac input.otc-num{width:70px}
+  tr.otc-revisar .otc-vac input{outline:2px solid #ffb35c}
+  .otc-resumen{font-size:12px;margin:2px 0}
+  .otc-asi{margin:4px 0}
   /* ---- historial tabla ---- */
   #overlayBox table.hist{width:100%;border-collapse:collapse;font-size:13px}
   #overlayBox table.hist th,#overlayBox table.hist td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
   #overlayBox table.hist th{color:var(--muted);font-weight:600}
   /* ---- card ---- */
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin-bottom:22px}
-  .card h2{margin:0 0 16px;font-family:var(--serif);font-size:17px;font-weight:600}
+  .card{background:var(--panel);border:none;border-top:1px solid var(--rule);border-radius:0;padding:16px 18px 18px;margin-bottom:22px}
+  .card h2{margin:0 0 12px;font-family:var(--serif);font-size:21px;font-weight:500}
   /* ---- filtro multi-select ---- */
   .mfilt-bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .mfilt{position:relative;display:inline-block}
-  .mfilt-btn{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;cursor:pointer;white-space:nowrap}
-  .mfilt-btn:hover{border-color:var(--accent)}
+  .mfilt-btn{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:2px;padding:6px 10px;font-size:13px;font-family:inherit;cursor:pointer;white-space:nowrap}
+  .mfilt-btn:hover{border-color:var(--txt)}
   .mfilt-btn.active{border-color:var(--accent);color:var(--accent);font-weight:600}
   /* ---- filtro segmentado (Todos | Llenos | Vacios) ----
    * Tres opciones excluyentes, siempre a la vista: no hace falta abrir un panel
    * para saber cual esta puesta. El estado lo lleva aria-pressed, que ademas es
    * lo que anuncia un lector de pantalla. */
-  .segm{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
-  .segm button{background:var(--panel2);color:var(--muted);border:none;border-left:1px solid var(--line);padding:7px 12px;font-size:13px;font-family:inherit;cursor:pointer}
+  .segm{display:inline-flex;border:1px solid var(--line);border-radius:2px;overflow:hidden}
+  .segm button{background:transparent;color:var(--muted);border:none;border-left:1px solid var(--line);padding:6px 11px;font-size:13px;font-family:var(--sans);cursor:pointer}
   .segm button:first-child{border-left:none}
-  .segm button:hover{color:var(--txt)}
-  .segm button[aria-pressed="true"]{background:var(--panel);color:var(--accent);font-weight:600}
+  .segm button:hover{color:var(--txt);background:var(--panel2)}
+  .segm button[aria-pressed="true"]{background:var(--txt);color:var(--bg)}
   /* Selector de años: vive en la cabecera (header .right), junto a los demás
      botones, mismo look que el filtro Todos | Llenos | Vacíos (.segm). No va
      adentro de .tabs: esa barra ya se scrollea horizontal con datos reales
@@ -372,7 +507,7 @@
      aplaste el resto de header .right si falta espacio. */
   .sel-anios[hidden]{display:none}
   .sel-anios{flex-shrink:0}
-  .mfilt-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:280px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:8px;display:none}
+  .mfilt-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:200px;max-width:280px;background:var(--panel);border:1px solid var(--line);border-radius:2px;box-shadow:0 10px 28px rgba(28,27,25,.14);padding:8px;display:none}
   .mfilt-panel.open{display:block}
   /* ---- panel en modo anclado (embudos de la cabecera de Lotes) ----
    * Cuelga de <body> y no de la barra de filtros, porque la tabla de Lotes vive
@@ -395,11 +530,11 @@
   th button.th-flt:hover{color:var(--txt);border-color:var(--accent);background:var(--panel2)}
   th button.th-flt.active{color:var(--accent);border-color:var(--accent);
     background:var(--panel2);font-weight:600}
-  .mfilt-search{width:100%;box-sizing:border-box;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font-size:13px;font-family:inherit;margin-bottom:6px}
+  .mfilt-search{width:100%;box-sizing:border-box;background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:2px;padding:6px 8px;font-size:13px;font-family:inherit;margin-bottom:6px}
   .mfilt-list{max-height:240px;overflow:auto;display:flex;flex-direction:column;gap:1px}
-  .mfilt-opt{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:5px;cursor:pointer;font-size:13px;white-space:nowrap}
+  .mfilt-opt{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:2px;cursor:pointer;font-size:13px;white-space:nowrap}
   .mfilt-opt:hover{background:var(--panel2)}
-  .mfilt-opt input{margin:0;cursor:pointer}
+  .mfilt-opt input{margin:0;cursor:pointer;accent-color:var(--accent)}
   .mfilt-opt.hide{display:none}
   .mfilt-all{font-weight:600;border-bottom:1px solid var(--line);margin-bottom:2px;padding-bottom:6px}
   .mfilt-foot{display:flex;justify-content:flex-end;align-items:center;margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
@@ -413,8 +548,8 @@
   td.ggutter:hover{color:var(--txt);background:var(--line)}
   td.ggutter.gselfila{background:var(--line);color:var(--txt);font-weight:600}
   /* Celdas del rango y celda activa */
-  td.gsel{background:rgba(138,51,64,.10)}
-  th.gselcol{background:rgba(138,51,64,.10);color:var(--txt)}
+  td.gsel{background:rgba(90,23,36,.10)}
+  th.gselcol{background:rgba(90,23,36,.10);color:var(--txt)}
   td.gact{box-shadow:inset 0 0 0 2px var(--accent)}
   /* Franja de 8px al borde izquierdo del encabezado: toma la columna entera.
      El handler la detecta por offsetX; esto es solo el blanco visual.
@@ -474,9 +609,9 @@
    *
    * El texto va oscuro y a juego: 7,07 de contraste sobre el verde y 5,01 sobre
    * el naranja, los dos por encima del 4,5 de AA. */
-  td.dentro input.cell,td.dentro{background:#b7dba9 !important}
+  td.dentro input.cell,td.dentro{background:var(--ver-dentro) !important}
   td.dentro input.cell{color:#24451a}
-  td.fuera input.cell,td.fuera{background:#e8a15f !important}
+  td.fuera input.cell,td.fuera{background:var(--ver-fuera) !important}
   td.fuera input.cell{color:#5a3410}
   /* Una celda con veredicto pinta con !important y le ganaria al fondo de la
      seleccion. Un tono mas oscuro del MISMO color deja ver las dos cosas: en
@@ -518,49 +653,47 @@
      misma especificidad, gana la ultima. Sin esta linea la columna Lote fija
      seria la unica celda blanca de una fila verde al scrollear a lo ancho. */
   #tLotes tbody tr.org     td[data-k="lote"]{background:#b7dba9}
-  #tLotes tbody td[data-k="lote"].gsel{background:linear-gradient(rgba(138,51,64,.10),rgba(138,51,64,.10)) var(--panel)}
+  #tLotes tbody td[data-k="lote"].gsel{background:linear-gradient(rgba(90,23,36,.10),rgba(90,23,36,.10)) var(--panel)}
 
   /* La columna ID mide 66 caracteres en el Excel: se acota para que no empuje
    * todo lo demas fuera de la pantalla. El valor completo queda en el title. */
   #tLotes td[data-k="id_texto"] input.cell{max-width:180px}
 
   /* ---- note ---- */
-  .note{background:rgba(138,51,64,.05);border:1px dashed rgba(138,51,64,.32);border-radius:10px;padding:11px 15px;color:var(--muted);font-size:12px;margin-bottom:18px}
+  .note{background:transparent;border:none;border-left:2px solid var(--accent);border-radius:0;padding:4px 0 4px 12px;color:var(--muted);font-size:12.5px;line-height:1.5;margin-bottom:16px;max-width:900px}
   /* ---- dashboard ---- */
   .kpi-grid{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:22px}
-  .kpi-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 24px;min-width:140px;flex:1}
-  .kpi-card .kpi-val{font-family:var(--serif);font-size:36px;font-weight:700;line-height:1;margin-bottom:4px}
-  .kpi-card .kpi-lbl{font-size:12px;text-transform:uppercase;letter-spacing:1.8px;color:var(--muted)}
-  .kpi-card.kpi-ok .kpi-val{color:var(--ok)}
-  .kpi-card.kpi-warn .kpi-val{color:var(--warn)}
-  .kpi-card.kpi-bad .kpi-val{color:var(--nook)}
-  .alarm-lote-link{background:none;border:none;padding:0;color:var(--accent);cursor:pointer;font-size:12px;font-family:inherit;text-decoration:underline;text-decoration-color:rgba(138,51,64,.3);margin:1px}
+  .kpi-card.kpi-ok .kpi-val{color:var(--ver-ok)}
+  .kpi-card.kpi-warn .kpi-val{color:var(--ver-alerta)}
+  .kpi-card.kpi-bad .kpi-val{color:var(--ver-mal)}
+  .alarm-lote-link{background:none;border:none;padding:0;color:var(--accent);cursor:pointer;font-size:12px;font-family:inherit;text-decoration:underline;text-decoration-color:rgba(90,23,36,.3);margin:1px}
   .alarm-lote-link:hover{color:var(--accent2);text-decoration-color:var(--accent2)}
   .faq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin-top:4px}
-  .faq-item{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
-  .faq-item .faq-n{font-size:26px;font-weight:700;font-family:var(--serif);line-height:1}
   .faq-item .faq-label{font-size:12px;color:var(--muted)}
-  .faq-item.hi .faq-n{color:var(--warn)}
+  .faq-item.hi .faq-n{color:var(--ver-alerta)}
   /* ---- seguimiento FML: estado celdas ---- */
   .est-finalizada{background:#e4efe2;color:#2f6b3f;font-weight:600}
   .est-no_finalizada{background:#f6ecd6;color:#8a6219;font-weight:600}
   .est-excluida{background:#f1efe9;color:#8c857b;font-weight:600}
   /* ---- próximo análisis ---- */
-  .prox-venc{color:var(--nook);font-weight:600}
-  .prox-ok{color:var(--ok)}
+  .prox-venc{color:var(--ver-mal);font-weight:600}
+  .prox-ok{color:var(--ver-ok)}
   /* ---- SO2 calculadora ---- */
   .so2-calc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:18px}
+  .ocg-fila{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .ocg-fila .spacer{flex:1}
+  .oh-guardada{display:flex;flex-direction:column;gap:6px;padding:8px 0}
+  .oh-guardada .oh-botones{display:flex;gap:8px;flex-wrap:wrap}
   .so2-result-box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
-  .so2-result-box .so2-val{font-family:var(--serif);font-size:28px;font-weight:700;line-height:1.1}
+  .so2-result-box .so2-val{font-family:var(--serif);font-size:28px;font-weight:500;line-height:1.1}
   .so2-result-box .so2-lbl{font-size:12px;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted)}
-  .so2-result-box.hi .so2-val{color:var(--warn)}
-  .so2-result-box.pos .so2-val{color:var(--ok)}
+  .so2-result-box.hi .so2-val{color:var(--ver-alerta)}
+  .so2-result-box.pos .so2-val{color:var(--ver-ok)}
   /* ---- Ficha de lote ---- */
-  /* Barra de % de avance */
-  .barra { background:#e6e6e6; border-radius:6px; height:14px; overflow:hidden; min-width:70px; display:inline-block; vertical-align:middle; }
-  .barra > span { display:block; height:100%; background:#2e7d32; transition:width .2s; }
-  .barra.media > span { background:#f9a825; }
-  .barra.baja  > span { background:#c62828; }
+  /* Barra de % de avance (forma acá, colores de riesgo congelados --sc-* al
+   * final de esta sección: ver test/lotes-colores-congelados.test.ts). */
+  .barra { overflow:hidden; min-width:70px; display:inline-block; vertical-align:middle; }
+  .barra > span { display:block; height:100%; transition:width .2s; }
   .barra.cerrado > span { background:#9e9e9e; }
 
   /* Hitos */
@@ -583,8 +716,7 @@
   .timeline .fecha { color:#666; font-variant-numeric:tabular-nums; margin-right:8px; }
 
   /* Chips de etapa y linaje */
-  .chip-etapa { display:inline-block; padding:2px 8px; border-radius:10px;
-    background:#eceff1; font-weight:600; }
+  .chip-etapa{display:inline-block;padding:2px 9px;border-radius:2px;background:var(--panel2);border:1px solid var(--line);font-weight:600;font-size:11.5px;color:var(--txt)}
   /* Chips del Tablero FML */
   .tb-chip{display:inline-block;padding:2px 8px;margin:1px;border-radius:10px;font-size:12px;white-space:nowrap}
   .tb-chip.ok{background:var(--tb-ok-bg);color:var(--tb-ok-fg)}
@@ -617,9 +749,26 @@
   .tb-toggle button.active{background:var(--tb-primario);color:var(--tb-panel);border-color:var(--tb-primario);font-weight:600}
   .linaje-col { display:inline-block; vertical-align:top; min-width:150px; }
 
+  /* Ficha: resumen en una columna, legible en el celular */
+  .ficha-resumen .fr-datos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 18px;margin:0 0 14px}
+  .ficha-resumen .fr-datos dt{font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:var(--muted)}
+  .ficha-resumen .fr-datos dd{margin:2px 0 0;font-family:var(--serif);font-size:22px;font-weight:500}
+  .ficha-resumen .fr-analisis{width:auto;min-width:240px}
+  .ficha-resumen .fr-analisis th{position:static;cursor:default;text-align:left}
+  @media (max-width:760px){
+    .ficha-resumen .fr-datos{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .ficha-resumen .fr-analisis{width:100%}
+    #tab-ficha .fr-linaje{flex-direction:column}
+    #tab-ficha .linaje-col{min-width:0}
+  }
+
   /* Ficha lote cerrado */
   #tab-ficha.ficha-cerrado .barra-avance-wrap,
   .ficha-cerrado-badge { color:var(--muted); }
+  .barra{border-radius:var(--r-pill);height:8px;background:var(--line)}
+  .barra>span{border-radius:var(--r-pill);background:var(--sc-0)}
+  .barra.media>span{background:var(--sc-2)}
+  .barra.baja>span{background:var(--sc-4)}
 
   /* hoja orden de muestras (estilo papel, claro) — copiado de prensas-app,
      mismo documento de calidad de la empresa para ambas apps */
@@ -639,6 +788,12 @@
   .orden-hoja .oh-check{width:34px}
   .orden-hoja .oh-num{width:34px}
   .orden-hoja tbody tr:hover{background:transparent}
+  /* Las hojas de papel (orden de muestras, OT, cruce, orden de correccion) son
+   * formularios de calidad RCI 08 y salen impresas igual que siempre: la
+   * th versalita de 10px de la grilla de pantalla no les toca (serian
+   * ilegibles en papel sin esto). */
+  .orden-hoja th,.orden-hoja td{font-size:13px;text-transform:none;letter-spacing:normal;border:1px solid #888}
+  .orden-hoja th{background:#e6e6e6;color:#111}
   .orden-hoja .oh-pie{display:flex;gap:40px;margin-top:22px;font-size:13px}
   .orden-hoja .oh-pie .firma{flex:1;border-top:1px solid #888;padding-top:4px;margin-top:26px}
   .orden-hoja .oh-hoja-num{text-align:right;font-size:11px;color:#555;margin-top:6px}
@@ -668,6 +823,12 @@
   .orden-hoja .ot-dato .ot-ok{margin-left:14px;font-weight:700;white-space:nowrap}
   .orden-hoja .ot-tabla .ot-destino{vertical-align:middle;text-align:center;font-weight:700}
   .orden-hoja .ot-chica{font-size:11px}
+  /* Planilla de movimiento: Vaciado y Llenado (19 + 19 filas) en UNA A4. Con
+   * el alto de fila de las OT, el Llenado se pasaba a una segunda hoja solo
+   * con 7 filas y la firma. */
+  .orden-hoja.ot-planilla .ot-tabla th,.orden-hoja.ot-planilla .ot-tabla td{font-size:12px;padding:1px 6px;height:18px;line-height:15px}
+  .orden-hoja.ot-planilla .oh-banda{padding:4px 10px;margin-bottom:4px}
+  .orden-hoja .ot-nums{font-variant-numeric:tabular-nums}
   /* Rotulos: la hoja "rotulo" de la 0700. Nueve filas por A4 (182 x 269 mm
      utiles con el @page de 14 mm), cada una con los DOS rotulos iguales de un
      barril. Arriba el lote grande y el QR; abajo el ID y el numero de barril. */
@@ -681,9 +842,41 @@
   .ot-rot-qr svg{width:16mm;height:16mm;display:block}
   .ot-rot-id,.ot-rot-n{border-top:2px solid #111;display:flex;align-items:center;justify-content:center;
     font-size:13px;white-space:nowrap;overflow:hidden}
+  /* El ID entero, en hasta dos renglones: en una sola linea los largos ("CH
+   * Frabrega Masal turbio - Field Blend malolactica") se cortaban por los dos
+   * costados. */
+  .ot-rot-id{white-space:normal;text-align:center;font-size:11.5px;line-height:1.08;padding:0 1.5mm}
   .ot-rot-n{border-left:2px solid #111}
   .ote-lote{margin-bottom:8px}
   .ote-barriles{display:flex;flex-wrap:wrap;gap:4px 14px;margin:6px 0;font-size:13px}
+  .ote-num{width:90px}
+  .overlay-pastilla{position:fixed;right:18px;bottom:18px;z-index:900;background:var(--accent);color:#fff;border:0;border-radius:999px;
+    padding:10px 16px;font:600 13px var(--sans,system-ui);box-shadow:0 8px 24px -10px rgba(28,27,25,.6);cursor:pointer}
+  .overlay-pastilla:hover{filter:brightness(1.08)}
+  .overlay-pastilla:focus-visible{outline:2px solid var(--txt);outline-offset:2px}
+  .ote-tq{align-items:center}
+  .ote-otra{display:flex;flex-wrap:wrap;min-width:0;gap:6px;align-items:center;margin:4px 0;font-size:13px}
+  /* Filas de tanques destino extra: anchos chicos para que el ✕ entre en el modal. */
+  .ote-destinos .ote-otra input.txt{width:7em;min-width:0}
+  .ote-destinos .ote-otra input.txt.ote-num{width:6em}
+  /* Destinos del lote (2026-11-13): tabla Vasija | Litros | Lote | ✕. La
+     primera fila conserva el lote; las demas son lotes nuevos. */
+  .ote-destinos{border-top:1px solid var(--line,#d8d2c6);margin-top:10px;padding-top:8px}
+  .ote-dest-cab{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px;margin-bottom:4px}
+  .ote-dest-cab span{color:var(--muted);font-size:12px}
+  .ote-dest-fila{display:grid;grid-template-columns:minmax(0,1fr) 5.5em 5.5em 1.6em;gap:6px;align-items:center;margin:4px 0;font-size:13px}
+  .ote-dest-fila input.txt{width:100%;min-width:0}
+  .ote-dest-tit{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;margin-bottom:0}
+  .ote-dest-resto,.ote-dest-lote{color:var(--muted);padding:0 4px}
+  .ote-dest-lote{font-weight:600;color:var(--txt)}
+  .ote-chicas{display:flex;align-items:center;gap:4px;min-width:0}
+  .ote-chicas input.txt{width:3.4em;flex:0 0 auto;text-align:center}
+  .ote-chicas span{font-size:12px;color:var(--muted)}
+  .ote-dest-pie{font-size:12px;color:var(--muted);margin:2px 0 4px}
+  .ote-dest-mal{color:var(--danger,#9b2c2c)}
+  .ote-agregar{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 8px}
+  .ote-litros{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+  .ote-suma{font-size:12px;color:var(--muted);white-space:nowrap}
 
   /* Movimiento pendiente: un plan, no un hecho. Se marca la fila entera
      porque el operario y quien carga tienen que distinguirlo de un vistazo. */
@@ -713,6 +906,8 @@
     body.printing-orden #tab-orden{display:block!important;margin:0}
     body.printing-orden #tab-orden .ot-izq,
     body.printing-orden #tab-orden .ot-prev-cab,
+    body.printing-orden #tab-orden .ot-aviso,
+    body.printing-orden .orden-hoja .oh-dado,
     body.printing-orden .orden-hoja .oh-quitar,
     body.printing-orden .orden-hoja .oh-agregar{display:none!important}
     body.printing-orden .orden-hoja input.oh-celda::placeholder{color:transparent}
@@ -774,6 +969,15 @@
     body.printing-ordencorr main{padding:0;max-width:none}
     body.printing-ordencorr #tab-ordencorr{display:block!important}
     body.printing-ordencorr #tab-ordencorr > *:not(#ocPaginas){display:none!important}
+    /* La banda de cada lote (controles de pantalla), la marca de dosis a mano
+     * y su ↺ son de pantalla: el papel sale como el de la B219. */
+    body.printing-ordencorr .orden-hoja tr.oc-banda{display:none!important}
+    body.printing-ordencorr #ocPaginas .orden-hoja{box-shadow:none}
+    body.printing-ordencorr .orden-hoja .oh-manual{background:none!important}
+    body.printing-ordencorr .orden-hoja .oh-reset{display:none!important}
+    /* Campos del encabezado: un vacio no imprime su placeholder ("nombre"). */
+    body.printing-ordencorr .orden-hoja .oh-campo::placeholder{color:transparent!important}
+    body.printing-ordencorr .orden-hoja .oh-campo::-webkit-calendar-picker-indicator{display:none}
     /* I6: #ocPaginas tiene style="display:none" inline. Una regla !important de
      * autor vence sobre el inline sin !important (cascade nivel 4 > nivel 7).
      * El mismo patron aplica en printing-ot-mov (#otMovHoja), printing-cruce
@@ -804,6 +1008,10 @@
     #agPaginas .orden-hoja + .orden-hoja{page-break-before:always;margin-top:0}
 
     @page{margin:14mm}
+    /* El fondo crema de la pantalla salia como una franja al pie de cada hoja
+     * cuando la impresora tiene "Graficos de fondo" activado (lo que hace
+     * falta para los grises de las bandas). El papel es blanco. */
+    html,body,main{background:#fff!important}
   }
 /* @media print: la grilla — separado porque oculta los estilos de seleccion en todas las vistas */
 @media print{
@@ -829,164 +1037,119 @@
   tr.oc-sep td{background:var(--panel2);font-weight:600;padding:5px 9px;border-top:2px solid var(--line)}
   tr.oc-sep:hover td{background:var(--panel2)}
   .oc-aviso{color:var(--warn);font-size:12px;font-weight:400}
+/* La hoja ES la pantalla (como la Orden de muestras): centrada, con sombra de
+ * papel. Cada lote lleva arriba de sus renglones una banda de pantalla con
+ * sus controles (bandaLote, orden-correccion-papel.js). */
+  .oc-hoja-cab{max-width:820px;margin:0 auto 8px;font-size:12.5px}
+  #ocPaginas .orden-hoja{box-shadow:0 1px 2px rgba(0,0,0,.10),0 6px 18px rgba(40,30,20,.10)}
+  #ocPaginas .orden-hoja tr.oc-banda td{background:#f1ece3;border-left:none;border-right:none;padding:6px 8px 5px;font-size:12.5px}
+  .orden-hoja tr.oc-banda + tr td{border-top:none}
+  .orden-hoja .ocb-l1,.orden-hoja .ocb-l2{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px}
+  .orden-hoja .ocb-l2{margin-top:3px;color:#444;padding-left:22px}
+  .orden-hoja tr.oc-banda input,.orden-hoja tr.oc-banda select{width:auto;border:1px solid #cfc6b8;background:#fff;padding:2px 4px}
+  .orden-hoja .ocb-lote{display:inline-flex;align-items:center;gap:5px;font-size:13.5px;cursor:pointer}
+  .orden-hoja .ocb-var{font-weight:600}
+  .orden-hoja tr.oc-banda .ocb-obj input{width:7ch;text-align:right;margin-left:3px}
+  .orden-hoja .ocb-total{margin-left:auto;font-weight:700}
+  .orden-hoja tr.oc-banda .oc-aviso{margin-top:3px;line-height:1.3;padding-left:22px}
+/* Lotes fuera de esta orden: debajo de la hoja, para volver a incluirlos. */
+  /* ---- Vista Planilla | Hoja (orden-correccion-planilla.js) ----
+   * Cual se ve lo decide el atributo hidden (_ocPonerVista), no una regla de
+   * aca: las reglas sobre la hoja son parte de la foto del papel
+   * (lotes-papel-intacto.test.mjs). Al imprimir la vista destapa la hoja. */
+  .oc-vistas{display:inline-flex}
+  .oc-vistas .btn{border-radius:0}
+  .oc-vistas .btn[aria-pressed="true"]{background:var(--txt);color:var(--panel);border-color:var(--txt)}
+  #ocPlanilla{overflow-x:auto}
+  .ocp-tabla th button.ocp-sort{background:none;border:none;padding:0;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer}
+  .ocp-tabla th button.ocp-sort:hover{color:var(--txt)}
+  .ocp-tabla th .arrow{color:var(--txt)}
+  .ocp-tabla th button.th-flt{margin-left:3px}
+  .ocp-cab{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin:0 0 10px;font-size:13px;color:var(--muted)}
+  .ocp-cab label{display:inline-flex;align-items:center;gap:6px}
+  .ocp-cab input.txt{padding:4px 8px;width:auto}
+  .ocp-ley{margin-left:auto;font-size:12px}
+  .ocp-tabla{width:100%;min-width:960px;border-collapse:collapse;table-layout:fixed;font-size:13px;background:var(--panel)}
+  .ocp-tabla th{background:var(--panel2);text-align:left;font-weight:600;font-size:11.5px;color:var(--muted);padding:7px 6px;border-bottom:1px solid var(--line)}
+  .ocp-tabla td{padding:4px 6px;border-bottom:1px solid var(--line-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ocp-tabla .n{text-align:right;font-variant-numeric:tabular-nums}
+  .ocp-tabla tr.ocp-alt td{background:#f6f2ea}
+  .ocp-tabla tr.ocp-lotecab td{background:#ece5d8;border-top:2px solid var(--line);padding:6px 6px 5px;white-space:normal}
+  .ocp-tabla tr.ocp-lotecab.ocp-alt td{background:#e6dece}
+  .ocp-l1{display:flex;flex-wrap:wrap;align-items:center;gap:14px}
+  .ocp-incl{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .ocp-var{font-weight:600}
+  .ocp-obj input{width:7ch;text-align:right;margin-left:4px;padding:2px 4px;border:1px solid #cfc6b8;background:#fff}
+  .ocp-l1 select{padding:2px 4px;font-size:12.5px}
+  .ocp-tot{margin-left:auto;font-weight:600}
+  .ocp-tabla tr.ocp-lotecab .oc-aviso{margin-top:3px;padding-left:22px;font-size:12px}
+  /* Organico: el verde pastel de la fila organica de la pestaña Lotes. */
+  .ocp-lote{font-weight:700;padding:1px 6px;border-radius:3px}
+  .ocp-lote.ocp-org{background:#b7dba9;color:#1f4a17}
+  .ocp-tabla input.ocp-dosis{width:7ch;text-align:right;font-weight:700;padding:2px 4px;border:1px solid #cfc6b8;background:#fff}
+  .ocp-tabla td.oh-manual{background:#fdf1dc!important}
+  .ocp-v td.ocp-sin{background:#fbe3df}
+  .ocp-tabla tr.ocp-total td{font-weight:700;border-top:2px solid var(--txt);background:var(--panel)}
+  .ocp-tabla tr.ocp-fuera-tit td{padding-top:16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line);background:var(--panel)}
+  .ocp-tabla tr.ocp-fuera td{color:var(--muted);background:var(--panel)}
+  .ocp-tabla tr.ocp-fuera .ocp-lote{opacity:.8}
+  .ocp-motivo{font-size:12px}
+  .ocp-vacio{text-align:center;color:var(--muted);padding:18px}
+/* Dosis escrita a mano. */
+  .orden-hoja td.oh-manual{background:#fdf1dc}
+  .orden-hoja input.oh-campo-dosis{width:7ch;text-align:right;font-weight:700}
+  .orden-hoja .oh-reset{border:none;background:none;cursor:pointer;color:#a0612a;font-size:13px;padding:0 2px}
+  .orden-hoja .oh-reset:hover{color:#e08a2b}
   .oc-sello{font-size:11px;color:#555;margin-top:8px;font-style:italic}
-/* Unidad de la dosis (L): se muestra una sola de las dos columnas. La 6 es
-   MBK (g) y la 7 es mL sol., y esas posiciones valen igual en el encabezado,
-   en la fila del lote y en la de barrica, asi que ocultarlas por nth-child es
-   consistente. Se hace por CSS para no tocar el codigo que arma las filas. */
-  #ocTable.u-sol th:nth-child(6), #ocTable.u-sol td:nth-child(6){display:none}
-  #ocTable.u-mbk th:nth-child(7), #ocTable.u-mbk td:nth-child(7){display:none}
 /* Correcciones anuladas (M): se tachan pero NO se ocultan. Anular deja rastro
    a proposito; una bitacora de calidad no puede tener huecos silenciosos. */
   tr.so2-anulada td{text-decoration:line-through;opacity:.55}
   .so2-anulada-sello{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;
-    background:var(--panel2);color:var(--warn);font-size:10.5px;font-weight:600;
+    background:var(--panel2);color:var(--ver-alerta);font-size:10.5px;font-weight:600;
     text-decoration:none;opacity:1;white-space:nowrap}
 
-/* =====================================================================
-   RENOVACION VISUAL (2026-09)
-   =====================================================================
-   Capa de presentacion que se apoya en los tokens nuevos del :root. Va al
-   final a proposito: son overrides de componentes compartidos (header,
-   tabs, cards, botones, tablas, chips) y necesitan ganar por orden de
-   cascada sin subir la especificidad ni tocar el markup, que esta repartido
-   en dieciocho modulos de vista.
-
-   Regla de oro para mantenerla: aca NO se cambia layout ni se agregan
-   selectores que dependan de la estructura del DOM de una vista concreta.
-   Solo color, tipografia, espaciado, borde, sombra y transicion. Asi
-   ninguna vista puede romperse por un cambio de aspecto, y borrar el bloque
-   entero devuelve la app al aspecto anterior.
-
-   Lo que queda FUERA a proposito:
-   - .orden-hoja y todo lo que entra en @media print: son formularios de
-     calidad (RCI 08) que tienen que salir en papel igual que siempre.
-   - los fondos de la grilla (gsel/gact/fuera): dependen de valores rgba
-     escritos a mano y de reglas !important; retocarlos desde aca daria
-     resultados distintos segun el orden de las clases en cada celda.
-   ===================================================================== */
-
-/* ---- lienzo ---- */
-body{background:var(--bg-2);letter-spacing:.005em}
-body::before{
-  /* Halo tenue detras del header. Es un pseudo-elemento fijo y no un
-   * background del body porque el body scrollea y el degrade se iria
-   * con el scroll. pointer-events:none para no comerse ningun clic. */
-  content:'';position:fixed;inset:0 0 auto;height:320px;pointer-events:none;z-index:0;
-  background:
-    radial-gradient(900px 260px at 12% -60px, rgba(var(--accent-rgb),.055), transparent 70%),
-    radial-gradient(700px 220px at 88% -80px, rgba(91,123,134,.05), transparent 70%);
+/* ---- barra de la app: como la de Prensas (marca, pantallas, Más, estado) ----
+ * Clase app-barra y no "barra": .barra es la barra de avance de la Ficha.
+ * Sticky debajo de la barra de la plataforma (shared/barra.js publica su alto
+ * en --ciw-h). z-index 40: por encima de los th sticky (7 como máximo); los
+ * formularios y diálogos son <dialog> y van en la capa superior. */
+.app-barra{position:sticky;top:var(--ciw-h,0px);z-index:40;background:var(--bg);display:flex;align-items:center;gap:20px;padding:11px 26px;border-bottom:1px solid var(--rule)}
+.app-barra .marca{font-family:var(--serif);font-size:27px;font-weight:500;line-height:1;letter-spacing:.2px}
+.app-barra .right{margin-left:auto;display:flex;align-items:center;gap:14px;min-width:0}
+.buscar-lote{display:flex;align-items:center}
+.buscar-lote input.txt{width:150px;padding:6px 9px}
+.ci-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.tabs{display:flex;align-items:center;gap:2px}
+.tabs button[data-v],.mas-btn{background:transparent;border:none;color:var(--muted);padding:6px 11px;cursor:pointer;font-size:13.5px;font-weight:500;font-family:var(--sans);border-radius:2px;white-space:nowrap}
+.tabs button[data-v]:hover,.mas-btn:hover{color:var(--txt);background:var(--panel2)}
+.tabs > button[data-v].active,.mas-btn.active{background:var(--txt);color:var(--bg)}
+.mas{position:relative}
+.mas-btn::after{content:' ▾';font-size:10px}
+.mas-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:210px;background:var(--panel);border:1px solid var(--line);border-top:2px solid var(--rule);border-radius:2px;box-shadow:0 12px 30px rgba(28,27,25,.16);padding:6px 0;display:none;z-index:45}
+.mas-menu.open{display:block}
+.mas-menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:7px 16px;font-size:13.5px;font-family:var(--sans);color:var(--txt);cursor:pointer;border-radius:0}
+.mas-menu button:hover{background:var(--panel2);color:var(--txt)}
+.mas-menu button.active{color:var(--accent);font-weight:600;background:var(--accent-tinte)}
+.mas-menu #btnCuadricula[aria-pressed="true"]::before{content:'✓ '}
+.mas-grupo{font-size:9.5px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:10px 16px 4px}
+.mas-angosto{display:none;border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:2px}
+.status{font-size:12px;color:var(--muted);white-space:nowrap}
+.status.dirty{color:var(--warn)}
+.status.saved{color:var(--ok)}
+.status.saved::before,.status.dirty::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px}
+.status.usuario{color:var(--txt);opacity:.75}
+@media(max-width:1100px){.app-barra .right .status.usuario{display:none}}
+@media(max-width:900px){
+  .app-barra{flex-wrap:wrap;gap:10px 14px;padding:10px 16px}
+  .tabs > button[data-v]{display:none}
+  .mas-angosto{display:block}
+  .buscar-lote{order:3;flex:1 1 100%}
+  .buscar-lote input.txt{width:100%}
+  .app-barra .right{gap:8px;flex-wrap:wrap}
+  .app-barra .right .status:not(#statusBar){display:none}
+  #statusBar.saved,#statusBar.dirty{font-size:0}
+  #statusBar.saved::before,#statusBar.dirty::before{margin-right:0}
 }
-header,.tabs,main,#avisos{position:relative;z-index:1}
-
-/* ---- header ---- */
-header{padding:20px 28px 16px;gap:14px;border-bottom:none}
-header h1{font-size:25px;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
-header h1::before{
-  /* Marca de agua de la bodega: una gota de vino. Puramente decorativa. */
-  content:'';width:9px;height:9px;border-radius:var(--r-pill);flex:none;
-  background:var(--accent);box-shadow:0 0 0 4px rgba(var(--accent-rgb),.12);
-}
-header .sub{font-size:9.5px;letter-spacing:3px;color:var(--muted)}
-header .right{gap:8px}
-.status{font-size:11.5px;letter-spacing:.02em;padding:5px 10px;border-radius:var(--r-pill);
-  background:var(--panel);border:1px solid var(--line);white-space:nowrap;box-shadow:var(--sh-xs)}
-.status.dirty{background:#fdf6e6;border-color:#ecdcb4}
-.status.saved{background:#eef5ec;border-color:#cfe2ca}
-#usuario:hover{border-color:var(--accent);color:var(--accent)}
-
-/* ---- barra de pestanas ----
- * Sticky: con tablas de 290 filas la navegacion tiene que seguir a mano sin
- * volver arriba. z-index 30 la deja por encima de los th sticky de las
- * tablas (z-index 7 como maximo) y por debajo del overlay (50). */
-.tabs{position:sticky;top:0;z-index:30;padding:8px 22px 0;gap:2px;
-  background:rgba(247,245,241,.82);backdrop-filter:saturate(1.5) blur(10px);
-  -webkit-backdrop-filter:saturate(1.5) blur(10px);
-  border-bottom:1px solid var(--line);overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
-.tabs::-webkit-scrollbar{height:0}
-.tabs button{padding:10px 13px 11px;border-radius:var(--r-sm) var(--r-sm) 0 0;
-  font-size:13px;white-space:nowrap;border-bottom:2px solid transparent;
-  transition:color .16s var(--ease),background .16s var(--ease)}
-.tabs button:hover{background:var(--accent-soft)}
-.tabs button.active{background:var(--panel);border-bottom-color:var(--accent);
-  box-shadow:0 -1px 0 var(--line) inset, 1px 0 0 var(--line) inset, -1px 0 0 var(--line) inset}
-
-/* ---- contenedor ---- */
-main{padding:24px 24px 64px}
-.view.active{animation:fadeUp .32s var(--ease)}
-@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){
-  .view.active{animation:none}
-  *{transition-duration:.01ms!important}
-}
-
-/* ---- tarjetas ---- */
-.card{border-radius:var(--r-lg);padding:22px 24px;box-shadow:var(--sh-sm);
-  border-color:var(--line-soft);transition:box-shadow .2s var(--ease)}
-.card:hover{box-shadow:var(--sh-md)}
-.card h2{font-size:16.5px;letter-spacing:-.005em;display:flex;align-items:center;gap:9px;
-  margin:0 0 14px}
-.card h2::before{content:'';width:3px;height:15px;border-radius:2px;flex:none;
-  background:linear-gradient(var(--accent),rgba(var(--accent-rgb),.35))}
-
-/* ---- botones ---- */
-button.btn{border-radius:var(--r-sm);padding:8px 14px;box-shadow:var(--sh-xs);
-  background:var(--panel);transition:border-color .15s var(--ease),background .15s var(--ease),
-  color .15s var(--ease),box-shadow .15s var(--ease),transform .08s var(--ease)}
-button.btn:hover{background:var(--panel-hi);box-shadow:var(--sh-sm)}
-button.btn:active{transform:translateY(1px)}
-button.btn.primary{box-shadow:0 1px 2px rgba(var(--accent-rgb),.28)}
-button.btn.primary:hover{box-shadow:0 2px 8px rgba(var(--accent-rgb),.3)}
-button.btn.primary:disabled{box-shadow:none}
-button.btn:focus-visible,.tabs button:focus-visible,select:focus-visible,
-input.txt:focus-visible,textarea:focus-visible,.mfilt-btn:focus-visible{
-  outline:none;box-shadow:var(--ring);border-radius:var(--r-sm)}
-
-/* ---- campos ---- */
-select,input.txt,textarea{background:var(--panel);border-radius:var(--r-sm);padding:8px 11px;
-  box-shadow:var(--sh-xs);transition:border-color .15s var(--ease),box-shadow .15s var(--ease)}
-select:hover,input.txt:hover{border-color:#d8d2c6}
-select:focus,input.txt:focus,textarea:focus{border-color:var(--accent);outline:none;box-shadow:var(--ring)}
-.tag{border-radius:var(--r-pill);padding:5px 11px;background:var(--panel);box-shadow:var(--sh-xs)}
-.mfilt-btn{background:var(--panel);border-radius:var(--r-sm);box-shadow:var(--sh-xs)}
-.mfilt-btn.active{background:var(--accent-soft)}
-.mfilt-panel{border-radius:var(--r-md);box-shadow:var(--sh-lg)}
-
-/* ---- tablas ----
- * Solo cabecera y divisores. Los fondos de fila (crit/venc/hover/gsel) se
- * dejan intactos: los pinta la grilla y la logica de alarmas. */
-th{font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;
-  background:var(--panel);border-bottom:1px solid var(--line)}
-td{border-bottom:1px solid var(--line-soft)}
-/* Las bandas de grupo de la pestana Lotes quedan afuera de la versalita por
- * dos razones. Una estetica: son nombres propios de grupo ("Datos de ingreso"),
- * no etiquetas de columna. Y una que rompe si se la ignora: el alto de esa
- * primera fila esta escrito a mano en la regla
- * "#tLotes thead tr:nth-child(2) th{top:30px}" de mas arriba, que es la que
- * apoya la segunda fila del encabezado justo debajo de la primera. 30px =
- * padding 7px x 2 + texto de 12px. Bajar el font-size aca encogeria la fila y
- * la segunda quedaria flotando 2px por encima de donde va. */
-th.banda{font-size:12px;text-transform:none;letter-spacing:.02em}
-/* Las hojas de papel (orden de muestras, OT, cruce, orden de correccion) son
- * formularios de calidad RCI 08. Salen impresas y tienen que salir igual que
- * siempre, asi que no reciben nada de la renovacion visual. */
-.orden-hoja th,.orden-hoja td{font-size:13px;text-transform:none;letter-spacing:normal;
-  border:1px solid #888}
-.orden-hoja th{background:#e6e6e6;color:#111}
-tbody tr{transition:background .12s var(--ease)}
-.scroll{border-radius:var(--r-md);border:1px solid var(--line-soft)}
-.card .scroll{border:none;border-radius:var(--r-sm)}
-
-/* ---- pastillas y chips ---- */
-.pill{border-radius:var(--r-pill);padding:2.5px 10px;letter-spacing:.01em}
-.chip-etapa{background:var(--panel2);border:1px solid var(--line);border-radius:var(--r-pill);
-  padding:2.5px 10px;font-size:11.5px;letter-spacing:.01em;color:var(--txt)}
-.barra{border-radius:var(--r-pill);height:8px;background:var(--line)}
-.barra>span{border-radius:var(--r-pill);background:var(--sc-0)}
-.barra.media>span{background:var(--sc-2)}
-.barra.baja>span{background:var(--sc-4)}
-.msg{border-radius:var(--r-md);padding:11px 15px}
-.note{border-radius:var(--r-md)}
 
 /* =====================================================================
    DASHBOARD
@@ -996,34 +1159,31 @@ tbody tr{transition:background .12s var(--ease)}
 /* Siete tarjetas en una sola fila en un monitor normal; en pantallas angostas
    bajan solas a dos o tres filas. */
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-.kpi-card{position:relative;overflow:hidden;border-radius:var(--r-lg);padding:18px 20px 17px;
-  border-color:var(--line-soft);box-shadow:var(--sh-sm);min-width:0;
-  transition:box-shadow .2s var(--ease),transform .2s var(--ease)}
-.kpi-card:hover{box-shadow:var(--sh-md);transform:translateY(-1px)}
+.kpi-card{background:var(--panel);border:none;border-top:1px solid var(--rule);border-radius:0;
+  padding:18px 20px 17px;min-width:0;position:relative;overflow:hidden}
 /* Riel de color arriba: da el estado de un vistazo sin leer el numero. */
 .kpi-card::before{content:'';position:absolute;inset:0 0 auto;height:3px;background:var(--muted)}
 .kpi-card.kpi-ok::before{background:var(--sc-0)}
 .kpi-card.kpi-warn::before{background:var(--sc-2)}
 .kpi-card.kpi-bad::before{background:var(--sc-4)}
-.kpi-card.kpi-neutral::before{background:var(--accent)}
-.kpi-card .kpi-val{font-size:34px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;
-  margin-bottom:5px}
+.kpi-card.kpi-neutral::before{background:var(--ver-acento)}
+.kpi-card .kpi-val{font-family:var(--serif);font-size:42px;font-weight:500;line-height:.95;
+  margin-bottom:5px;font-variant-numeric:lining-nums tabular-nums}
 .kpi-card .kpi-lbl{font-size:10.5px;letter-spacing:1.6px}
 .kpi-card .kpi-sub{font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.35}
 .kpi-card .kpi-sub b{color:var(--txt);font-variant-numeric:tabular-nums}
 
 /* ---- preguntas frecuentes ---- */
 .faq-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
-.faq-item{background:var(--panel);border-color:var(--line-soft);border-radius:var(--r-md);
-  box-shadow:var(--sh-xs);padding:13px 15px;transition:box-shadow .15s var(--ease)}
-.faq-item:hover{box-shadow:var(--sh-sm)}
-.faq-item .faq-n{font-size:24px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.faq-item{background:var(--panel);border:1px solid var(--line);border-radius:2px;
+  padding:13px 15px;display:flex;flex-direction:column;gap:4px}
+.faq-item .faq-n{font-size:26px;font-weight:500;font-family:var(--serif);line-height:1}
 .faq-item .faq-label{font-size:11.5px}
 .faq-item.hi{border-color:#e8d9b4;background:linear-gradient(#fffdf7,#fdf9ef)}
 
 /* ---- barra de titulo de seccion del dashboard ---- */
 .dash-band{display:flex;align-items:baseline;gap:12px;margin:26px 0 13px;flex-wrap:wrap}
-.dash-band h2{font-family:var(--serif);font-size:17px;font-weight:600;margin:0;letter-spacing:-.005em}
+.dash-band h2{font-family:var(--serif);font-size:21px;font-weight:500;margin:0}
 .dash-band .hint{font-size:12px;color:var(--muted)}
 .dash-band .spacer{flex:1}
 
@@ -1032,12 +1192,10 @@ tbody tr{transition:background .12s var(--ease)}
  * 2 en un portatil y 1 en pantalla angosta, sin media queries. */
 .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
 .chart-grid.wide{grid-template-columns:repeat(auto-fit,minmax(480px,1fr))}
-.chart-card{background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--r-lg);
-  padding:17px 19px 15px;box-shadow:var(--sh-sm);display:flex;flex-direction:column;
-  min-width:0;transition:box-shadow .2s var(--ease)}
-.chart-card:hover{box-shadow:var(--sh-md)}
-.chart-card h3{margin:0;font-family:var(--serif);font-size:14.5px;font-weight:600;
-  letter-spacing:-.005em;display:flex;align-items:center;gap:8px}
+.chart-card{background:var(--panel);border:none;border-top:1px solid var(--rule);border-radius:0;
+  padding:14px 4px 12px;display:flex;flex-direction:column;min-width:0}
+.chart-card h3{margin:0;font-family:var(--sans);font-size:10px;font-weight:500;color:var(--muted);
+  text-transform:uppercase;letter-spacing:1.4px;display:flex;align-items:center;gap:8px}
 .chart-card .ch-sub{margin:5px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45}
 .chart-card .ch-body{position:relative;margin-top:13px;flex:1;min-height:0}
 /* Chart.js dimensiona el canvas contra su contenedor. Sin una altura fija el
@@ -1088,13 +1246,13 @@ table.hm td.hm-c{padding:0}
   cursor:pointer;color:#fff;display:block;transition:transform .1s var(--ease),box-shadow .1s var(--ease)}
 .hm-cell:hover{transform:scale(1.06);box-shadow:var(--sh-sm);border-color:rgba(42,38,34,.18)}
 .hm-cell:focus-visible{outline:none;box-shadow:var(--ring)}
-.hm-cell.v0{background:var(--panel2);color:var(--muted);font-weight:400;cursor:default}
+.hm-cell.v0{background:var(--ver-cero);color:var(--ver-apagado);font-weight:400;cursor:default}
 .hm-cell.v0:hover{transform:none;box-shadow:none;border-color:transparent}
 .hm-cell.sel{box-shadow:0 0 0 2px var(--txt)}
 /* Escala de intensidad. Son cinco pasos discretos y no un degrade continuo
  * porque el ojo compara escalones mucho mejor que tonos vecinos, y el numero
  * ya esta impreso en la celda para el caso que haga falta precision. */
-.hm-cell.v1{background:#e7ded4;color:var(--txt)}
+.hm-cell.v1{background:#e7ded4;color:var(--ver-tinta)}
 .hm-cell.v2{background:#dcb9a4;color:#5a2a1c}
 .hm-cell.v3{background:#c98363}
 .hm-cell.v4{background:#b3543c}
@@ -1259,6 +1417,18 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
   font-size:12.5px;color:var(--muted)}
 #tab-orden .ot-prev-cab b{color:var(--txt)}
 #tab-orden .ot-prev-cab .oc-mini{margin-left:auto;flex:none;height:28px;padding:0 10px;font-size:12px}
+/* de donde salen las filas + aviso de la ultima accion, arriba de la hoja */
+#tab-orden .ot-resumen{font-size:13.5px;color:var(--txt);flex-wrap:wrap}
+#tab-orden .ot-res-cambiar{border:none;background:none;padding:0;font:inherit;font-size:12.5px;color:var(--accent);
+  text-decoration:underline;cursor:pointer}
+#tab-orden .ot-aviso{width:210mm;max-width:100%;box-sizing:border-box;margin:0 auto 8px;display:flex;align-items:flex-start;gap:10px;
+  padding:8px 12px;border-radius:6px;font-size:13px;line-height:1.45;border:1px solid var(--line);background:var(--panel)}
+#tab-orden .ot-aviso[hidden]{display:none}
+#tab-orden .ot-aviso-aviso{background:#fdf6dd;border-color:#e8d48a;color:#5c4a0c}
+#tab-orden .ot-aviso-error{background:#fbe9e7;border-color:#e3a59d;color:#8c1d14}
+#tab-orden .ot-aviso-t{flex:1}
+#tab-orden .ot-aviso-x{border:none;background:none;cursor:pointer;color:inherit;opacity:.6;font-size:12px;padding:2px 4px}
+#tab-orden .ot-aviso-x:hover{opacity:1}
 #otPaginas .orden-hoja{width:210mm;max-width:none;min-height:297mm;padding:14mm;box-sizing:border-box;margin:0 auto;
   border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,.10),0 10px 28px rgba(40,30,20,.10)}
 #otPaginas .orden-hoja + .orden-hoja{margin-top:22px}
@@ -1272,6 +1442,28 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 #tab-movimientos .mov-sub button:hover{color:var(--accent)}
 #tab-movimientos .mov-sub button.on{background:var(--panel);color:var(--accent);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 #tab-movimientos .mov-sub button:focus-visible{outline:none;box-shadow:var(--ring)}
+/* ---- Movimientos: Inventario de tanques ---- */
+.inv-nota{margin:4px 0 10px;color:var(--muted);font-size:13px}
+.inv-tabla td.n{text-align:right;font-variant-numeric:tabular-nums}
+.inv-tabla .inv-num{font-weight:600}
+.inv-tabla tr.inv-vacia td{color:var(--muted)}
+.inv-tabla tr.inv-con-aviso{background:rgba(234,179,8,.12)}
+.inv-estado{display:inline-block;padding:1px 6px;border-radius:8px;font-size:12px;border:1px solid currentColor}
+.inv-estado.inv-manual{font-weight:600}
+.inv-estado.inv-ot{color:var(--ver-info)}
+.inv-estado.inv-medicion{color:var(--ver-alerta)}
+.inv-chip{display:inline-block;margin:1px 0 1px 4px;padding:0 5px;border-radius:3px;font-size:11.5px;line-height:17px;
+  white-space:nowrap;color:var(--txt);background:rgba(176,125,44,.16);border:1px solid rgba(176,125,44,.5)}
+.inv-chip-excede,.inv-chip-medido-en-vacia{background:rgba(176,58,46,.12);border-color:rgba(176,58,46,.5)}
+.inv-leyenda{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12.5px;color:var(--txt)}
+.inv-leyenda .inv-chip{margin-left:0}
+.inv-in{width:64px}.inv-obs{width:140px}
+.inv-sub{margin:16px 0 6px}
+.inv-hoja .inv-h-titulo{font-weight:700;margin-bottom:8px}
+.inv-hoja .inv-h-cols{display:flex;gap:12px}
+.inv-hoja .inv-h-tabla{border-collapse:collapse;flex:1;font-size:11px}
+.inv-hoja .inv-h-tabla th,.inv-hoja .inv-h-tabla td{border:1px solid #000;padding:2px 4px;height:18px}
+.inv-hoja .inv-h-firma{margin-top:14px}
 /* ---- Correcciones: Bitacora SO2 | Orden de correccion | Otros agregados ----
  * Mismo selector segmentado que Movimientos, pero vive fuera de las tres
  * <section> (es uno solo para el grupo). */
@@ -1287,7 +1479,7 @@ button.btn.on{border-color:var(--accent);color:var(--accent);background:var(--ac
 
 /* ---- Otros agregados ---- */
 #tAnalisis tbody tr.fila-agregado td{background:rgba(124,92,196,.07)}
-#tAnalisis tbody tr.fila-agregado td[data-k="agregado_txt"]{color:var(--accent);font-weight:600}
+#tAnalisis tbody tr.fila-agregado td[data-k="agregado_txt"]{color:var(--ver-acento);font-weight:600}
 .timeline li.agregado::before{background:#7c5cc4}
 .ag-grid{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:12px;margin-bottom:12px}
 .ag-grid label,.ag-lbl{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
@@ -1320,6 +1512,7 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
 
 /* lista de OT a la izquierda, hoja A4 a la derecha (debajo en pantallas angostas) */
 .otl{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+.otl.unica{grid-template-columns:minmax(0,1fr)}
 @media (max-width:1100px){.otl{grid-template-columns:minmax(0,1fr)}}
 .otl-barra{flex-wrap:wrap;gap:8px}
 .otl-barra .txt{flex:1 1 140px;min-width:0}
@@ -1332,7 +1525,47 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
 .otl-fila .otl-l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .otl-fila .otl-sub{color:var(--muted);font-size:12px}
 .otl-vacio{color:var(--muted);padding:18px 4px}
+.ot-otras-panel{margin:6px 0 10px;padding:8px 10px;border:1px dashed var(--line);border-radius:6px;font-size:12px}
+.ot-otras-tit{font-weight:600;margin-bottom:6px}.ot-otras-tit span{font-weight:400;color:var(--muted)}
+.ot-otra-mas{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 0}
+.ot-fm-tabla{border-collapse:collapse}
+.ot-fm-tabla th{font-weight:500;color:var(--muted);text-align:left;padding:0 6px 2px 0}
+.ot-fm-tabla td{padding:2px 6px 2px 0;vertical-align:middle}
+.ot-fm-cuenta{color:var(--ok);background:var(--ok-tinte)}.ot-fm-papel{color:#7A5A22;background:var(--warn-tinte)}
+.ot-fm-nota{color:#7A5A22;font-size:12px}
+.otl-der .ot-otras-panel input{width:auto;border:1px solid var(--line);background:#fff;font-size:12px;padding:4px 6px}
+.otl-der .ot-otras-panel input[data-hfl]{width:110px}.otl-der .ot-otras-panel input[data-hfn]{width:170px}.otl-der .ot-otras-panel input[data-hfv]{width:80px}
+.otl-der .ot-otras-panel .btn{font-size:12px;padding:4px 10px}
+.otl-cartel{margin:6px 0 8px;font-size:12px;text-align:left}
+.otl-pdf.ok{color:var(--ok);background:var(--ok-tinte);border-color:rgba(86,104,74,.3)}
+.otl-pdf.warn{color:#7A5A22;background:var(--warn-tinte);border-color:rgba(154,116,52,.3)}
+.otl-prog{color:var(--info);border-color:currentColor;background:transparent}
 .otl-der{min-width:0;overflow-x:auto;padding:0 2px 24px}
+.otl-cuerpo{display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px}
+.otl-papel{flex:0 1 auto;min-width:0;margin:0 auto}
+/* panel "Correcciones de esta OT" (vista-ot-correcciones.js) */
+.otl-corr{flex:1 1 300px;max-width:440px;margin:0 auto}
+.otx{display:flex;flex-direction:column;gap:10px}
+.otx-cab{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.otx-nota{font-size:12px;color:var(--muted)}
+.otx label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
+.otx .txt,.otx select{width:100%;min-width:0;height:30px;font-size:13px}
+.otx-lote{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;
+  display:flex;flex-direction:column;gap:8px}
+.otx-tit{font-size:13.5px}
+.otx-fila{display:grid;grid-template-columns:44px repeat(3,minmax(0,1fr));gap:6px;align-items:end}
+.otx-fila:has(select){grid-template-columns:44px minmax(0,1fr) 96px auto}
+.otx-fila.otx-so2{grid-template-columns:44px repeat(2,minmax(0,1fr)) auto}
+.otx select{padding:0 4px 0 8px}
+.otx-prod{font-weight:700;padding-bottom:6px}
+.otx-res{grid-column:2 / -1;font-size:12.5px;color:var(--muted)}
+.otx-res.on{color:var(--txt)}
+.otx-msg:empty{display:none}
+.otx-msg .msg{margin:0;font-size:12.5px}
+.otx-hechas{list-style:none;margin:0;padding:6px 0 0;border-top:1px dashed var(--line);font-size:12.5px;
+  display:flex;flex-direction:column;gap:2px}
+.otx-hechas span,.otx-nada{color:var(--muted)}
 .otl-cab{width:210mm;max-width:100%;margin:0 auto 8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;
   font-size:12.5px;color:var(--muted)}
 .otl-cab b{color:var(--txt)}
@@ -1350,6 +1583,11 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
 .orden-hoja .ot-editable:hover textarea.ot-texto{border-color:#ddd4c6;background:#fcfaf6}
 .orden-hoja textarea.ot-texto:focus{outline:none;border-style:solid;border-color:#e08a2b;background:#fff}
 .orden-hoja textarea.ot-texto::placeholder{color:#b3aa9e;font-style:italic}
+/* casilleros y título editables (contenteditable): mismo aviso que los pasos */
+.orden-hoja [contenteditable]{cursor:text;border-radius:2px;outline:1px dashed transparent;outline-offset:-1px}
+.orden-hoja [contenteditable]:hover{outline-color:#ddd4c6;background:#fcfaf6}
+.orden-hoja [contenteditable]:focus{outline:1px solid #e08a2b;background:#fff}
+.orden-hoja .oh-banda [contenteditable]{display:inline-block;min-width:2em;padding:0 3px}
 .orden-hoja .ot-ctrl{position:absolute;left:-48px;top:1px;display:flex;gap:2px;opacity:0}
 .orden-hoja .ot-fijo > .ot-ctrl{top:auto;bottom:0}
 .orden-hoja .ot-editable:hover > .ot-ctrl,.orden-hoja .ot-fijo:hover > .ot-ctrl,.orden-hoja .ot-ctrl:focus-within{opacity:1}
@@ -1357,6 +1595,13 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
   color:#a39a8e;font-size:11px;line-height:20px;cursor:pointer}
 .orden-hoja .ot-ctrl .ot-insertar:hover{background:#e6efe0;color:#2f6b2f}
 .orden-hoja .ot-ctrl .ot-quitar:hover{background:#f3dcd9;color:#b3261e}
+.orden-hoja .ot-muestras .ot-mu-celda{width:100%;border:none;background:transparent;font:inherit;padding:0}
+.orden-hoja .ot-muestras .ot-mu-celda:focus{outline:1px solid var(--accent, #2f6b2f);background:#fff}
+.orden-hoja .ot-muestras .ot-mu-mal{color:#b3261e;font-weight:600}
+.orden-hoja .ot-muestras .ot-mu-n{position:relative;white-space:nowrap}
+.orden-hoja .ot-muestras .ot-mu-x{margin-left:4px;border:none;background:transparent;color:var(--muted);cursor:pointer;opacity:0}
+.orden-hoja .ot-muestras tr:hover .ot-mu-x,.orden-hoja .ot-muestras .ot-mu-x:focus{opacity:1}
+.orden-hoja .ot-mu-mas{margin:6px 0 4px}
 #ordenControls.oc-micro .oc-grid{grid-template-columns:minmax(0,1fr)!important}
 
 /* ---- 50 filas por hoja (.oh-compacta) ----
@@ -1389,6 +1634,17 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
   border:none;border-radius:50%;background:transparent;color:#a39a8e;font-size:11px;line-height:20px;cursor:pointer;opacity:0}
 .orden-hoja tr:hover .oh-quitar,.orden-hoja .oh-quitar:focus-visible{opacity:1}
 .orden-hoja .oh-quitar:hover{background:#f3dcd9;color:#b3261e}
+/* celda Barril: cifras de ancho fijo (se leen y comparan de un vistazo), el
+ * 🎲 de la fila aparece al pasar el mouse y el aviso amarillo si el numero no
+ * es un barril lleno de ese lote segun el Mapa (en papel no se ve) */
+.orden-hoja td.oh-barril{position:relative}
+.orden-hoja input.oh-celda.oh-barr{font-variant-numeric:tabular-nums}
+.orden-hoja input.oh-celda.oh-barr::-webkit-calendar-picker-indicator{display:none!important}
+.orden-hoja input.oh-celda.oh-aviso{background:#fdf0c4}
+.orden-hoja .oh-dado{position:absolute;right:-1px;top:50%;transform:translateY(-50%);width:18px;height:15px;padding:0;
+  border:none;border-radius:3px;background:#fff;font-size:10px;line-height:15px;cursor:pointer;opacity:0}
+.orden-hoja tr:hover .oh-dado,.orden-hoja .oh-dado:focus-visible{opacity:1}
+.orden-hoja .oh-dado:hover{background:#f6f1e8}
 .orden-hoja .oh-agregar{display:block;margin:6px 0 0;padding:3px 10px;border:1px dashed #cbbfae;border-radius:4px;
   background:transparent;color:#8a3340;font:inherit;font-size:12px;cursor:pointer}
 .orden-hoja .oh-agregar:hover{background:#faf5ee;border-color:#8a3340}
@@ -1407,11 +1663,31 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
 .orden-hoja .oh-campo-sub{width:100%;font-weight:700}
 .orden-hoja .oh-campo-cartel{width:100%;font-size:22px}
 .orden-hoja textarea.oh-campo{display:block;width:100%;resize:none;overflow:hidden;field-sizing:content;min-height:1.6em}
+/* Vista preliminar de la Orden de correccion SO2: los campos se ven como texto
+ * impreso (sin recuadro ni marca de dosis a mano); el recuadro aparece al
+ * pasar el mouse o al escribir (las reglas :hover/:focus de arriba pesan mas). */
+.oc-prelim .oh-campo{border-color:transparent;background:transparent}
+.oc-prelim .oh-campo::placeholder{color:transparent}
+.oc-prelim td.oh-manual{background:none}
+.oc-prelim .oh-reset{display:none}
+.oc-prelim .oh-campo:not(:hover):not(:focus)::-webkit-calendar-picker-indicator{opacity:0}
 
 /* ---- papel de microbiologia: instrucciones, tabla justa y cartel ---- */
 .orden-hoja .oh-instr{font-size:13px;font-weight:600;line-height:1.45;margin:0 0 10px}
 .orden-hoja .oh-instr-fin{margin:12px 0 0}
 .orden-hoja table.oh-tabla-justa{width:auto}
+/* Orden de correccion: 25 filas + las instrucciones de la solucion no
+ * entraban en una A4 (1141 px contra 1017, medido con printToPDF): la ultima
+ * fila y las firmas se iban a otra hoja. */
+#ocPaginas .orden-hoja td,#ocPaginas .orden-hoja th{padding:2px 8px}
+/* Una orden de correccion guardada (modo órdenes, vista-ordenes-correccion.js):
+ * la misma hoja que #ocPaginas, en solo lectura, con su estado arriba. */
+#tab-so2 .ot-prev-cab{max-width:820px;margin:0 auto 8px;font-size:12.5px;color:var(--muted)}
+#tab-so2 .ot-prev-cab b{color:var(--txt)}
+#ocgPaginas{padding:4px 2px 24px}
+#ocgPaginas .orden-hoja{box-shadow:0 1px 2px rgba(0,0,0,.10),0 6px 18px rgba(40,30,20,.10)}
+#ocgPaginas .orden-hoja + .orden-hoja{margin-top:24px}
+#ocgPaginas .orden-hoja td,#ocgPaginas .orden-hoja th{padding:2px 8px}
 .orden-hoja.oh-cartel table{font-size:22px;margin-top:40px}
 .orden-hoja.oh-cartel th,.orden-hoja.oh-cartel td{border:none;padding:18px 10px;vertical-align:top;font-size:22px}
 .orden-hoja.oh-cartel th{background:transparent;width:230px;font-weight:700}
@@ -1446,43 +1722,240 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
   #ordenControls .oc-row-fin{margin-left:0;width:100%}
   #ordenControls .oc-panel{padding:13px 13px}
 }
+/* ===== Agenda =====
+ * Todo bajo #tab-agenda: el prefijo ag- ya lo usa Otros agregados
+ * (.ag-card, .ag-lote, .ag-badge...) y sin el id las reglas se pisarian.
+ * Sabado y domingo van mas angostos: casi nunca llevan trabajo. */
+#tab-agenda{--ag-cols:repeat(5,minmax(0,1fr)) repeat(2,minmax(0,.6fr))}
+#tab-agenda .ag{display:flex;flex-direction:column;gap:12px}
+#tab-agenda .ag-aviso{margin:0}
+#tab-agenda .ag-barra{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+#tab-agenda .ag-nav{display:flex;gap:6px;align-items:center}
+#tab-agenda .ag-nav .btn{padding:6px 11px}
+#tab-agenda .ag-titulo{font-family:var(--serif);font-size:1.2rem;margin:0 0 0 8px;font-weight:600;color:var(--txt);font-variant-numeric:tabular-nums}
+#tab-agenda .ag-segs{display:inline-flex;border:1px solid var(--line);border-radius:var(--r-pill);overflow:hidden;background:var(--panel);box-shadow:var(--sh-xs)}
+#tab-agenda .ag-seg{border:0;background:transparent;padding:5px 13px;font:inherit;font-size:13px;color:var(--muted);cursor:pointer}
+#tab-agenda .ag-seg+.ag-seg{border-left:1px solid var(--line-soft)}
+#tab-agenda .ag-seg:hover{color:var(--txt)}
+#tab-agenda .ag-seg.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+#tab-agenda .ag-seg:focus-visible{outline:none;box-shadow:inset var(--ring)}
+#tab-agenda .ag-cupos{margin-left:auto;color:var(--muted);font-size:12.5px}
+#tab-agenda .ag-cupos b{color:var(--txt);font-variant-numeric:tabular-nums}
+#tab-agenda .ag-cuerpo{display:grid;grid-template-columns:300px minmax(0,1fr);gap:14px;align-items:start}
+
+/* bandeja */
+#tab-agenda .ag-bandeja{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:10px;max-height:calc(100vh - var(--ciw-h,0px) - var(--ag-tope,64px) - 16px);overflow:auto;position:sticky;top:calc(var(--ciw-h,0px) + var(--ag-tope,64px));box-shadow:var(--sh-xs)}
+#tab-agenda .ag-h{font-family:var(--serif);font-size:1rem;font-weight:600;margin:2px 4px 8px}
+#tab-agenda .ag-grupo{margin-bottom:6px}
+#tab-agenda .ag-grupo+.ag-grupo{border-top:1px solid var(--line-soft);padding-top:4px}
+#tab-agenda .ag-grupo>summary{cursor:pointer;padding:6px 4px;font-weight:600;font-size:13px;display:flex;gap:7px;align-items:center;border-radius:var(--r-sm)}
+#tab-agenda .ag-grupo>summary:focus-visible{outline:none;box-shadow:var(--ring)}
+#tab-agenda .ag-grupo>summary b{margin-left:auto;color:var(--muted);font-variant-numeric:tabular-nums}
+#tab-agenda .ag-fila{display:grid;grid-template-columns:auto 1fr auto;gap:1px 8px;width:100%;text-align:left;border:0;border-radius:var(--r-sm);background:transparent;padding:6px 8px;font:inherit;font-size:13px;color:var(--txt);cursor:pointer}
+#tab-agenda .ag-fila:hover{background:var(--panel2)}
+#tab-agenda .ag-fila:focus-visible{outline:none;box-shadow:var(--ring)}
+#tab-agenda .ag-fila.res{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent-line)}
+#tab-agenda .ag-lote{font-weight:700;font-variant-numeric:tabular-nums}
+#tab-agenda .ag-var{color:var(--muted)}
+#tab-agenda .ag-mot{grid-column:1/3;font-size:12px;color:var(--txt)}
+#tab-agenda .ag-cuando{grid-row:1/3;grid-column:3;align-self:center;font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+#tab-agenda .ag-p{display:inline-block;width:9px;height:9px;border-radius:50%;flex:none}
+#tab-agenda .ag-p.p1{background:var(--ver-mal)} #tab-agenda .ag-p.p2{background:var(--ver-alerta)} #tab-agenda .ag-p.p3{background:var(--ver-info)}
+#tab-agenda .ag-p.p4{background:var(--sc-1)} #tab-agenda .ag-p.p5{background:var(--ver-gris)} #tab-agenda .ag-p.tr{background:var(--ver-acento)}
+
+/* calendario */
+#tab-agenda .ag-semana{display:grid;grid-template-columns:var(--ag-cols);gap:8px}
+#tab-agenda .ag-cabmes{display:grid;grid-template-columns:var(--ag-cols);gap:6px;color:var(--muted);font-size:12px;padding:0 9px 4px}
+#tab-agenda .ag-mes{display:grid;grid-template-columns:var(--ag-cols);gap:6px}
+#tab-agenda .ag-dia{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:8px;min-height:120px;display:flex;flex-direction:column;gap:6px;min-width:0}
+#tab-agenda .ag-dia[data-ag-dia]{cursor:pointer}
+#tab-agenda .ag-mes .ag-dia{min-height:96px;padding:6px}
+#tab-agenda .ag-dia[data-ag-dia]:hover{border-color:var(--accent-line);box-shadow:var(--sh-sm)}
+#tab-agenda .ag-dia:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#tab-agenda .ag-dia.hoy{border-color:var(--ver-acento);box-shadow:inset 0 3px 0 var(--ver-acento)}
+#tab-agenda .ag-dia.hoy .ag-cab b{color:var(--ver-acento)}
+#tab-agenda .ag-dia.nohabil{background:var(--panel2);color:var(--muted)}
+#tab-agenda .ag-dia.pasado{opacity:.6}
+#tab-agenda .ag-dia.fuera{opacity:.45}
+#tab-agenda .ag-dia.res{outline:2px solid var(--accent-line);outline-offset:1px}
+#tab-agenda .ag-cab{display:flex;justify-content:space-between;gap:6px;font-size:12.5px;color:var(--muted);min-width:0}
+#tab-agenda .ag-cab b{color:var(--txt);font-size:14px;font-variant-numeric:tabular-nums}
+#tab-agenda .ag-fer{font-size:11px;color:var(--ver-acento);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#tab-agenda .ag-carga{position:relative;font-size:11.5px;background:var(--panel2);border-radius:var(--r-sm);padding:2px 6px;overflow:hidden;white-space:nowrap}
+#tab-agenda .ag-carga span{position:relative;z-index:1}
+#tab-agenda .ag-carga b{font-variant-numeric:tabular-nums}
+#tab-agenda .ag-carga i{position:absolute;inset:0 auto 0 0;background:var(--ver-acento-linea)}
+#tab-agenda .ag-carga.exc{color:var(--ver-mal);font-weight:600}
+#tab-agenda .ag-carga.exc i{background:rgba(176,58,46,.18)}
+#tab-agenda .ag-tarj{border:1px solid var(--line);border-left-width:4px;border-radius:var(--r-sm);padding:4px 6px;font-size:12px;background:var(--panel);overflow:hidden;text-overflow:ellipsis}
+#tab-agenda .ag-tarj .ag-meta{display:block;color:var(--muted);font-size:11px}
+#tab-agenda .ag-mini{display:block;font-size:11px;border-left:3px solid var(--muted);padding-left:4px;font-variant-numeric:tabular-nums}
+#tab-agenda .ag-punto{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:var(--muted);flex:none}
+/* despues de .ag-tarj y .ag-mini: el color del borde tiene que ganarles */
+#tab-agenda .pr-alta{border-left-color:var(--ver-mal)} #tab-agenda .pr-media{border-left-color:var(--ver-alerta)} #tab-agenda .pr-baja{border-left-color:var(--ver-ok)}
+#tab-agenda .pr-alta .ag-punto{background:var(--ver-mal)} #tab-agenda .pr-media .ag-punto{background:var(--ver-alerta)} #tab-agenda .pr-baja .ag-punto{background:var(--ver-ok)}
+#tab-agenda .ag-fichas{display:flex;flex-wrap:wrap;gap:3px}
+#tab-agenda .ag-ficha{font-size:11px;padding:1px 6px;border-radius:var(--r-pill);background:var(--panel2);font-variant-numeric:tabular-nums}
+#tab-agenda .ag-ficha.p1{background:rgba(176,58,46,.14)} #tab-agenda .ag-ficha.p2{background:rgba(176,125,44,.16)} #tab-agenda .ag-ficha.p3{background:rgba(91,123,134,.16)}
+#tab-agenda .ag-ficha.p4{background:rgba(138,161,74,.18)} #tab-agenda .ag-ficha.p5{color:var(--ver-apagado)}
+#tab-agenda .ag-ficha.res,#tab-agenda .ag-mini.res{outline:2px solid var(--accent)}
+
+/* panel del dia */
+#tab-agenda .ag-panel{position:fixed;margin:0;inset:0 0 0 auto;height:100dvh;max-height:none;max-width:none;width:min(420px,100vw);background:var(--panel);color:inherit;border:0;border-left:1px solid var(--line);box-shadow:var(--sh-lg);padding:16px;overflow:auto;z-index:50}
+#tab-agenda .ag-panel[open]{display:flex;flex-direction:column;gap:16px}
+#tab-agenda .ag-panel::backdrop{background:rgba(42,38,34,.25)}
+#tab-agenda .ag-panel-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1px solid var(--line-soft)}
+#tab-agenda .ag-panel-cab h3{font-family:var(--serif);font-size:1.15rem;font-weight:600;margin:0}
+#tab-agenda .ag-panel-cab .btn{padding:4px 10px}
+#tab-agenda .ag-panel h4{margin:0 0 8px;font-size:13px;font-variant-numeric:tabular-nums}
+#tab-agenda .ag-lista{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+#tab-agenda .ag-lista li{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;padding:6px 8px;border-radius:var(--r-sm);background:var(--panel2);font-size:13px}
+#tab-agenda .ag-lista li .ag-mot{font-size:12px}
+#tab-agenda .ag-lista li .btn{margin-left:auto;padding:4px 10px}
+#tab-agenda .ag-lista li.ag-vacio{background:transparent;padding-left:0}
+#tab-agenda .ag-vacio{color:var(--muted);font-style:italic;font-size:13px;margin:4px}
+/* ronda semanal de tanques */
+#tab-agenda .ag-ronda{font-size:12px;padding:3px 6px;border-radius:var(--r-sm);background:rgba(91,123,134,.14);font-variant-numeric:tabular-nums}
+#tab-agenda .ag-p.p6{background:var(--ver-info)}
+#tab-agenda .ag-nota{color:var(--muted);font-size:12px;margin:0 0 6px}
+/* tarjetas de trasiego: son botones (abren el menu del lote) */
+#tab-agenda button.ag-tarj,#tab-agenda button.ag-mini{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer}
+#tab-agenda button.ag-tarj{font-size:12px}
+#tab-agenda button.ag-mini{font-size:11px;background:none;border-top:0;border-right:0;border-bottom:0;padding:0 0 0 4px}
+#tab-agenda button.ag-tarj:hover,#tab-agenda button.ag-mini:hover{background:var(--panel2)}
+/* menu de un trasiego: Ir a la OT / Reprogramar */
+#tab-agenda .ag-menu{width:min(360px,calc(100vw - 32px));background:var(--panel);color:inherit;border:1px solid var(--line);border-radius:var(--r-md,10px);box-shadow:var(--sh-lg);padding:16px}
+#tab-agenda .ag-menu[open]{display:flex;flex-direction:column;gap:12px}
+#tab-agenda .ag-menu::backdrop{background:rgba(42,38,34,.25)}
+#tab-agenda .ag-menu-info{margin:0;font-size:13px;line-height:1.5}
+#tab-agenda .ag-menu-rep{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--line-soft);font-size:13px}
+#tab-agenda .ag-menu-fila{display:flex;gap:8px}
+#tab-agenda .ag-menu-fila input{flex:1;min-width:0}
+#tab-agenda .ag-link{align-self:flex-start;background:none;border:0;padding:2px 0;color:var(--accent);text-decoration:underline;cursor:pointer}
+@media (max-width:900px){
+  #tab-agenda .ag-cuerpo{grid-template-columns:minmax(0,1fr)}
+  #tab-agenda .ag-bandeja{position:static;max-height:none}
+  #tab-agenda .ag-semana{grid-template-columns:minmax(0,1fr)}
+  #tab-agenda .ag-semana .ag-dia{min-height:0}
+  #tab-agenda .ag-cupos{margin-left:0}
+  #tab-agenda{--ag-cols:repeat(7,minmax(0,1fr))}
+  #tab-agenda .ag-mes .ag-dia{min-height:64px;padding:4px}
+}
+#cfgAgenda{margin-top:28px;padding-top:18px;border-top:1px solid var(--line)}
+#cfgAgenda h3{font-family:var(--serif)}
+#cfgAgenda .ag-cfg-params{display:flex;flex-wrap:wrap;gap:12px 20px;margin-bottom:16px}
+#cfgAgenda .ag-cfg-params label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted)}
+#cfgAgenda .ag-cfg-params input{width:110px}
+#cfgAgenda .ag-cfg-nota{color:var(--muted);font-size:.85rem;margin:0 0 8px}
+#cfgAgenda .ag-cfg-fer{border-collapse:collapse;margin-bottom:10px}
+#cfgAgenda .ag-cfg-fer td,#cfgAgenda .ag-cfg-fer th{padding:4px 10px;border-bottom:1px solid var(--line-soft);text-align:left}
+#cfgAgenda .ag-cfg-alta{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#cfgAgenda .ag-cfg-msg{color:var(--nook);font-size:.85rem}
+/* ---- sub-pestañas planas (Movimientos, Correcciones, Orden de muestras) ----
+ * Van al final a propósito: le ganan por orden de cascada a las reglas de
+ * cada sección sin subir especificidad. Sin sombra y esquina de 2px, como el
+ * resto de la estética de Prensas. */
+.corr-sub,#tab-movimientos .mov-sub,#ordenControls .oc-tipo{border-radius:2px;background:transparent;padding:0;gap:0;border:1px solid var(--line)}
+.corr-sub button,#tab-movimientos .mov-sub button,#ordenControls .oc-tipo button{border-radius:0;font-weight:500;border-left:1px solid var(--line)}
+.corr-sub button:first-child,#tab-movimientos .mov-sub button:first-child,#ordenControls .oc-tipo button:first-child{border-left:none}
+.corr-sub button.on,#tab-movimientos .mov-sub button.on,#ordenControls .oc-tipo button.on{background:var(--txt);color:var(--bg);box-shadow:none}
+/* ===== Celular (≤ 760 px) =====
+ * La página nunca se pasa del ancho: lo ancho (tablas, la hoja A4) se
+ * scrollea dentro de su recuadro. Campos a 16 px para que iOS no haga zoom. */
+@media (max-width:760px){
+  main{padding:14px 16px 48px}
+  .app-barra{padding:8px 16px}
+  .app-barra .marca{font-size:23px}
+  #tab-lotes,#tab-analisis,#tab-orden{margin-left:0;margin-right:0}
+  .card{padding:14px 12px 16px}
+  .scroll,.scroll.tall{max-height:70vh}
+  select,input.txt,textarea,.mfilt-search{font-size:16px}
+  select,input.txt,button.btn,.mfilt-btn{min-height:var(--ci-tap)}
+  .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kpi-card .kpi-val{font-size:34px}
+  .chart-grid,.chart-grid.wide{grid-template-columns:minmax(0,1fr)}
+  .tb-tarjetas{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .hm-leyenda{flex-wrap:wrap}
+  .toolbar .spacer{display:none}
+}
+/* ===== Pantallas táctiles: blancos de 44 px. Con mouse no cambia nada. ===== */
+@media (pointer:coarse){
+  .rowbtn,th button.th-flt,th.banda button.chip-grupo{min-width:var(--ci-tap);min-height:var(--ci-tap)}
+  td input.cell,td select.cell{min-height:var(--ci-tap);font-size:16px}
+  .tabs button[data-v],.mas-btn,.mas-menu button{min-height:var(--ci-tap)}
+  .segm button,.corr-sub button,#tab-movimientos .mov-sub button,#ordenControls .oc-tipo button,.tb-toggle button{min-height:var(--ci-tap)}
+  .btn-hijo,.alarm-lote-link{min-height:var(--ci-tap);padding-left:10px;padding-right:10px}
+  .corr-sub,#tab-movimientos .mov-sub,#ordenControls .oc-tipo{height:auto}
+}
+/* Modo órdenes (/lotes/?orden=…): solo la orden que se abrió desde la sección Órdenes de trabajo. */
+/* La banda solo se ve en pantalla: al imprimir no sale. Va con @media screen y
+ * no con @media print porque las reglas de impresión son la foto intocable de
+ * test/lotes-papel-intacto.test.mjs. */
+.modo-ordenes-banda{display:none;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+@media screen{.modo-ordenes-banda:not([hidden]){display:flex}}
+.modo-ordenes-tit{font-family:var(--serif);font-size:20px}
+body.modo-ordenes #tabs,body.modo-ordenes #buscarLote,body.modo-ordenes #corrSub{display:none!important}
+/* Mientras arranca en modo órdenes (clase puesta por el script del <head>). */
+html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hidden}
 </style>
 </head>
 <body>
-<header>
-  <h1>Lotes CIW</h1>
-  <span class="sub">Crianza en madera 2026</span>
+<header class="app-barra" id="barraLotes">
+  <span class="marca">Lotes</span>
+  <nav class="tabs" id="tabs" aria-label="Pantallas">
+    <button type="button" data-v="dashboard" class="active">Panel</button>
+    <button type="button" data-v="lotes">Lotes</button>
+    <button type="button" data-v="analisis">Análisis</button>
+    <button type="button" data-v="movimientos">Movimientos</button>
+    <button type="button" data-v="agenda">Agenda</button>
+    <div class="mas" id="masWrap">
+      <button type="button" class="mas-btn" id="masBtn" aria-haspopup="true" aria-expanded="false" aria-controls="masMenu">Más</button>
+      <div class="mas-menu" id="masMenu">
+        <div class="mas-angosto">
+          <button type="button" data-v="dashboard">Panel</button>
+          <button type="button" data-v="lotes">Lotes</button>
+          <button type="button" data-v="analisis">Análisis</button>
+          <button type="button" data-v="movimientos">Movimientos</button>
+          <button type="button" data-v="agenda">Agenda</button>
+        </div>
+        <div class="mas-grupo">Registro</div>
+        <button type="button" data-v="cargar">Cargar análisis</button>
+        <button type="button" data-v="so2">Correcciones</button>
+        <div class="mas-grupo">Seguimiento</div>
+        <button type="button" data-v="tablero">Tablero FML</button>
+        <button type="button" data-v="cruce">Cruce con barriles</button>
+        <div class="mas-grupo">Herramientas</div>
+        <button type="button" data-v="config">Configuración</button>
+        <button type="button" id="btnExportarCompleto" title="Descargar todas las secciones de Lotes en un solo archivo Excel">Exportar Excel completo</button>
+        <button type="button" id="btnHistorial" title="Quién guardó qué y cuándo">Historial</button>
+        <button type="button" id="btnCuadricula" aria-pressed="false" title="Mostrar u ocultar el recuadro de todas las celdas de las tablas. Se recuerda en esta computadora.">Cuadrícula</button>
+      </div>
+    </div>
+  </nav>
+  <form class="buscar-lote" id="buscarLote" role="search" autocomplete="off">
+    <label for="buscarLoteNum" class="ci-sr">Buscar lote</label>
+    <input id="buscarLoteNum" class="txt" type="text" inputmode="numeric" enterkeyhint="go" placeholder="Buscar lote" list="buscarLoteLista">
+    <datalist id="buscarLoteLista"></datalist>
+  </form>
   <div class="right">
-    <span class="status" id="redInfo" style="color:var(--muted);font-size:12px"></span>
-    <span class="status" id="usuario" style="cursor:pointer" title="Quién está usando la app. Clic para cambiar.">👤 —</span>
-    <span class="status" id="statusBar">Cargando…</span>
     <div class="segm sel-anios" id="selAnios" hidden aria-label="Años de lotes que se muestran"></div>
-    <button class="btn" id="btnCuadricula" aria-pressed="false" title="Mostrar u ocultar el recuadro de todas las celdas de las tablas. Se recuerda en esta computadora.">▦ Cuadrícula</button>
-    <button class="btn" id="btnHistorial" title="Quién guardó qué y cuándo">🕘 Historial</button>
+    <span class="status" id="redInfo" hidden></span>
+    <span class="status" id="statusBar">Cargando…</span>
+    <span class="status usuario" id="usuario" title="Usuario de la sesión: queda registrado en cada guardado.">—</span>
   </div>
 </header>
+<div class="modo-ordenes-banda" id="modoOrdenes" hidden>
+  <a class="btn" id="modoOrdenesVolver" href="/ordenes/">← Órdenes de trabajo</a>
+  <span class="modo-ordenes-tit" id="modoOrdenesTit"></span>
+</div>
 
 <div id="avisos"></div>
-
-<div class="tabs" id="tabs">
-  <button data-v="dashboard" class="active">📊 Dashboard</button>
-  <button data-v="lotes">📋 Lotes</button>
-  <button data-v="cargar">⬆️ Cargar análisis</button>
-  <button data-v="analisis">🧪 Análisis</button>
-  <button data-v="tablero">🧫 Tablero FML</button>
-  <button data-v="so2">🧴 Correcciones</button>
-  <button data-v="movimientos">🔄 Movimientos</button>
-  <button data-v="orden">📝 Orden de muestras</button>
-  <button data-v="cruce">🛢️ Cruce con barriles</button>
-  <button data-v="config">⚙️ Configuración</button>
-</div>
 
 <main>
   <!-- Sub-pestañas de Correcciones: se muestra solo en ese grupo (nucleo.js mostrarTab) -->
   <div class="corr-sub" id="corrSub" role="radiogroup" aria-label="Vista de Correcciones" hidden>
-    <button type="button" data-sub="so2" role="radio" aria-checked="false">🧴 Bitácora SO₂</button>
-    <button type="button" data-sub="ordencorr" role="radio" aria-checked="false">💊 Orden de corrección</button>
-    <button type="button" data-sub="agregados" role="radio" aria-checked="false">🧪 Otros agregados</button>
+    <button type="button" data-sub="so2" role="radio" aria-checked="false">Registro de corrección de SO₂</button>
+    <button type="button" data-sub="agregados" role="radio" aria-checked="false">Otros agregados</button>
   </div>
   <!-- DASHBOARD -->
   <section class="view active" id="tab-dashboard">
@@ -1523,7 +1996,7 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
       </div>
       <div class="kpi-card kpi-warn">
         <div class="kpi-val" id="kpiAv">—</div>
-        <div class="kpi-lbl">AV cerca del límite</div>
+        <div class="kpi-lbl">AV ≥ 80 % del máximo</div>
         <div class="kpi-sub" id="kpiAvSub"></div>
       </div>
     </div>
@@ -1546,8 +2019,8 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
     <div class="chart-grid">
       <!-- Acidez volátil -->
       <div class="chart-card">
-        <h3>Acidez volátil<span class="ch-crit" id="chAvCrit"></span></h3>
-        <p class="ch-sub">Agrupada por cuánto margen le queda a cada lote contra <em>su</em> límite (varía por variedad y proyecto).</p>
+        <h3>Acidez volátil — g/L<span class="ch-crit" id="chAvCrit"></span></h3>
+        <p class="ch-sub">Última AV medida de cada lote, agrupada por valor en g/L.</p>
         <div class="ch-body"><div class="ch-canvas" data-canvas="chAv"><canvas id="chAv"></canvas></div></div>
         <div class="ch-drill" id="chAvDrill" style="display:none"></div>
         <div class="ch-foot" id="chAvPie"></div>
@@ -1555,7 +2028,7 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
 
       <!-- SO2 -->
       <div class="chart-card">
-        <h3>SO₂ libre vs. objetivo</h3>
+        <h3>SO₂ libre — desvío respecto al objetivo (mg/L)</h3>
         <p class="ch-sub">Diferencia entre el SO₂ libre medido y el que exige el pH de esa misma muestra.</p>
         <div class="ch-body"><div class="ch-canvas" data-canvas="chSo2"><canvas id="chSo2"></canvas></div></div>
         <div class="ch-drill" id="chSo2Drill" style="display:none"></div>
@@ -1564,7 +2037,7 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
 
       <!-- Dispersión pH / SO2 molecular -->
       <div class="chart-card tall">
-        <h3>Dispersión pH · SO₂ molecular</h3>
+        <h3>SO₂ molecular vs. pH</h3>
         <p class="ch-sub">Cada punto es un lote. La línea punteada es el molecular objetivo: lo que cae debajo necesita corrección.</p>
         <div class="ch-body"><div class="ch-canvas" data-canvas="chNube"><canvas id="chNube"></canvas></div></div>
         <div class="ch-foot" id="chNubePie"></div>
@@ -1593,9 +2066,9 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
       </table></div>
     </div>
 
-    <!-- Preguntas frecuentes -->
+    <!-- Resumen operativo -->
     <div class="card">
-      <h2>Preguntas frecuentes</h2>
+      <h2>Resumen operativo</h2>
       <div class="faq-grid" id="dashFaq"></div>
     </div>
   </section>
@@ -1603,7 +2076,7 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
   <!-- LOTES -->
   <section class="view" id="tab-lotes">
     <div class="toolbar">
-      <input class="txt" id="buscaLotes" placeholder="🔎 Buscar por lote…" style="min-width:180px">
+      <input class="txt" id="buscaLotes" inputmode="numeric" placeholder="Buscar por lote…" style="min-width:180px">
       <!-- Los filtros de casillas NO están acá: cada uno vive en el embudo ▾ de
            la cabecera de su columna, como en Excel (initFiltrosLotes los monta
            en modo anclado). El de Llenado sí se queda en la toolbar: son tres
@@ -1693,6 +2166,9 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
   <!-- TABLERO FML -->
   <section class="view" id="tab-tablero"></section>
 
+  <!-- AGENDA -->
+  <section class="view" id="tab-agenda"></section>
+
   <!-- CORRECCIONES SO2 -->
   <section class="view" id="tab-so2"></section>
 
@@ -1748,10 +2224,11 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
       la tabla de cubicación pasa los cm de merma a litros al confirmar una OT. Sin tabla, se cargan los litros a mano.
     </div>
     <div id="cfgVasijas"></div>
+    <div id="cfgAgenda"></div>
   </section>
 </main>
 
-<div class="overlay" id="overlay"><div class="box" id="overlayBox"></div></div>
+<dialog id="overlay" aria-label="Formulario"><div class="box" id="overlayBox"></div></dialog>
 
 <!-- Chart.js (MIT) servido desde el propio repo, no desde un CDN: la app corre
      en el servidor local de la bodega y se usa con la red caida a menudo. Un

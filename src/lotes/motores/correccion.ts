@@ -33,6 +33,8 @@ import { cruzar, esSeriePrensa } from './cruce';
 import { etapasSugeridas } from './etapas';
 import { normalizarLote } from './linaje';
 import type { MapaNormalizado, Unidad } from './mapa';
+import { ultimaCorreccion, ultimoSo2Posterior } from './correcciones-base';
+import { medicionesPorVasija, type MedicionVasija } from './so2-por-vasija';
 
 /**
  * Ventana de supresión. 30 días sale del cruce de dos mediciones sobre los
@@ -68,16 +70,6 @@ const DIA_MS = 86_400_000;
 // el '' pero no el '  ' (Number('  ') es 0) ni aceptaba la coma: un "112,5" de
 // litros en el Mapa caia a null y la barrica se dosificaba por su capacidad.
 
-function fechaMs(iso: unknown): number | null {
-  if (!iso) return null;
-  const s = String(iso).slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const t = Date.parse(s + 'T00:00:00Z');
-  return Number.isNaN(t) ? null : t;
-}
-
-const aIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-
 /**
  * (mbk_g, ml_solución). Reusa la fórmula del Excel desde fml en vez de
  * reimplementarla: pasando 0 como actual, la diferencia que calcula es la que
@@ -97,6 +89,13 @@ export interface FilaBarrica {
   litros_de_capacidad: boolean;
   mbk_g: number | null;
   ml_solucion: number | null;
+  // Solo en lotes por vasija (ver spec 2026-11-13-so2-por-barril-design.md).
+  so2_libre?: number | null;
+  ph?: number | null;
+  objetivo?: number | null;
+  fecha_analisis?: string | null;
+  fuente?: 'propio' | 'lote' | null;
+  aviso?: string | null;
 }
 
 function filaBarrica(u: Unidad, diferencia: number): FilaBarrica {
@@ -119,6 +118,30 @@ function filaBarrica(u: Unidad, diferencia: number): FilaBarrica {
   };
 }
 
+/** Fila de barrica sin dosis: por vasija, sin SO2/objetivo calculable. Si la
+ *  vasija tiene SO2 propio (falta el pH), lo conserva: con un objetivo pisado a
+ *  mano el cliente igual puede calcularla. */
+function filaBarricaSinDosis(u: Unidad, aviso: string, m?: MedicionVasija | null): FilaBarrica {
+  let litros = num(u.litros);
+  let deCapacidad = false;
+  if (litros === null || litros <= 0) {
+    litros = num(u.cap) ?? 0;
+    deCapacidad = true;
+  }
+  return {
+    num: u.num || '',
+    cap: u.cap,
+    estado: u.estado || '',
+    vasija: '',
+    litros_usados: litros,
+    litros_de_capacidad: deCapacidad,
+    mbk_g: null,
+    ml_solucion: null,
+    ...(m && m.so2 !== null ? { so2_libre: m.so2, ph: m.ph, fecha_analisis: m.fecha, fuente: m.fuente } : {}),
+    aviso,
+  };
+}
+
 /**
  * Volumen sin barrica identificada: la porción en tanque grande, o un lote que
  * el mapa no ubica. `num` vacío a propósito: es lo que el operario ve en blanco
@@ -135,6 +158,21 @@ function filaSinBarrica(vasija: unknown, litros: number, diferencia: number): Fi
     litros_de_capacidad: false,
     mbk_g: mbk,
     ml_solucion: ml,
+  };
+}
+
+/** Tanque grande / sin barrica, por vasija, sin SO2/pH del lote calculable. */
+function filaSinBarricaSinDosis(vasija: unknown, litros: number, aviso: string): FilaBarrica {
+  return {
+    num: '',
+    cap: null,
+    estado: '',
+    vasija: String(vasija ?? ''),
+    litros_usados: litros,
+    litros_de_capacidad: false,
+    mbk_g: null,
+    ml_solucion: null,
+    aviso,
   };
 }
 
@@ -198,102 +236,6 @@ function ultimaMedicion(analisisDelLote: Fila[]): [number | null, number | null]
  * contaría como su propia evidencia de remedición y la rama de los ±5 ppm
  * compararía un número contra sí mismo.
  */
-function so2Medido(a: Fila): number | null {
-  for (const campo of ['so2_libre_actual', 'so2_libre']) {
-    const v = valorValido(a[campo]);
-    if (v !== null) return v;
-  }
-  return null;
-}
-
-interface Correccion {
-  fecha: number;
-  fecha_iso: string;
-  ot: string;
-  so2_prev: number | null;
-}
-
-/**
- * La corrección más reciente del lote que cuenta como ejecutada, o null.
- *
- * Solo cuenta si tiene ot_n no vacío: datos.json trae un objeto correccion en
- * los 1972 análisis por la migración del Excel, y la mayoría son cáscaras. Sin
- * este filtro la regla suprimiría los 291 lotes.
- *
- * so2_prev sale SOLO de correccion.so2_libre_actual y queda en null si falta:
- * de las 663 correcciones históricas con ot_n solo 6 traen el dato, y caer al
- * so2_libre del análisis producía 44 supresiones falsas.
- *
- * La fecha de la corrección manda sobre la del análisis: la orden se ejecuta
- * después de imprimirse y el operario fecha lo que realmente hizo.
- *
- * Las ANULADAS se saltean. Anular es el "me equivoqué al ejecutar la orden": la
- * entrada se conserva en la bitácora con quién y cuándo la anuló (un registro
- * de calidad no borra en silencio), pero para la regla es como si no existiera
- * y el lote vuelve a proponerse.
- *
- * Ojo con el detalle de tomar la última NO anulada en vez de mirar solo la
- * última: si un lote tuvo dos correcciones y se anula la segunda, la primera
- * sigue valiendo. Anular un error no borra la historia previa.
- */
-function ultimaCorreccion(analisisDelLote: Fila[]): Correccion | null {
-  let mejor: Correccion | null = null;
-  for (const a of analisisDelLote) {
-    const c = a.correccion;
-    if (!c || typeof c !== 'object' || Array.isArray(c)) continue;
-    const cc = c as Fila;
-    if (verazPython(cc.anulada)) continue;
-    const ot = String(cc.ot_n ?? '').trim();
-    if (!ot) continue;
-    // || y no ??: la cascara de correccion trae fecha '' cuando nadie la
-    // completo, y con ?? ese '' ganaba, fechaMs daba null y la correccion con
-    // OT se descartaba (el lote volvia a la orden y se dosificaba dos veces).
-    const f = fechaMs(String(cc.fecha ?? '').trim() || a.fecha_analisis);
-    if (f === null) continue;
-    if (mejor === null || f > mejor.fecha) {
-      mejor = { fecha: f, fecha_iso: aIso(f), ot, so2_prev: valorValido(cc.so2_libre_actual) };
-    }
-  }
-  return mejor;
-}
-
-/**
- * Veracidad al estilo Python, porque el original de esta decisión es
- * `motor_correccion.py` (`if c.get('anulada')`) y las capas tienen que coincidir
- * en TODOS los bordes. JS y Python no opinan igual: `{}` y `[]` son truthy en JS
- * y falsy en Python. Sin esto un `anulada: {}` quedaría anulado para la bitácora
- * (tachado, con sello) y vigente para la regla, o sea que el lote seguiría
- * suprimido mientras la pantalla dice que se canceló.
- *
- * Es el espejo de `esAnulada`/`_veraz` en `public/lotes/js/so2-bitacora.js`: si
- * cambia uno, tiene que cambiar el otro.
- */
-function verazPython(v: unknown): boolean {
-  if (!v) return false; // null, false, '', 0, undefined, NaN
-  if (Array.isArray(v)) return v.length > 0;
-  if (typeof v === 'object') return Object.keys(v as object).length > 0;
-  return true;
-}
-
-/**
- * SO2 de la última medición REAL posterior a `corte`, o null.
- *
- * Estricto (> corte, no >=): las fechas son de día y no se sabe si la muestra
- * se sacó antes o después de tirar el MBK; y el registro que CONTIENE la
- * corrección lleva esa misma fecha, así que con >= se validaría a sí misma.
- */
-function ultimoSo2Posterior(analisisDelLote: Fila[], corte: number): number | null {
-  let mejor: [number, number] | null = null;
-  for (const a of analisisDelLote) {
-    const f = fechaMs(a.fecha_analisis);
-    if (f === null || f <= corte) continue;
-    const s = so2Medido(a);
-    if (s === null) continue;
-    if (mejor === null || f > mejor[0]) mejor = [f, s];
-  }
-  return mejor ? mejor[1] : null;
-}
-
 function grupoDe(veredicto: string | undefined, unidades: Unidad[], vasijaGrande: number): string {
   if (unidades.length) {
     return VEREDICTOS_MARCADOS.includes(veredicto ?? '') ? GRUPO_MARCADO : GRUPO_NORMAL;
@@ -325,6 +267,14 @@ export interface LoteOrden {
   mbk_total_g: number;
   ml_total: number;
   corregido_en: Record<string, unknown> | null;
+  /** Solo en `activables`: por qué la orden lo deja afuera. */
+  fuera?: 'en_objetivo' | 'corregido';
+  // Solo en lotes analizados barril por barril (spec 2026-11-13-so2-por-barril-design.md).
+  por_vasija?: true;
+  avisos_vasija?: string[];
+  so2_min?: number;
+  so2_max?: number;
+  fecha_por_vasija?: string | null;
 }
 
 export interface Orden {
@@ -333,6 +283,13 @@ export interface Orden {
   no_calculables: { lote: string; variedad: string; so2_libre: number | null; ph: number | null; motivo: string }[];
   sin_volumen: string[];
   suprimidos: Record<string, unknown>[];
+  /**
+   * Lotes que la orden deja afuera pero el usuario puede sumar a mano (el botón
+   * "Lotes en objetivo / corregidos" de la pantalla): los que ya están en
+   * objetivo y los suprimidos por una corrección reciente. Mismo detalle que
+   * `lotes`; no cuentan en el resumen.
+   */
+  activables: LoteOrden[];
   resumen: Record<string, unknown>;
 }
 
@@ -361,6 +318,7 @@ export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado
   const noCalculables: Orden['no_calculables'] = [];
   const sinVolumen: string[] = [];
   const suprimidos: Record<string, unknown>[] = [];
+  const activables: LoteOrden[] = [];
 
   for (const l of lotes) {
     const L = normalizarLote(l.lote);
@@ -383,8 +341,106 @@ export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado
     }
 
     const eff = criteriosEfectivos(config, l.variedad, l.proyecto);
-    const [so2, ph] = ultimaMedicion(analisisPorL.get(L) ?? []);
-    const objetivo = objetivoSo2Libre(ph, eff);
+    // Barril por barril: ver spec docs/superpowers/specs/2026-11-13-so2-por-barril-design.md.
+    const pv = medicionesPorVasija(analisisPorL.get(L) ?? [], unidades, so2LibreConCorreccion);
+
+    let so2: number | null;
+    let ph: number | null;
+    let objetivo: number | null;
+    let barricas: FilaBarrica[];
+    let extra: Partial<LoteOrden> = {};
+
+    if (!pv.porVasija) {
+      // Código de hoy, sin tocar: una sola medición para todo el lote.
+      [so2, ph] = ultimaMedicion(analisisPorL.get(L) ?? []);
+      objetivo = objetivoSo2Libre(ph, eff);
+      const dosificar = so2 !== null && objetivo !== null ? Math.max(0, objetivo - so2) : 0;
+      barricas = unidades.map((u) => filaBarrica(u, dosificar));
+
+      // NO agregar la fila de tanque cuando el veredicto es 'solo_representacion':
+      // ese veredicto significa "las barricas del mapa SON el volumen de
+      // vasija_grande, no un volumen adicional". Sin este guard, vasija_grande se
+      // dosifica dos veces (medido: 339,7 g de MBK extra sobre cuatro lotes).
+      const veredictoLote = v?.veredicto ?? '';
+      if (vasijaGrande > 0 && veredictoLote !== 'solo_representacion') {
+        barricas.push(filaSinBarrica(l.vasija_actual, vasijaGrande, dosificar));
+      }
+      if (!barricas.length) {
+        barricas.push(filaSinBarrica(l.vasija_actual, litrosDeclarados, dosificar));
+      }
+    } else {
+      // Dosis independiente por vasija: cada barrica usa su propio SO2/pH (o
+      // el del lote si el suyo es más viejo). El lote muestra los datos de la
+      // PEOR vasija (mayor objetivo − so2), para que la OT no subdosifique.
+      // El mismo "último del lote" que decidió el modo (so2-por-vasija.ts).
+      const so2Lote = pv.so2Lote;
+      const phLote = pv.phLote;
+      const objLote = objetivoSo2Libre(phLote, eff);
+
+      let peorSo2: number | null = null;
+      let peorPh: number | null = null;
+      let peorObj: number | null = null;
+      let peorDeficit = -Infinity;
+      barricas = unidades.map((u) => {
+        const m = pv.vasijas.get(u.num) ?? null;
+        const obj = m && m.ph !== null ? objetivoSo2Libre(m.ph, eff) : objLote;
+        if (!m || m.so2 === null || obj === null) {
+          return filaBarricaSinDosis(u, (m && m.aviso) ?? 'sin objetivo (sin pH)', m);
+        }
+        const diferencia = obj - m.so2;
+        const fila = filaBarrica(u, Math.max(0, diferencia));
+        fila.so2_libre = m.so2;
+        fila.ph = m.ph;
+        fila.objetivo = obj;
+        fila.fecha_analisis = m.fecha;
+        fila.fuente = m.fuente;
+        fila.aviso = m.aviso;
+        if (diferencia > peorDeficit) {
+          peorDeficit = diferencia;
+          peorSo2 = m.so2;
+          peorPh = m.ph;
+          peorObj = obj;
+        }
+        return fila;
+      });
+
+      if (peorSo2 !== null) {
+        so2 = peorSo2;
+        ph = peorPh;
+        objetivo = peorObj;
+      } else {
+        // Ninguna vasija calculable: el lote cae a los datos del lote (y si
+        // tampoco los tiene, noCalculables más abajo).
+        so2 = so2Lote;
+        ph = phLote;
+        objetivo = objLote;
+      }
+
+      // Tanque grande / sin barrica: con el dato del LOTE, no el de la peor
+      // vasija (no hay forma de saber a qué vasija pertenece ese volumen).
+      const dosificarTanque = so2Lote !== null && objLote !== null ? Math.max(0, objLote - so2Lote) : null;
+      // Con dato del lote, el renglón lleva su SO2/pH/objetivo: el cliente
+      // recalcula la dosis de cada renglón por vasija con estos campos.
+      const filaTanque = (litros: number): FilaBarrica =>
+        dosificarTanque === null
+          ? filaSinBarricaSinDosis(l.vasija_actual, litros, 'sin SO₂ o pH válido del lote')
+          : { ...filaSinBarrica(l.vasija_actual, litros, dosificarTanque), so2_libre: so2Lote, ph: phLote, objetivo: objLote, fuente: 'lote' };
+      const veredictoLote = v?.veredicto ?? '';
+      if (vasijaGrande > 0 && veredictoLote !== 'solo_representacion') {
+        barricas.push(filaTanque(vasijaGrande));
+      }
+      if (!barricas.length) {
+        barricas.push(filaTanque(litrosDeclarados));
+      }
+
+      const so2Validos = [...pv.vasijas.values()].map((m) => m.so2).filter((x): x is number => x !== null);
+      extra = {
+        por_vasija: true,
+        avisos_vasija: pv.avisos,
+        fecha_por_vasija: pv.fechaPropia,
+        ...(so2Validos.length ? { so2_min: Math.min(...so2Validos), so2_max: Math.max(...so2Validos) } : {}),
+      };
+    }
 
     if (so2 === null || objetivo === null) {
       noCalculables.push({
@@ -396,7 +452,46 @@ export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado
       });
       continue;
     }
-    if (so2 >= objetivo) continue;
+    // Todo lo que sigue arma la fila a partir de estos datos; un lote que la
+    // orden deja afuera se arma igual y va a activables.
+    const armar = (corregidoEn: Record<string, unknown> | null): LoteOrden => {
+      const diferencia = objetivo - so2;
+
+      const objetivoMol = num(eff.so2_molecular_objetivo) ?? 0;
+      const piso = num(eff.so2_libre_piso) ?? 0;
+      const manda = objetivoMol * (1 + Math.pow(10, ph! - 1.8)) < piso ? 'piso' : 'molecular';
+
+      return {
+        lote: L,
+        variedad: String(l.variedad ?? ''),
+        proyecto: String(l.proyecto ?? ''),
+        etapa: String(l.etapa ?? ''),
+        ph: ph!,
+        so2_libre: so2,
+        molecular_actual: so2Molecular(so2, ph),
+        objetivo_libre: objetivo,
+        diferencia,
+        manda,
+        grupo: grupoDe(v?.veredicto, unidades, vasijaGrande),
+        veredicto: v?.veredicto ?? '',
+        severidad: v?.severidad ?? null,
+        litros_declarados: litrosDeclarados,
+        litros_mapa: v?.litros_mapa ?? 0,
+        delta: v?.delta ?? 0,
+        litros_dosificados: barricas.reduce((s, b) => s + b.litros_usados, 0),
+        posiciones: posiciones.get(L) ?? [],
+        barricas,
+        mbk_total_g: barricas.reduce((s, b) => s + (b.mbk_g ?? 0), 0),
+        ml_total: barricas.reduce((s, b) => s + (b.ml_solucion ?? 0), 0),
+        corregido_en: corregidoEn,
+        ...extra,
+      };
+    };
+
+    if (so2 >= objetivo) {
+      activables.push({ ...armar(null), fuera: 'en_objetivo' });
+      continue;
+    }
 
     // --- Regla de supresión ---
     // Va DESPUÉS del filtro de objetivo a propósito: "solo si el objetivo no se
@@ -420,17 +515,20 @@ export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado
             variedad: l.variedad ?? '',
             motivo: `corregido en OT ${C.ot}, sin análisis nuevo`,
           });
+          activables.push({ ...armar({ ...base, sin_analisis: true }), fuera: 'corregido' });
           continue;
         }
         // Sin so2_prev la rama de los ±5 ppm no es calculable: ante la duda se
-        // muestra el vino.
-        if (C.so2_prev !== null && Math.abs(posterior - C.so2_prev) <= UMBRAL_REPETICION_PPM) {
+        // muestra el vino. Por vasija se salta: ±5 ppm es del lote entero, no
+        // dice nada de qué vasija se remidió.
+        if (!pv.porVasija && C.so2_prev !== null && Math.abs(posterior - C.so2_prev) <= UMBRAL_REPETICION_PPM) {
           suprimidos.push({
             ...base,
             lote: L,
             variedad: l.variedad ?? '',
             motivo: `corregido en OT ${C.ot}, el SO₂ no se movió`,
           });
+          activables.push({ ...armar({ ...base, sin_analisis: false }), fuera: 'corregido' });
           continue;
         }
         corregidoEn = { ...base, sin_analisis: false };
@@ -442,49 +540,7 @@ export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado
       }
     }
 
-    const diferencia = objetivo - so2;
-    const barricas = unidades.map((u) => filaBarrica(u, diferencia));
-
-    // NO agregar la fila de tanque cuando el veredicto es 'solo_representacion':
-    // ese veredicto significa "las barricas del mapa SON el volumen de
-    // vasija_grande, no un volumen adicional". Sin este guard, vasija_grande se
-    // dosifica dos veces (medido: 339,7 g de MBK extra sobre cuatro lotes).
-    const veredictoLote = v?.veredicto ?? '';
-    if (vasijaGrande > 0 && veredictoLote !== 'solo_representacion') {
-      barricas.push(filaSinBarrica(l.vasija_actual, vasijaGrande, diferencia));
-    }
-    if (!barricas.length) {
-      barricas.push(filaSinBarrica(l.vasija_actual, litrosDeclarados, diferencia));
-    }
-
-    const objetivoMol = num(eff.so2_molecular_objetivo) ?? 0;
-    const piso = num(eff.so2_libre_piso) ?? 0;
-    const manda = objetivoMol * (1 + Math.pow(10, ph! - 1.8)) < piso ? 'piso' : 'molecular';
-
-    resultados.push({
-      lote: L,
-      variedad: String(l.variedad ?? ''),
-      proyecto: String(l.proyecto ?? ''),
-      etapa: String(l.etapa ?? ''),
-      ph: ph!,
-      so2_libre: so2,
-      molecular_actual: so2Molecular(so2, ph),
-      objetivo_libre: objetivo,
-      diferencia,
-      manda,
-      grupo: grupoDe(v?.veredicto, unidades, vasijaGrande),
-      veredicto: v?.veredicto ?? '',
-      severidad: v?.severidad ?? null,
-      litros_declarados: litrosDeclarados,
-      litros_mapa: v?.litros_mapa ?? 0,
-      delta: v?.delta ?? 0,
-      litros_dosificados: barricas.reduce((s, b) => s + b.litros_usados, 0),
-      posiciones: posiciones.get(L) ?? [],
-      barricas,
-      mbk_total_g: barricas.reduce((s, b) => s + (b.mbk_g ?? 0), 0),
-      ml_total: barricas.reduce((s, b) => s + (b.ml_solucion ?? 0), 0),
-      corregido_en: corregidoEn,
-    });
+    resultados.push(armar(corregidoEn));
   }
 
   // Por urgencia: la diferencia objetivo − actual es cuánto le falta al lote
@@ -503,6 +559,7 @@ export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado
     suprimidos: suprimidos.sort((a, b) =>
       String(a.lote) < String(b.lote) ? -1 : String(a.lote) > String(b.lote) ? 1 : 0,
     ),
+    activables: activables.sort((a, b) => (a.lote < b.lote ? -1 : a.lote > b.lote ? 1 : 0)),
     resumen: {
       lotes: resultados.length,
       barricas: resultados.reduce((s, r) => s + r.barricas.length, 0),

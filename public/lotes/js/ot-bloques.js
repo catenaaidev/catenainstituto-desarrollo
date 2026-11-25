@@ -9,8 +9,15 @@
  * Una copia entera y no "diferencias por renglon": insertar o quitar un paso
  * corre los indices, y una diferencia guardada caeria en el paso equivocado.
  *
- * Solo se editan los bloques de texto (paso, dato). Las tablas, los ID y el
- * rotular salen de los datos de la OT: no se editan ni se quitan.
+ * Los bloques de texto (paso, dato) se editan, insertan y quitan. Las tablas,
+ * los ID y el rotular salen de los datos de la OT y no se quitan, pero cada
+ * casillero se puede reescribir: lo escrito queda en b.celdas = {n: texto}
+ * (n = orden del casillero dentro del bloque, ver aplicarCeldas en
+ * ot-hojas.js), dentro del mismo bloque para que viaje con el al insertar o
+ * quitar pasos. El titulo (banda) va en ot.banda = {parte: texto}.
+ *
+ * Todo esto es SOLO PAPEL: no toca ot.lotes, litros ni destino, asi que
+ * Confirmar sigue cargando lo que se emitio.
  *
  * Nunca muta PLANTILLAS_OT. */
 'use strict';
@@ -27,7 +34,7 @@ export function bloquesDeOT(ot){
 }
 
 export function tieneTextosPropios(ot){
-  return !!ot && Array.isArray(ot.bloques);
+  return !!ot && (Array.isArray(ot.bloques) || !!ot.banda);
 }
 
 // Una OT confirmada es registro de calidad: se ve e imprime, no se toca.
@@ -63,8 +70,37 @@ export function quitarBloque(ot, i){
   return true;
 }
 
+export function editarCelda(ot, i, n, texto){
+  const b = bloquesDeOT(ot)[i];
+  if (!b || esTexto(b)) return false;
+  const k = String(n);
+  const nuevo = String(texto ?? '');
+  if (b.celdas && Object.hasOwn(b.celdas, k) && b.celdas[k] === nuevo) return false;
+  const p = propios(ot)[i];
+  p.celdas = { ...(p.celdas || {}), [k]: nuevo };
+  return true;
+}
+
+export const PARTES_BANDA = 3;
+
+export function editarBanda(ot, j, texto){
+  const k = Number(j);
+  if (!Number.isInteger(k) || k < 0 || k >= PARTES_BANDA) return false;
+  const nuevo = String(texto ?? '');
+  if (ot.banda && Object.hasOwn(ot.banda, k) && ot.banda[k] === nuevo) return false;
+  ot.banda = { ...(ot.banda || {}), [k]: nuevo };
+  return true;
+}
+
+// La banda calculada (plantilla + lotes) con lo escrito encima.
+export function textoBanda(ot, calculada){
+  const b = (ot && ot.banda) || {};
+  return calculada.map((x, j) => Object.hasOwn(b, j) ? b[j] : x);
+}
+
 export function volverAPlantilla(ot){
   if (!tieneTextosPropios(ot)) return false;
   delete ot.bloques;
+  delete ot.banda;
   return true;
 }

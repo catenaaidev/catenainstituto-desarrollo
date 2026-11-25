@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { ORDEN_PLANILLA, parsearFecha, planDeColumnas,
-         parsearFila } from '../public/lotes/js/carga-cols.js';
+         parsearFila, faltanParaControl } from '../public/lotes/js/carga-cols.js';
 
 describe('parsearFecha', () => {
   it('acepta dd/mm/yyyy y lo pasa a ISO', () => {
@@ -30,10 +30,14 @@ describe('planDeColumnas', () => {
   });
 
   it('descarta los nombres que no son campos del analisis', () => {
-    // La lista blanca es el corazon de esta tarea: 'vasija' y 'año' vienen en
-    // la planilla para que las posiciones calcen, pero no se guardan.
-    expect(planDeColumnas('lote, vasija, año, -, , fecha'))
-      .toEqual(['lote', null, null, null, null, 'fecha_analisis']);
+    // La lista blanca es el corazon de esta tarea: 'año' viene en la planilla
+    // para que las posiciones calcen, pero no se guarda.
+    expect(planDeColumnas('lote, año, -, , fecha'))
+      .toEqual(['lote', null, null, null, 'fecha_analisis']);
+  });
+
+  it('reconoce vasija como campo opcional', () => {
+    expect(planDeColumnas('lote, vasija, año')).toEqual(['lote', 'vasija', null]);
   });
 
   it('acepta alcohol como alias de etanol', () => {
@@ -75,9 +79,21 @@ describe('parsearFila', () => {
 
   it('no guarda las columnas descartadas', () => {
     const { campos } = parsearFila(FILA, plan);
-    expect(campos).not.toHaveProperty('vasija');
     expect(campos).not.toHaveProperty('año');
     expect(campos).not.toHaveProperty('-');
+  });
+
+  it('sin vasija en la celda no guarda la clave (Analisis usa la del lote)', () => {
+    const { campos } = parsearFila(FILA, plan);
+    expect(campos).not.toHaveProperty('vasija');
+  });
+
+  it('con vasija en la celda la guarda como texto', () => {
+    const conVasija = FILA.replace('26194		', '26194	123	');
+    const { campos, errores } = parsearFila(conVasija, plan);
+    expect(errores).toEqual([]);
+    expect(campos.vasija).toBe('123');
+    expect(campos.fecha_analisis).toBe('2026-09-10');
   });
 
   it('deja en null la celda vacia, no en 0 ni en cadena vacia', () => {
@@ -118,5 +134,51 @@ describe('parsearFila', () => {
     const { campos } = parsearFila('26194\t\t2026\t10/09/2026', plan);
     expect(campos.lote).toBe('26194');
     expect(campos.so2_libre).toBe(null);
+  });
+});
+
+describe('faltanParaControl', () => {
+  const plan = planDeColumnas(ORDEN_PLANILLA);
+
+  it('la fila del 04/11 con el numero en Lactico y el Malico vacio avisa que falta malico', () => {
+    // 26005 tal como quedo cargado: etanol, pH, AV y gluc+fruc bien, el
+    // numero en la columna de lactico y malico y acidez total vacios.
+    const { campos } = parsearFila(
+      '26005		2026	04/11/2026	13,56	3,15	0	2,5		3,05				63', plan);
+    expect(faltanParaControl(campos)).toEqual(['malico']);
+  });
+
+  it('una corrida completa del FOSS no avisa', () => {
+    // 26076 del mismo dia, la que si quedo bien.
+    const { campos } = parsearFila(
+      '26076	t50	2026	04/11/2026	13,61	3,26	0	2,9	2,91		6,93			47', plan);
+    expect(faltanParaControl(campos)).toEqual([]);
+  });
+
+  it('una carga de solo SO2 no avisa: no es una corrida del FOSS', () => {
+    const { campos } = parsearFila('26194		2026	09/10/2026										35', plan);
+    expect(faltanParaControl(campos)).toEqual([]);
+  });
+
+  it('una carga de solo pH tampoco avisa', () => {
+    const { campos } = parsearFila('26001,10/09/2026,3.22', planDeColumnas('lote, fecha, ph'));
+    expect(faltanParaControl(campos)).toEqual([]);
+  });
+
+  it('nombra todas las que faltan, en el orden etanol, AV, malico', () => {
+    expect(faltanParaControl({ av: 0.4 })).toEqual(['etanol', 'malico']);
+    expect(faltanParaControl({ malico: 0.1 })).toEqual(['etanol', 'av']);
+  });
+
+  it('el 0 y el -999 cuentan como informados, igual que en el motor', () => {
+    // El motor reinicia la frecuencia con un -999 (el FOSS corrio y salio
+    // fuera de rango): avisar ahi seria contradecirlo.
+    expect(faltanParaControl({ etanol: 13.5, av: 0, malico: -999 })).toEqual([]);
+  });
+
+  it('si el orden de columnas no trae Malico, avisa en la fila', () => {
+    const p = planDeColumnas('lote, fecha, etanol, av');
+    const { campos } = parsearFila('26001,10/09/2026,13.5,0.4', p);
+    expect(faltanParaControl(campos)).toEqual(['malico']);
   });
 });

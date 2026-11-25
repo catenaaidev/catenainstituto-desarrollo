@@ -49,6 +49,29 @@ describe('papel de analisis', () => {
   });
 });
 
+describe('barriles especificos', () => {
+  it('en modo barril la columna aparece aunque ninguna fila tenga barril, con el 🎲 por fila', () => {
+    const c = cfgHojasAnalisis({ filas: [fila()], modoBarril: true });
+    expect(c.columnas).toBe(8);
+    const tr = c.renderFila({ numero: 1, fila: fila() });
+    expect(tr).toContain('data-col="barril"');
+    expect(tr).toContain('data-dadofila="0"');
+  });
+  it('sin modo barril (barriles que vienen del dado general) no hay 🎲 por fila', () => {
+    const c = cfgHojasAnalisis({ filas: [fila({ barril: '1234' })] });
+    expect(c.renderFila({ numero: 1, fila: fila({ barril: '1234' }) })).not.toContain('data-dadofila');
+  });
+  it('la celda usa la lista del lote, el texto de ayuda y el aviso amarillo', () => {
+    const info = () => ({ lista: 'otBarr-26141', ph: 'sin barriles', aviso: 'El barril 9 no figura' });
+    const c = cfgHojasAnalisis({ filas: [fila()], modoBarril: true, barrilInfo: info });
+    const tr = c.renderFila({ numero: 1, fila: fila({ barril: '9' }) });
+    expect(tr).toContain('list="otBarr-26141"');
+    expect(tr).toContain('placeholder="sin barriles"');
+    expect(tr).toContain('oh-aviso');
+    expect(tr).toContain('title="El barril 9 no figura"');
+  });
+});
+
 describe('papel de microbiologia', () => {
   it('tambien 50 por hoja, con lote y vasija editables', () => {
     const c = cfgHojasMicro({ filas: [fila()], textos: null });

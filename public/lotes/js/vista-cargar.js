@@ -3,8 +3,10 @@
 
 import { $, esc, escA, DATOS, markDirty, registrarVista } from './nucleo.js';
 import { activarGrilla } from './grilla.js';
-import { ORDEN_PLANILLA, planDeColumnas, parsearFila } from './carga-cols.js';
+import { ORDEN_PLANILLA, planDeColumnas, parsearFila, faltanParaControl } from './carga-cols.js';
+import { marcarRepetidos } from './carga-duplicados.js';
 import { fmtFecha } from './fechas.js';
+import { avisar } from './dialogos.js';
 
 /* --- parseo principal ---
  * El "que campo es cada posicion" y el "como se lee una celda" viven en
@@ -14,7 +16,7 @@ function parsearPegado(texto){
   const plan = planDeColumnas($('cargarCols').value.trim() || ORDEN_PLANILLA);
 
   /* Las columnas que se van a MOSTRAR en la previsualizacion: solo las que se
-   * guardan. Las descartadas (vasija, año, los huecos) no se listan a
+   * guardan. Las descartadas (año, los huecos) no se listan a
    * proposito — asi se ve de un vistazo que entra y que no. */
   const colsMostrar = [...new Set(plan.filter(Boolean))];
 
@@ -32,17 +34,27 @@ function parsearPegado(texto){
 
     filas.push(obj);
   }
+
+  /* Lo que ya esta cargado igualito no se vuelve a cargar: ver
+   * carga-duplicados.js. Se compara solo en las columnas del pegado. */
+  marcarRepetidos(filas, DATOS().analisis, colsMostrar);
   return { colsMostrar, filas };
 }
 
 /* --- encabezados de la tabla de preview --- */
 const CARGAR_LABELS = {
-  lote:'Lote', fecha_analisis:'Fecha', ph:'pH', av:'AV',
+  lote:'Lote', vasija:'Vasija', fecha_analisis:'Fecha', ph:'pH', av:'AV',
   gluc_fruc:'Gluc+Fruc', azucar_reductor:'Az. Reductor',
   malico:'Málico', lactico:'Láctico',
   acidez_total:'Acidez total', etanol:'Etanol', so2_libre:'SO₂ libre',
   comentario:'Comentario',
 };
+
+/* 'malico' -> 'Málico'; varias -> 'Etanol y Málico', 'Etanol, AV y Málico'. */
+function _nombres(claves){
+  const n = claves.map(k => CARGAR_LABELS[k] || k);
+  return n.length > 1 ? n.slice(0, -1).join(', ') + ' y ' + n[n.length - 1] : n.join('');
+}
 
 export function cargarPrevisualizar(){
   const texto = ($('cargarTexto').value || '').trim();
@@ -59,12 +71,20 @@ export function cargarPrevisualizar(){
     btnAgg.disabled = true;
     return;
   }
-  if (!DATOS()){ alert('Los datos aún no cargaron.'); return; }
+  if (!DATOS()){ avisar('Los datos aún no cargaron.', { tipo: 'mal' }); return; }
 
   const { colsMostrar, filas } = parsearPegado(texto);
 
   const conErrores  = filas.filter(f => f._errores.length > 0).length;
-  const sinErrores  = filas.length - conErrores;
+  const repetidas   = filas.filter(f => f._repetido).length;
+  const aCargar     = filas.length - conErrores - repetidas;
+
+  /* Corrida del FOSS a medias: se carga igual (a veces el equipo de verdad no
+   * da un valor), pero se avisa, porque ese analisis no reinicia la frecuencia
+   * y el lote sigue saliendo vencido en la Orden de muestras. Solo cuenta en
+   * las filas que se van a agregar: una repetida o con error no entra. */
+  const incompleta = f => !f._errores.length && !f._repetido ? faltanParaControl(f) : [];
+  const incompletas = filas.filter(f => incompleta(f).length);
 
   // encabezado
   let h = '<thead><tr>';
@@ -77,16 +97,22 @@ export function cargarPrevisualizar(){
   let tb = '<tbody>';
   for (const f of filas){
     const hayError = f._errores.length > 0;
-    tb += `<tr${hayError ? ' style="background:#fbeeeb"' : ''}>`;
+    const falta = incompleta(f);
+    const fondo = hayError ? '#fbeeeb' : (f._repetido || falta.length) ? '#fbf4e4' : '';
+    tb += `<tr${fondo ? ` style="background:${fondo}"` : ''}>`;
     for (const c of colsMostrar){
       const v = f[c];
       /* La fecha ya viene normalizada a ISO por parsearFecha; aca se muestra
        * como se va a leer despues en Analisis. */
       const vista = c === 'fecha_analisis' ? fmtFecha(v) : (v == null ? '' : v);
-      tb += `<td${c==='lote'||c==='fecha_analisis'?'':' class="num"'}>${esc(vista)}</td>`;
+      tb += `<td${c==='lote'||c==='vasija'||c==='fecha_analisis'?'':' class="num"'}>${esc(vista)}</td>`;
     }
     if (hayError){
       tb += `<td><span class="pill bad">${esc(f._errores.join(', '))}</span></td>`;
+    } else if (f._repetido){
+      tb += `<td><span class="pill warn">${esc(f._repetido)} — no se carga</span></td>`;
+    } else if (falta.length){
+      tb += `<td><span class="pill warn">⚠ falta ${esc(_nombres(falta))}: no cuenta como control de proceso</span></td>`;
     } else {
       tb += `<td><span class="pill ok">OK</span></td>`;
     }
@@ -101,17 +127,35 @@ export function cargarPrevisualizar(){
    * en el texto pegado y se previsualiza de nuevo). */
   activarGrilla($('tCargar'));
 
-  const hayValidas = sinErrores > 0;
+  let html = '';
   if (conErrores > 0){
-    msgEl.innerHTML = `<div class="msg err">${filas.length} filas leídas — <b>${sinErrores} válidas</b>, <b>${conErrores} con errores</b> (marcadas en rojo). Revisalas antes de agregar.</div>`;
+    html += `<div class="msg err">${filas.length} filas leídas — <b>${aCargar} para agregar</b>, <b>${conErrores} con errores</b> (marcadas en rojo). Revisalas antes de agregar.</div>`;
     errNote.style.display = 'inline-block';
   } else {
-    msgEl.innerHTML = `<div class="msg ok">✓ ${filas.length} filas válidas, listas para agregar.</div>`;
     errNote.style.display = 'none';
   }
+  if (repetidas > 0){
+    const yaCargadas = filas.filter(f => f._repetido === 'ya cargado').length;
+    const enPegado   = repetidas - yaCargadas;
+    const partes = [];
+    if (yaCargadas) partes.push(`<b>${yaCargadas} ${yaCargadas === 1 ? 'fila ya está cargada' : 'filas ya están cargadas'}</b>`);
+    if (enPegado)   partes.push(`<b>${enPegado} ${enPegado === 1 ? 'fila está repetida' : 'filas están repetidas'} dentro del pegado</b>`);
+    html += `<div class="msg warn">⚠ ${partes.join(' y ')} con exactamente los mismos datos (marcadas en amarillo). No se van a cargar de nuevo.</div>`;
+  }
+  if (incompletas.length > 0){
+    const n = incompletas.length;
+    const faltan = [...new Set(incompletas.flatMap(incompleta))];
+    html += `<div class="msg warn">⚠ <b>${n} ${n === 1 ? 'fila tiene' : 'filas tienen'} la corrida del FOSS incompleta</b> (falta ${esc(_nombres(faltan))}, marcadas en amarillo). Esos análisis no reinician la frecuencia y el lote va a seguir saliendo como vencido en la Orden de muestras. Revisá el orden de columnas o la planilla antes de agregar.</div>`;
+  }
+  if (conErrores === 0){
+    html += aCargar > 0
+      ? `<div class="msg ok">✓ ${aCargar} ${aCargar === 1 ? 'fila nueva, lista' : 'filas nuevas, listas'} para agregar.</div>`
+      : `<div class="msg info">No hay filas nuevas para agregar.</div>`;
+  }
+  msgEl.innerHTML = html;
 
-  btnAgg.textContent = `➕ Agregar ${sinErrores} análisis`;
-  btnAgg.disabled = !hayValidas;
+  btnAgg.textContent = `➕ Agregar ${aCargar} análisis`;
+  btnAgg.disabled = aCargar === 0;
   preview.style.display = 'block';
 
   // guardar filas parseadas para el confirmar
@@ -123,13 +167,21 @@ export function cargarConfirmar(){
   const t = $('tCargar');
   if (!t._filas || !DATOS()) return;
 
-  const validas = t._filas.filter(f => f._errores.length === 0);
-  if (validas.length === 0){ alert('No hay filas válidas para agregar.'); return; }
+  /* Se vuelve a mirar contra lo cargado AHORA, no contra lo que habia al
+   * previsualizar: el "en vivo" pudo traer esta misma carga hecha desde otra
+   * computadora en el medio. */
+  marcarRepetidos(t._filas, DATOS().analisis, t._colsMostrar);
+  const validas = t._filas.filter(f => f._errores.length === 0 && !f._repetido);
+  const salteadas = t._filas.filter(f => f._repetido).length;
+  if (validas.length === 0){
+    avisar(salteadas ? 'Todas las filas ya están cargadas: no hay nada nuevo para agregar.' : 'No hay filas válidas para agregar.', { tipo: 'info' });
+    return;
+  }
 
   // limpiar campos internos antes de insertar
   const limpias = validas.map(f => {
     const o = Object.assign({}, f);
-    delete o._raw; delete o._errores;
+    delete o._raw; delete o._errores; delete o._repetido;
     return o;
   });
 
@@ -138,7 +190,8 @@ export function cargarConfirmar(){
 
   // feedback
   const msgEl = $('cargarMsg');
-  msgEl.innerHTML = `<div class="msg ok">✓ Se agregaron <b>${limpias.length} análisis</b> a la memoria. Se guardan solos en unos segundos.</div>`;
+  const nota = salteadas ? ` Se saltearon <b>${salteadas}</b> que ya estaban cargadas.` : '';
+  msgEl.innerHTML = `<div class="msg ok">✓ Se agregaron <b>${limpias.length} análisis</b> a la memoria. Se guardan solos en unos segundos.${nota}</div>`;
   $('btnAgregarAnalisis').disabled = true;
   $('cargarErrNote').style.display = 'none';
 }

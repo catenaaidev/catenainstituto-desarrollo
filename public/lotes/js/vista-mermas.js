@@ -3,6 +3,7 @@
 'use strict';
 
 import { $, esc, escA, DATOS, markDirty, usuarioActual, pedirUsuario } from './nucleo.js';
+import { confirmar } from './dialogos.js';
 import { estaPendiente, faltanteDe, llenaSegunMapa, resolver, recalcularLitros, codigoLote } from './mermas.js';
 import { porNumMermas, refrescarMapaMermas, cerrarMermasLlenas } from './mermas-mapa.js';
 import { hoyLocalISO } from './fechas.js';
@@ -59,12 +60,12 @@ export function renderMermas(cont, { onCambio }){
     if (cerrarMermasLlenas(DATOS())) markDirty();
     onCambio();
   });
-  cont.querySelectorAll('[data-resolver]').forEach(b => b.addEventListener('click', () => {
+  cont.querySelectorAll('[data-resolver]').forEach(b => b.addEventListener('click', async () => {
     const m = todas.find(x => x.id === b.dataset.resolver);
     if (!m || !estaPendiente(m)) return;
-    const quien = usuarioActual() || pedirUsuario(true);
+    const quien = usuarioActual() || pedirUsuario();
     if (!quien) return;
-    if (!confirm(`¿Marcar la barrica ${m.barril} del lote ${m.lote} como resuelta?`)) return;
+    if (!await confirmar({ titulo: 'Barrica resuelta', texto: `La barrica ${m.barril} del lote ${m.lote} queda marcada como resuelta.`, si: 'Marcar resuelta', no: 'Cancelar' })) return;
     resolver(m, 'manual', quien, hoyLocalISO());
     recalcularLitros(DATOS().lotes, DATOS().mermas, new Set([codigoLote(m.lote)]));
     markDirty();

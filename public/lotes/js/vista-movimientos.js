@@ -3,18 +3,24 @@
 
 import { $, esc, escA, num, DATOS, markDirty, guardar, mostrarTab, registrarVista,
          usuarioActual, irALote, mostrarOverlay, cerrarOverlay } from './nucleo.js';
+import { avisar, informar, confirmar } from './dialogos.js';
 import { toggleSort, sortRows, opcionesValores, matchValor,
-         initFiltrosMulti, pasaMulti, limpiarFiltrosMulti } from './tabla.js';
+         initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, setF, ordenValido } from './tabla.js';
 import { activarGrilla, adaptadorCols, repintarGrilla } from './grilla.js';
 import { montarVirtual, soltarVirtual } from './tabla-virtual.js';
 import { anchoDeTexto } from './anchos-cols.js';
 import { esEjecutado, PENDIENTE, EJECUTADO, proximoNumeroOT } from './ot-movimientos.js';
 import { fmtFecha } from './fechas.js';
-import { abrirEmitirOT } from './vista-ot-emitir.js';
+import { abrirEmitirOT, numeroOcupadoEnCarpeta, esNumeroDeCarpeta, imprimirSoloPapel, precargarLotesOT } from './vista-ot-emitir.js';
+import { proponerNumero, chipCarpeta, cablearChipsCarpeta, imprimirYGuardar } from './guardar-ot.js';
+import { normalizarNumero } from './numero-ot.js';
 import { abrirConfirmarOT } from './vista-ot-confirmar.js';
 import { otDeMovimiento, eliminarOT } from './ot-armado.js';
-import { renderOrdenesTrabajo, elegirOT } from './vista-ot-lista.js';
+import { lotesCreadosPorOT } from './ot-achique.js';
+import { renderOrdenesTrabajo, elegirOT, abriendoFormulario } from './vista-ot-lista.js';
+import { idsDeOrdenes, movimientoVisible } from './ot-lista.js';
 import { renderMermas } from './vista-mermas.js';
+import { renderInventarioTanques } from './vista-inventario-tanques.js';
 import { planDeshacer, aplicarDeshacer } from './ot-deshacer.js';
 import { resumenEnvases } from './envases.js';
 import { visible } from './selector-anios.js';
@@ -61,8 +67,13 @@ const CAMPOS_POR_TIPO = {
  * Metadatos generales: aplican a cualquier movimiento. */
 const CAMPOS_SIEMPRE_HAB = new Set(['ot', 'operario', 'comentario']);
 
-/* --- sort / filtros --- */
-let sortMov = { key: 'fecha', dir: -1 };
+/* --- sort / filtros ---
+ * Orden, buscador y sub-pestaña sobreviven al F5 en esta pestaña
+ * (shared/filtros-sesion.js). */
+const _FS = typeof window !== 'undefined' && window.CIWFiltros;
+const _lf = (k, d) => _FS ? _FS.leer('lotes:movimientos:' + k, d) : d;
+const _gf = (k, v) => { if (_FS) _FS.guardar('lotes:movimientos:' + k, v); };
+let sortMov = ordenValido(_lf('orden', null), { key: 'fecha', dir: -1 });
 
 const CAMPOS_FLT_MOV = [
   { campo: 'tipo',      label: 'Tipo'      },
@@ -72,48 +83,89 @@ const CAMPOS_FLT_MOV = [
   { campo: '_mes',      label: 'Mes'       },
 ];
 const filtMov = {};
-CAMPOS_FLT_MOV.forEach(c => filtMov[c.campo] = new Set());
+CAMPOS_FLT_MOV.forEach(c => filtMov[c.campo] = setF('movimientos', c.campo));
 
 let _descMov = [], _instMov = [];
-let _movFiltBusca = '';
+let _movFiltBusca = (v => typeof v === 'string' ? v : '')(_lf('busca', ''));
 
-/* Sub-pestaña: 'historial' (la tabla de movimientos), 'ordenes' (lista de OT
- * con la hoja editable, vista-ot-lista.js) o 'mermas' (barricas mermas
- * pendientes, vista-mermas.js). Solo en memoria. */
-let _sub = 'historial';
+/* Sub-pestaña: 'historial' (la tabla de movimientos), 'ordenes' solo en modo
+ * órdenes (ver abrirOTUnica), 'mermas' (barricas mermas pendientes,
+ * vista-mermas.js) o 'tanques' (inventario de tanques,
+ * vista-inventario-tanques.js). Vuelve del F5 (si sigue siendo una de las
+ * tres de afuera del modo órdenes: 'ordenes' no se anota ni se restaura). */
+const SUBS_MOV = ['historial', 'mermas', 'tanques'];
+let _sub = (v => SUBS_MOV.includes(v) ? v : 'historial')(_lf('sub', 'historial'));
+const _irSub = k => { _sub = k; _gf('sub', k); };
+let _unica = false;        // modo órdenes (/lotes/?orden=…): solo la hoja de una OT
+let _emitirModo = null;    // modo órdenes, Nueva: vuelve a abrir el formulario con la plantilla
 
 function _selectorSub(){
   const b = (k, txt) => `<button type="button" data-sub="${k}" role="radio" aria-checked="${_sub === k}"` +
     `${_sub === k ? ' class="on"' : ''}>${txt}</button>`;
   return `<div class="mov-sub" role="radiogroup" aria-label="Vista de Movimientos">` +
-    b('historial', '📋 Historial') + b('ordenes', '📝 Órdenes de trabajo') + b('mermas', '🛢 Mermas') + '</div>';
+    b('historial', 'Historial') + b('mermas', 'Mermas') +
+    b('tanques', 'Inventario de tanques') + '</div>';
 }
 
 function _cablearSelector(sec){
   sec.querySelector('.mov-sub').addEventListener('click', e => {
     const b = e.target.closest('[data-sub]');
     if (!b || b.dataset.sub === _sub) return;
-    _sub = b.dataset.sub;
+    _irSub(b.dataset.sub);
     renderMovimientos();
   });
 }
 
-/* Abre una OT en la sub-pestaña Órdenes de trabajo. */
-export function verOrdenTrabajo(id){
-  _sub = 'ordenes';
+/* Modo órdenes: solo la hoja de esa OT (sin sub-pestañas ni lista). */
+export function abrirOTUnica(id){
+  _unica = true; _sub = 'ordenes';
   elegirOT(id);
-  renderMovimientos();
+  mostrarTab('movimientos');
 }
 
-/* Al emitir (formulario o asistente del Corte) se abre la hoja de la OT nueva
- * para ajustar los pasos antes de imprimir. */
-function _alEmitir(ot){
-  if (ot && ot.id) verOrdenTrabajo(ot.id); else renderMovimientos();
+/* Modo órdenes, Nueva: el formulario con la plantilla puesta. Al emitir,
+ * la URL pasa a la OT nueva (así F5 la vuelve a abrir). */
+export function emitirEnModoOrden(plantilla){
+  _unica = true; _sub = 'ordenes';
+  abriendoFormulario(true);   // la hoja vacía no dice «No se emitió» detrás del formulario
+  elegirOT(null);
+  mostrarTab('movimientos');
+  const alListo = ot => {
+    if (!ot || !ot.id) return renderMovimientos();
+    const p = new URLSearchParams(location.search); p.set('orden', ot.id);
+    history.replaceState(null, '', location.pathname + '?' + p.toString());
+    document.dispatchEvent(new CustomEvent('lotes:modo-orden-cambio'));
+    abrirOTUnica(ot.id);
+  };
+  // Cuando abrirEmitirOT vuelve, el formulario ya está abierto (o no se abrió):
+  // desde ahí la hoja vacía mira el overlay (ver _formularioEnCurso en vista-ot-lista.js).
+  _emitirModo = async () => {
+    abriendoFormulario(true);
+    try { await abrirEmitirOT(alListo, { plantilla }); }
+    finally { abriendoFormulario(false); }
+  };
+  _emitirModo();
 }
 
-/* Un movimiento se ve si su lote o su lote_destino se ve: un traspaso
- * 25xxx -> 26xxx aparece en los dos años prendidos. */
-const _movVisible = m => visible(m.lote) || (!!m.lote_destino && visible(m.lote_destino));
+/* Desde la Agenda: abre el formulario de Emitir OT (plantilla barricas->barricas,
+ * la primera) con el lote cargado; al emitir pasa a la OT en modo órdenes. */
+export function emitirOTDesdeAgenda(lotes, fecha){
+  // registrarOT llama a onListo ANTES de guardar: se espera el guardado
+  // (guardar va en cola) y recién ahí se pasa a la OT en modo órdenes.
+  const alListo = async ot => {
+    if (ot && ot.id && await guardar(false))
+      location.href = '/lotes/?orden=' + encodeURIComponent(ot.id) + '&volver=' + encodeURIComponent('/ordenes/?v=pendientes');
+  };
+  abrirEmitirOT(alListo).then(nuevo => { if (nuevo) precargarLotesOT(lotes, fecha); });
+}
+
+/* Qué movimientos se ven con los años prendidos: los de una OT siempre, los
+ * sueltos según su lote (ver movimientoVisible en ot-lista.js). Devuelve el
+ * filtro con los ids de las OT ya juntados, para usarlo en un .filter(). */
+const _filtroMov = () => {
+  const ids = idsDeOrdenes(DATOS().ordenes_trabajo);
+  return m => movimientoVisible(m, ids, visible);
+};
 
 /* --- construir mapa lote -> {variedad, proyecto} --- */
 function _buildLoteMap(){
@@ -158,7 +210,7 @@ function initFiltrosMov(){
     label:    c.label,
     set:      filtMov[c.campo],
     opciones: () => opcionesValores(
-      _enrich((DATOS().movimientos || []).filter(_movVisible), _buildLoteMap()),
+      _enrich((DATOS().movimientos || []).filter(_filtroMov()), _buildLoteMap()),
       r => r[c.campo]
     ),
     match:    matchValor(r => r[c.campo]),
@@ -175,6 +227,7 @@ function _abrirBorrarOTAplicada(ot, plan){
   const filas = plan.items.map(it => `<tr><td><b>${esc(it.lote)}</b></td><td>${env(it.ahora)}</td>
     <td>${it.accion === 'volver' ? '→ ' + env(it.antes)
       : it.porCorte ? '<span class="otc-aviso">⚠ no se toca: el corte se deshace entero o nada</span>'
+      : it.porGrupo ? '<span class="otc-aviso">⚠ no se toca: el lote se deshace junto con sus tanques extra, y alguno se cambió después de la OT</span>'
       : it.accion === 'cambiado' ? '<span class="otc-aviso">⚠ se cambió después de la OT: no se toca</span>'
       : '<span class="otc-aviso">⚠ el lote ya no existe</span>'}</td></tr>`).join('');
   /* planDeshacer ya bajo todos los lotes del corte a "no se toca" (ver
@@ -186,8 +239,10 @@ function _abrirBorrarOTAplicada(ot, plan){
   const mermas = (nm || nr) ? `<p style="margin:10px 0 0;font-size:13px;color:var(--muted)">${
     nm ? (nm === 1 ? 'Se borra 1 barrica merma que creó esta OT. ' : `Se borran ${nm} barricas merma que creó esta OT. `) : ''}${
     nr ? (nr === 1 ? 'Se reabre 1 merma que esta OT había cerrado al vaciarla.' : `Se reabren ${nr} mermas que esta OT había cerrado al vaciarlas.`) : ''}</p>` : '';
-  const corte = ot.lote_corte && ot.lote_corte.lote
-    ? `<p style="margin:10px 0 0;font-size:13px;color:var(--muted)">El lote ${esc(ot.lote_corte.lote)} que creó el corte NO se borra.</p>` : '';
+  // Solo los lotes que dio de alta la OT (el del corte nuevo y los hijos del achique).
+  const creados = lotesCreadosPorOT(ot);
+  const corte = creados.length
+    ? `<p style="margin:10px 0 0;font-size:13px;color:var(--muted)">${creados.length > 1 ? 'Los lotes ' + esc(creados.join(', ')) + ' que creó esta OT NO se borran.' : 'El lote ' + esc(creados[0]) + ' que creó esta OT NO se borra.'}</p>` : '';
   mostrarOverlay(`<div id="otbRaiz">
 <h3 style="margin:0 0 4px">🗑 Borrar ${esc(ot.ot)}</h3>
 <p style="margin:0 0 12px;color:var(--muted);font-size:13px">Esta OT ya se aplicó a los lotes. Podés volverlos a como estaban antes de la OT.</p>
@@ -204,10 +259,10 @@ function _abrirBorrarOTAplicada(ot, plan){
    * los movimientos pero dejaria la OT) y el plan juzgo lotes que ya son otros. */
   const vigente = () => (DATOS().ordenes_trabajo || []).find(o => o.id === ot.id) || null;
   const fin = otV => { eliminarOT(DATOS(), otV); markDirty(); cerrarOverlay(); renderMovimientos(); };
-  const sinOT = () => { cerrarOverlay(); alert('La ' + ot.ot + ' ya no está en los datos actuales (¿la borraron desde otra PC?). No se cambió nada.'); renderMovimientos(); };
+  const sinOT = () => { cerrarOverlay(); avisar('La ' + ot.ot + ' ya no está en los datos actuales (¿la borraron desde otra PC?). No se cambió nada.', { tipo: 'mal' }); renderMovimientos(); };
   $('otbCancelar').addEventListener('click', () => cerrarOverlay());
-  $('otbSolo').addEventListener('click', () => {
-    if (!confirm('Los lotes quedan como los dejó la OT. ¿Borrar solo la OT?')) return;
+  $('otbSolo').addEventListener('click', async () => {
+    if (!await confirmar({ titulo: 'Borrar solo la OT', texto: 'Los lotes quedan como los dejó la OT.', si: 'Borrar solo la OT', no: 'Volver', peligro: true })) return;
     const otV = vigente();
     if (!otV) return sinOT();
     fin(otV);
@@ -219,7 +274,7 @@ function _abrirBorrarOTAplicada(ot, plan){
     const firma = p => p.items.map(it => it.lote + ':' + it.accion).join('|') + '|' + p.corteParcial;
     if (firma(nuevo) !== firma(plan)){
       // Lo que se mostro ya no es lo que pasaria: se vuelve a mostrar.
-      alert('Los lotes de esta OT cambiaron mientras mirabas esta ventana. Revisá de nuevo qué vuelve atrás.');
+      avisar('Los lotes de esta OT cambiaron mientras mirabas esta ventana. Revisá de nuevo qué vuelve atrás.', { tipo: 'info' });
       _abrirBorrarOTAplicada(otV, nuevo);
       return;
     }
@@ -269,15 +324,26 @@ export function renderMovimientos(opciones){
     return;
   }
 
+  if (_sub === 'tanques'){
+    // #otMovHoja: la hoja de recorrida se imprime con printing-ot-mov, igual que las OT.
+    sec.innerHTML = _selectorSub() + '<div id="movTanques"></div><div id="otMovHoja" style="display:none"></div>';
+    _cablearSelector(sec);
+    renderInventarioTanques($('movTanques'), { onCambio: renderMovimientos });
+    return;
+  }
+
   if (_sub === 'ordenes'){
     // #otMovHoja tiene que existir: imprimirOT pinta ahi y el @media print de
     // printing-ot-mov muestra solo ese hijo de #tab-movimientos.
-    sec.innerHTML = _selectorSub() + '<div id="movOrdenes"></div><div id="otMovHoja" style="display:none"></div>';
-    _cablearSelector(sec);
+    // En modo órdenes (_unica) no hay selector de sub-pestañas.
+    sec.innerHTML = (_unica ? '' : _selectorSub()) + '<div id="movOrdenes"></div><div id="otMovHoja" style="display:none"></div>';
+    if (!_unica) _cablearSelector(sec);
     renderOrdenesTrabajo($('movOrdenes'), {
-      onEmitir: () => abrirEmitirOT(_alEmitir),
-      onCambio: renderMovimientos,
-    });
+      onEmitir: () => _emitirModo && _emitirModo(),
+      // Confirmar / editar una OT cambia su estado o su N°: la banda del modo
+      // órdenes (titular en app.js) se refresca con este evento.
+      onCambio: () => { renderMovimientos(); document.dispatchEvent(new CustomEvent('lotes:modo-orden-cambio')); },
+    }, { unica: _unica });
     return;
   }
 
@@ -285,7 +351,8 @@ export function renderMovimientos(opciones){
   const allMovEnrich = _enrich(DATOS().movimientos, loteMap);
 
   /* filtrar */
-  let rows = allMovEnrich.filter(_movVisible);
+  const movVisible = _filtroMov();
+  let rows = allMovEnrich.filter(movVisible);
   if (_movFiltBusca){
     const q = _movFiltBusca.toLowerCase();
     rows = rows.filter(m => String(m.lote ?? '').toLowerCase().includes(q));
@@ -343,7 +410,7 @@ export function renderMovimientos(opciones){
   t.querySelectorAll('th[data-k]').forEach(th => {
     const k = th.dataset.k;
     if (sortMov.key === k) th.innerHTML += `<span class="arrow">${sortMov.dir > 0 ? '▲' : '▼'}</span>`;
-    th.onclick = () => { toggleSort(sortMov, k); renderMovimientos(); };
+    th.onclick = () => { toggleSort(sortMov, k); _gf('orden', sortMov); renderMovimientos(); };
   });
 
   /* --- helpers de celda --- */
@@ -475,7 +542,7 @@ export function renderMovimientos(opciones){
     });
   }
 
-  $('movCount').textContent = rows.length + ' / ' + (DATOS().movimientos || []).filter(_movVisible).length + ' movimientos';
+  $('movCount').textContent = rows.length + ' / ' + (DATOS().movimientos || []).filter(movVisible).length + ' movimientos';
 
   /* --- listeners delegados (idempotente con t._wired) ---
    * La tabla se destruye y recrea en cada render (sec.innerHTML = html), por lo
@@ -530,7 +597,7 @@ export function renderMovimientos(opciones){
     });
 
     /* confirmar OT y borrar fila e ir a lote */
-    t.addEventListener('click', e => {
+    t.addEventListener('click', async e => {
       const bConf = e.target.closest('[data-confirmar]');
       if (bConf){
         const fila = t._rows[+bConf.dataset.confirmar];
@@ -545,10 +612,11 @@ export function renderMovimientos(opciones){
       if (bImp){
         const fila = t._rows[+bImp.dataset.imprimirot];
         if (!fila) return;
-        // Las OT anteriores a las plantillas no tienen entrada en
-        // ordenes_trabajo: siguen saliendo con la hoja genérica.
+        // La OT se abre en modo órdenes (la sub-pestaña ya no existe); las
+        // OT viejas sin entrada en ordenes_trabajo siguen con la hoja genérica.
         const ot = otDeMovimiento(DATOS().ordenes_trabajo, fila);
-        if (ot) verOrdenTrabajo(ot.id); else _imprimirOT(fila);
+        if (ot) location.href = '/lotes/?orden=' + encodeURIComponent(ot.id) + '&volver=' + encodeURIComponent('/ordenes/?v=pendientes');
+        else _imprimirOT(fila);
         return;
       }
       const b = e.target.closest('[data-del]');
@@ -562,20 +630,27 @@ export function renderMovimientos(opciones){
           const plan = planDeshacer(DATOS(), ot);
           if (plan.aplicada){ _abrirBorrarOTAplicada(ot, plan); return; }
           const n = (ot.lotes || []).length;
-          const corte = ot.lote_corte && ot.lote_corte.lote
-            ? '\n\nEl lote ' + ot.lote_corte.lote + ' que creó el corte NO se borra.' : '';
-          if (confirm('Esta fila es de la ' + ot.ot + ' (' + n + (n === 1 ? ' lote' : ' lotes') + ').\n'
-              + '¿Eliminar la OT completa con ' + (n === 1 ? 'su movimiento' : 'sus ' + n + ' movimientos') + '?' + corte)){
+          const creados = lotesCreadosPorOT(ot);
+          const corte = creados.length
+            ? '\n\n' + (creados.length > 1 ? 'Los lotes ' + creados.join(', ') + ' que creó esta OT NO se borran.' : 'El lote ' + creados[0] + ' que creó esta OT NO se borra.') : '';
+          if (await confirmar({
+            titulo: 'Eliminar la ' + ot.ot,
+            texto: 'Esta fila es de la ' + ot.ot + ' (' + n + (n === 1 ? ' lote' : ' lotes') + '). Se elimina la OT completa con ' +
+              (n === 1 ? 'su movimiento' : 'sus ' + n + ' movimientos') + '.' + corte,
+            si: 'Eliminar OT', no: 'Cancelar', peligro: true })){
             eliminarOT(DATOS(), ot);
             markDirty();
             renderMovimientos({ conservarScroll: true });
           }
           return;
         }
-        if (confirm('¿Eliminar el movimiento del lote ' + esc(o.lote || '(sin lote)') + ' (' + esc(o.tipo || '') + ' ' + esc(fmtFecha(o.fecha)) + ')?')){
+        if (await confirmar({
+          titulo: 'Eliminar movimiento',
+          texto: 'Movimiento del lote ' + (o.lote || '(sin lote)') + ' (' + (o.tipo || '') + ' ' + fmtFecha(o.fecha) + ').',
+          si: 'Eliminar', no: 'Cancelar', peligro: true })){
           const idx = _idxMovVivo(o);
           if (idx === -1){
-            alert('No se encontró ese movimiento en los datos actuales (puede que se hayan recargado). No se borró nada.');
+            avisar('No se encontró ese movimiento en los datos actuales (puede que se hayan recargado). No se borró nada.', { tipo: 'mal' });
             renderMovimientos();
             return;
           }
@@ -597,6 +672,14 @@ export function renderMovimientos(opciones){
   if (_descMov.length === 0){
     /* primera vez: inicializar instancias de filtro multi */
     initFiltrosMov();
+    if (_descMov.some(d => d.set.size)){
+      /* Los Sets ya traian valores restaurados del F5, pero esta pasada se
+         filtro mas arriba con _descMov todavia vacio (no existia hasta ahora):
+         salio una tabla sin filtrar con el badge diciendo otra cosa. Se vuelve
+         a dibujar una vez, ya con los descriptores listos. */
+      renderMovimientos(opciones);
+      return;
+    }
   } else {
     /* re-montar los widgets existentes en la nueva barra */
     const bar = $('fltMovBar');
@@ -608,11 +691,14 @@ export function renderMovimientos(opciones){
 
   $('buscaMov').addEventListener('input', () => {
     _movFiltBusca = $('buscaMov').value.trim();
+    _gf('busca', _movFiltBusca);
     renderMovimientos();
   });
 
   $('btnLimpiarFltMov').addEventListener('click', () => {
     _movFiltBusca = '';
+    /* Se borra lo guardado de la pantalla; sub-pestaña y orden no son filtros. */
+    if (_FS){ _FS.borrar('lotes:movimientos:'); _gf('sub', _sub); _gf('orden', sortMov); }
     limpiarFiltrosMulti(_descMov, 'buscaMov', _instMov, renderMovimientos);
   });
 
@@ -792,12 +878,17 @@ function _pintarHojaOT(mov){
 }
 
 /* Misma convencion que la bitacora de SO2 y la orden de muestras: una clase en
- * el body mientras dura la impresion, y el @media print se encarga del resto. */
+ * el body mientras dura la impresion, y el @media print se encarga del resto.
+ * imprimirYGuardar pinta la hoja (antes) y guarda el PDF en la carpeta. */
 function _imprimirOT(mov){
-  _pintarHojaOT(mov);
-  document.body.classList.add('printing-ot-mov');
-  window.print();
-  document.body.classList.remove('printing-ot-mov');
+  // Un movimiento viejo (sin N° o con OT-2026-005) no es de la serie de la
+  // carpeta: sale solo en papel, sin PDF.
+  if (!esNumeroDeCarpeta(mov.ot)) return imprimirSoloPapel(() => _pintarHojaOT(mov));
+  imprimirYGuardar({
+    claseBody: 'printing-ot-mov', contenedor: $('otMovHoja'), serie: 'principal',
+    numero: mov.ot, titulo: (mov.tipo || 'Movimiento') + ' ' + (mov.lote || ''), numeroFijo: true,
+    antes: () => _pintarHojaOT(mov),
+  });
 }
 
 /* Formulario de la orden de trabajo. Un solo modal para los dos modos:
@@ -832,7 +923,7 @@ function _abrirModalOT(mov){
 <h3 style="margin:0 0 14px">${esNuevo ? '➕ Emitir orden de trabajo' : '✓ Confirmar trabajo hecho'}</h3>
 <div id="otForm" style="display:grid;grid-template-columns:auto 1fr;gap:10px 12px;align-items:center">
   <label>N° de OT</label>
-  <input class="txt" id="otfOt" value="${escA(base.ot || '')}">
+  <div><input class="txt" id="otfOt" value="${escA(base.ot || '')}">${esNuevo ? ' ' + chipCarpeta('principal') : ''}</div>
   <label>Lote</label>
   <input class="txt" id="otfLote" value="${escA(base.lote || '')}">
   <label>Tipo</label>
@@ -879,6 +970,18 @@ function _abrirModalOT(mov){
   $('otfTipo').addEventListener('change', aplicarTipo);
   aplicarTipo();
 
+  // OT nueva: el numero de hoy queda de respaldo; el de la carpeta lo reemplaza
+  // solo si el usuario no toco el campo.
+  if (esNuevo){
+    let numeroTocado = false;
+    $('otfOt').addEventListener('input', () => { numeroTocado = true; });
+    const sembrar = () => proponerNumero('principal').then(p => {
+      if (!numeroTocado && $('otfOt')) $('otfOt').value = p.numero;
+    });
+    sembrar();
+    cablearChipsCarpeta($('otfOt').parentElement, sembrar);
+  }
+
   $('otfCancelar').addEventListener('click', () => cerrarOverlay());
   $('otfAceptar').addEventListener('click', () => _aceptarModalOT(mov));
 }
@@ -890,22 +993,22 @@ async function _aceptarModalOT(mov){
   const esNuevo = !mov;
 
   const lote = $('otfLote').value.trim();
-  if (!lote){ alert('Falta el lote.'); return; }
+  if (!lote){ avisar('Falta el lote.', { tipo: 'mal' }); $('otfLote').focus(); return; }
 
   // La fecha es campo comun: un movimiento sin fecha desaparece de linea_tiempo
   // y la hoja sale con "Fecha prevista:" en blanco.
   const fecha = $('otfFecha').value;
-  if (!fecha){ alert('Falta la fecha.'); return; }
+  if (!fecha){ avisar('Falta la fecha.', { tipo: 'mal' }); $('otfFecha').focus(); return; }
 
   // El lote es texto libre; un typo produce un movimiento huerfano que despues
   // solo se puede corregir reabriendo el modal. Avisar, no bloquear: puede ser
   // un lote que todavia no se cargo.
   if (!_buildLoteMap().has(lote) &&
-      !confirm('El lote ' + lote + ' no está en la lista de lotes. ¿Seguir igual?')) return;
+      !await confirmar({ titulo: 'Lote que no está en la lista', texto: 'El lote ' + lote + ' no está en la lista de lotes. Puede ser uno que todavía no se cargó.', si: 'Seguir igual', no: 'Revisar' })) return;
 
   const litrosTxt = $('otfLitros').value.trim();
   const litros = litrosTxt === '' ? null : num(litrosTxt);
-  if (litrosTxt !== '' && litros == null){ alert('Los litros no son un número válido.'); return; }
+  if (litrosTxt !== '' && litros == null){ avisar('Los litros no son un número válido.', { tipo: 'mal' }); $('otfLitros').focus(); return; }
 
   const tipo = $('otfTipo').value;
   // Solo guardar los campos que aplican al tipo elegido; si un campo quedo
@@ -929,6 +1032,12 @@ async function _aceptarModalOT(mov){
   };
 
   if (esNuevo){
+    // "939" -> "0939", con el formato de la carpeta.
+    datos.ot = normalizarNumero(datos.ot, 'principal');
+    if ($('otfOt')) $('otfOt').value = datos.ot;
+    // Otra orden hecha en Excel mientras se armaba esta pudo usar el numero.
+    const otro = await numeroOcupadoEnCarpeta(datos.ot);
+    if (otro){ if ($('otfOt')) $('otfOt').value = otro; return; }
     const hoy = new Date().toISOString().slice(0, 10);
     const nuevoMov = {
       id: 'mov-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -947,11 +1056,10 @@ async function _aceptarModalOT(mov){
     // haya papel, no despues.
     const ok = await guardar(false);
     if (!ok){
-      alert('La OT quedó en pantalla pero NO se guardó, así que todavía no conviene imprimirla: '
-          + 'resolvé el guardado y usá el botón 🖨 de la fila.');
+      await informar({ titulo: 'La OT no se guardó', texto: 'Quedó en pantalla pero NO se guardó, así que todavía no conviene imprimirla: resolvé el guardado y usá el botón 🖨 de la fila.' });
       return;
     }
-    if (confirm('OT emitida y guardada. ¿Imprimir la hoja para el operario?')){
+    if (await confirmar({ titulo: 'OT emitida y guardada', texto: '¿Imprimir la hoja para el operario?', si: 'Imprimir hoja', no: 'Ahora no' })){
       // Lo que se imprime es lo GUARDADO: si guardar() fusiono (409), el
       // movimiento vivo es otro objeto que el que se armo aca.
       const i = _idxMovVivo(nuevoMov);
@@ -965,25 +1073,24 @@ async function _aceptarModalOT(mov){
    * recien ahora empieza a contar para etapas y linaje. */
   const operario = $('otfOperario').value.trim();
   if (!operario){
-    alert('Falta el operario: la confirmación registra quién hizo el trabajo.');
+    avisar('Falta el operario: la confirmación registra quién hizo el trabajo.', { tipo: 'mal' });
+    $('otfOperario').focus();
     return;
   }
-  if (litros == null && !confirm('Vas a confirmar el trabajo sin litros reales. ¿Seguro?')) return;
+  if (litros == null && !await confirmar({ titulo: 'Confirmar sin litros', texto: 'Vas a confirmar el trabajo sin litros reales.', si: 'Confirmar sin litros', no: 'Volver' })) return;
 
   /* Se confirma el movimiento VIVO, no el que se capturo al abrir el modal: si
    * en el medio termino un guardado con fusion, ese es un huerfano y el
    * movimiento quedaria PENDIENTE en los datos con la pantalla diciendo que no. */
   const iVivo = _idxMovVivo(mov);
   if (iVivo === -1){
-    alert('No se encontró ese movimiento en los datos actuales (puede que se hayan recargado). No se confirmó nada.');
-    cerrarOverlay();
+    cerrarOverlay(); avisar('No se encontró ese movimiento en los datos actuales (puede que se hayan recargado). No se confirmó nada.', { tipo: 'mal' });
     renderMovimientos();
     return;
   }
   mov = DATOS().movimientos[iVivo];
   if (esEjecutado(mov)){
-    alert('Este movimiento ya figura como ejecutado (¿lo confirmaron desde otra PC?). No se cambió nada.');
-    cerrarOverlay();
+    cerrarOverlay(); avisar('Este movimiento ya figura como ejecutado (¿lo confirmaron desde otra PC?). No se cambió nada.', { tipo: 'mal' });
     renderMovimientos();
     return;
   }

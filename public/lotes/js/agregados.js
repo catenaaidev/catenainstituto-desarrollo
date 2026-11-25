@@ -260,6 +260,29 @@ export function totalLote(cantidad, vasijas, ref){
   return Math.round(t * 100) / 100;
 }
 
+/** Lo que se anota en Analisis al marcar ejecutada una orden de agregados:
+ *  [{lote, fecha, items}]. Dos tarjetas del mismo lote se juntan
+ *  (registrarAgregados reemplaza lo de la misma OT: registrarlas por separado
+ *  dejaria solo la segunda). Cada item lleva el TOTAL del lote (la dosis de
+ *  cada vasija sumada) y al lado la dosis por vasija y los litros de
+ *  referencia, para poder reconstruir la orden. `vasijasDe(t)` da las vasijas
+ *  de la tarjeta (al imprimir quedan congeladas por id de tarjeta). */
+export function registroDeTarjetas(tarjetas, vasijasDe, fecha){
+  const porLote = new Map();
+  for (const t of (tarjetas || [])){
+    const L = _txt(t && t.lote);
+    const items = ((t && t.items) || []).map(normalizarItem).filter(Boolean);
+    if (!L || !items.length) continue;
+    const vas = (vasijasDe && vasijasDe(t)) || [];
+    const ref = litrosReferencia(vas);
+    if (!porLote.has(L)) porLote.set(L, []);
+    porLote.get(L).push(...items.map(it => ({ ...it,
+      cantidad: totalLote(it.cantidad, vas, ref),
+      dosis_vasija: it.cantidad, litros_ref: ref, vasijas: vas.length })));
+  }
+  return [...porLote].map(([lote, items]) => ({ lote, fecha, items }));
+}
+
 /** "12 × 225 L + T50 1500 L" — para la tarjeta y el renglon del lote. */
 export function resumenVasijas(vasijas){
   const porCap = new Map();

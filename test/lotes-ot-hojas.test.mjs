@@ -11,7 +11,9 @@ beforeAll(async () => {
   H = await import('../public/lotes/js/ot-hojas.js');
   ({ armarOT } = await import('../public/lotes/js/ot-armado.js'));
   P = await import('../public/lotes/js/ot-plantillas.js');
-});
+  // Importar los modulos de papel tarda cuando corren todos los tests juntos:
+  // 30 s en vez de los 10 por defecto (si no, el arranque se corta por tiempo).
+}, 30000);
 const plBloques = () => P.plantillaPorId('barricas-barricas').bloques;
 
 const barril = (num) => ({ num, estado: 'LLENO', cap: 225, litros: 225, anio: '2022',
@@ -178,7 +180,7 @@ describe('barricas a tanque, corte (modelo 0867)', () => {
     expect(banda).toContain('Base HOFB');
     expect(banda).not.toContain('26004');
     expect(h).toContain('ID 26300:</b> Base HOFB');
-    expect(h).toContain('Rotular vasija ID. <b>26300 Base HOFB</b>');
+    expect(h).toContain('Rotular vasija ID. <b class="ot-cel">26300 Base HOFB</b>');
     expect(h).not.toContain('ID 26004');
   });
 
@@ -192,6 +194,14 @@ describe('barricas a tanque, corte (modelo 0867)', () => {
     expect(h).toContain('rowspan="4"');
     expect(h).toMatch(/Total<\/td><td><\/td><td>550</);
     expect(h).not.toContain('Litros caudalímetro');
+  });
+
+  it('imprime un lote por cantidad sin inventar numeros de barril', () => {
+    const h = H.hojaOT(ot([{ lote: '26192', cantidad_barricas: 17, barriles: [], litros_previstos: 3825 }],
+      'barricas-tanque', 'Tq 75 HL'));
+    expect(h).toContain('<td>26192</td><td>17 Barricas</td><td>3825</td>');
+    expect(H.hojasPlanilla(ot([{ lote: '26192', cantidad_barricas: 17, barriles: [], litros_previstos: 3825 }],
+      'barricas-tanque', 'Tq 75 HL'))).not.toContain('26192</td><td></td><td>');
   });
 
   it('agregado: TH2 y Solucion SO2 del lote del corte en el tanque destino', () => {
@@ -311,5 +321,235 @@ describe('hojaOT con pasos propios y editable', () => {
     const o = ot(lotes());
     o.bloques = [{ tipo: 'paso', texto: '<b>ojo</b> & listo' }];
     expect(H.hojaOT(o, { editable: true })).toContain('&lt;b&gt;ojo&lt;/b&gt; &amp; listo</textarea>');
+  });
+});
+
+describe('hojaOT: casilleros y titulo editables (solo papel)', () => {
+  const lotes = () => [{ lote: '26273', id_texto: 'CF Gy Alto Ct.5', litros_previstos: 2487,
+    barriles: [barril('1260044'), barril('1260045')] }];
+  const iTabla = () => plBloques().findIndex(b => b.tipo === 'tabla-vaciado');
+  const nCelda = (h, i, dentro) => {
+    const m = h.match(new RegExp(`data-bloque="${i}" data-celda="([0-9]+)">${dentro}`));
+    return m ? m[1] : null;
+  };
+
+  it('editable: cada celda de tabla es editable salvo la columna Check', () => {
+    const h = H.hojaOT(ot(lotes()), { editable: true });
+    expect(h).toContain(`data-bloque="${iTabla()}" data-celda="0"`);
+    expect(h).not.toMatch(/class="ot-check"[^>]*contenteditable/);
+    expect(h).toMatch(/<th contenteditable="plaintext-only"[^>]*>CIW lote<\/th>/);
+  });
+
+  it('sin editable no hay contenteditable', () => {
+    expect(H.hojaOT(ot(lotes()))).not.toContain('contenteditable');
+  });
+
+  it('una celda escrita reemplaza a la calculada, tambien al imprimir', () => {
+    const o = ot(lotes());
+    const n = nCelda(H.hojaOT(o, { editable: true }), iTabla(), '2487<');
+    expect(n).not.toBeNull();
+    o.bloques = structuredClone(plBloques());
+    o.bloques[iTabla()].celdas = { [n]: '2500 <aprox>\nver' };
+    const h = H.hojaOT(o);
+    expect(h).toContain('2500 &lt;aprox&gt;<br>ver');
+    expect(h).not.toContain('>2487<');
+    expect(o.lotes[0].litros_previstos).toBe(2487);
+  });
+
+  it('la vasija con los numeros de barril es un casillero entero', () => {
+    const h = H.hojaOT(ot(lotes()), { editable: true });
+    expect(nCelda(h, iTabla(), '2 barricas<div class="ot-nums">')).not.toBeNull();
+  });
+
+  it('la linea del ID es editable y se reemplaza', () => {
+    const o = ot(lotes());
+    // en barricas-barricas el ID va dentro del bloque de la tabla, primer casillero
+    expect(nCelda(H.hojaOT(o, { editable: true }), iTabla(), '<b>ID 26273:</b>')).toBe('0');
+    o.bloques = structuredClone(plBloques());
+    o.bloques[iTabla()].celdas = { 0: 'ID 26273: otro nombre' };
+    expect(H.hojaOT(o)).toContain('ID 26273: otro nombre');
+  });
+
+  it('la banda lleva el ID de cada lote al lado del numero', () => {
+    const o = ot([...lotes(), { lote: '26105', barriles: [] }]);
+    const h = H.hojaOT(o);
+    const banda = h.slice(h.indexOf('oh-banda'), h.indexOf('ot-paso'));
+    expect(banda).toContain('26273 CF Gy Alto Ct.5 · 26105');
+  });
+
+  it('el titulo (banda) es editable y lo escrito sale en el papel', () => {
+    const o = ot(lotes());
+    const e = H.hojaOT(o, { editable: true });
+    expect(e).toContain('data-banda="0"');
+    expect(e).toContain('data-banda="2"');
+    o.banda = { 1: 'FIN FML ESPECIAL' };
+    const h = H.hojaOT(o);
+    expect(h).toContain('FIN FML ESPECIAL');
+    expect(h).toContain('26273');
+  });
+
+  it('aplica a todas las plantillas', () => {
+    for (const pl of P.PLANTILLAS_OT){
+      const extra = pl.loteCorte ? { lote_corte: { lote: '26300', id_texto: 'Base' } } : {};
+      const o = Object.assign(ot(lotes(), pl.id), extra);
+      const h = H.hojaOT(o, { editable: true });
+      // Muestras (sin movimientos) no tiene bloque fijo con aplicarCeldas: su
+      // tabla sale de ot.muestras, no de casilleros de papel.
+      if (!pl.sinMovimientos) expect(h, pl.id).toContain('data-celda="0"');
+      expect(cuenta(h, 'data-banda='), pl.id).toBe(3);
+    }
+  });
+});
+
+describe('tanques y vasijas manuales en el papel', () => {
+  const lote = { lote: '26210', barriles: [barril('a1'), barril('a2')],
+                 tanques: [{ num: '201', litros: 3000 }], otras: [{ nombre: 'IBC 1', litros: 300 }] };
+  it('la celda de vasijas suma las partes', () => {
+    const h = H.hojaOT(ot([lote], 'barricas-barricas'));
+    expect(h).toContain('2 barricas + T 201 + IBC 1');
+    expect(h).toContain('3750');
+  });
+  it('el corte lleva una fila por tanque y por vasija manual, y el total las suma', () => {
+    const o = ot([lote], 'barrica-tanque', 'T 189');
+    o.lote_corte = { lote: '26300', id_texto: 'Corte' };
+    const h = H.hojaOT(o);
+    expect(h).toMatch(/<td>T 201<\/td><td>3000<\/td>/);
+    expect(h).toMatch(/<td>IBC 1<\/td><td>300<\/td>/);
+    expect(h).toMatch(/Total<\/td><td><\/td><td>3750</);
+  });
+});
+
+describe('Corte + achique (0943)', () => {
+  const otA = destinos => armarOT({ id: 'ot-a', numero: '0944', plantilla: 'corte-achique', fecha: '2026-10-14',
+    destino: 'TQ pulmón bodega', emitio: 'Oriana',
+    lotes: [{ lote: '26034', id_texto: 'PN', barriles: [barril('1'), barril('2')] }],
+    lote_corte: { lote: '26323', id_texto: 'Corte Base PN DN Grand Mere' },
+    achique: { destinos }, mapaVersion: 1, usuario: 'ana', hoy: '2026-10-13' });
+  const TQS = [{ tipo: 'tanque', num: '206', litros: 7500, lote: '26323' },
+               { tipo: 'tanque', num: '209', litros: 7500, lote: '26324', nuevo: true }];
+
+  it('la tabla del achique: pulmon una vez, una fila por vasija definitiva con su lote', () => {
+    const h = H.hojaOT(otA(TQS));
+    expect(h).toContain('Litros caudalímetro');
+    expect(cuenta(h, 'rowspan="2"')).toBeGreaterThanOrEqual(1);
+    expect(h).toContain('<td>26324</td>');
+    expect(h).toContain('T 209');
+    expect(h).toContain('Preparar pare reubicar');
+  });
+  it('el total del achique sale redondeado, sin decimales de coma flotante', () => {
+    const h = H.hojaOT(otA([{ ...TQS[0], litros: 0.1 }, { ...TQS[1], litros: 0.2 }]));
+    expect(h).toMatch(/Total<\/td><td><\/td><td><\/td><td>0\.3<\/td>/);
+  });
+  it('un rotular por vasija definitiva con su lote y el ID del corte', () => {
+    const h = H.hojaOT(otA(TQS));
+    expect(h).toContain('T 206 · 26323 Corte Base PN DN Grand Mere');
+    expect(h).toContain('T 209 · 26324 Corte Base PN DN Grand Mere');
+  });
+  it('sin chicas imprime solo la OT; con chicas, planilla y rotulos del lote de las chicas', () => {
+    expect(H.hojasOT(otA(TQS))).not.toContain('ot-planilla');
+    const ot = otA([TQS[0], { tipo: 'chicas', barricas: 3, t50: 1, litros: 725, lote: '26325', nuevo: true }]);
+    const todo = H.hojasOT(ot);
+    expect(todo).toContain('ot-planilla');
+    expect(todo).toContain('Lote ID: 26325');
+    expect(cuenta(H.hojasPlanilla(ot), '<td>26325</td>')).toBe(4);
+    expect(cuenta(H.hojaRotulos(ot), 'ot-rot-par')).toBe(4);
+    expect(H.hojaRotulos(ot)).toContain('Corte Base PN DN Grand Mere');
+  });
+
+  // Emitida por tipo: lo que falta sale en blanco para escribirlo a mano.
+  const C75 = { tipo: 'TANQUE AC.INOX.', cap: 7500 };
+  const PORTIPO = [{ tipo: 'tanque', num: '', clase: C75, litros: null, lote: '26323' },
+                   { tipo: 'tanque', num: '209', clase: C75, litros: 5000, lote: '26324', nuevo: true },
+                   { tipo: 'chicas', barricas: 0, t50: 0, litros: null, lote: '26325', nuevo: true }];
+  it('tanque sin numero ni litros y chicas sin cantidad: en blanco', () => {
+    const h = H.hojaOT(otA(PORTIPO));
+    expect(h).toContain('<td>1</td><td></td><td>TANQUE AC.INOX. · 75 HL: T ____</td>');
+    expect(h).toContain('<td>1</td><td>5000</td><td>TANQUE AC.INOX. · 75 HL: T 209</td>');
+    expect(h).toContain('<td></td><td></td><td>Barricas / T50</td>');
+    expect(h).not.toContain('null');
+  });
+  it('el total suma solo los litros conocidos; sin ninguno, en blanco', () => {
+    expect(H.hojaOT(otA(PORTIPO))).toMatch(/Total<\/td><td><\/td><td><\/td><td>5000<\/td>/);
+    const sin = PORTIPO.map(d => ({ ...d, litros: null }));
+    expect(H.hojaOT(otA(sin))).toMatch(/Total<\/td><td><\/td><td><\/td><td><\/td>/);
+  });
+  it('rotular: el tipo cuando no hay numero', () => {
+    const h = H.hojaOT(otA(PORTIPO));
+    expect(h).toContain('TANQUE AC.INOX. · 75 HL · 26323 Corte Base PN DN Grand Mere');
+    expect(h).toContain('T 209 · 26324 Corte Base PN DN Grand Mere');
+    expect(h).toContain('Barricas / T50 · 26325 Corte Base PN DN Grand Mere');
+  });
+  it('planilla y rotulos con chicas sin cantidad: filas en blanco y un par de rotulos', () => {
+    const ot = otA(PORTIPO);
+    expect(H.hojasOT(ot)).toContain('ot-planilla');
+    expect(cuenta(H.hojasPlanilla(ot), '<td>26325</td>')).toBe(0);
+    expect(cuenta(H.hojaRotulos(ot), 'ot-rot-par')).toBe(1);
+  });
+});
+
+describe('hoja de la OT de Muestras (0993)', () => {
+  const mu = { id: 'mu', ot: '0993', plantilla: 'muestras-ot', fecha: '2026-11-10', estado: 'pendiente',
+    emitio: 'Oriana', sin_movimientos: true, lotes: [],
+    muestras: [{ lote: '26142', vasija: 'T50', muestra: '750 ml' }, { lote: '99999', vasija: '<b>', muestra: '750 ml' }] };
+  it('papel: # · CIW lote · Vasija · Muestra · Check, una fila por muestra, sin controles', () => {
+    const h = H.hojasOT(mu);
+    expect(h).toContain('<th>#</th><th>CIW lote</th><th>Vasija</th><th>Muestra</th><th>Check</th>');
+    expect(h).toContain('<td>1</td><td>26142</td><td>T50</td><td>750 ml</td>');
+    expect(h).toContain('&lt;b&gt;');
+    expect(h).not.toContain('data-mmas');
+    expect(h).not.toContain('<input');
+    expect(h).toContain('IR DESINFECTANDO MANGUERITA');
+    expect(h).toContain('MUESTRAS');
+  });
+  it('pantalla: celdas editables, ✕ por fila, ＋ Agregar fila, lote inexistente en rojo', () => {
+    const h = H.hojaOT(mu, { editable: true, lotesExisten: new Set(['26142']) });
+    expect(h).toContain('data-mfila="0" data-mcol="lote"');
+    expect(h).toContain('data-mfila="1" data-mcol="muestra"');
+    expect(h).toContain('data-mquitar="1"');
+    expect(h).toContain('data-mmas');
+    expect((h.match(/ot-mu-mal/g) || []).length).toBe(1);
+  });
+  it('una OT vieja sin muestras se dibuja con la tabla vacía', () => {
+    expect(() => H.hojasOT({ ...mu, muestras: undefined })).not.toThrow();
+  });
+});
+
+describe('tanques destino extra en el papel', () => {
+  const armar = (plantilla, extra = {}) => armarOT({ id: 'ot-9', numero: '0990', plantilla, fecha: '2026-11-12', destino: 'T 212', emitio: '',
+    lotes: [{ lote: '26217', id_texto: 'MB', barriles: [{ num: '11', cap: 225 }], tanques: [], otras: [], litros_previstos: 225,
+      destinos_extra: [{ num: '214', litros: 100, lote: '26330' }] }], usuario: '', hoy: '', ...extra });
+  it('tq-tq: la celda Destino nombra el destino y el extra con su lote', () => {
+    const html = H.hojaOT(armar('tq-tq'));
+    expect(html).toContain('T 212');
+    expect(html).toContain('T 214 (lote 26330)');
+  });
+  it('barrica-tanque (por barril): el extra va en la celda con rowspan', () => {
+    expect(H.hojaOT(armar('barrica-tanque'))).toContain('T 214 (lote 26330)');
+  });
+  it('correccion: filas TH2 y SO2 tambien para el lote del extra en su tanque', () => {
+    const html = H.hojaOT(armar('tq-tq'));
+    const filas = html.split('<tr>').filter(f => f.includes('26330') && (f.includes('TH2') || f.includes('SO2')));
+    expect(filas).toHaveLength(2);
+    expect(filas[0]).toContain('T 214');
+  });
+  it('corte: agregado del corte y del hijo extra', () => {
+    const ot = armar('barricas-tanque', { lote_corte: { lote: '26400', id_texto: 'Corte' }, destinos_extra: [{ num: '214', lote: '26401' }] });
+    const html = H.hojaOT(ot);
+    expect(html.split('<tr>').filter(f => f.includes('26401') && f.includes('TH2'))).toHaveLength(1);
+  });
+  it('lo agregado al confirmar (al_confirmar) no va al papel', () => {
+    const o = armar('tq-tq');
+    o.lotes[0].destinos_extra.push({ tipo: 'tanque', num: '215', litros: null, lote: '26331', nuevo: true, mov_id: 'ot-9-s-0', al_confirmar: true });
+    const html = H.hojaOT(o);
+    expect(html).toContain('T 214 (lote 26330)');
+    expect(html).not.toContain('T 215');
+    expect(html).not.toContain('26331');
+    const c = armar('barricas-tanque', { lote_corte: { lote: '26400', id_texto: 'Corte' }, destinos_extra: [{ num: '214', lote: '26401' }] });
+    c.destinos_extra.push({ tipo: 'chicas', barricas: 1, t50: 1, litros: null, lote: '26402', mov_id: 'ot-9-s-0', al_confirmar: true });
+    expect(H.hojaOT(c)).not.toContain('26402');
+  });
+  it('sin extras la hoja es identica a la de antes', () => {
+    const sin = armar('tq-tq'); delete sin.lotes[0].destinos_extra;
+    expect(H.hojaOT(sin)).not.toContain('(lote ');
   });
 });

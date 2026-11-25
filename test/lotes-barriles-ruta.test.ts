@@ -7,7 +7,7 @@
  */
 import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
-import { barrilesDeLotes, barrilesPorNum } from '../src/lotes/motores/barriles-lote';
+import { barrilesDeLotes, barrilesPorNum, escaneosDeOT, claveOT } from '../src/lotes/motores/barriles-lote';
 import { rutasLotes } from '../src/lotes/rutas';
 
 const INV = [
@@ -60,6 +60,46 @@ describe('barrilesPorNum', () => {
   });
 });
 
+/* Escaneos del Mapa por numero de OT (2026-11-10). El escaner guarda cada
+ * vaciado y llenado con la OT, el lote y los codigos de barril: es la fuente
+ * para saber que se movio de verdad. En la OT 0957 el Mapa vacio 6 de las 17
+ * barricas que decia la OT para el lote 26236, y ninguna de 26235. */
+const ESC = [
+  { id: 'e1', fecha: '2026-10-27', ot: '957', lote: '26236', tipo: 'vaciado', codigos: ['2221713', '2221714', '9001'] },
+  { id: 'e2', fecha: '2026-10-28', ot: 'OT-957', lote: '26305', tipo: 'llenado', codigos: ['451'] },
+  { id: 'e3', fecha: '2026-10-28', ot: '0958', lote: '26236', tipo: 'vaciado', codigos: ['2221713'] },
+  { id: 'e4', fecha: '2026-10-29', ot: '957', lote: '', tipo: 'vaciado', codigos: ['desconocido'] },
+];
+
+describe('claveOT', () => {
+  it('iguala 0957, 957, OT-957 y OT 957', () => {
+    for (const v of ['0957', '957', 'OT-957', 'OT 957', 'ot:957', ' 0957 ']) expect(claveOT(v)).toBe('957');
+    expect(claveOT('OT-2026-019')).toBe('2026-019');
+    expect(claveOT('B219')).toBe('b219');
+    expect(claveOT('')).toBe('');
+  });
+});
+
+describe('escaneosDeOT', () => {
+  it('trae los escaneos de esa OT, en orden de fecha, con la capacidad de cada barril', () => {
+    const r = escaneosDeOT({ inventario: INV, escaneos: ESC }, '0957');
+    expect(r.map((e) => e.id)).toEqual(['e1', 'e2', 'e4']);
+    expect(r[0]).toMatchObject({ id: 'e1', fecha: '2026-10-27', tipo: 'vaciado', lote: '26236' });
+    expect(r[0].barriles).toEqual([
+      { num: '2221713', cap: 225 }, { num: '2221714', cap: 225 }, { num: '9001', cap: 225 },
+    ]);
+    expect(r[1].barriles).toEqual([{ num: '451', cap: 500 }]);
+    // Un codigo que no esta en el inventario vuelve sin capacidad.
+    expect(r[2].barriles).toEqual([{ num: 'desconocido', cap: null }]);
+  });
+
+  it('sin escaneos de esa OT devuelve lista vacia; tolera un estado sin escaneos', () => {
+    expect(escaneosDeOT({ inventario: INV, escaneos: ESC }, '0999')).toEqual([]);
+    expect(escaneosDeOT({ inventario: INV }, '0957')).toEqual([]);
+    expect(escaneosDeOT({ inventario: INV, escaneos: ESC }, '')).toEqual([]);
+  });
+});
+
 const EDITOR = 'editor-barriles@catenawines.com';
 
 async function pedir(qs: string) {
@@ -86,6 +126,17 @@ describe('GET /barriles', () => {
 
   it('400 sin lotes ni nums', async () => {
     expect((await pedir('')).status).toBe(400);
+  });
+
+  it('ot devuelve los escaneos de esa OT', async () => {
+    await env.DB.prepare(
+      `INSERT OR REPLACE INTO documento (modulo, json) VALUES ('barriles', ?)`,
+    ).bind(JSON.stringify({ version: 2305, estado: { inventario: INV, escaneos: ESC } })).run();
+    const r = await pedir('?ot=0957');
+    expect(r.status).toBe(200);
+    const j = (await r.json()) as { version: number; escaneos_ot: { id: string }[] };
+    expect(j.version).toBe(2305);
+    expect(j.escaneos_ot.map((e) => e.id)).toEqual(['e1', 'e2', 'e4']);
   });
 
   it('nums devuelve por_num', async () => {

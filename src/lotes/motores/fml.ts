@@ -1,5 +1,5 @@
 /**
- * Motor de reglas FML — las 11 condiciones del tablero aprobado.
+ * Motor de reglas FML — las 12 condiciones del tablero aprobado.
  *
  * Los umbrales son POR VARIEDAD Y PROYECTO:
  *   default ⊕ override de variedad ⊕ override de proyecto.
@@ -15,6 +15,7 @@
 
 import { litrosDeEnvases } from './envases';
 import { normalizarLote, esSoloAgregados } from './linaje';
+import { reanalisisPendiente } from './correcciones-base';
 import {
   num,
   filasDe,
@@ -57,6 +58,7 @@ export interface Criterios {
   av_delta_dias: number;
   frecuencia_no_terminada: number;
   frecuencia_terminada: number;
+  frecuencia_trasiego: number;
   so2_caida_max: number;
   so2_aplica: string;
   ph_max_inclusive: string;
@@ -83,6 +85,9 @@ export const CRITERIOS_DEFAULT: Criterios = {
   av_delta_dias: 15,
   frecuencia_no_terminada: 15,
   frecuencia_terminada: 30,
+  // Agenda de Lotes: trasegar cada 3 meses. El motor FML no la usa; vive acá
+  // para que la tabla de criterios la herede por variedad y por proyecto.
+  frecuencia_trasiego: 90,
   so2_caida_max: 12.0,
   so2_aplica: 'si',
   ph_max_inclusive: 'no',
@@ -93,7 +98,7 @@ export interface MetaCondicion {
   accion: string;
 }
 
-/** Las 11 condiciones del tablero, en su orden de presentacion. */
+/** Las 12 condiciones del tablero, en su orden de presentacion. */
 export const CONDICIONES: Record<string, MetaCondicion> = {
   sin_analisis_valido: { etiqueta: 'Sin análisis válido', accion: 'hacer OT y analizar' },
   control_proceso_pendiente: { etiqueta: 'Sin control de proceso', accion: 'hacer OT y analizar' },
@@ -102,6 +107,10 @@ export const CONDICIONES: Record<string, MetaCondicion> = {
   so2_caida_alerta: {
     etiqueta: 'Caída de SO₂ libre',
     accion: 'confirmar SO2; revisar llenado/mermo y evaluar posible desvio microbiologico',
+  },
+  reanalisis_correccion: {
+    etiqueta: 'Re-análisis post-corrección',
+    accion: 'analizar SO2 para confirmar la corrección',
   },
   fa_no_finalizada: { etiqueta: 'FA no finalizada', accion: 'seguir control de FA' },
   fml_no_finalizada: { etiqueta: 'FML no finalizada', accion: 'seguir control de FML' },
@@ -400,12 +409,12 @@ export function veredictosAnalisis(
   // no hay pH de respaldo: por encima del piso y sin pH propio no hay veredicto
   // y la celda no se pinta, igual que el lote queda 'sin_datos'.
   //
-  // so2_molecular lleva el MISMO veredicto que so2_libre y no uno propio contra
-  // so2_molecular_objetivo. Parecen lo mismo pero no lo son en el tramo del
-  // piso: con libre 15 y pH 3,2 el molecular da 0,44 (por encima del objetivo)
-  // y un veredicto propio pintaría esa celda de verde mientras la de al lado
-  // sale naranja. La regla de la bodega es de dos tramos y el piso manda, así
-  // que las dos celdas dicen lo mismo.
+  // so2_molecular tiene su PROPIO veredicto contra so2_molecular_objetivo
+  // (pedido del 2026-11-13): antes copiaba el del libre, y con libre bajo el
+  // piso pero molecular sobrado (libre 22 < piso 25, molecular 0,564) la celda
+  // del molecular salia naranja y parecia que el molecular estaba mal. La
+  // regla de dos tramos sigue mandando en so2_libre (y en el cartel del lote,
+  // que mira si hay ALGO fuera); el molecular solo dice si llega al objetivo.
   const libre = so2LibreDe(a);
   let vSo2: VeredictoMetrica | null = null;
   if (!so2Aplica(eff)) {
@@ -419,11 +428,16 @@ export function veredictosAnalisis(
   }
   if (vSo2 !== null) {
     v.so2_libre = vSo2;
-    /* El molecular acompaña al libre, pero solo si hay un numero que mostrar.
-     * Sin pH no se puede calcular y la celda sale vacia: pintarla (de cualquier
-     * color) seria dar un veredicto sobre un casillero en blanco. Pasaba en el
-     * tramo del piso, donde veredictoSo2 dice 'fuera' sin necesitar el pH. */
-    if (so2Molecular(a.so2_libre, a.ph) !== null) v.so2_molecular = vSo2;
+    /* El molecular se pinta solo si hay un numero que mostrar: sin pH la celda
+     * sale vacia y pintarla seria dar un veredicto sobre un casillero en
+     * blanco. Se juzga el MISMO numero que muestra la celda (so2Molecular de
+     * so2_libre y ph, ver so2_molec_calc en vistas.ts). Sin sulfitado sigue
+     * al libre: no hay objetivo que cumplir. */
+    const molec = so2Molecular(a.so2_libre, a.ph);
+    if (molec !== null) {
+      v.so2_molecular = !so2Aplica(eff) ? vSo2
+        : molec < eff.so2_molecular_objetivo ? 'fuera' : 'dentro';
+    }
   }
 
   return v;
@@ -501,7 +515,7 @@ export interface ResultadoLote {
 }
 
 /**
- * Ensambla las 11 condiciones del tablero para un lote.
+ * Ensambla las 12 condiciones del tablero para un lote.
  *
  * No decide nada por su cuenta: cada estado sale de fml-condiciones.ts. Lo que
  * sí resuelve acá es qué condiciones quedan activas, en qué orden se muestran y
@@ -528,6 +542,7 @@ export function evaluarLote(
   const llenado = estadoLlenado(lote);
   const hayAnalisis = tieneAnalisisValido(analisis);
   const inoculado = detectarInoculado(analisis);
+  const rean = reanalisisPendiente(analisis, hoy);
 
   const activas: Array<[string, string | null]> = [];
   if (!hayAnalisis) activas.push(['sin_analisis_valido', null]);
@@ -535,6 +550,7 @@ export function evaluarLote(
   if (frec.estado === 'vencido') activas.push(['frecuencia_vencida', frec.desde]);
   if (av.alerta) activas.push(['av_alerta', av.desde]);
   if (caida.alerta) activas.push(['so2_caida_alerta', caida.desde]);
+  if (rean.activa) activas.push(['reanalisis_correccion', rean.desde]);
   if (fa.estado === 'no_finalizada') activas.push(['fa_no_finalizada', fa.desde]);
   if (fml.estado === 'no_finalizada') activas.push(['fml_no_finalizada', fml.desde]);
   if (so2.estado === 'no_ok') activas.push(['so2_no_ok', so2.desde]);

@@ -78,12 +78,12 @@ export function htmlFicha(fila, analisis, hoy, excluidas){
       <p><strong>Acción sugerida:</strong> ${esc(fila.accion_sugerida || '—')}</p>
       <div class="tb-dato"><span>Comentario</span>
         <input class="tb-edit" data-campo="comentario" value="${escA((fila._est || {}).comentario ?? '')}"></div>
-      <table class="tb-tabla">
+      <div class="scroll-x"><table class="tb-tabla">
         <thead><tr><th>Fecha</th><th>pH</th><th>AV</th><th>Málico</th><th>Az. red.</th><th>SO₂ libre</th><th>Etanol</th></tr></thead>
         <tbody>${mediciones.map(m => `<tr>
           <td>${esc(fmtFecha(m.fecha_analisis))}</td><td>${esc(celda(m.ph))}</td><td>${esc(celda(m.av))}</td>
           <td>${esc(celda(m.malico))}</td><td>${esc(celda(m.azucar_reductor))}</td>
           <td>${esc(celda(m.so2_libre))}</td><td>${esc(celda(m.etanol))}</td></tr>`).join('')}</tbody>
-      </table>
+      </table></div>
     </div>`;
 }

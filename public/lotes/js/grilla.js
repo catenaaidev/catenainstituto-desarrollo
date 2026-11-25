@@ -619,13 +619,13 @@ function _manejarTecla(st, e){
   if (e.key === 'Enter' && e.ctrlKey){ aplicarAlRango(st, g); return true; }
   if ((e.key === 'd' || e.key === 'D') && e.ctrlKey){ rellenarAbajo(st, g); return true; }
   /* Deshacer / rehacer: los maneja nucleo.js para toda la pagina. Con un
-   * overlay abierto (ficha de envases, asistentes) no: deshacer por detras
+   * dialogo abierto (formulario o pregunta) no: deshacer por detras
    * de un formulario abierto cambiaria datos que el formulario tiene a medias.
    * Se devuelve false y la tecla sigue hasta app.js, que le hace
    * preventDefault: si no, Chrome aplicaria su deshacer nativo al ultimo
    * <input> tocado de la tabla de atras. */
   if ((e.key === 'z' || e.key === 'Z' || e.key === 'y' || e.key === 'Y') && e.ctrlKey &&
-      document.getElementById('overlay')?.classList.contains('show')) return false;
+      document.querySelector('dialog[open]')) return false;
   if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && !e.shiftKey){ document.dispatchEvent(new CustomEvent('lotes:deshacer')); return true; }
   if ((e.key === 'y' || e.key === 'Y') && e.ctrlKey){ document.dispatchEvent(new CustomEvent('lotes:rehacer')); return true; }
   if ((e.key === 'z' || e.key === 'Z') && e.ctrlKey && e.shiftKey){ document.dispatchEvent(new CustomEvent('lotes:rehacer')); return true; }

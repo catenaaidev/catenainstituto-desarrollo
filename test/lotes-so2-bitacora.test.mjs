@@ -12,6 +12,21 @@ const corr = (ot, fecha = '2026-09-10', mbk = 12) =>
 const clonar = v => JSON.parse(JSON.stringify(v));
 
 describe('aplicarCorreccion', () => {
+  it('no se engancha al análisis de un barril (vasija cargada): crea su registro', () => {
+    const barril = { lote: '26056', fecha_analisis: '2026-09-10', so2_libre: 6, vasija: '923' };
+    const analisis = [barril];
+    const r = aplicarCorreccion(analisis, '26056', '2026-09-10', corr('OC-1'));
+    expect(r.que).toBe('creado');
+    expect(barril.correccion).toBeUndefined();
+    expect(analisis).toHaveLength(2);
+  });
+
+  it('un análisis con nombre de tanque en vasija es del lote: se engancha como siempre', () => {
+    const tanque = { lote: '26056', fecha_analisis: '2026-09-10', so2_libre: 20, vasija: 'T 201' };
+    const r = aplicarCorreccion([tanque], '26056', '2026-09-10', corr('OC-1'));
+    expect(r).toMatchObject({ que: 'actualizado', ref: tanque });
+  });
+
   it('sin nada ese día crea un registro nuevo', () => {
     const analisis = [];
     const r = aplicarCorreccion(analisis, 26218, '2026-09-10', corr('OC-1'));
@@ -81,6 +96,16 @@ describe('aplicarCorreccion', () => {
     expect(esAnulada(analisis[0].correccion)).toBe(true);
     expect(analisis).toHaveLength(2);
   });
+
+  it('dos vasijas del mismo lote, misma fecha y OT, no se pisan', () => {
+    const analisis = [];
+    aplicarCorreccion(analisis, '26217', '2026-11-12', { ot_n: '0990', vasija: '212', dosis: 1 });
+    aplicarCorreccion(analisis, '26217', '2026-11-12', { ot_n: '0990', vasija: '214', dosis: 2 });
+    expect(analisis).toHaveLength(2);
+    aplicarCorreccion(analisis, '26217', '2026-11-12', { ot_n: '0990', vasija: '214', dosis: 3 });
+    expect(analisis).toHaveLength(2);
+    expect(analisis[1].correccion.dosis).toBe(3);
+  });
 });
 
 describe('revertirCorrecciones', () => {
@@ -109,7 +134,7 @@ describe('revertirCorrecciones', () => {
     expect(fusionado).toEqual([...inicial(), { lote: '4', fecha_analisis: '2026-09-12', ph: 3.4 }]);
   });
 
-  it('acepta los snaps con la forma de _ocEscribirEntradas (tipo / corrAnterior)', () => {
+  it('acepta snaps con la forma {tipo, corrAnterior} (sin el `que`/`anterior` de aplicarCorreccion)', () => {
     const analisis = inicial();
     const snaps = escribir(analisis).map(r => ({ tipo: r.que, ref: r.ref, corrAnterior: r.anterior,
       lote: r.lote, fecha: r.fecha, escrita: r.escrita }));

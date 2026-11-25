@@ -94,3 +94,51 @@ export function barrilesPorNum(
   }
   return out;
 }
+
+/** Un escaneo del Mapa (vaciado o llenado) atribuido a una OT. */
+export interface EscaneoOT {
+  id: string;
+  fecha: string;
+  tipo: string;
+  lote: string;
+  barriles: { num: string; cap: number | null }[];
+}
+
+/**
+ * Clave para comparar numeros de OT escritos de distintas formas: el escaner
+ * anota "957", "0957", "OT-957" u "OT 957" para la misma orden. Se saca el
+ * prefijo "OT" con su separador y los ceros a la izquierda.
+ */
+export function claveOT(ot: unknown): string {
+  let s = txt(ot).toLowerCase();
+  let antes: string;
+  do { antes = s; s = s.replace(/^ot\s*[-:#]?\s*/, ''); } while (s !== antes);
+  return s.replace(/^0+(?=\d)/, '');
+}
+
+/**
+ * Los escaneos del Mapa de esa OT, en orden de fecha, con la capacidad de cada
+ * barril segun el inventario. Es la fuente para saber que se vacio y que se
+ * lleno de verdad al confirmar una OT de trasiego: la OT dice lo previsto, el
+ * escaner lo que paso (en la 0957 la OT decia 17 barricas del lote 26236 y
+ * el Mapa vacio 6).
+ */
+export function escaneosDeOT(estado: Record<string, unknown>, ot: string): EscaneoOT[] {
+  const clave = claveOT(ot);
+  if (!clave) return [];
+  const caps = new Map<string, number | null>();
+  for (const b of filasInventario(estado)) caps.set(txt(b.num), numero(b.cap));
+  const out: EscaneoOT[] = [];
+  for (const e of filasDe((estado ?? {}).escaneos)) {
+    if (claveOT(e.ot) !== clave) continue;
+    const codigos = Array.isArray(e.codigos) ? e.codigos : [];
+    out.push({
+      id: txt(e.id),
+      fecha: txt(e.fecha),
+      tipo: txt(e.tipo),
+      lote: txt(e.lote),
+      barriles: codigos.map((c) => { const n = txt(c); return { num: n, cap: caps.has(n) ? caps.get(n)! : null }; }),
+    });
+  }
+  return out.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+}

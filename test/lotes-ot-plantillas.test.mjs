@@ -2,13 +2,13 @@
  * tabla de vasijas (y el operario no sabe qué trasegar) o revienta el render
  * con un tipo de bloque que nadie dibuja. Estos tests fijan esa estructura. */
 import { describe, it, expect } from 'vitest';
-import { PLANTILLAS_OT, plantillaPorId, TIPOS_BLOQUE, COLS_VACIADO, MODELOS_LLENADO, MODELOS_CORRECCION,
-  origenTanque, pideLoteCorte, creaLote, hojasDePlantilla, HOJAS_OT, barricasEstimadas } from '../public/lotes/js/ot-plantillas.js';
+import { PLANTILLAS_OT, plantillaPorId, TIPOS_BLOQUE, COLS_VACIADO, MODELOS_VACIADO, MODELOS_LLENADO, MODELOS_CORRECCION,
+  origenTanque, pideLoteCorte, creaLote, hojasDePlantilla, HOJAS_OT, barricasEstimadas, sinMovimientos } from '../public/lotes/js/ot-plantillas.js';
 
 describe('PLANTILLAS_OT', () => {
   it('trae las plantillas acordadas', () => {
     expect(PLANTILLAS_OT.map((p) => p.id)).toEqual(
-      ['barricas-barricas', 'tq-barricas', 'barrica-tanque', 'tq-tq', 'barricas-tanque']);
+      ['barricas-barricas', 'tq-barricas', 'barrica-tanque', 'tq-tq', 'barricas-tanque', 'corte-achique', 'traslado', 'muestras-ot']);
   });
 
   // El corte conserva el id 'barricas-tanque': las OT ya emitidas lo tienen
@@ -39,7 +39,7 @@ describe('PLANTILLAS_OT', () => {
   for (const p of PLANTILLAS_OT) {
     describe(p.id, () => {
       it('tiene exactamente una tabla de vaciado (ninguna si sale de tanque)', () => {
-        expect(p.bloques.filter((b) => b.tipo === 'tabla-vaciado')).toHaveLength(p.origen === 'tanque' ? 0 : 1);
+        expect(p.bloques.filter((b) => b.tipo === 'tabla-vaciado')).toHaveLength(p.origen === 'tanque' || p.sinMovimientos ? 0 : 1);
       });
       it('todos los bloques tienen un tipo conocido', () => {
         for (const b of p.bloques) expect(TIPOS_BLOQUE).toContain(b.tipo);
@@ -73,6 +73,12 @@ describe('PLANTILLAS_OT', () => {
     const textos = pl.bloques.map((b) => b.texto || '').join(' | ');
     expect(textos).toContain('CON BORRAS');
     expect(textos).not.toContain('CAUDALÍMETRO');
+  });
+
+  it('los modelos de vaciado son conocidos', () => {
+    for (const p of PLANTILLAS_OT) for (const b of p.bloques.filter((b) => b.tipo === 'tabla-vaciado' && b.modelo)) {
+      expect(MODELOS_VACIADO).toContain(b.modelo);
+    }
   });
 
   it('los modelos de correccion son conocidos', () => {
@@ -120,5 +126,51 @@ describe('PLANTILLAS_OT', () => {
 
   it('plantillaPorId devuelve null para un id desconocido', () => {
     expect(plantillaPorId('nada')).toBeNull();
+  });
+});
+
+describe('Corte + achique (0943)', () => {
+  it('es un corte que crea lote y reparte el pulmon', () => {
+    const pl = plantillaPorId('corte-achique');
+    expect(pl.nombre).toBe('Corte + achique');
+    expect(pideLoteCorte('corte-achique')).toBe(true);
+    expect(creaLote('corte-achique')).toBe(true);
+    expect(pl.achique).toBe(true);
+    const tipos = pl.bloques.map(b => b.tipo);
+    expect(tipos.indexOf('tabla-achique')).toBeGreaterThan(tipos.indexOf('tabla-correccion'));
+    expect(pl.bloques.filter(b => b.tipo === 'rotular').map(b => b.de)).toEqual(['corte', 'achique']);
+    const textos = pl.bloques.map(b => b.texto || '').join(' | ');
+    for (const t of ['SIN BORRAS', 'Homogeneizar.', 'Registrar SO2 Final', 'Preparar pare reubicar',
+                     'En caso de que quede mermo:', 'Chequear O2 final y registrar', 'Lavar vasija utilizada.'])
+      expect(textos).toContain(t);
+  });
+  it('hojas: solo la OT, salvo que haya barricas o T50 de destino', () => {
+    const ot = destinos => ({ plantilla: 'corte-achique', achique: { destinos } });
+    expect(hojasDePlantilla('corte-achique')).toEqual(['ot']);
+    expect(hojasDePlantilla('corte-achique', ot([{ tipo: 'tanque', num: '206' }]))).toEqual(['ot']);
+    expect(hojasDePlantilla('corte-achique', ot([{ tipo: 'tanque', num: '206' }, { tipo: 'chicas', barricas: 2 }])))
+      .toEqual(HOJAS_OT);
+  });
+});
+
+describe('muestras-ot (0993)', () => {
+  const pl = plantillaPorId('muestras-ot');
+  it('se llama Muestras, una sola hoja, sin movimientos', () => {
+    expect(pl.nombre).toBe('Muestras');
+    expect(pl.banda).toEqual(['MUESTRAS']);
+    expect(hojasDePlantilla('muestras-ot')).toEqual(['ot']);
+    expect(sinMovimientos('muestras-ot')).toBe(true);
+    expect(sinMovimientos('traslado')).toBe(false);
+    expect(sinMovimientos('no-existe')).toBe(false);
+  });
+  it('trae los pasos de la 0993 y una tabla de muestras en el medio', () => {
+    expect(pl.bloques.map(b => b.tipo === 'paso' ? b.texto : b.tipo)).toEqual([
+      'Buscar las siguientes muestras y armar cortes según indicaciones',
+      'IR DESINFECTANDO MANGUERITA ENTRE MUESTRA Y MUESTRA',
+      'tabla-muestras',
+      'AL finalizar gasear TODOS LOS T50 ANTES DE CERRAR',
+      'Analizar los cortes y de ser necesario corregir a 35 ppm',
+      'Enviar por mail a Nico Torti datos analizados',
+    ]);
   });
 });

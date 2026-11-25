@@ -1,91 +1,14 @@
-/* ===== Lotes CIW — selector de años (estado + botones) =====
- * Los botones 2025 | 2026 de la barra de pestañas. Se prenden y apagan por
- * separado y mandan en toda la web. La regla del año vive en anios.js; aca solo
- * la seleccion, su recuerdo en el navegador y el pintado.
- *
- * No importa nucleo.js: nucleo lo importa a el (cargarDashboard necesita la
- * clave) y un import de vuelta cerraria el ciclo. Avisa los cambios con el
- * evento 'lotes:anios-cambiados' y app.js hace el resto. */
+/* ===== Lotes CIW — selector de años =====
+ * La lógica vive en public/shared/selector-anios.js (la comparte Prensas).
+ * No importa nucleo.js: nucleo lo importa a él (cargarDashboard necesita la
+ * clave). Avisa los cambios con 'lotes:anios-cambiados' y app.js hace el resto. */
 'use strict';
-import { aniosDisponibles, seleccionInicial, alternarAnio, loteVisible,
-         otVisible, claveAnios, claveParaPrefetch } from './anios.js';
+import { crearSelectorAnios } from '../../shared/selector-anios.js';
 
-const CLAVE_LS = 'lotes_anios';
-// Solo para adelantar el /dashboard antes de montar (ver queryAnios): la
-// explicita (CLAVE_LS) manda, esta es el respaldo. No la lee seleccionInicial.
-const CLAVE_LS_ULTIMA = 'lotes_anios_ultima';
-let _sel = null;          // null = todavia no se monto: no se filtra nada
-let _disponibles = [];
-
-function _leerGuardada(){
-  try { return JSON.parse(localStorage.getItem(CLAVE_LS) || 'null'); } catch(e) { return null; }
-}
-function _leerUltima(){
-  try { return JSON.parse(localStorage.getItem(CLAVE_LS_ULTIMA) || 'null'); } catch(e) { return null; }
-}
-function _guardar(){
-  try { localStorage.setItem(CLAVE_LS, JSON.stringify(_sel)); } catch(e) {}
-  _guardarUltima();
-}
-/* A diferencia de _guardar(), esta se llama tambien al montar (no solo al
- * click): es la unica forma de que un usuario que nunca toca el selector deje
- * de pedir el dashboard dos veces en cada carga (ver queryAnios). */
-function _guardarUltima(){
-  try { localStorage.setItem(CLAVE_LS_ULTIMA, JSON.stringify(_sel)); } catch(e) {}
-}
-
-export function aniosActivos(){ return _sel; }
-export function visible(lote){ return loteVisible(lote, _sel); }
-export function otVisibleAhora(ot){ return otVisible(ot, _sel); }
-
-/* Antes de montar (_sel===null) no hay filtro client-side (aniosActivos()
- * sigue devolviendo null, visible() sigue devolviendo true): pero para no
- * pedir el dashboard entero en el arranque y volver a pedirlo filtrado apenas
- * se monta, esta funcion sí adelanta la clave guardada en localStorage, si es
- * una seleccion valida. */
-export function queryAnios(){
-  if (_sel !== null) return claveAnios(_sel);
-  return claveParaPrefetch(_leerGuardada(), _leerUltima());
-}
-
-function _pintar(){
-  const cont = document.getElementById('selAnios');
-  if (!cont) return;
-  /* Con un solo año no hay nada que elegir: no se muestra. */
-  cont.hidden = _disponibles.length < 2;
-  cont.innerHTML = _disponibles.map(a =>
-    `<button type="button" data-anio="${a}" aria-pressed="${_sel.includes(a)}"`
-    + ` title="Mostrar u ocultar los lotes ${a}">${a}</button>`).join('');
-}
-
-function _avisar(){ document.dispatchEvent(new CustomEvent('lotes:anios-cambiados')); }
-
-/* Se llama despues de cargar DATOS (y otra vez si se recargan): un lote 27xxx
- * nuevo agrega su boton solo. */
-export function montarSelectorAnios(lotes){
-  /* "Antes" de la primera vez es la clave con que ya se adelanto el /dashboard
-   * (queryAnios), no la seleccion vacia: comparar contra '' avisaba un cambio
-   * en CADA carga de la pagina, y el aviso volvia a pedir el /dashboard (720 KB
-   * y el calculo mas caro del servidor) con la misma clave que el que ya venia
-   * en camino. */
-  const antes = queryAnios();
-  _disponibles = aniosDisponibles(lotes);
-  _sel = seleccionInicial(_sel || _leerGuardada(), _disponibles);
-  _guardarUltima();
-  _pintar();
-  const cont = document.getElementById('selAnios');
-  if (cont && !cont._escuchando){
-    cont._escuchando = true;
-    cont.addEventListener('click', e => {
-      const b = e.target.closest('button[data-anio]');
-      if (!b) return;
-      const nueva = alternarAnio(_sel, Number(b.dataset.anio));
-      if (claveAnios(nueva) === claveAnios(_sel)) return;   // era el ultimo prendido
-      _sel = nueva;
-      _guardar();
-      _pintar();
-      _avisar();
-    });
-  }
-  if (claveAnios(_sel) !== antes) _avisar();
-}
+const _s = crearSelectorAnios({ claveLS: 'lotes_anios', idContenedor: 'selAnios',
+                                evento: 'lotes:anios-cambiados' });
+export const aniosActivos = _s.aniosActivos;
+export const visible = _s.visible;
+export const otVisibleAhora = _s.otVisibleAhora;
+export const queryAnios = _s.queryAnios;
+export const montarSelectorAnios = _s.montar;

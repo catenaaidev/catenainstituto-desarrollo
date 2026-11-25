@@ -15,7 +15,7 @@ import { normalizarMapa, MapaNoDisponible } from './motores/mapa';
 import { cruzar } from './motores/cruce';
 import { armarOrden } from './motores/correccion';
 import { ETAPAS, etapasSugeridas } from './motores/etapas';
-import { barrilesDeLotes, barrilesPorNum } from './motores/barriles-lote';
+import { barrilesDeLotes, barrilesPorNum, escaneosDeOT } from './motores/barriles-lote';
 import { leerAnios, enAnios, recortarPorAnios, anioDeLote } from './motores/anios';
 
 const MODULO = 'lotes';
@@ -333,21 +333,24 @@ export async function rutasLotes(
     }
   }
 
-  // ---------- GET /barriles?lotes=26217,26218  y/o  ?nums=2221713,451 ----------
+  // ---------- GET /barriles?lotes=26217,26218  y/o  ?nums=2221713,451  y/o  ?ot=0957 ----------
   // Para las OT de trasiego y las barricas mermas. Solo lectura: el Mapa lo
-  // escribe el escáner, nunca una OT.
+  // escribe el escáner, nunca una OT. ot= trae los escaneos (vaciados y
+  // llenados) que el escáner anotó con ese número de OT.
   if (ruta === '/barriles' && req.method === 'GET') {
     const qs = new URL(req.url).searchParams;
     const lista = (p: string) => (qs.get(p) ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     const pedidos = lista('lotes');
     const nums = lista('nums');
-    if (!pedidos.length && !nums.length) return json(400, { error: 'falta el parámetro lotes o nums' });
+    const ot = (qs.get('ot') ?? '').trim();
+    if (!pedidos.length && !nums.length && !ot) return json(400, { error: 'falta el parámetro lotes, nums u ot' });
     try {
       const doc = await leerMapaBarriles(env);
       const estado = doc.estado ?? {};
       const r: Record<string, unknown> = { version: doc.version };
       if (pedidos.length) r.por_lote = barrilesDeLotes(estado, pedidos);
       if (nums.length) r.por_num = barrilesPorNum(estado, nums);
+      if (ot) r.escaneos_ot = escaneosDeOT(estado, ot);
       return json(200, r);
     } catch (e) {
       if (e instanceof MapaNoDisponible) return json(503, { error: e.message });

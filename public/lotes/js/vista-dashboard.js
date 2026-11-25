@@ -10,20 +10,22 @@ import { estaPendiente } from './mermas.js';
 import { visible } from './selector-anios.js';
 import { prepararGraficos, destruirGraficos, cerrarDrill,
          graficoAV, graficoSO2, graficoDispersion, pintarHeatmap } from './dash-graficos.js';
+import { confirmar } from './dialogos.js';
 
 const COND_LABELS = {
-  fml_no_finalizada:          'FML no terminada',
+  fml_no_finalizada:          'FML en curso',
   fml_terminada_excluida:     'FML terminada/excluida',
   so2_no_ok:                  'SO2 no OK',
   ph_no_ok:                   'pH no OK',
   av_alerta:                  'AV en alerta',
   frecuencia_vencida:         'Frecuencia vencida',
   sin_analisis_valido:        'Sin análisis válido',
-  no_lleno:                   'No lleno',
-  fa_no_finalizada:           'FA no terminada',
+  no_lleno:                   'Vasija con merma',
+  fa_no_finalizada:           'FA en curso',
   datos_operativos_incompletos: 'Datos operativos incompletos',
   control_proceso_pendiente:  'Sin control de proceso',
   so2_caida_alerta:           'Caída de SO₂ libre',
+  reanalisis_correccion:      'Re-análisis post-corrección',
 };
 
 /* ---------- confirmacion de etapas ---------- */
@@ -152,7 +154,7 @@ function renderGraficos(d){
 
 /** ¿A este lote le falta el analisis que pide su frecuencia?
  *
- *  Es la MISMA definicion que alimenta la pregunta frecuente "Faltan analizar"
+ *  Es la MISMA definicion que alimenta la pregunta frecuente "Pendientes de análisis"
  *  y las tarjetas de analisis: vive en un solo lugar a proposito, porque dos
  *  copias de esta condicion se separan callado y el dashboard pasa a mostrar
  *  dos numeros distintos para lo mismo.
@@ -226,7 +228,7 @@ export function renderDashboard(){
       ? `Faltan <b>${ent(res.deficitGramos)}</b> g de SO₂ en total`
       : (res.sinDatoSo2 ? `${res.sinDatoSo2} lote(s) sin datos para evaluar` : 'Todo en objetivo');
     $('kpiAvSub').textContent = res.avAlta
-      ? 'Al 80 % de su límite o por encima'
+      ? 'Incluye los que ya superan el máximo'
       : (res.sinDatoAv ? `${res.sinDatoAv} lote(s) sin AV medida` : 'Todos con margen');
   }
 
@@ -254,7 +256,7 @@ export function renderDashboard(){
    * el motor FML, no hay campo que tenga sentido editar aca. */
   activarGrilla($('tAlarmas'));
 
-  /* ---- Preguntas frecuentes ---- */
+  /* ---- Resumen operativo ---- */
   const lotes = d.lotes || [];
 
   const fmlNoTerm  = lotes.filter(l => l.fml_estado === 'no_finalizada').length;
@@ -269,12 +271,12 @@ export function renderDashboard(){
   const barrMermas = (DATOS().mermas || []).filter(m => visible(m.lote)).filter(estaPendiente).length;
 
   const faqs = [
-    { n: fmlNoTerm,   label: 'FML no terminada',       hi: fmlNoTerm  > 0 },
+    { n: fmlNoTerm,   label: 'FML en curso',           hi: fmlNoTerm  > 0 },
     { n: fmlTermExc,  label: 'FML terminada / excluida', hi: false      },
-    { n: mermos,      label: 'Mermos (no lleno)',        hi: mermos     > 0 },
-    { n: sinAnalisis, label: 'Faltan analizar',          hi: sinAnalisis > 0 },
-    { n: faEnProc,    label: 'FA en proceso',            hi: faEnProc   > 0 },
-    { n: barrMermas,  label: 'Barricas mermas',          hi: barrMermas > 0 },
+    { n: mermos,      label: 'Vasijas con merma',        hi: mermos     > 0 },
+    { n: sinAnalisis, label: 'Pendientes de análisis',   hi: sinAnalisis > 0 },
+    { n: faEnProc,    label: 'FA en curso',              hi: faEnProc   > 0 },
+    { n: barrMermas,  label: 'Barricas con merma pendiente', hi: barrMermas > 0 },
   ];
 
   $('dashFaq').innerHTML = faqs.map(f =>
@@ -322,7 +324,7 @@ export function renderDashboard(){
     '<div class="card" style="margin-bottom:22px" id="bandejaEtapasCard">' +
     `<h2>Bandeja de etapas</h2>` +
     `<p style="color:var(--muted);font-size:13px;margin:-8px 0 12px">${esc(String(bandeja.length))} lote${bandeja.length !== 1 ? 's' : ''} listo${bandeja.length !== 1 ? 's' : ''} para cambiar de etapa</p>` +
-    '<div style="margin-bottom:12px"><button class="btn primary" id="btnConfirmarTodas">✓ Confirmar todas</button></div>' +
+    '<div style="margin-bottom:12px"><button class="btn primary" id="btnConfirmarTodas">Confirmar todas (' + esc(String(bandeja.length)) + ')</button></div>' +
     '<div class="scroll"><table id="tBandeja">' +
     '<thead><tr><th class="num">Lote</th><th>Variedad</th><th>Etapa actual</th><th>Etapa sugerida</th><th class="num">%</th><th></th></tr></thead>' +
     '<tbody>';
@@ -352,7 +354,14 @@ export function renderDashboard(){
     const btnTodas = e.target.closest('#btnConfirmarTodas');
     if (btnTodas){
       const card = e.target.closest('#bandejaEtapasCard');
-      await confirmarTodasLasEtapas(card._filas || []);
+      const filas = card._filas || [];
+      if (!filas.length) return;
+      const n = filas.length;
+      if (!await confirmar({
+        titulo: 'Confirmar ' + n + (n === 1 ? ' etapa' : ' etapas'),
+        texto: (n === 1 ? 'El lote pasa' : 'Los ' + n + ' lotes pasan') + ' a la etapa que sugiere el sistema. Queda registrado con tu nombre.',
+        si: 'Confirmar ' + n, no: 'Cancelar' })) return;
+      await confirmarTodasLasEtapas(filas);
       return;
     }
     // Confirmar individual

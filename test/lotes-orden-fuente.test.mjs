@@ -109,6 +109,9 @@ describe('tanqueDeVasija', () => {
     expect(tanqueDeVasija('F163 + Barricas')).toBe('F163');
     expect(tanqueDeVasija('T 177 + t200')).toBe('T 177');
     expect(tanqueDeVasija('H 183 + t200')).toBe('H 183');
+    // Asi lo escribe la OT al confirmar: con la cantidad adelante (26260, 2026-11-18).
+    expect(tanqueDeVasija('H 183 + 1 t200')).toBe('H 183');
+    expect(tanqueDeVasija('T 201 + 11 barricas + 2 T50')).toBe('T 201');
     expect(tanqueDeVasija('H184 + t50')).toBe('H184');
   });
 
@@ -244,5 +247,57 @@ describe('pasaFuente — las fuentes que ya existian', () => {
     // Pasar el lote completo no tiene que colar un lote al dia en 'vencidos'.
     expect(trae(AL_DIA, { vasija_grande: 3500 }, 'vencidos')).toBe(false);
     expect(trae(AL_DIA, { vasija_grande: 3500 }, 'todos')).toBe(true);
+  });
+});
+
+/* 2026-11-18: la ronda del dia no trajo los lotes 2025. Dos causas: la ronda
+ * salia del tablero (que respeta el selector de años) y exigia vasija_grande,
+ * mientras el Inventario de tanques ubica en el tanque a un lote sin
+ * vasija_grande si no tiene envases chicos. Ahora las dos usan litrosEnTanque. */
+import { lotesDeRonda } from '../public/lotes/js/orden-filas.js';
+import { litrosEnTanque } from '../public/lotes/js/envases.js';
+
+describe('litrosEnTanque — misma regla que el Inventario de tanques', () => {
+  it('manda vasija_grande', () => {
+    expect(litrosEnTanque({ vasija_grande: 3300, cap200: 1, litros_actuales: 3500, vasija_actual: 'H 183 + 1 t200' })).toBe(3300);
+  });
+  it('sin vasija_grande ni envases chicos, con un tanque escrito: todos los litros estan en el tanque', () => {
+    expect(litrosEnTanque({ litros_actuales: 4100, vasija_actual: 'T 201' })).toBe(4100);
+    expect(litrosEnTanque({ litros_actuales: 4100, vasija_grande: '', vasija_actual: 'T60' })).toBe(4100);
+  });
+  it('sin vasija_grande y con envases chicos: nada en tanque (el texto quedo viejo)', () => {
+    expect(litrosEnTanque({ litros_actuales: 2250, cap225: 10, vasija_actual: '10 barricas + H 170' })).toBe(0);
+  });
+  it('solo barricas o T50 escritos, o sin litros: nada en tanque', () => {
+    expect(litrosEnTanque({ litros_actuales: 450, vasija_actual: 'Barricas' })).toBe(0);
+    expect(litrosEnTanque({ litros_actuales: 100, vasija_actual: '2 T50' })).toBe(0);
+    expect(litrosEnTanque({ litros_actuales: 0, vasija_actual: 'T 201' })).toBe(0);
+    expect(litrosEnTanque(null)).toBe(0);
+  });
+});
+
+describe('ronda de tanques: lote 2025 sin vasija_grande', () => {
+  it('entra si su vino esta en un tanque', () => {
+    expect(clasificarLote(AL_DIA, { litros_actuales: 5000, vasija_actual: 'T 205' }).rondaTanques).toBe(true);
+  });
+});
+
+describe('lotesDeRonda — todos los años, aunque el tablero traiga uno solo', () => {
+  const datos = [
+    { lote: '25100', variedad: 'Malbec', etapa: 'crianza', litros_actuales: 5000, vasija_actual: 'T 205' },
+    { lote: '26260', variedad: 'PV', litros_actuales: 3500, vasija_grande: 3300, cap200: 1, vasija_actual: 'H 183 + 1 t200' },
+    { lote: '26300', litros_actuales: 2250, cap225: 10, vasija_actual: 'Barricas' },
+    { lote: '25101', litros_actuales: 0, vasija_actual: 'T 201' },
+  ];
+  const dash = [{ lote: '26260', variedad: 'PV', vencido: true, alarmas: ['so2_no_ok'] }];
+
+  it('trae los lotes con vino en tanque, uses o no el selector de años', () => {
+    expect(lotesDeRonda(datos, dash).map(l => l.lote)).toEqual(['25100', '26260']);
+  });
+  it('usa la fila del tablero si existe (motivo real) y una fila minima si no', () => {
+    const r = lotesDeRonda(datos, dash);
+    expect(r[1]).toBe(dash[0]);
+    expect(r[0]).toEqual({ lote: '25100', variedad: 'Malbec', etapa: 'crianza', vencido: false, alarmas: [] });
+    expect(motivoDeFila(clasificarLote(r[0], datos[0]), 'ronda_tanques')).toBe('Ronda de tanques');
   });
 });

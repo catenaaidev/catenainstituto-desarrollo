@@ -5,104 +5,66 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Usuarios · Plataforma CIW</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/shared/estilo.css">
+<script src="/shared/dialogo-modelo.js"></script>
+<script src="/shared/dialogo.js"></script>
 <style>
-  @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
-  @font-face{font-family:'Fraunces';src:url('/prensas/fonts/fraunces-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
-  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}
-  @font-face{font-family:'Hanken Grotesk';src:url('/prensas/fonts/hanken-grotesk-latin-600-normal.woff2') format('woff2');font-weight:600;font-display:swap}
-
-  :root{
-    --bg:#f7f5f1; --panel:#ffffff; --panel2:#f1efe9; --line:#e7e3da;
-    --txt:#2a2622; --muted:#8c857b; --accent:#8a3340; --accent2:#6f2731;
-    --ok:#3f7d4f; --warn:#b07d2c;
-    --serif:'Fraunces',Georgia,'Times New Roman',serif;
-    --sans:'Hanken Grotesk',system-ui,Segoe UI,sans-serif;
-  }
   *{box-sizing:border-box}
-  body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;-webkit-font-smoothing:antialiased;min-height:100vh}
-  header{padding:22px 30px 16px;display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
-  header h1{margin:0;font-family:var(--serif);font-size:26px;font-weight:500}
-  header .sub{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:2.8px}
-  header .right{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
-  .link{color:var(--muted);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:4px 10px;font-size:11.5px}
-  .link:hover{border-color:var(--accent);color:var(--accent)}
-
-  main{max-width:1080px;margin:0 auto;padding:34px 26px 70px}
-  .barra{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap}
-  .barra h2{margin:0;font-family:var(--serif);font-size:22px;font-weight:500}
-  .barra .nota{color:var(--muted);font-size:13px}
-  .barra button{margin-left:auto}
-
-  button,.btn{font:600 13px var(--sans);border-radius:7px;padding:8px 14px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff}
-  button:hover{background:var(--accent2)}
-  button.sec{background:#fff;color:var(--txt);border-color:var(--line)}
-  button.sec:hover{border-color:var(--accent);color:var(--accent);background:#fff}
-  button.peligro{background:#fff;color:#8c3b32;border-color:#e9c9c5}
-  button.peligro:hover{background:#fdf3f2}
-  button:disabled{opacity:.6;cursor:wait}
-  button.chico{padding:5px 10px;font-size:12px}
-
-  .tabla{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  .tabla th,.tabla td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
-  .tabla th{font-size:10.5px;text-transform:uppercase;letter-spacing:1.4px;color:var(--muted);font-weight:600;background:var(--panel2)}
-  .tabla tr:last-child td{border-bottom:0}
-  .tabla td.acciones{white-space:nowrap;text-align:right}
-  .tabla td.acciones button{margin-left:6px}
+  body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--txt);font-size:14px;line-height:1.4;-webkit-font-smoothing:antialiased;min-height:100vh}
+  ::selection{background:var(--accent);color:#fff}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  header{position:sticky;top:0;z-index:var(--ci-z-sticky);background:var(--bg);display:flex;align-items:center;gap:18px;padding:11px 26px;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+  header .marca{font-family:var(--serif);font-size:27px;font-weight:500;line-height:1}
+  header .sub{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1.8px}
+  header .right{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+  main{max-width:1080px;margin:0 auto;padding:22px 26px 60px}
   .usuario{font-weight:600}
   .muted{color:var(--muted);font-size:12px}
-  .envoltura{overflow-x:auto}
-
-  .chip{display:inline-block;font-size:9.5px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;padding:3px 7px;border-radius:20px;white-space:nowrap;margin:1px 2px 1px 0}
-  .chip.admin{background:#f3e7e9;color:var(--accent)}
-  .chip.editor{background:#e6efe8;color:var(--ok)}
-  .chip.lector{background:#f1efe9;color:var(--muted)}
-  .chip.warn{background:#f7efe0;color:var(--warn)}
-  .chip.off{background:#eee;color:#888}
-
-  dialog{border:1px solid var(--line);border-radius:12px;padding:0;width:min(520px,calc(100% - 32px));box-shadow:0 24px 60px -30px rgba(42,38,34,.45)}
-  dialog::backdrop{background:rgba(42,38,34,.35)}
-  .dlg{padding:26px}
-  .dlg h3{margin:0 0 14px;font-family:var(--serif);font-size:21px;font-weight:600}
-  .campo{margin:14px 0 0}
-  .campo label{display:block;font-size:12px;font-weight:600;margin-bottom:6px}
-  .campo input[type=text]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:7px;font:inherit}
-  .campo input:focus,.campo select:focus{outline:2px solid rgba(138,51,64,.18);border-color:var(--accent)}
+  .envoltura{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .ci-tabla td.acciones{white-space:nowrap;text-align:right}
+  .ci-tabla td.acciones .ci-btn{margin-left:6px}
+  .ci-pill{margin:1px 2px 1px 0;text-transform:uppercase;letter-spacing:1px;font-size:9.5px}
+  dialog#dlg{border:1px solid var(--rule);border-top:3px solid var(--rule);border-radius:var(--ci-r);padding:0;width:min(560px,calc(100% - 32px));background:var(--panel);color:var(--txt);box-shadow:8px 8px 0 rgba(28,27,25,.08)}
+  dialog#dlg::backdrop{background:rgba(28,27,25,.38)}
+  .dlg{padding:22px 24px}
+  .dlg h3{margin:0 0 6px;font-family:var(--serif);font-size:26px;font-weight:500}
   .mods{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-  .mods label{font-weight:400;color:var(--muted);font-size:12px;margin-bottom:4px}
-  .mods select{width:100%;padding:8px;border:1px solid var(--line);border-radius:7px;font:inherit;background:#fff}
-  .checks{display:flex;gap:20px;flex-wrap:wrap}
-  .checks label{display:flex;align-items:center;gap:7px;font-weight:400;font-size:13px}
-  .pie{display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
+  .mods label{text-transform:none;letter-spacing:0;font-size:12px}
+  .checks{display:flex;gap:20px;flex-wrap:wrap;margin-top:16px}
+  .checks label{display:flex;align-items:center;gap:7px;font-size:13px;min-height:32px}
+  .checks input{accent-color:var(--accent)}
+  .pie{display:flex;gap:8px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap}
   .pie .izq{margin-right:auto}
-  .ayuda{color:var(--muted);font-size:12px;line-height:1.5;margin:6px 0 0}
-  .error{background:#fdf3f2;border:1px solid #e9c9c5;color:#8c3b32;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;margin-top:14px}
-  .ok{background:#e6efe8;border:1px solid #c6dccb;color:#2f5f3c;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.5;margin-bottom:16px}
-
-  @media (max-width:640px){
-    header{padding:18px 16px 14px}
-    main{padding:24px 16px 50px}
+  #mensaje .error, #f-error .error, #contenido .error{background:var(--nook-tinte);border-left:3px solid var(--nook);color:var(--nook);padding:10px 12px;font-size:13px;line-height:1.5;margin-top:14px}
+  #mensaje .ok{background:var(--ok-tinte);border-left:3px solid var(--ok);color:var(--ok);padding:10px 12px;font-size:13px;line-height:1.5;margin-bottom:16px}
+  @media (max-width:760px){
+    header{padding:10px 16px}
+    main{padding:18px 16px 50px}
     .mods{grid-template-columns:1fr}
+    .pie .ci-btn{flex:1}
+    .pie .izq{flex-basis:100%}
   }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Plataforma CIW</h1>
-  <span class="sub">Administración de usuarios</span>
+  <span class="marca">Usuarios</span>
+  <span class="sub">Plataforma CIW · administración</span>
   <div class="right">
     <span id="quien"></span>
-    <a class="link" href="/">← Menú</a>
-    <a class="link" href="/api/auth/logout">Salir</a>
+    <a class="ci-btn chico" href="/">← Menú</a>
+    <a class="ci-btn chico" href="/cambiar-clave.html">Contraseña</a>
+    <a class="ci-btn chico" href="/api/auth/logout">Salir</a>
   </div>
 </header>
 
 <main>
   <div id="mensaje"></div>
-  <div class="barra">
-    <h2>Usuarios</h2>
-    <span class="nota">Los usuarios nuevos entran con la contraseña <strong>1234</strong> y se les pide cambiarla.</span>
-    <button id="nuevo" type="button">+ Nuevo usuario</button>
+  <div class="ci-pg-head">
+    <h1>Usuarios</h1>
+    <p>Los usuarios nuevos entran con la contraseña <strong>1234</strong> y se les pide cambiarla.</p>
+    <div class="ci-acc"><button class="ci-btn primario" id="nuevo" type="button">Nuevo usuario</button></div>
   </div>
   <div id="contenido"><p class="muted">Cargando usuarios…</p></div>
 </main>
@@ -110,34 +72,34 @@
 <dialog id="dlg">
   <form class="dlg" id="form" method="dialog">
     <h3 id="titulo">Nuevo usuario</h3>
-    <div class="campo">
+    <div class="ci-campo">
       <label for="f-usuario">Usuario</label>
       <input type="text" id="f-usuario" autocomplete="off" autocapitalize="none" spellcheck="false" required>
-      <p class="ayuda">Con el que inicia sesión. Letras, números, punto, guion o @. Se guarda en minúsculas.</p>
+      <p class="ci-ayuda">Con el que inicia sesión. Letras, números, punto, guion o @. Se guarda en minúsculas.</p>
     </div>
-    <div class="campo">
+    <div class="ci-campo">
       <label for="f-nombre">Nombre</label>
       <input type="text" id="f-nombre" autocomplete="off" placeholder="Como aparece en la app y en el historial">
     </div>
-    <div class="campo">
-      <label>Acceso a cada módulo</label>
+    <fieldset class="ci-campo">
+      <legend>Acceso a cada módulo</legend>
       <div class="mods">
         <div><label for="m-prensas">Prensas</label><select id="m-prensas"></select></div>
         <div><label for="m-barriles">Barriles</label><select id="m-barriles"></select></div>
         <div><label for="m-lotes">Lotes</label><select id="m-lotes"></select></div>
       </div>
-      <p class="ayuda">Lector: solo mira · Editor: carga y edita · Admin: todo, incluidos los respaldos.<br>
+      <p class="ci-ayuda">Lector: solo mira · Editor: carga y edita · Admin: todo, incluidos los respaldos.<br>
         En Barriles, Editor abre la vista de <b>operario</b> y Admin la de <b>programador</b>.</p>
-    </div>
-    <div class="campo checks">
+    </fieldset>
+    <div class="checks">
       <label><input type="checkbox" id="f-activo" checked> Activo (puede iniciar sesión)</label>
       <label><input type="checkbox" id="f-admin"> Administra usuarios</label>
     </div>
     <div id="f-error"></div>
     <div class="pie">
-      <button type="button" class="sec izq" id="f-reset" hidden>Resetear contraseña a 1234</button>
-      <button type="button" class="sec" id="f-cancelar">Cancelar</button>
-      <button type="submit" id="f-guardar">Guardar</button>
+      <button type="button" class="ci-btn izq" id="f-reset" hidden>Resetear contraseña a 1234</button>
+      <button type="button" class="ci-btn" id="f-cancelar">Cancelar</button>
+      <button type="submit" class="ci-btn primario" id="f-guardar">Guardar</button>
     </div>
   </form>
 </dialog>
@@ -182,14 +144,16 @@ async function api(metodo, ruta, cuerpo) {
   return j;
 }
 
+const CLASE_PILL_MODULO = { admin: 'neutro', editor: 'ok', lector: 'neutro' };
+
 function fila(u) {
   const mods = MODULOS.filter(m => u.modulos[m])
-    .map(m => `<span class="chip ${esc(u.modulos[m])}">${NOMBRES[m]}: ${esc(u.modulos[m])}</span>`).join('')
+    .map(m => `<span class="ci-pill ${CLASE_PILL_MODULO[u.modulos[m]] || 'neutro'}">${NOMBRES[m]}: ${esc(u.modulos[m])}</span>`).join('')
     || '<span class="muted">Sin módulos</span>';
   const estado = [
-    u.activo ? '' : '<span class="chip off">Inactivo</span>',
-    u.es_admin ? '<span class="chip admin">Administra usuarios</span>' : '',
-    u.debe_cambiar ? '<span class="chip warn">Contraseña inicial</span>' : '',
+    u.activo ? '' : '<span class="ci-pill neutro">Inactivo</span>',
+    u.es_admin ? '<span class="ci-pill neutro">Administra usuarios</span>' : '',
+    u.debe_cambiar ? '<span class="ci-pill aviso">Contraseña inicial</span>' : '',
   ].join('') || '<span class="muted">Activo</span>';
   const soyYo = yo && u.usuario === yo.email;
   return `<tr>
@@ -197,8 +161,8 @@ function fila(u) {
     <td>${mods}</td>
     <td>${estado}</td>
     <td class="acciones">
-      <button class="sec chico" data-editar="${esc(u.usuario)}">Editar</button>
-      ${soyYo ? '' : `<button class="peligro chico" data-eliminar="${esc(u.usuario)}">Eliminar</button>`}
+      <button class="ci-btn chico" data-editar="${esc(u.usuario)}">Editar</button>
+      ${soyYo ? '' : `<button class="ci-btn chico peligro" data-eliminar="${esc(u.usuario)}">Eliminar</button>`}
     </td>
   </tr>`;
 }
@@ -209,7 +173,7 @@ function pintar() {
     return;
   }
   $('contenido').innerHTML =
-    '<div class="envoltura"><table class="tabla"><thead><tr>' +
+    '<div class="envoltura"><table class="ci-tabla"><thead><tr>' +
     '<th>Usuario</th><th>Módulos</th><th>Estado</th><th></th>' +
     '</tr></thead><tbody>' + usuarios.map(fila).join('') + '</tbody></table></div>';
 }
@@ -265,7 +229,12 @@ $('contenido').addEventListener('click', async (e) => {
   const el = e.target.closest('[data-eliminar]');
   if (el) {
     const u = el.dataset.eliminar;
-    if (!confirm(`¿Eliminar el usuario "${u}"? Pierde el acceso a la plataforma. El historial de lo que cargó se conserva.`)) return;
+    const seguro = await CI.confirmar({
+      titulo: 'Eliminar usuario',
+      texto: `"${u}" pierde el acceso a la plataforma. El historial de lo que cargó se conserva.`,
+      si: 'Eliminar usuario', no: 'Cancelar', peligro: true,
+    });
+    if (!seguro) return;
     el.disabled = true;
     try {
       await api('DELETE', '/usuarios/' + encodeURIComponent(u));
@@ -302,7 +271,12 @@ $('form').addEventListener('submit', async (e) => {
 
 $('f-reset').addEventListener('click', async () => {
   if (!editando) return;
-  if (!confirm(`¿Resetear la contraseña de "${editando}" a 1234? Se le cierran las sesiones abiertas y al entrar se le pide elegir una nueva.`)) return;
+  const seguro = await CI.confirmar({
+    titulo: 'Resetear contraseña',
+    texto: `La contraseña de "${editando}" vuelve a 1234. Se le cierran las sesiones abiertas y al entrar se le pide elegir una nueva.`,
+    si: 'Resetear a 1234', no: 'Cancelar', peligro: true,
+  });
+  if (!seguro) return;
   const btn = $('f-reset');
   btn.disabled = true;
   try {

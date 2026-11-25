@@ -662,16 +662,22 @@ describe('métricas dentro de criterio', () => {
     expect(dentroAnalisis(fila, eff())).not.toContain('so2_molecular');
   });
 
-  it('so2_molecular acompaña a so2_libre incluso en el tramo del piso', () => {
-    // libre 15 <= piso 20 => fuera. El molecular a pH 3,2 da 0,44, POR ENCIMA
-    // del objetivo 0,38: un veredicto propio lo pintaria verde al lado de un
-    // so2_libre naranja. Las dos celdas tienen que decir lo mismo.
+  it('so2_molecular tiene su propio color contra el objetivo molecular', () => {
+    // Pedido del 2026-11-13 (lote 26333): libre 15 < piso 20 => so2_libre
+    // fuera, pero el molecular a pH 3,2 da 0,44, POR ENCIMA del objetivo 0,38,
+    // y su celda sale verde. Antes copiaba el naranja del libre y parecia que
+    // el molecular estaba mal.
     const fila = { so2_libre: 15.0, ph: 3.2 };
     expect(so2Molecular(15.0, 3.2)!).toBeGreaterThan(0.38);
+    expect(flagsAnalisis(fila, eff())).toEqual(['so2_libre']);
+    expect(dentroAnalisis(fila, eff()).sort()).toEqual(['ph', 'so2_molecular']);
+  });
+
+  it('so2_molecular por debajo del objetivo sale naranja aunque el libre pase el piso', () => {
+    // libre 25 >= piso 20, pero a pH 3,7 el molecular da ~0,31 < 0,38.
+    const fila = { so2_libre: 25.0, ph: 3.7 };
+    expect(so2Molecular(25.0, 3.7)!).toBeLessThan(0.38);
     expect(flagsAnalisis(fila, eff()).sort()).toEqual(['so2_libre', 'so2_molecular']);
-    // El pH 3,2 de la fila sí está en criterio y sale verde; lo que importa es
-    // que ninguna de las dos celdas de SO2 lo esté.
-    expect(dentroAnalisis(fila, eff())).toEqual(['ph']);
   });
 });
 

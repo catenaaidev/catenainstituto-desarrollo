@@ -33,6 +33,7 @@
       "/prensas/api/*",
       "/barriles/api/*",
       "/lotes/api/*",
+      "/ordenes/api/*",
       "/prensas",
       "/prensas/",
       "/prensas/index.html",
@@ -41,7 +42,10 @@
       "/barriles/index.html",
       "/lotes",
       "/lotes/",
-      "/lotes/index.html"
+      "/lotes/index.html",
+      "/ordenes",
+      "/ordenes/",
+      "/ordenes/index.html"
     ]
   },
 
