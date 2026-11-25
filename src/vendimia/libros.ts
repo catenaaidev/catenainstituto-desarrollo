@@ -86,17 +86,18 @@ export async function rutasLibros(req:Request,env:Env,ctx:ExecutionContext,sub:s
   if(!req.headers.get('Content-Type')?.startsWith('application/json'))return response(415,{error:'formato_invalido'});
   const b=await leerJSON(req,m?.[2]==='guardar'?MAX_BYTES:16384);
   if(sub==='/ingresos'||sub.startsWith('/ingresos/')){
-   if(!validoTexto(b.lote,80)||!validoTexto(b.nombre_lote,120)||!validoTexto(b.vasija,80)||typeof b.variedad!=='string'||b.variedad.length>100||!fechaISO(b.recepcion)||!['borrador','en_proceso','finalizado'].includes(String(b.estado)))return response(400,{error:'Completá lote, nombre, vasija y fecha de recepción.'});
+   if(!validoTexto(b.lote,80)||!validoTexto(b.nombre_lote,120)||(typeof b.vasija!=='string'||b.vasija.length>80)||typeof b.variedad!=='string'||b.variedad.length>100||!fechaISO(b.recepcion)||!['borrador','en_proceso','finalizado'].includes(String(b.estado)))return response(400,{error:'Completá lote, nombre, vasija y fecha de recepción.'});
+   const info=esObj(b.informacion_id)?JSON.stringify(b.informacion_id):'{}';
    const datos=[b.lote.trim(),b.nombre_lote.trim(),b.variedad.trim(),b.vasija.trim(),b.recepcion,String(b.estado),autor];
    if(sub==='/ingresos'){
     const pid=crypto.randomUUID();const nombre=`${b.lote} · ${b.vasija} · ${pid.slice(0,8)}`;
-    const stmts=[env.DB.prepare('INSERT INTO vend_periodos(id,nombre,anio,desde,autor) VALUES(?,?,?,?,?)').bind(pid,nombre,Number(b.recepcion.slice(0,4)),b.recepcion,autor),env.DB.prepare('INSERT INTO vend_ingresos(periodo_id,lote,nombre_lote,variedad,vasija,recepcion,estado,autor) VALUES(?,?,?,?,?,?,?,?)').bind(pid,...datos)];
+    const stmts=[env.DB.prepare('INSERT INTO vend_periodos(id,nombre,anio,desde,autor) VALUES(?,?,?,?,?)').bind(pid,nombre,Number(b.recepcion.slice(0,4)),b.recepcion,autor),env.DB.prepare('INSERT INTO vend_ingresos(periodo_id,lote,nombre_lote,variedad,vasija,recepcion,estado,autor,informacion_id) VALUES(?,?,?,?,?,?,?,?,?)').bind(pid,...datos,info)];
     for(const p of PLANTILLAS)stmts.push(...nuevaCopia(env,pid,p.id,p.name,autor).stmts);
     stmts.push(...nuevaCopia(env,pid,'agregados-v1','Agregado de nutrientes',autor).stmts,...nuevaCopia(env,pid,'agregados-v1','Anhídrido sulfuroso (SO₂)',autor).stmts);
     await env.DB.batch(stmts);return response(201,{id:pid});
    }
    const pid=sub.slice('/ingresos/'.length);if(!uuid.test(pid)||!Number.isInteger(b.version))return response(400,{error:'Versión inválida'});
-   const r=await env.DB.batch([env.DB.prepare("UPDATE vend_ingresos SET lote=?,nombre_lote=?,variedad=?,vasija=?,recepcion=?,estado=?,autor=?,version=version+1,actualizado=datetime('now') WHERE periodo_id=? AND version=?").bind(...datos,pid,b.version)]);
+   const r=await env.DB.batch([env.DB.prepare("UPDATE vend_ingresos SET lote=?,nombre_lote=?,variedad=?,vasija=?,recepcion=?,estado=?,autor=?,informacion_id=?,version=version+1,actualizado=datetime('now') WHERE periodo_id=? AND version=?").bind(...datos,info,pid,b.version)]);
    if(r[0].meta.changes!==1)return response(409,{error:'Otro usuario cambió la ficha. Volvé a abrirla antes de guardar.'});return response(200,{version:Number(b.version)+1});
   }
   if(sub==='/periodos'){
