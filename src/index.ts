@@ -364,7 +364,7 @@ export function armarInyeccion(
         `<script defer src="/shared/exportar.js"></script>\n`
       : '') +
     // Capa común de estilos: navegación sin vueltas en tablet y celular.
-    `<link rel="stylesheet" href="/shared/ciw.css?v=9">\n` +
+    `<link rel="stylesheet" href="/shared/ciw.css?v=11">\n` +
     `<script defer src="/shared/barra.js"></script>\n</head>`
   );
 }

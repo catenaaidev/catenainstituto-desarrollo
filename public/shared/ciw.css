@@ -81,3 +81,16 @@ html{scroll-behavior:smooth}
 .kpi,.kpi-card{background:#fff!important;border:1px solid var(--line)!important;border-radius:16px!important;box-shadow:var(--sh-sm);padding:18px 20px!important;transition:box-shadow .2s,transform .2s}
 .kpi:hover,.kpi-card:hover{box-shadow:var(--sh-md);transform:translateY(-1px)}
 html body #ciw-barra .inicio{white-space:nowrap}
+
+/* ---- Todo a la vista: el menú "Más" de Prensas, Lotes y Barriles se
+   despliega dentro de la barra como pestañas normales (sin desplegable). ---- */
+:has(> #masWrap){display:flex!important;flex-wrap:wrap!important;align-items:center;gap:4px!important}
+#masWrap{display:contents!important}
+#masWrap > .mas-btn{display:none!important}
+#masMenu{display:contents!important}
+#masMenu .mas-grupo,#masMenu .mas-angosto{display:none!important}
+#masMenu > button,#masMenu > a{display:inline-flex!important;align-items:center;width:auto!important;white-space:nowrap;background:transparent!important;border:0!important;border-radius:999px!important;padding:6px 12px!important;min-height:36px;font:500 13.5px var(--sans)!important;color:var(--muted)!important;cursor:pointer;text-decoration:none}
+#masMenu > button:hover,#masMenu > a:hover{background:var(--panel2)!important;color:var(--txt)!important}
+#masMenu > button.active,#masMenu > button.activo{background:var(--accent)!important;color:#fff!important}
+:has(> #masWrap) > button[data-grupo]{border-radius:999px!important;border:0!important;min-height:36px;padding:6px 12px!important}
+:has(> #masWrap) > button[data-grupo].activo,:has(> #masWrap) > button[data-grupo].active,#masMenu > button[data-sub].activo{background:var(--accent)!important;color:#fff!important}
