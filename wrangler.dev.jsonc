@@ -16,7 +16,7 @@
   // Un solo Worker sirve los archivos estáticos (public/) y responde las APIs
   // de los tres módulos. Reemplaza a los tres servidor.py.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "catenainstitute-desarrollo",
+  "name": "catenainstituto-desarrollo",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -59,7 +59,7 @@
     {
       "binding": "DB",
       "database_name": "catenainstitute-desarrollo",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "bab98747-2936-431c-a1c6-f8e333eb5a77",
       "migrations_dir": "migrations"
     }
   ],
