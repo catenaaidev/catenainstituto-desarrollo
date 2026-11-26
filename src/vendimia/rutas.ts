@@ -3,8 +3,10 @@ import { json } from '../respuestas';
 import { esquema } from './esquema';
 import { rutasLibros } from './libros';
 import { rutasV6 } from './v6';
+import { rutasFlujo } from './flujo';
 
 export async function rutasVendimia(req: Request, env: Env, ctx: ExecutionContext, sub: string): Promise<Response> {
+  const fl = await rutasFlujo(req, env, ctx, sub); if (fl) return fl;
   const v6 = await rutasV6(req, env, ctx, sub); if (v6) return v6;
   if (sub === '/ingresos' || sub.startsWith('/ingresos/') || sub === '/plantillas' || sub === '/periodos' || sub.startsWith('/periodos/') || sub.startsWith('/libros/')) return rutasLibros(req,env,ctx,sub);
   const id = await identidad(req, env, ctx, 'vendimia');

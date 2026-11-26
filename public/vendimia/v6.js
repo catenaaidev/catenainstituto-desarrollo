@@ -1,5 +1,5 @@
 // Vendimia V6: piezas sin estado (testeables en Node) usadas por libros-app.js.
-export const VERSION = 'V6 · 2026-11-25';
+export const VERSION = 'V7 · 2026-11-26';
 export const CAMPOS_ID = [['lote_sistema','LOTE SISTEMA'],['variedad','VARIEDAD'],['distrito','DISTRITO'],['proyecto','PROYECTO'],['vinedo','VIÑEDO'],['ct','CT'],['clon','CLON'],['id_texto','ID'],['organico_convencional','ORGÁNICO / CONVENCIONAL'],['origen','ORIGEN']];
 export const ETAPAS = [
  ['precarga','Precarga de identificación',null],['ot_ingreso','OT de ingreso y molienda','molienda-ch-v1'],['analisis_iniciales','Análisis iniciales','tintos-v1'],

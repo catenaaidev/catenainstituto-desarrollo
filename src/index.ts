@@ -11,6 +11,7 @@
 import { rutasPrensas, snapshot } from './prensas/rutas';
 import { rutasBarriles } from './barriles/rutas';
 import { rutasVendimia } from './vendimia/rutas';
+import { rutasAgente, emitirVencidas } from './vendimia/flujo';
 import { rutasLotes } from './lotes/rutas';
 import { rutasOrdenes, rolOrdenes } from './ordenes/rutas';
 import {
@@ -123,6 +124,9 @@ export default {
       }
     }
 
+    // ---- Agente local de impresión (token, sin sesión de usuario) ----
+    if (ruta.startsWith('/api/impresion/agente/')) return rutasAgente(req, env, ruta.slice('/api/impresion/agente'.length));
+
     // ---- API del portal: qué módulos puede ver esta persona ----
     if (ruta === '/api/yo') {
       const email = await emailDelUsuario(req, env);
@@ -229,6 +233,9 @@ export default {
 
   /** Snapshot diario a R2 (cron de wrangler.jsonc). */
   async scheduled(_ev: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Cada 5 minutos: emite las OT programadas (nutrientes a las 24 h de la siembra).
+    ctx.waitUntil(emitirVencidas(env).catch((e) => console.error('agenda vendimia', e)));
+    if (_ev.cron !== '0 3 * * *') return;
     ctx.waitUntil(env.DB.prepare('DELETE FROM sesiones WHERE vence <= ?').bind(Math.floor(Date.now() / 1000)).run());
     const fila = await env.DB.prepare('SELECT json, version FROM documento WHERE modulo = ?')
       .bind('prensas')
