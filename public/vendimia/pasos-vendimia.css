@@ -16,3 +16,24 @@
 #dashboard .v7-seg{border-radius:12px;display:flex;flex-wrap:wrap;gap:6px;background:#fff}#dashboard .v7-seg button{border-radius:9px;border:1px solid var(--line);min-height:48px}#dashboard .v7-seg button[aria-pressed=true]{background:var(--accent);color:white}
 #dashboard .v9-decision-campos{padding-top:14px;border-top:1px solid var(--line)}
 @media(max-width:600px){#dashboard .v7-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}#dashboard .v7-form{padding:14px}#dashboard .v9-paso{padding:12px}#dashboard .v9-paso h2{font-size:18px}#dashboard .v7-campos{grid-template-columns:1fr}}
+
+/* Ficha técnica de Vendimia: panel de consulta, sin tocar las hojas originales. */
+#dashboard .rs-titulo,#dashboard .rs-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#dashboard .rs-titulo h2{font-size:26px;margin:0}#dashboard .rs-titulo p,#dashboard .rs-cab p{margin:5px 0 0;font-size:13px}
+#dashboard .rs-card{min-width:0;padding:18px;display:flex;flex-direction:column;gap:13px}#dashboard .rs-card h3{font-size:18px;margin:0}#dashboard .rs-card h4{margin:0;font-size:14px}
+#dashboard .rs-metricas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(175px,100%),1fr));gap:10px}
+#dashboard .rs-met{min-width:0;display:flex;flex-direction:column;gap:6px;padding:13px;background:#f8fafc;border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}
+#dashboard .rs-met>span{font-size:13px;color:#475467;font-weight:600}#dashboard .rs-met>strong{font-size:25px;line-height:1.15;font-variant-numeric:tabular-nums}#dashboard .rs-met small{font-size:12px;line-height:1.4;color:#475467;font-weight:400}
+#dashboard .rs-met[data-estado=verde]{background:#ecfdf3;border-color:#abefc6}#dashboard .rs-met[data-estado=rojo]{background:#fef3f2;border-color:#fecdca}
+#dashboard .rs-vasijas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));gap:10px}
+#dashboard .rs-vasija{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:13px;text-align:left;border:1px solid var(--line);background:#fff;border-radius:10px;cursor:pointer;color:inherit;white-space:normal;min-width:0}
+#dashboard .rs-vasija[aria-pressed=true]{border:2px solid var(--accent);padding:12px}#dashboard .rs-vasija strong{font-size:16px}#dashboard .rs-vasija small{color:var(--muted)}
+#dashboard .rs-charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}#dashboard .rs-chart{border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}#dashboard .rs-chart p{font-size:12px;margin:5px 0}
+#dashboard .rs-curva{display:block;width:100%;height:auto;color:#8d1c43}#dashboard .rs-curva.rs-temperatura{color:#17756b}#dashboard .rs-curva.rs-ph{color:#315a9b}#dashboard .rs-curva.rs-az_red{color:#976024}
+#dashboard .rs-curva text{font-size:11px;fill:#475467}#dashboard .rs-curva .rs-grid{stroke:#e1e5eb;stroke-width:1}#dashboard .rs-curva polyline{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linejoin:round}#dashboard .rs-curva circle{fill:currentColor}
+#dashboard .rs-vacio{padding:20px 8px;color:var(--muted);text-align:center;font-size:13px}#dashboard .rs-estados{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#dashboard .rs-ident{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr));gap:10px;margin:0}#dashboard .rs-id{border-bottom:1px solid var(--line);padding:8px 0;min-width:0}#dashboard .rs-id dt{font-size:11px;color:var(--muted)}#dashboard .rs-id dd{font-size:14px;font-weight:600;margin:5px 0 0;overflow-wrap:anywhere}
+#dashboard .rs-tabla{min-width:540px}#dashboard .rs-tabla td{vertical-align:top}#dashboard .rs-tabla th{white-space:nowrap}
+@media(max-width:700px){#dashboard .rs-charts{grid-template-columns:1fr}#dashboard .rs-card{padding:12px}#dashboard .rs-titulo h2{font-size:21px}#dashboard .rs-metricas{grid-template-columns:repeat(2,minmax(0,1fr))}#dashboard .rs-met>strong{font-size:20px}}
+
+#dashboard .rs-rango{display:flex;gap:10px;align-items:end;flex-wrap:wrap}#dashboard .rs-rango label{min-width:140px}#dashboard .rs-rango input{min-height:38px}

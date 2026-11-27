@@ -1,6 +1,7 @@
 // Vendimia V7: panel de trabajo por lote y vasija (formularios web para tablet).
 // Todas las reglas las valida el servidor; acá se muestran y se cargan.
-import {graficoSVG,normVasija} from './v6.js?v=8';
+import {graficoSVG,normVasija,CAMPOS_ID} from './v6.js?v=8';
+import {fichaVasija,datosRegistro,presente,curvaResumen} from './resumen.js?v=1';
 
 const $ = id => document.getElementById(id);
 function h(tag, attrs = {}, ...hijos) {
@@ -28,7 +29,7 @@ const leerCola = () => { try { return JSON.parse(localStorage.getItem(COLA) || '
 const guardarCola = q => { try { localStorage.setItem(COLA, JSON.stringify(q)); } catch {} };
 
 export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar, editarId, abrirOficial, documentosNativos}) {
-  let L = null, vasija = '', pestana = 'resumen', P = {};
+  let L = null, vasija = '', pestana = 'resumen', P = {}, desdeResumen = '', hastaResumen = '';
   const raiz = $('dashboard');
 
   async function enviar(path, body, {encolable = false} = {}) {
@@ -47,9 +48,9 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
   }
   addEventListener('online', sincronizar);
 
-  async function abrir(pid, tab) {
-    const d = await api('/lote/' + pid);
-    if(L?.ing.periodo_id!==pid){pestana='resumen';vasija='';}
+  async function abrir(pid, tab, prefetched) {
+    const d = prefetched || await api('/lote/' + pid);
+    if(L?.ing.periodo_id!==pid){pestana='resumen';vasija='';desdeResumen='';hastaResumen='';}
     L = d; P = d.permisos;
     if (!d.vasijas.some(v => v.vasija === vasija)) vasija = d.vasijas[0]?.vasija || '';
     if (tab) pestana = tab;
@@ -102,14 +103,42 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
 
   function vistaIngreso(){return [h('article',{class:'v7-card'},h('h3',{},'1 · Orden de ingreso y molienda'),h('p',{class:'muted'},'Elegí el modelo de vinificación. Los formularios respetan las plantillas oficiales; no se copian datos de ejemplo.'),h('div',{class:'v7-acc'},h('button',{class:'ci-btn primario grande',type:'button',onclick:()=>abrirOficial('flujo-blanco-v1',L,'ingreso')},'Blanco'),h('button',{class:'ci-btn primario grande',type:'button',onclick:()=>abrirOficial('flujo-tinto-v1',L,'ingreso')},'Tinto')))];}
   function vistaResumen() {
-    if (!L.vasijas.length) return [h('p', {}, 'Empezá por la pestaña “Análisis inicial”: indicá la vasija, los kilos, la merma y los análisis.')];
-    return [h('div', {class: 'v7-grid'}, ...L.vasijas.map(x => {
-      const ots = L.ots.filter(o => normVasija(o.vasija) === normVasija(x.vasija));
-      return h('article', {class: 'v7-card'}, h('h3', {}, 'Vasija ' + x.vasija), h('p', {}, h('b', {}, x.proxima.texto)), x.proxima.bloqueo ? h('p', {class: 'v7-bloq'}, x.proxima.bloqueo) : null,
-        h('p', {}, chip(x.ph.estado, x.ph.texto)), h('p', {}, chip(x.fin_fa.estado, 'Fin FA: ' + x.fin_fa.texto)),
-        h('ul', {class: 'v7-mini'}, ...ots.map(o => h('li', {}, `${o.numero} · ${TIPO_OT[o.tipo]} · ${ESTADO_OT[o.estado]}`))),
-        h('button', {class: 'ci-btn', type: 'button', onclick: () => { vasija = x.vasija; pestana = etapaSiguiente(x.proxima.clave); render(); }}, 'Trabajar en esta vasija'));
-    }))];
+    const f=fichaVasija(L,vasija), v=V(), fmt=x=>presente(x)?String(x):'—';
+    const cab=(t,sub,btn)=>h('div',{class:'rs-cab'},h('div',{},h('h3',{},t),sub?h('p',{class:'muted'},sub):null),btn);
+    const card=(t,sub,btn,...contenido)=>h('article',{class:'v7-card rs-card'},cab(t,sub,btn),...contenido);
+    const met=(t,val,unidad,detalle,estado='gris')=>h('div',{class:'rs-met','data-estado':estado},h('span',{},t),h('strong',{},fmt(val),presente(val)&&unidad?h('small',{},' '+unidad):null),h('small',{},detalle||'Pendiente de carga'));
+    const metDatos=(k,t,u)=>met(t,f.datos[k],u,presente(f.datos[k])?'Análisis inicial':'Pendiente de carga');
+    const fila=(cols)=>h('tr',{},...cols.map(x=>h('td',{},x??'—')));
+    const tabla=(cols,rows,vacio)=>rows.length?h('div',{class:'v6-tabla-w'},h('table',{class:'v6-tabla rs-tabla'},h('thead',{},h('tr',{},...cols.map(c=>h('th',{scope:'col'},c)))),h('tbody',{},...rows.map(fila)))):h('p',{class:'rs-vacio'},vacio);
+    const detalle=(t,val)=>h('div',{class:'rs-id'},h('dt',{},t),h('dd',{},fmt(val)));
+    const totales=L.ots||[], movTotal=L.movs||[];
+    const ident=card('Identificación del lote','Datos de la precarga · no se duplican entre vasijas',editarId?h('button',{class:'ci-btn',type:'button',onclick:editarId},'Editar identificación'):null,
+      h('dl',{class:'rs-ident'},...CAMPOS_ID.map(([k,t])=>detalle(t,L.info[k]??(k==='variedad'?L.ing.variedad:null))),detalle('Nombre del lote',L.ing.nombre_lote),detalle('Recepción',L.ing.recepcion),detalle('Registrado por',L.ing.autor)));
+    const overview=card('Estado general del lote','Totales de registros del lote, no de volumen',null,
+      h('div',{class:'rs-metricas'},met('Vasijas',L.vasijas.length,'','Identificadas'),met('Órdenes ejecutadas',totales.filter(o=>o.estado==='ejecutada').length,'',`${totales.length} OT registradas`),met('Órdenes abiertas',totales.filter(o=>!['ejecutada','cancelada'].includes(o.estado)).length,'','Incluye parciales y programadas'),met('Movimientos ejecutados',movTotal.filter(m=>m.estado==='ejecutado').length,'',`${movTotal.length} movimientos registrados`)),
+      h('div',{class:'rs-vasijas'},...L.vasijas.map(x=>h('button',{type:'button',class:'rs-vasija','aria-pressed':String(x.vasija===vasija),onclick:()=>{vasija=x.vasija;render();}},h('strong',{},'Vasija '+x.vasija),h('small',{},x.proxima.texto),chip(x.ph.estado,x.ph.texto),chip(x.fin_fa.regla==='provisoria'?'gris':x.fin_fa.estado,'Fin FA: '+x.fin_fa.texto)))));
+    if(!v)return [h('header',{class:'rs-titulo'},h('h2',{},'Ficha técnica del lote'),h('p',{class:'muted'},'Todavía no hay una vasija identificada.')),overview,ident,h('article',{class:'v7-card'},h('p',{},'Cargá el análisis inicial para comenzar el seguimiento.'),ir('analisis','Ir a análisis iniciales'))];
+    const parametros=[['brix','Brix','°Bx'],['temperatura','Temperatura','°C'],['ph','pH',''],['at','Acidez total','g/L'],['npa','NPA',''],['nfa','NFA','mg/L'],['so2t','SO₂ total','mg/L'],['av','Acidez volátil',''],['az_gl','Azúcar','g/L'],['az_red','Azúcares reductores',v.fin_fa?.regla==='provisoria'?'':v.fin_fa?.unidad||''],['acido_malico','Ácido málico','g/L']];
+    const mediciones=parametros.map(([k,t,u])=>{const x=f.ultima(k);const ev=k==='ph'&&x?.r.id===v.ph_registro?v.ph:k==='az_red'&&x?.r.id===v.fin_fa_registro?v.fin_fa:null;const provisional=ev?.regla==='provisoria'||ev?.regla==='sin_regla';return met(t,x?.valor,u,x?[fechaHora(x.r.fecha_muestra),ev?(provisional?'Regla provisional / no habilitada · ':'')+ev.texto: 'Dato registrado · sin evaluación específica',ev?.criterio_version?'Criterio '+ev.criterio_version:null].filter(Boolean).join(' · '):'Pendiente de medición',provisional?'gris':ev?.estado||'gris');});
+    const enRango=t=>{const dia=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Argentina/Mendoza',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(t));return (!desdeResumen||dia>=desdeResumen)&&(!hastaResumen||dia<=hastaResumen);};
+    const rango=h('div',{class:'rs-rango'},h('label',{class:'v7-campo'},'Desde',h('input',{type:'date',value:desdeResumen,onchange:e=>{desdeResumen=e.target.value;render();}})),h('label',{class:'v7-campo'},'Hasta',h('input',{type:'date',value:hastaResumen,onchange:e=>{hastaResumen=e.target.value;render();}})),h('button',{type:'button',class:'ci-btn',onclick:()=>{desdeResumen='';hastaResumen='';render();}},'Ver todas las fechas'));
+    const graficos=[['brix','Brix','°Bx'],['temperatura','Temperatura','°C'],['ph','pH',''],['az_red','Azúcares reductores','']].map(([k,t,u])=>{const serie=f.serie(k).filter(x=>enRango(x.t)),graf=h('div',{class:'rs-grafico'});if(serie.length)graf.innerHTML=curvaResumen(serie,k);else graf.append(h('p',{class:'rs-vacio'},'Sin mediciones registradas.'));return h('section',{class:'rs-chart'},h('h4',{},t+(u?' · '+u:'')),h('p',{class:'muted'},serie.length===1?'Una sola medición · todavía sin tendencia':`${serie.length} mediciones`),graf);});
+    const ag=f.ots.filter(o=>['th2','siembra','nutrientes','agregado'].includes(o.tipo));
+    const etiquetaTipo=t=>({analisis_inicial:'Inicial',post_correccion:'Poscorrección',control:'Control',fin_fa:'Fin FA'})[t]||t;
+    const estadoOT=o=>ESTADO_OT[o.estado]||o.estado;
+    const estadoImp=o=>{const t=(L.trabajos||[]).filter(t=>t.ot_id===o.id).at(-1);return t?ESTADO_IMP[t.estado]||t.estado:'Sin envío registrado';};
+    const merma=presente(f.datos.merma)?fmt(f.datos.merma)+' '+fmt(f.datos.merma_unidad):null;
+    return [h('header',{class:'rs-titulo'},h('div',{},h('h2',{},'Ficha técnica del lote'),h('p',{class:'muted'},'Información consolidada del lote · detalle de vasija '+vasija)),ir(etapaSiguiente(v.proxima.clave),'Continuar: próxima acción')),
+      overview,
+      card('Recepción y rendimiento · vasija '+vasija,f.inicial?'Muestra '+fechaHora(f.inicial.fecha_muestra)+' · '+(f.inicial.responsable||f.inicial.autor||''):'Sin análisis inicial',ir('analisis','Ver análisis inicial'),h('div',{class:'rs-metricas'},metDatos('kg_recibidos','Kg recibidos','kg'),metDatos('kg_procesados','Kg procesados','kg'),met('Merma de llenado',merma,'',merma?'Análisis inicial':presente(f.datos.merma_unidad)?'Unidad registrada: '+f.datos.merma_unidad+' · falta valor numérico':'Pendiente de carga'),metDatos('litros_estimados','Litros estimados','L'),metDatos('numero_pesada','Número de pesada',''),metDatos('bins','Bins',''))),
+      card('Últimos datos de laboratorio','Último valor disponible de cada parámetro, con su propia fecha de muestra. No implica aprobación técnica.',ir('control','Ver control'),h('div',{class:'rs-metricas'},...mediciones)),
+      card('Evolución de fermentación','Mediciones de la vasija seleccionada por fecha y hora real. No se inventan puntos ni se completan faltantes.',ir('control','Cargar / consultar control'),rango,desdeResumen&&hastaResumen&&desdeResumen>hastaResumen?h('p',{class:'rs-vacio'},'La fecha desde es posterior a la fecha hasta.'):null,h('div',{class:'rs-charts'},...graficos)),
+      card('Estado técnico y decisiones','Criterios y decisiones guardados por el servidor',ir('aprobacion','Ver aprobación'),h('div',{class:'rs-estados'},chip(v.ph.estado,v.ph.texto),chip(v.fin_fa.regla==='provisoria'?'gris':v.fin_fa.estado,'Fin FA: '+v.fin_fa.texto),v.fin_fa.regla==='provisoria'?h('small',{},'Fin FA: regla provisional, no equivale a confirmación técnica.'):null),tabla(['Fecha','Decisión','Autor','Motivo'],[...f.decisiones].reverse().map(d=>[fechaHora(d.fecha),({no_requiere_th2:'No requiere TH2',confirmar_ph:'Confirmación de pH',fin_fa:'Fin FA confirmado'})[d.tipo]||d.tipo,d.autor,d.motivo||'—']),'Sin decisiones registradas.')),
+      card('Órdenes de trabajo','Estado de ejecución e impresión · vasija '+vasija,ir('ordenes','Ver todas las OT'),tabla(['Número','Tipo','Estado','Programación','Impresión'],[...f.ots].reverse().map(o=>[h('button',{class:'ci-btn chico',type:'button',onclick:()=>abrirOT(o.id)},o.numero),TIPO_OT[o.tipo]||o.tipo,estadoOT(o),fechaHora(o.programada_para),estadoImp(o)]),'Sin órdenes de trabajo para esta vasija.')),
+      card('Agregados realizados y planificados','Las cantidades ejecutadas no se confunden con las recetas aprobadas.',ir('control','Ver agregados'),h('h4',{},'Ejecutados'),tabla(['Fecha real','Producto','Cantidad real','OT'],ag.filter(o=>o.estado==='ejecutada').map(o=>[fechaHora(o.ejecucion?.fecha_real),o.ejecucion?.producto,`${fmt(o.ejecucion?.cantidad)} ${o.ejecucion?.unidad||''}`,o.numero]),'Sin agregados ejecutados.'),h('h4',{},'Pendientes / parciales'),tabla(['Producto','Cantidad prevista','Estado','OT'],ag.filter(o=>!['ejecutada','cancelada'].includes(o.estado)).map(o=>[o.datos?.producto||TIPO_OT[o.tipo],`${fmt(o.datos?.cantidad)} ${o.datos?.unidad||''}`,estadoOT(o),o.numero]),'Sin agregados pendientes.')),
+      card('Últimas mediciones','Hasta 8 registros recientes · el historial completo permanece en Control.',ir('control','Historial completo'),tabla(['Fecha de muestra','Tipo','Brix','pH','Temperatura','Responsable','Versión'],[...f.registros].reverse().slice(0,8).map(r=>{const d=datosRegistro(r);return [fechaHora(r.fecha_muestra),etiquetaTipo(r.tipo),fmt(d.brix),fmt(d.ph),fmt(d.temperatura),r.responsable||r.autor||'—','v'+r.version];}),'Sin mediciones registradas.')),
+      card('Movimientos de esta vasija','Origen o destino de esta vasija. Solo los ejecutados modifican la ubicación.',ir('movimientos','Ver movimientos'),tabla(['Fecha','Tipo','Origen','Destino','Cantidad','Estado'],[...f.movimientos].reverse().map(m=>[fechaHora(m.estado==='ejecutado'?m.ejecutado_en:m.fecha),m.tipo,m.origen,m.destino,`${fmt(m.estado==='ejecutado'?m.cantidad_real:m.cantidad)} ${m.unidad||''}`,m.estado]),'Sin movimientos registrados para esta vasija.')),
+      ident,card('Documentos e historial','Planillas y versiones originales del lote',ir('documentos','Abrir documentos'))];
   }
 
   // ---------- circuito operativo de Marcelo: cada paso tiene su propia vista ----------
