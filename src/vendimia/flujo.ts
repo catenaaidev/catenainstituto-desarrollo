@@ -267,8 +267,8 @@ export async function rutasFlujo(req: Request, env: Env, ctx: ExecutionContext, 
         if (!['analisis_inicial', 'post_correccion', 'control', 'fin_fa'].includes(tipo)) throw new Regla(400, 'Tipo de registro inválido.');
         if (!f || Date.parse(f) > Date.now() + 10 * 60000) throw new Regla(400, 'Indicá una fecha y hora de muestreo válida (no futura).');
         const d = esObj(b.datos) ? b.datos : {}, datos: Fila = {};
-        for (const [k, v] of Object.entries(d)) { if (!/^[a-z0-9_]{1,30}$/.test(k)) continue; const n = num(v); datos[k] = typeof v === 'number' || (typeof v === 'string' && n !== null && /^-?[\d.,]+$/.test(v.trim())) ? n : txt(v, 300); }
-        for (const k of ['ph', 'brix', 'temperatura', 'az_red', 'at', 'nfa', 'kg_recibidos', 'kg_procesados', 'merma']) if (datos[k] !== undefined && datos[k] !== '' && typeof datos[k] !== 'number') throw new Regla(400, `El valor de ${k} tiene que ser numérico.`);
+        for (const [k, v] of Object.entries(d)) { if (!/^[a-z0-9_]{1,30}$/.test(k)) continue; const n = num(v); datos[k] = k==='numero_pesada' ? txt(v, 120) : typeof v === 'number' || (typeof v === 'string' && n !== null && /^-?[\d.,]+$/.test(v.trim())) ? n : txt(v, 300); }
+        for (const k of ['ph', 'brix', 'temperatura', 'az_red', 'at', 'nfa', 'npa', 'litros_estimados', 'kg_recibidos', 'kg_procesados', 'merma']) if (datos[k] !== undefined && datos[k] !== '' && typeof datos[k] !== 'number') throw new Regla(400, `El valor de ${k} tiene que ser numérico.`);
         if (typeof datos.ph === 'number' && (datos.ph < 2 || datos.ph > 5)) throw new Regla(400, 'El pH tiene que estar entre 2 y 5. Revisá el dato.');
         if (tipo === 'analisis_inicial' && de(L, vasija).reg.some(x => x.tipo === 'analisis_inicial')) throw new Regla(409, 'Esta vasija ya tiene análisis inicial. Corregilo en lugar de cargar otro.');
         const rid2 = crypto.randomUUID();
