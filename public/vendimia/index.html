@@ -1,8 +1,9 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vendimia V7 · CIW Desarrollo</title><link rel="stylesheet" href="/shared/estilo.css"><link rel="stylesheet" href="/vendimia/vendor/editor.css"><link rel="stylesheet" href="/vendimia/libros.css?v=8"><link rel="stylesheet" href="/vendimia/solo-dashboard-v7.css?v=20261127-1">
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vendimia V8 · CIW Desarrollo</title><link rel="stylesheet" href="/shared/estilo.css"><link rel="stylesheet" href="/vendimia/vendor/editor.css"><link rel="stylesheet" href="/vendimia/libros.css?v=8"><link rel="stylesheet" href="/vendimia/solo-dashboard-v7.css?v=20261127-1">
+<link rel="stylesheet" href="/vendimia/formularios-flujo.css?v=9">
 </head>
 <body><main class="vendimia-workspace" id="workspace">
- <header class="workspace-header"><div><div class="eyebrow">CATENA INSTITUTE OF WINE · DESARROLLO</div><h1>Vendimia</h1><p>Seguí cada lote desde la precarga hasta la crianza. Tus planillas se guardan solas.</p></div><a class="ci-btn" href="/vendimia/trazabilidad">Trazabilidad y movimientos</a></header>
+ <header class="workspace-header"><div><div class="eyebrow">CATENA INSTITUTE OF WINE · DESARROLLO</div><h1>Vendimia</h1><p>Seguí cada lote desde la precarga hasta la crianza. Trabajá con los formularios de cada lote.</p></div><a class="ci-btn" href="/vendimia/trazabilidad">Trazabilidad y movimientos</a></header>
  <section class="period-bar" hidden><label for="periodo">PERÍODO DE TRABAJO</label><select id="periodo" aria-label="Elegir período"><option value="">Seleccioná un período</option></select><button id="nuevo-periodo" class="ci-btn primario" hidden>+ Nuevo período</button><span id="lapso" class="muted"></span></section>
  <section class="v3-home">
  <div id="inicio">
@@ -23,7 +24,7 @@
  <section id="dashboard" class="v7" hidden></section>
 </section>
  <div id="mensaje" role="status" aria-live="polite" hidden></div>
- 
+
  <section id="contenido-periodo" class="workspace-grid" hidden>
   <aside class="books"><div class="books-head"><h2>Planillas del lote</h2><button id="nueva-copia" class="ci-btn chico" hidden>+ Copia</button></div><input id="buscar-libro" type="search" placeholder="Buscar planilla…" aria-label="Buscar planilla"><div id="lista-libros"></div></aside>
   <section class="work-area"><div id="sin-libro" class="empty-state"><h2>Elegí una planilla</h2><p>Las hojas, fórmulas y formatos importados están disponibles dentro del editor. Los cambios se guardan únicamente en el período elegido.</p></div>
@@ -44,4 +45,4 @@
 <dialog id="dialog-copia"><form id="form-copia"><h2>Nueva copia de trabajo</h2><p>Se crea dentro del período seleccionado, a partir de una plantilla original.</p><label>Plantilla<select name="plantilla_id" id="copia-plantilla" required></select></label><label>Nombre de la copia<input name="nombre" maxlength="240" required placeholder="Ej. Fermentación tintos - Lote A036"></label><div class="dialog-actions"><button type="button" class="ci-btn" data-close="dialog-copia">Cancelar</button><button class="ci-btn primario" type="submit">Crear copia</button></div></form></dialog>
 <dialog id="dialog-historial"><h2>Versiones guardadas</h2><p>Las revisiones anteriores se conservan y se abren en modo consulta.</p><div id="lista-versiones"></div><div class="dialog-actions"><button class="ci-btn" data-close="dialog-historial">Cerrar</button></div></dialog>
 <dialog id="dialog-impresion"><form id="form-impresion"><h2>Área de impresión</h2><p>Conservá el rango original o ajustalo si agregaste filas o columnas. Separá áreas discontinuas con punto y coma.</p><label>Hoja<select name="hoja" id="imp-hoja" required></select></label><label>Rangos<input name="areas" id="imp-areas" placeholder="A1:M29; A35:M50"></label><label>Orientación<select name="orientacion" id="imp-orientacion"><option value="portrait">Vertical</option><option value="landscape">Horizontal</option></select></label><div class="dialog-actions"><button type="button" class="ci-btn" data-close="dialog-impresion">Cancelar</button><button type="submit" class="ci-btn primario">Guardar configuración</button></div></form></dialog>
-<script type="module" src="/vendimia/libros-app.js?v=8"></script></body></html>
+<script type="module" src="/vendimia/libros-app.js?v=9"></script></body></html>

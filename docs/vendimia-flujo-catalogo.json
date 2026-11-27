@@ -1,0 +1,131 @@
+[
+  {
+    "id": "flujo-blanco-v1",
+    "stage": "Ingreso / molienda",
+    "name": "1 Blanco.xlsx",
+    "sha256": "a79280828e7c0a476c498c079f4e20a84a1056c307b7f2ceed7c48f79709d8ca",
+    "sheets": [
+      {
+        "name": "OT Molienda",
+        "rows": 29,
+        "cols": 13,
+        "formulas": 3,
+        "merges": 39,
+        "validations": 0,
+        "printAreas": [
+          "A1:M29"
+        ]
+      },
+      {
+        "name": "Hoja1",
+        "rows": 4,
+        "cols": 1,
+        "formulas": 0,
+        "merges": 0,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "flujo-tinto-v1",
+    "stage": "Ingreso / molienda",
+    "name": "1 Tinto.xlsx",
+    "sha256": "c22c13c879cb983a4f6342791c6b93b3cd48fc761be06431ca0dcb5f7dee938c",
+    "sheets": [
+      {
+        "name": "OT Molienda",
+        "rows": 29,
+        "cols": 12,
+        "formulas": 2,
+        "merges": 45,
+        "validations": 0,
+        "printAreas": [
+          "A1:L29"
+        ]
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "flujo-desvin-roll-v1",
+    "stage": "Fin FA / descube",
+    "name": "11 OT DESVIN ROLL.xlsx",
+    "sha256": "68373abc07e9bd117076ba66c3665f1127d30416f4af1d2db9c03a8c24e9dc5f",
+    "sheets": [
+      {
+        "name": "OT",
+        "rows": 57,
+        "cols": 8,
+        "formulas": 4,
+        "merges": 12,
+        "validations": 0,
+        "printAreas": []
+      },
+      {
+        "name": "Lavados",
+        "rows": 61,
+        "cols": 9,
+        "formulas": 2,
+        "merges": 24,
+        "validations": 0,
+        "printAreas": []
+      },
+      {
+        "name": "Rotulos",
+        "rows": 63,
+        "cols": 11,
+        "formulas": 53,
+        "merges": 81,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  },
+  {
+    "id": "flujo-desvin-v1",
+    "stage": "Fin FA / descube",
+    "name": "11 OT Desvin.xlsx",
+    "sha256": "bdd9f098db9f61502fe993af5bc9a1d040cfaa978eebeb9cafc59ae7cfae4a13",
+    "sheets": [
+      {
+        "name": "OT",
+        "rows": 57,
+        "cols": 8,
+        "formulas": 4,
+        "merges": 12,
+        "validations": 0,
+        "printAreas": []
+      },
+      {
+        "name": "Lavados",
+        "rows": 61,
+        "cols": 9,
+        "formulas": 2,
+        "merges": 24,
+        "validations": 0,
+        "printAreas": []
+      },
+      {
+        "name": "Rotulos",
+        "rows": 63,
+        "cols": 11,
+        "formulas": 53,
+        "merges": 81,
+        "validations": 0,
+        "printAreas": []
+      }
+    ],
+    "warnings": [
+      "Configuración binaria de impresora: conservada en el original; impresión web aproximada."
+    ]
+  }
+]

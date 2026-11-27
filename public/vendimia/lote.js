@@ -12,7 +12,7 @@ function h(tag, attrs = {}, ...hijos) {
   for (const c of hijos.flat()) if (c !== null && c !== undefined && c !== false) e.append(c instanceof Node ? c : String(c));
   return e;
 }
-const fechaHora = s => s ? new Date(/^d{4}-d{2}-d{2} d/.test(s) ? s.replace(' ', 'T') + 'Z' : s).toLocaleString('es-AR', {timeZone: 'America/Argentina/Mendoza', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : '—';
+const fechaHora = s => s ? new Date(/^\d{4}-\d{2}-\d{2} \d/.test(s) ? s.replace(' ', 'T') + 'Z' : s).toLocaleString('es-AR', {timeZone: 'America/Argentina/Mendoza', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'}) : '—';
 const ahoraLocal = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 16); // Mendoza (UTC-3)
 const uuid = () => crypto.randomUUID();
 const ESTADO_OT = {borrador: 'Borrador · falta aprobar', aprobada: 'Aprobada', programada: 'Programada', emitida: 'Emitida · pendiente', en_ejecucion: 'En ejecución', ejecutada: 'Ejecutada', parcial: 'Ejecución parcial', cancelada: 'Cancelada'};
@@ -27,7 +27,7 @@ const COLA = 'ciw-v7-pendientes';
 const leerCola = () => { try { return JSON.parse(localStorage.getItem(COLA) || '[]'); } catch { return []; } };
 const guardarCola = q => { try { localStorage.setItem(COLA, JSON.stringify(q)); } catch {} };
 
-export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar, editarId}) {
+export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar, editarId, abrirOficial, documentosNativos}) {
   let L = null, vasija = '', pestana = 'resumen', P = {};
   const raiz = $('dashboard');
 
@@ -49,6 +49,7 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
 
   async function abrir(pid, tab) {
     const d = await api('/lote/' + pid);
+    if(L?.ing.periodo_id!==pid){pestana='resumen';vasija='';}
     L = d; P = d.permisos;
     if (!d.vasijas.some(v => v.vasija === vasija)) vasija = d.vasijas[0]?.vasija || '';
     if (tab) pestana = tab;
@@ -74,7 +75,7 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
       L.faltan.length ? h('div', {class: 'v7-falta'}, `Faltan datos de identificación: ${L.faltan.join(', ').replace(/_/g, ' ')}. `, editarId ? h('button', {class: 'ci-btn chico', type: 'button', onclick: editarId}, 'Completar') : null) : null,
       pend.length ? h('div', {class: 'v7-falta'}, `${pend.length} acción(es) PENDIENTE(S) de sincronizar en esta tablet: todavía no están confirmadas.`) : null,
       h('div', {class: 'v7-vasijas'}, h('span', {class: 'muted'}, 'Vasija:'), ...L.vasijas.map(x => h('button', {type: 'button', class: 'v7-vas', 'aria-pressed': String(x.vasija === vasija), onclick: () => { vasija = x.vasija; render(); }}, x.vasija)), !L.vasijas.length ? h('span', {class: 'muted'}, 'todavía no hay vasijas: cargala en el análisis inicial') : null),
-      h('nav', {class: 'v7-tabs'}, ...[['resumen', 'Resumen'], ['analisis', 'Análisis inicial'], ['ordenes', 'Órdenes de trabajo'], ['control', 'Control'], ['movimientos', 'Movimientos'], ['finfa', 'Fin FA y descube'], ['documentos', 'Documentos e historial']]
+      h('nav', {class: 'v7-tabs'}, ...[['resumen', 'Resumen'], ['ingreso','1 · Ingreso y molienda'], ['analisis', '2–5 · Análisis y aprobación'], ['ordenes', '6–7 · Órdenes de trabajo'], ['control', 'Control'], ['movimientos', 'Movimientos'], ['finfa', 'Fin FA y descube'], ['documentos', 'Documentos e historial']]
         .map(([k, t]) => h('button', {type: 'button', 'aria-pressed': String(pestana === k), onclick: () => { pestana = k; render(); }}, t))),
       h('section', {class: 'v7-cuerpo'}, ...vista())].filter(Boolean));
     if (pestana === 'documentos') abrirDocumentos(); else ocultarDocumentos();
@@ -82,16 +83,18 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
 
   function vista() {
     switch (pestana) {
+      case 'ingreso': return vistaIngreso();
       case 'analisis': return vistaAnalisis();
       case 'ordenes': return [listaOT(deV(L.ots))];
       case 'control': return vistaControl();
       case 'movimientos': return vistaMovs();
       case 'finfa': return vistaFinFA();
-      case 'documentos': return [h('p', {class: 'muted'}, 'Planillas originales, copias de trabajo, exportación a Excel e historial de versiones. Los datos del trabajo diario se cargan en las otras pestañas.')];
+      case 'documentos': return [h('p', {class: 'muted'}, 'Documentos originales y revisiones guardadas. El trabajo diario se carga en los formularios del circuito.'), documentosNativos?.()];
       default: return vistaResumen();
     }
   }
 
+  function vistaIngreso(){return [h('article',{class:'v7-card'},h('h3',{},'1 · Orden de ingreso y molienda'),h('p',{class:'muted'},'Elegí el modelo de vinificación. Los formularios respetan las plantillas oficiales; no se copian datos de ejemplo.'),h('div',{class:'v7-acc'},h('button',{class:'ci-btn primario grande',type:'button',onclick:()=>abrirOficial('flujo-blanco-v1',L,'ingreso')},'Blanco'),h('button',{class:'ci-btn primario grande',type:'button',onclick:()=>abrirOficial('flujo-tinto-v1',L,'ingreso')},'Tinto')))];}
   function vistaResumen() {
     if (!L.vasijas.length) return [h('p', {}, 'Empezá por la pestaña “Análisis inicial”: indicá la vasija, los kilos, la merma y los análisis.')];
     return [h('div', {class: 'v7-grid'}, ...L.vasijas.map(x => {
@@ -108,15 +111,15 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
     const regs = deV(L.registros).filter(x => !x.anulado), ini = regs.find(x => x.tipo === 'analisis_inicial'), v = V(), out = [];
     if (!ini) {
       const f = h('form', {class: 'v7-form', onsubmit: accion(async () => {
-        const x = valores(f), num = ['kg_recibidos', 'kg_procesados', 'merma', 'brix', 'ph', 'at', 'nfa', 'so2t', 'acido_malico', 'temperatura', 'bins'];
+        const x = valores(f), num = ['kg_recibidos', 'kg_procesados', 'merma', 'brix', 'ph', 'at', 'nfa', 'npa', 'litros_estimados', 'so2t', 'acido_malico', 'temperatura', 'bins'];
         const datos = Object.fromEntries(Object.entries(x).filter(([k, val]) => val !== '' && !['vasija', 'fecha', 'responsable', 'observaciones'].includes(k)).map(([k, val]) => [k, num.includes(k) ? Number(String(val).replace(',', '.')) : val]));
         await enviar('/registros', {op: uuid(), periodo_id: L.ing.periodo_id, vasija: x.vasija, tipo: 'analisis_inicial', fecha_muestra: x.fecha, datos, responsable: x.responsable, observaciones: x.observaciones}, {encolable: true});
         vasija = x.vasija;
       }, 'Análisis inicial guardado.')},
         h('h3', {}, 'Análisis inicial'), h('p', {class: 'muted'}, 'Campos de las planillas de Fermentación (tintos y blancos). Lo que falte se puede completar después.'),
         h('div', {class: 'v7-campos'}, campo('Vasija *', 'vasija', {value: vasija, required: true, ph: 'Ej. T 12'}), campo('Fecha y hora de muestreo *', 'fecha', {type: 'datetime-local', value: ahoraLocal(), required: true}),
-          campo('Kg recibidos', 'kg_recibidos', {num: 1}), campo('Kg procesados', 'kg_procesados', {num: 1}), campo('Bins', 'bins', {num: 1}), campo('Merma de llenado', 'merma', {num: 1}), campo('Unidad de merma', 'merma_unidad', {tipo: 'select', opciones: ['kg', 'L', 'cm']}),
-          campo('Tipo de vasija', 'tipo_vasija', {ph: 'Ej. Tanque 24 hL'}), campo('Brix', 'brix', {num: 1}), campo('pH', 'ph', {num: 1}), campo('Acidez total (g/L)', 'at', {num: 1}), campo('NFA (mg/L)', 'nfa', {num: 1}), campo('SO₂ total (mg/L)', 'so2t', {num: 1}), campo('Ácido málico (g/L)', 'acido_malico', {num: 1}), campo('Temperatura (°C)', 'temperatura', {num: 1}), campo('Responsable', 'responsable', {value: ciw.nombre || ''})),
+          campo('Número de pesada', 'numero_pesada'), campo('Kg recibidos', 'kg_recibidos', {num: 1}), campo('Kg procesados', 'kg_procesados', {num: 1}), campo('Bins', 'bins', {num: 1}), campo('Merma de llenado', 'merma', {num: 1}), campo('Unidad de merma', 'merma_unidad', {tipo: 'select', opciones: ['kg', 'L', 'cm']}),
+          campo('Tipo de vasija', 'tipo_vasija', {ph: 'Ej. Tanque 24 hL'}), campo('Brix', 'brix', {num: 1}), campo('pH', 'ph', {num: 1}), campo('Acidez total (g/L)', 'at', {num: 1}), campo('NFA (mg/L)', 'nfa', {num: 1}), campo('NPA (unidad a confirmar)', 'npa', {num: 1}), campo('Litros estimados (L; valor aprobado, sin fórmula configurada)', 'litros_estimados', {num: 1}), campo('SO₂ total (mg/L)', 'so2t', {num: 1}), campo('Ácido málico (g/L)', 'acido_malico', {num: 1}), campo('Temperatura (°C)', 'temperatura', {num: 1}), campo('Responsable', 'responsable', {value: ciw.nombre || ''})),
         campo('Observaciones', 'observaciones', {tipo: 'textarea'}), h('button', {class: 'ci-btn primario grande'}, 'Guardar análisis inicial'));
       return [f];
     }
@@ -286,7 +289,7 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
       h('p', {class: 'muted'}, `Regla: ${ev.parametro} < ${ev.limite} ${ev.unidad} (estricto: ${ev.limite} no cumple) · ${ev.regla === 'provisoria' ? 'REGLA PROVISORIA: falta confirmar denominación y unidad antes de usarla en producción' : ''} · criterio ${ev.criterio_version || '—'}`),
       confirmado ? h('p', {class: 'v7-ok'}, 'Fin de FA confirmado por el técnico.') : P.tecnico && regs.length ? h('form', {onsubmit: accion(() => api('/tecnico/fin-fa', {op: uuid(), periodo_id: L.ing.periodo_id, vasija, registro_id: sel.value}), 'Fin de FA confirmado.')}, h('label', {class: 'v7-campo'}, 'Análisis a evaluar', sel), h('button', {class: 'ci-btn primario'}, 'Confirmar fin de FA')) : null,
       ev.estado === 'rojo' ? h('p', {class: 'v7-bloq'}, 'No cumple: seguir con el seguimiento de fermentación.') : null);
-    return [tarjeta, carga, confirmado && P.tecnico ? formOT('descube', 'OT de descube o desvinado') : null, confirmado ? h('p', {}, 'FML y crianza: seguí el lote en el módulo ', h('a', {href: '/lotes/'}, 'Lotes'), ' (Tablero FML).') : null];
+    return [tarjeta, carga, ...deV(L.ots).filter(o=>['descube','desvinado'].includes(o.tipo)&&!['borrador','programada','cancelada'].includes(o.estado)).map(o=>h('article',{class:'v7-card'},h('h3',{},'Documento oficial · OT '+o.numero),h('p',{class:'muted'},'Elegí el formato correspondiente. No crea ni ejecuta otra orden.'),h('div',{class:'v7-acc'},h('button',{class:'ci-btn',type:'button',onclick:()=>abrirOficial('flujo-desvin-v1',{...L,ot:o},'finfa')},'Desvine / descube'),h('button',{class:'ci-btn',type:'button',onclick:()=>abrirOficial('flujo-desvin-roll-v1',{...L,ot:o},'finfa')},'Desvine ROLL')))), confirmado && P.tecnico ? formOT('descube', 'OT de descube o desvinado') : null, confirmado ? h('p', {}, 'FML y crianza: seguí el lote en el módulo ', h('a', {href: '/lotes/'}, 'Lotes'), ' (Tablero FML).') : null];
   }
 
   return {abrir, cerrar() { L = null; raiz.hidden = true; raiz.replaceChildren(); }, abrirOT, irA(tab) { pestana = tab; render(); }};

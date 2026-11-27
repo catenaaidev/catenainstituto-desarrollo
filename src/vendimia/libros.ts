@@ -1,12 +1,14 @@
 import { identidad, puedeLeer, puedeEscribir } from '../auth';
 import { json } from '../respuestas';
 import { PLANTILLAS } from './plantillas-data';
+import { PLANTILLAS_FLUJO } from './plantillas-flujo-data';
 import { registrarHechos } from './v6';
 
 const MAX_BYTES=8*1024*1024;
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const catalogo=PLANTILLAS.map(({originalBase64:_b,snapshot:_s,...p})=>p);
-const plantilla=(id:string)=>PLANTILLAS.find(p=>p.id===id);
+const TODAS=[...PLANTILLAS,...PLANTILLAS_FLUJO];
+const catalogo=TODAS.map(({originalBase64:_b,snapshot:_s,...p})=>p);
+const plantilla=(id:string)=>TODAS.find(p=>p.id===id);
 const tipoXlsx='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 interface Libro {id:string;periodo_id:string;plantilla_id:string;nombre:string;version:number;objeto:string|null;autor:string;creado:string;actualizado:string;}
 interface Revision {libro_id:string;version:number;objeto:string|null;autor:string;fecha:string;operacion:string;}
@@ -114,6 +116,29 @@ export async function rutasLibros(req:Request,env:Env,ctx:ExecutionContext,sub:s
    const pid=crypto.randomUUID();const stmts=[env.DB.prepare('INSERT INTO vend_periodos(id,nombre,anio,desde,hasta,autor) VALUES(?,?,?,?,?,?)').bind(pid,b.nombre.trim(),b.anio,b.desde,b.hasta||null,autor)];
    for(const p of PLANTILLAS)stmts.push(...nuevaCopia(env,pid,p.id,p.name,autor).stmts);
    await env.DB.batch(stmts);return response(201,{id:pid});
+  }
+  // Formularios oficiales: una copia por lote/tipo de molienda o por OT de descube.
+  const oficial=/^\/periodos\/([0-9a-f-]{36})\/formulario$/i.exec(sub);
+  if(oficial){
+   const pid=oficial[1],p=PLANTILLAS_FLUJO.find(p=>p.id===b.plantilla_id);
+   if(!p)return response(400,{error:'Formulario oficial inválido.'});
+   const ing=await env.DB.prepare('SELECT estado FROM vend_ingresos WHERE periodo_id=?').bind(pid).first<{estado:string}>();
+   if(!ing)return response(404,{error:'Lote no encontrado.'});
+   if(ing.estado==='finalizado'&&id!.rol!=='admin')return response(403,{error:'Lote finalizado.'});
+   let nombre=p.name.replace(/\.xlsx$/i,'');
+   if(p.id.includes('desvin')){
+    if(typeof b.ot_id!=='string'||!uuid.test(b.ot_id))return response(400,{error:'Seleccioná la OT real de desvine/descube.'});
+    const ot=await env.DB.prepare("SELECT id,numero FROM vend_ot WHERE id=? AND periodo_id=? AND tipo IN ('descube','desvinado') AND estado NOT IN ('borrador','cancelada','programada')").bind(b.ot_id,pid).first<{id:string;numero:string}>();
+    if(!ot)return response(409,{error:'La OT de desvine/descube no está habilitada para este lote.'});
+    nombre+=` · OT ${ot.numero} · ${ot.id}`;
+   } else if(b.ot_id)return response(400,{error:'La molienda no requiere una OT de descube.'});
+   const nuevo=crypto.randomUUID();
+   await env.DB.batch([
+    env.DB.prepare('INSERT OR IGNORE INTO vend_libros(id,periodo_id,plantilla_id,nombre,autor) VALUES(?,?,?,?,?)').bind(nuevo,pid,p.id,nombre,autor),
+    env.DB.prepare("INSERT OR IGNORE INTO vend_libro_versiones(libro_id,version,objeto,autor,operacion) SELECT id,0,NULL,autor,'plantilla' FROM vend_libros WHERE periodo_id=? AND nombre=? AND plantilla_id=?").bind(pid,nombre,p.id)
+   ]);
+   const libro=await env.DB.prepare('SELECT id FROM vend_libros WHERE periodo_id=? AND nombre=? AND plantilla_id=?').bind(pid,nombre,p.id).first<{id:string}>();
+   return libro?response(200,libro):response(409,{error:'El nombre del formulario ya está reservado.'});
   }
   if(pth&&pth[2]==='libros'){
    if(!validoTexto(b.plantilla_id,160)||!plantilla(b.plantilla_id)||!validoTexto(b.nombre,240))return response(400,{error:'Seleccionar plantilla y nombre de la copia.'});

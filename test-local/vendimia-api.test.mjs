@@ -10,7 +10,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHash,randomUUID} from 'node:crypto';
 const require=createRequire(import.meta.url);let ts;try{ts=require('typescript');}catch{ts=require(join(execFileSync('npm',['root','-g'],{encoding:'utf8'}).trim(),'typescript'));}
 const temp=mkdtempSync(join(tmpdir(),'ciw-vend-'));
-for(const f of ['src/vendimia/libros.ts','src/vendimia/plantillas-data.ts','src/respuestas.ts']){let source=readFileSync(f,'utf8').replace("from './v6'","from './v6.mjs'").replace(/from '\.\.\/(auth|respuestas)'/g,"from './$1.mjs'").replace(/from '\.\/plantillas-data'/g,"from './plantillas-data.mjs'");const o=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}});writeFileSync(join(temp,f.split('/').pop().replace('.ts','.mjs')),o.outputText);}
+for(const f of ['src/vendimia/libros.ts','src/vendimia/plantillas-data.ts','src/vendimia/plantillas-flujo-data.ts','src/respuestas.ts']){let source=readFileSync(f,'utf8').replace("from './v6'","from './v6.mjs'").replace(/from '\.\.\/(auth|respuestas)'/g,"from './$1.mjs'").replace(/from '\.\/(plantillas(?:-flujo)?-data)'/g,"from './$1.mjs'");const o=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}});writeFileSync(join(temp,f.split('/').pop().replace('.ts','.mjs')),o.outputText);}
 writeFileSync(join(temp,'v6.mjs'),'export async function registrarHechos(){}');writeFileSync(join(temp,'auth.mjs'),`export async function identidad(req){const rol=req.headers.get('x-test-role');return rol?{email:rol+'@test.invalid',rol}:null;}export const puedeLeer=id=>!!id;export const puedeEscribir=id=>id?.rol==='admin';`);
 const {rutasLibros}=await import(pathToFileURL(join(temp,'libros.mjs')));const {PLANTILLAS}=await import(pathToFileURL(join(temp,'plantillas-data.mjs')));
 process.on('exit',()=>rmSync(temp,{recursive:true,force:true}));
@@ -26,3 +26,19 @@ test('V3: ingreso, permisos, libros vinculados y conflicto de ficha',async()=>{c
 test('V4: conserva Información ID en ficha y admite vasija pendiente',async()=>{const info={lote_sistema:'7287',variedad:'Semillón',distrito:'Gualtallary',proyecto:'Field Blend',vinedo:'Adrianna',ct:'Terrazas',clon:'Masal',id_texto:'SE Adrianna',organico_convencional:'Orgánico',origen:'Uva'};const b={lote:'26003',nombre_lote:'SE Adrianna',variedad:'Semillón',vasija:'',recepcion:'2026-11-25',estado:'borrador',informacion_id:info};const r=await data(await call('/ingresos',b));assert.equal(r.status,201);const x=(await data(await call('/ingresos'))).body.ingresos.find(x=>x.periodo_id===r.body.id);assert.deepEqual(JSON.parse(x.informacion_id),info);const nuevo={...info,ct:'Otro'};assert.equal((await call('/ingresos/'+r.body.id,{...b,informacion_id:nuevo,version:0})).status,200);const y=(await data(await call('/ingresos'))).body.ingresos.find(x=>x.periodo_id===r.body.id);assert.deepEqual(JSON.parse(y.informacion_id),nuevo);});
 
 test('V5: recepcion, peso, destinos y reapertura; rechaza tara superior',async()=>{const d={hora_recepcion:'14:20',ot:'A036',turno:'Tarde',parcela:'P1',bins:'8',peso_bruto:'1000',tara:'100',observaciones:'Control',destinos:[{vasija:'T12',parcela:'P1',bins:'4',kg:'450'},{vasija:'T13',parcela:'P1',bins:'4',kg:'450'}]};const b={lote:'26009',nombre_lote:'Prueba V5',variedad:'Malbec',vasija:'T12',recepcion:'2026-11-25',estado:'borrador',informacion_id:{recepcion_detalle:d}};assert.equal((await call('/ingresos',{...b,informacion_id:{recepcion_detalle:{...d,tara:'1001'}}})).status,400);const r=await data(await call('/ingresos',b));assert.equal(r.status,201);const read=async()=>JSON.parse((await data(await call('/ingresos'))).body.ingresos.find(x=>x.periodo_id===r.body.id).informacion_id).recepcion_detalle;assert.deepEqual(await read(),d);const changed={...d,observaciones:'Retomado'};assert.equal((await call('/ingresos/'+r.body.id,{...b,version:0,informacion_id:{recepcion_detalle:changed}})).status,200);assert.deepEqual(await read(),changed);assert.equal((await call('/ingresos/'+r.body.id,{...b,version:0})).status,409);});
+
+test('V8: formulario oficial por lote, idempotente y ligado a la OT correcta',async()=>{
+ const b={lote:'27001',nombre_lote:'Chenin',variedad:'Chenin',vasija:'177',recepcion:'2026-11-27',estado:'en_proceso'};
+ const pid=(await data(await call('/ingresos',b))).body.id;
+ const p='/periodos/'+pid+'/formulario';
+ assert.equal((await call(p,{plantilla_id:'flujo-blanco-v1'},'lector')).status,403);
+ const a=await data(await call(p,{plantilla_id:'flujo-blanco-v1'}));assert.equal(a.status,200);
+ const same=await data(await call(p,{plantilla_id:'flujo-blanco-v1'}));assert.equal(same.body.id,a.body.id);
+ const book=await data(await call('/libros/'+a.body.id));assert.equal(book.body.libro.plantilla_id,'flujo-blanco-v1');
+ assert.equal((await call(p,{plantilla_id:'flujo-desvin-v1',ot_id:randomUUID()})).status,409);
+ const id=randomUUID();db.prepare("INSERT INTO vend_ot(id,numero,periodo_id,vasija,tipo,estado,autor) VALUES(?,?,?,?,?,?,?)").run(id,'TEST-V8',pid,'177','descube','emitida','admin@test.invalid');
+ const ot=await data(await call(p,{plantilla_id:'flujo-desvin-v1',ot_id:id}));assert.equal(ot.status,200);
+ const repeat=await data(await call(p,{plantilla_id:'flujo-desvin-v1',ot_id:id}));assert.equal(repeat.body.id,ot.body.id);
+ const other=(await data(await call('/ingresos',{...b,lote:'27002'}))).body.id;
+ assert.equal((await call('/periodos/'+other+'/formulario',{plantilla_id:'flujo-desvin-v1',ot_id:id})).status,409);
+});

@@ -1,0 +1,12 @@
+/* V8: formularios nativos, sin grilla de celdas. */
+#contenido-periodo.v8-oficial .editor-hint{display:none}
+#contenido-periodo.v8-oficial #editor-host{height:auto!important;min-height:0;overflow:visible;border:0;background:transparent}
+#contenido-periodo.v8-oficial .work-area{min-height:0}
+.v8-form{display:grid;gap:14px;padding:12px 0}
+.v8-seccion{border:1px solid #dfe3ea;border-radius:12px;padding:16px;background:#fff}
+.v8-seccion h3{font-size:1.05rem;margin:0 0 14px;color:#182132}
+.v8-seccion input:not([type=checkbox]),.v8-seccion select,.v8-seccion textarea{min-height:46px;max-width:100%;width:100%;font-size:16px}
+.v8-seccion input[type=checkbox]{width:24px;height:24px;align-self:flex-start;accent-color:#901b44}
+.v8-total{font-weight:650;background:#eef3f7;border-radius:8px;padding:14px}
+.v8-docs{display:grid;gap:8px}.v8-doc-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:white;border:1px solid #dfe3ea;border-radius:9px;padding:12px}.v8-doc-row>span{flex:1;min-width:180px}
+@media(max-width:700px){.v8-seccion{padding:12px}.v8-seccion .v7-campos{grid-template-columns:1fr}.v8-doc-row .ci-btn{flex:1;text-align:center}.v8-form{padding:8px 0}}
