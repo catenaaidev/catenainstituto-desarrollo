@@ -2,7 +2,7 @@
 'use strict';
 
 import { $, esc, escA, num, DATOS, markDirty, guardar, mostrarTab, registrarVista,
-         usuarioActual, irALote, mostrarOverlay, cerrarOverlay } from './nucleo.js';
+         usuarioActual, irALote, mostrarOverlay, cerrarOverlay, vistaActiva } from './nucleo.js';
 import { avisar, informar, confirmar } from './dialogos.js';
 import { toggleSort, sortRows, opcionesValores, matchValor,
          initFiltrosMulti, pasaMulti, limpiarFiltrosMulti, setF, ordenValido } from './tabla.js';
@@ -93,7 +93,7 @@ let _movFiltBusca = (v => typeof v === 'string' ? v : '')(_lf('busca', ''));
  * vista-mermas.js) o 'tanques' (inventario de tanques,
  * vista-inventario-tanques.js). Vuelve del F5 (si sigue siendo una de las
  * tres de afuera del modo órdenes: 'ordenes' no se anota ni se restaura). */
-const SUBS_MOV = ['historial', 'mermas', 'tanques'];
+const SUBS_MOV = ['historial', 'mermas'];
 let _sub = (v => SUBS_MOV.includes(v) ? v : 'historial')(_lf('sub', 'historial'));
 const _irSub = k => { _sub = k; _gf('sub', k); };
 let _unica = false;        // modo órdenes (/lotes/?orden=…): solo la hoja de una OT
@@ -103,8 +103,7 @@ function _selectorSub(){
   const b = (k, txt) => `<button type="button" data-sub="${k}" role="radio" aria-checked="${_sub === k}"` +
     `${_sub === k ? ' class="on"' : ''}>${txt}</button>`;
   return `<div class="mov-sub" role="radiogroup" aria-label="Vista de Movimientos">` +
-    b('historial', 'Historial') + b('mermas', 'Mermas') +
-    b('tanques', 'Inventario de tanques') + '</div>';
+    b('historial', 'Historial') + b('mermas', 'Mermas') + '</div>';
 }
 
 function _cablearSelector(sec){
@@ -317,17 +316,16 @@ export function renderMovimientos(opciones){
   const focoEnBusca = !!buscaPrevio && document.activeElement === buscaPrevio;
   const buscaCaret = focoEnBusca ? buscaPrevio.selectionStart : null;
 
-  if (_sub === 'mermas'){
+  if (_sub === 'mermas' && vistaActiva() !== 'inventario-tanques'){
     sec.innerHTML = _selectorSub() + '<div id="movMermas"></div>';
     _cablearSelector(sec);
     renderMermas($('movMermas'), { onCambio: renderMovimientos });
     return;
   }
 
-  if (_sub === 'tanques'){
+  if (vistaActiva() === 'inventario-tanques'){
     // #otMovHoja: la hoja de recorrida se imprime con printing-ot-mov, igual que las OT.
-    sec.innerHTML = _selectorSub() + '<div id="movTanques"></div><div id="otMovHoja" style="display:none"></div>';
-    _cablearSelector(sec);
+    sec.innerHTML = '<div class="toolbar"><a class="btn" href="/inventario/">← Inventario</a><strong>Inventario de tanques · Lotes</strong></div><div id="movTanques"></div><div id="otMovHoja" style="display:none"></div>';
     renderInventarioTanques($('movTanques'), { onCambio: renderMovimientos });
     return;
   }
@@ -1104,3 +1102,4 @@ async function _aceptarModalOT(mov){
 }
 
 registrarVista('movimientos', () => renderMovimientos({ conservarScroll: true }));
+registrarVista('inventario-tanques', () => renderMovimientos());

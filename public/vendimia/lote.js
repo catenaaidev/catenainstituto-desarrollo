@@ -75,7 +75,7 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
       L.faltan.length ? h('div', {class: 'v7-falta'}, `Faltan datos de identificación: ${L.faltan.join(', ').replace(/_/g, ' ')}. `, editarId ? h('button', {class: 'ci-btn chico', type: 'button', onclick: editarId}, 'Completar') : null) : null,
       pend.length ? h('div', {class: 'v7-falta'}, `${pend.length} acción(es) PENDIENTE(S) de sincronizar en esta tablet: todavía no están confirmadas.`) : null,
       h('div', {class: 'v7-vasijas'}, h('span', {class: 'muted'}, 'Vasija:'), ...L.vasijas.map(x => h('button', {type: 'button', class: 'v7-vas', 'aria-pressed': String(x.vasija === vasija), onclick: () => { vasija = x.vasija; render(); }}, x.vasija)), !L.vasijas.length ? h('span', {class: 'muted'}, 'todavía no hay vasijas: cargala en el análisis inicial') : null),
-      h('nav', {class: 'v7-tabs'}, ...[['resumen', 'Resumen'], ['ingreso','1 · Ingreso y molienda'], ['analisis', '2–5 · Análisis y aprobación'], ['ordenes', '6–7 · Órdenes de trabajo'], ['control', 'Control'], ['movimientos', 'Movimientos'], ['finfa', 'Fin FA y descube'], ['documentos', 'Documentos e historial']]
+      h('nav', {class: 'v7-tabs'}, ...[['resumen', 'Resumen'], ['ingreso','1 · Ingreso y molienda'], ['analisis', '2 · Análisis iniciales'], ['aprobacion', '3 · Aprobación técnica'], ['correccion', '4 · Corrección pH'], ['confirmacion', '5 · Confirmación pH'], ['siembra', '6 · OT Siembra'], ['nutrientes', '7 · OT Nutrientes'], ['control', 'Control'], ['movimientos', 'Movimientos'], ['finfa', 'Evaluación fin FA'], ['descube', '11 · Desvine / descube'], ['ordenes', 'Todas las OT'], ['documentos', 'Documentos e historial']]
         .map(([k, t]) => h('button', {type: 'button', 'aria-pressed': String(pestana === k), onclick: () => { pestana = k; render(); }}, t))),
       h('section', {class: 'v7-cuerpo'}, ...vista())].filter(Boolean));
     if (pestana === 'documentos') abrirDocumentos(); else ocultarDocumentos();
@@ -85,6 +85,12 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
     switch (pestana) {
       case 'ingreso': return vistaIngreso();
       case 'analisis': return vistaAnalisis();
+      case 'aprobacion': return vistaAprobacion();
+      case 'correccion': return vistaCorreccion();
+      case 'confirmacion': return vistaConfirmacion();
+      case 'siembra': return vistaOrdenTipo('siembra', '6 · OT Siembra', 'La orden se emite al confirmar el pH y aprobar la receta.');
+      case 'nutrientes': return vistaOrdenTipo('nutrientes', '7 · OT Nutrientes', 'La emisión se programa 24 horas después de completar la siembra.');
+      case 'descube': return vistaDescube();
       case 'ordenes': return [listaOT(deV(L.ots))];
       case 'control': return vistaControl();
       case 'movimientos': return vistaMovs();
@@ -102,37 +108,80 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
       return h('article', {class: 'v7-card'}, h('h3', {}, 'Vasija ' + x.vasija), h('p', {}, h('b', {}, x.proxima.texto)), x.proxima.bloqueo ? h('p', {class: 'v7-bloq'}, x.proxima.bloqueo) : null,
         h('p', {}, chip(x.ph.estado, x.ph.texto)), h('p', {}, chip(x.fin_fa.estado, 'Fin FA: ' + x.fin_fa.texto)),
         h('ul', {class: 'v7-mini'}, ...ots.map(o => h('li', {}, `${o.numero} · ${TIPO_OT[o.tipo]} · ${ESTADO_OT[o.estado]}`))),
-        h('button', {class: 'ci-btn', type: 'button', onclick: () => { vasija = x.vasija; pestana = 'analisis'; render(); }}, 'Trabajar en esta vasija'));
+        h('button', {class: 'ci-btn', type: 'button', onclick: () => { vasija = x.vasija; pestana = etapaSiguiente(x.proxima.clave); render(); }}, 'Trabajar en esta vasija'));
     }))];
   }
 
-  // ---------- análisis inicial + revisión técnica + confirmación de pH ----------
+  // ---------- circuito operativo de Marcelo: cada paso tiene su propia vista ----------
+  const etapaSiguiente = clave => ({analisis_inicial:'analisis', revision_tecnica:'aprobacion', ejecutar_th2:'correccion', analisis_post:'correccion', confirmar_ph:'confirmacion', ejecutar_siembra:'siembra', aprobar_nutrientes:'nutrientes', esperar_nutrientes:'nutrientes', ejecutar_nutrientes:'nutrientes', seguimiento_fa:'control', descube:'descube', ejecutar_descube:'descube', crianza:'descube'})[clave] || 'analisis';
+  const ir = (tab, texto) => h('button', {type:'button', class:'ci-btn grande', onclick:()=>{pestana=tab;render();}}, texto);
+  const cabPaso = (n,t,desc) => h('header',{class:'v9-paso'},h('span',{class:'v9-num'},n),h('div',{},h('h2',{},t),h('p',{},desc)));
+  const bloque = (titulo,...campos) => h('section',{class:'v9-bloque'},h('h4',{},titulo),h('div',{class:'v7-campos'},...campos));
+  const registrosV = () => deV(L.registros).filter(x=>!x.anulado);
+  const inicialV = () => registrosV().find(x=>x.tipo==='analisis_inicial');
+  const lectura = x => typeof x.datos==='string'?JSON.parse(x.datos):x.datos;
+  const puedeCargar = () => (P.escribir||P.operario) && (L.ing.estado!=='finalizado'||P.admin);
+  const etiquetas = {numero_pesada:'Número de pesada',kg_recibidos:'Kg recibidos',kg_procesados:'Kg procesados',bins:'Bins',merma:'Merma de llenado',merma_unidad:'Unidad de merma',tipo_vasija:'Tipo de vasija',brix:'Brix inicial',ph:'pH inicial',at:'AT inicial',npa:'NPA',nfa:'NFA',litros_estimados:'Litros estimados',so2t:'SO₂ total',acido_malico:'Ácido málico',temperatura:'Temperatura'};
+  const unidades = {kg_recibidos:'kg',kg_procesados:'kg',at:'g/L',nfa:'mg/L',so2t:'mg/L',acido_malico:'g/L',temperatura:'°C',litros_estimados:'L'};
+  const grupos = [['Recepción y vasija',['numero_pesada','kg_recibidos','kg_procesados','merma','merma_unidad','bins','tipo_vasija']],['Análisis de laboratorio',['brix','ph','at','npa','nfa','so2t','acido_malico','temperatura']],['Rendimiento',['litros_estimados']]];
+  function valorFicha(k,d,x) {
+    const val=d[k], falta=val===null||val===undefined||String(val).trim()==='';
+    const ev=k==='ph'&&V()?.ph_registro===x.id?V().ph:null;
+    return h('div',{class:'v9-dato','data-estado':falta?'gris':ev?.estado||'gris'},h('span',{},etiquetas[k]||k.replace(/_/g,' ')),h('strong',{},falta?'—':String(val),!falta&&unidades[k]?h('small',{},' '+unidades[k]):null),h('small',{},falta?'Pendiente de carga':ev?ev.texto:k==='ph'&&V()?.ph_registro&&V().ph_registro!==x.id?'Criterio mostrado para otra medición':grupos[1][1].includes(k)?'Sin criterio aprobado':'Dato registrado'),ev?.criterio_version?h('small',{},'Criterio '+ev.criterio_version):null);
+  }
+  function fichaInicial(x) {
+    const d=lectura(x), conocidos=new Set(grupos.flatMap(g=>g[1]));
+    return h('article',{class:'v7-card v9-ficha'},h('h3',{},'Análisis inicial · vasija '+x.vasija),h('p',{class:'muted'},`Muestra ${fechaHora(x.fecha_muestra)} · Carga ${fechaHora(x.registrado)} · ${x.autor} · v${x.version}`),...grupos.map(([t,ks])=>h('section',{class:'v9-bloque'},h('h4',{},t),h('div',{class:'v9-valores'},...ks.map(k=>valorFicha(k,d,x))))),...Object.keys(d).filter(k=>!conocidos.has(k)).map(k=>valorFicha(k,d,x)),x.observaciones?h('p',{},x.observaciones):null,puedeCargar()?h('button',{type:'button',class:'ci-btn grande',onclick:()=>{const editor=editarInicial(x,d);raiz.querySelector('.v7-cuerpo').replaceChildren(cabPaso('2','Corregir análisis inicial','La revisión anterior se conserva en el historial.'),editor);}},'Editar análisis'):null);
+  }
+  function editarInicial(x,d) {
+    const campos=grupos.flatMap(g=>g[1]), f=h('form',{class:'v7-form',onsubmit:accion(async()=>{const a=valores(f), datos={};for(const k of campos){const v=a[k];if(String(v??'')!==String(d[k]??'')){if(!['numero_pesada','merma_unidad','tipo_vasija'].includes(k)&&v!==''){const n=Number(v.replace(',','.'));if(!Number.isFinite(n)||(k==='ph'&&(n<2||n>5)))throw Error('Revisá '+etiquetas[k]);datos[k]=n;}else datos[k]=v;}}if(!a.motivo?.trim())throw Error('Indicá el motivo de la corrección.');if(!Object.keys(datos).length)throw Error('No hay cambios en los datos.');await enviar(`/registros/${x.id}/corregir`,{version:x.version,datos,motivo:a.motivo});},'Corrección guardada. La versión anterior quedó en el historial.')},...grupos.map(([t,ks])=>bloque(t,...ks.map(k=>campo(etiquetas[k]+(unidades[k]?' ('+unidades[k]+')':''),k,{value:d[k]??'',num:!['numero_pesada','merma_unidad','tipo_vasija'].includes(k)})))),h('p',{class:'muted'},'NPA: unidad pendiente de confirmación. Litros estimados: ingresar valor aprobado, sin fórmula configurada.'),campo('Motivo obligatorio','motivo',{tipo:'textarea'}),h('div',{class:'v7-acc'},h('button',{class:'ci-btn primario grande'},'Guardar corrección'),ir('analisis','Cancelar')));
+    return f;
+  }
+
   function vistaAnalisis() {
-    const regs = deV(L.registros).filter(x => !x.anulado), ini = regs.find(x => x.tipo === 'analisis_inicial'), v = V(), out = [];
+    const ini = inicialV(), out = [cabPaso('2','Análisis iniciales','Registrá los datos de pesada, vasija FA y laboratorio.')] ;
     if (!ini) {
+      if(!puedeCargar())return [...out,h('p',{class:'muted'},'No hay análisis inicial disponible para consultar.')];
       const f = h('form', {class: 'v7-form', onsubmit: accion(async () => {
         const x = valores(f), num = ['kg_recibidos', 'kg_procesados', 'merma', 'brix', 'ph', 'at', 'nfa', 'npa', 'litros_estimados', 'so2t', 'acido_malico', 'temperatura', 'bins'];
         const datos = Object.fromEntries(Object.entries(x).filter(([k, val]) => val !== '' && !['vasija', 'fecha', 'responsable', 'observaciones'].includes(k)).map(([k, val]) => [k, num.includes(k) ? Number(String(val).replace(',', '.')) : val]));
         await enviar('/registros', {op: uuid(), periodo_id: L.ing.periodo_id, vasija: x.vasija, tipo: 'analisis_inicial', fecha_muestra: x.fecha, datos, responsable: x.responsable, observaciones: x.observaciones}, {encolable: true});
         vasija = x.vasija;
       }, 'Análisis inicial guardado.')},
-        h('h3', {}, 'Análisis inicial'), h('p', {class: 'muted'}, 'Campos de las planillas de Fermentación (tintos y blancos). Lo que falte se puede completar después.'),
-        h('div', {class: 'v7-campos'}, campo('Vasija *', 'vasija', {value: vasija, required: true, ph: 'Ej. T 12'}), campo('Fecha y hora de muestreo *', 'fecha', {type: 'datetime-local', value: ahoraLocal(), required: true}),
-          campo('Número de pesada', 'numero_pesada'), campo('Kg recibidos', 'kg_recibidos', {num: 1}), campo('Kg procesados', 'kg_procesados', {num: 1}), campo('Bins', 'bins', {num: 1}), campo('Merma de llenado', 'merma', {num: 1}), campo('Unidad de merma', 'merma_unidad', {tipo: 'select', opciones: ['kg', 'L', 'cm']}),
-          campo('Tipo de vasija', 'tipo_vasija', {ph: 'Ej. Tanque 24 hL'}), campo('Brix', 'brix', {num: 1}), campo('pH', 'ph', {num: 1}), campo('Acidez total (g/L)', 'at', {num: 1}), campo('NFA (mg/L)', 'nfa', {num: 1}), campo('NPA (unidad a confirmar)', 'npa', {num: 1}), campo('Litros estimados (L; valor aprobado, sin fórmula configurada)', 'litros_estimados', {num: 1}), campo('SO₂ total (mg/L)', 'so2t', {num: 1}), campo('Ácido málico (g/L)', 'acido_malico', {num: 1}), campo('Temperatura (°C)', 'temperatura', {num: 1}), campo('Responsable', 'responsable', {value: ciw.nombre || ''})),
+        bloque('Recepción y pesada',campo('Número de pesada','numero_pesada'),campo('Kg recibidos','kg_recibidos',{num:1}),campo('Kg procesados','kg_procesados',{num:1}),campo('Vasija FA *','vasija',{value:vasija,required:true}),campo('Merma de llenado','merma',{num:1}),campo('Unidad de merma','merma_unidad',{tipo:'select',opciones:['kg','L','cm']})),
+        bloque('Muestra y análisis de laboratorio',campo('Fecha y hora de muestreo *','fecha',{type:'datetime-local',value:ahoraLocal(),required:true}),campo('Brix inicial','brix',{num:1}),campo('pH inicial','ph',{num:1}),campo('AT inicial (g/L)','at',{num:1}),campo('NPA (unidad a confirmar)','npa',{num:1}),campo('Responsable','responsable',{value:ciw.nombre||''})),
+        bloque('Rendimiento',campo('Litros estimados (L)','litros_estimados',{num:1})),h('p',{class:'muted'},'Litros estimados: ingresar el valor aprobado. La fórmula de cálculo aún no está configurada.'),
+        h('details',{class:'v9-complementarios'},h('summary',{},'Datos complementarios de las planillas originales'),bloque('Datos complementarios',campo('Bins','bins',{num:1}),campo('Tipo de vasija','tipo_vasija'),campo('NFA (mg/L)','nfa',{num:1}),campo('SO₂ total (mg/L)','so2t',{num:1}),campo('Ácido málico (g/L)','acido_malico',{num:1}),campo('Temperatura (°C)','temperatura',{num:1}))),
         campo('Observaciones', 'observaciones', {tipo: 'textarea'}), h('button', {class: 'ci-btn primario grande'}, 'Guardar análisis inicial'));
-      return [f];
+      return [...out,f];
     }
-    out.push(fichaRegistro(ini, 'Análisis inicial'), v ? h('p', {}, chip(v.ph.estado, v.ph.texto + (v.ph.criterio_version ? ` · criterio ${v.ph.criterio_version}` : ''))) : null);
-    for (const x of regs.filter(x => x.tipo === 'post_correccion')) out.push(fichaRegistro(x, 'Análisis posterior a la corrección'));
-    const clave = v?.proxima.clave;
-    if (clave === 'revision_tecnica') out.push(P.tecnico ? formRevision() : h('p', {class: 'v7-bloq'}, 'Esperando la revisión técnica (TH2 o “No requiere corrección”).'));
-    if (['analisis_post', 'confirmar_ph'].includes(clave) || clave === 'ejecutar_th2') out.push(formPost());
-    if (clave === 'confirmar_ph') out.push(P.tecnico ? formConfirmarPh(regs) : h('p', {class: 'v7-bloq'}, 'Esperando que el técnico confirme el pH para siembra.'));
-    const dec = deV(L.decisiones);
-    if (dec.length) out.push(h('div', {class: 'v7-card'}, h('h4', {}, 'Decisiones técnicas'), h('ul', {}, ...dec.map(d => h('li', {}, `${fechaHora(d.fecha)} · ${({no_requiere_th2: 'No requiere corrección', confirmar_ph: 'pH confirmado para siembra', fin_fa: 'Fin de FA confirmado'})[d.tipo]} · ${d.autor}${d.motivo ? ' · ' + d.motivo : ''} · criterio ${d.criterio_version || '—'}`)))));
+    return [...out,fichaInicial(ini),ir('aprobacion','Ir a aprobación técnica →')];
+  }
+  function decisiones(tipo){const dec=deV(L.decisiones).filter(d=>d.tipo===tipo);return dec.map(d=>h('article',{class:'v7-card'},h('h4',{},({'no_requiere_th2':'No requiere corrección','confirmar_ph':'pH confirmado para siembra','fin_fa':'Fin de FA confirmado'})[d.tipo]||d.tipo),h('p',{},`${fechaHora(d.fecha)} · ${d.autor}${d.motivo?' · '+d.motivo:''} · criterio ${d.criterio_version||'—'}`)));}
+  function vistaAprobacion(){
+    const out=[cabPaso('3','Aprobación de técnico','Revisá kilos, mermas y análisis. Registrá si corresponde una corrección.')], ini=inicialV(), ots=deV(L.ots).filter(o=>o.tipo==='th2'&&o.estado!=='cancelada'), dec=decisiones('no_requiere_th2');
+    if(!ini)return [...out,h('p',{class:'v7-bloq'},'Falta el análisis inicial.'),ir('analisis','Ir al análisis')];
+    const d=lectura(ini);out.push(h('div',{class:'v7-card'},h('h3',{},'Datos a revisar'),h('div',{class:'v9-valores'},...['kg_recibidos','kg_procesados','merma','merma_unidad','brix','ph','at','npa'].map(k=>valorFicha(k,d,ini))),ir('analisis','Ver análisis completo')));
+    if(ots.length||dec.length)return [...out,...dec,...(ots.length?[listaOT(ots)]:[]),ir(ots.length?'correccion':'confirmacion',ots.length?'Ir a corrección de pH →':'Ir a confirmación de pH →')];
+    return [...out,P.tecnico&&V()?.proxima.clave==='revision_tecnica'?formRevision():h('p',{class:'v7-bloq'},'Esperando revisión del técnico.')];
+  }
+  function vistaCorreccion(){
+    const out=[cabPaso('4','Corrección de pH (opcional)','Ejecutá la OT de ácido tartárico y registrá el análisis posterior.')], ots=deV(L.ots).filter(o=>o.tipo==='th2'&&o.estado!=='cancelada'), dec=decisiones('no_requiere_th2');
+    if(dec.length)return [...out,...dec,ir('confirmacion','Ir a confirmación de pH →')];
+    if(!ots.length)return [...out,h('p',{class:'v7-bloq'},'Falta registrar la decisión técnica.'),ir('aprobacion','Ir a aprobación')];
+    out.push(listaOT(ots));
+    const regs=registrosV().filter(x=>x.tipo==='post_correccion');out.push(...regs.map(x=>fichaRegistro(x,'Análisis posterior a la corrección')));
+    if(ots.some(o=>o.estado==='ejecutada')){if(puedeCargar())out.push(formPost());out.push(ir('confirmacion','Ir a confirmación de pH →'));}else out.push(h('p',{class:'v7-bloq'},'La corrección debe estar ejecutada por completo antes de tomar la muestra posterior.'));
     return out;
   }
+  function vistaConfirmacion(){
+    const out=[cabPaso('5','Confirmación de pH','Seleccioná una medición válida y aprobá la receta antes de emitir la OT de siembra.')], v=V(), dec=decisiones('confirmar_ph'), regs=registrosV();
+    if(dec.length)return [...out,...dec,ir('siembra','Ver OT de siembra →')];
+    if(v)out.push(h('article',{class:'v7-card'},h('h3',{},'Criterio de pH'),chip(v.ph.estado,v.ph.texto),v.ph.criterio_version?h('p',{class:'muted'},'Versión: '+v.ph.criterio_version):null));
+    if(v?.proxima.clave==='confirmar_ph'){if(puedeCargar())out.push(h('details',{class:'v9-complementarios'},h('summary',{},'Registrar otra medición de pH'),formPost()));if(P.tecnico)out.push(formConfirmarPh(regs));else out.push(h('p',{class:'v7-bloq'},'Esperando confirmación del técnico.'));}else out.push(h('p',{class:'v7-bloq'},v?.proxima.texto||'Falta el análisis inicial.'),ir(etapaSiguiente(v?.proxima.clave),'Ir a la etapa pendiente'));
+    return out;
+  }
+  function vistaOrdenTipo(tipo,titulo,desc){const ots=deV(L.ots).filter(o=>o.tipo===tipo);return [cabPaso(tipo==='siembra'?'6':'7',titulo.replace(/^\d+ · /,''),desc),listaOT(ots),!ots.length?ir(tipo==='siembra'?'confirmacion':'siembra','Ir a la etapa anterior'):null].filter(Boolean);}
   function fichaRegistro(x, titulo) {
     const d = typeof x.datos === 'string' ? JSON.parse(x.datos) : x.datos;
     return h('div', {class: 'v7-card'}, h('h4', {}, titulo), h('p', {class: 'muted'}, `Muestra: ${fechaHora(x.fecha_muestra)} · cargado ${fechaHora(x.registrado)} por ${x.autor}${x.version > 1 ? ` · corregido (v${x.version})` : ''}`),
@@ -147,19 +196,21 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
     accion(() => enviar(`/registros/${x.id}/corregir`, {version: x.version, datos: {[k]: val}, motivo}), 'Corrección guardada. El valor anterior quedó en el historial.')();
   }
   function formRevision() {
-    let modo = 'th2';
+    let modo = null;
     const f = h('form', {class: 'v7-form', onsubmit: accion(async () => {
       const x = valores(f);
+      if (!modo) throw Error('Elegí la decisión técnica.');
       if (modo === 'no') await enviar('/tecnico/no-requiere', {op: uuid(), periodo_id: L.ing.periodo_id, vasija, revisado: x.revisado === 'on', motivo: x.motivo});
       else await enviar('/tecnico/th2', {op: uuid(), periodo_id: L.ing.periodo_id, vasija, revisado: x.revisado === 'on', datos: x});
     }, 'Revisión técnica registrada.')});
-    const th2 = h('div', {class: 'v7-campos'}, campo('Producto', 'producto', {value: 'Ácido tartárico (TH2)'}), campo('Dosis aprobada', 'dosis', {num: 1}), campo('Unidad de dosis', 'unidad_dosis', {tipo: 'select', opciones: ['g/L', 'g/hL', 'kg/m³']}), campo('Cantidad total', 'cantidad', {num: 1}), campo('Unidad', 'unidad', {tipo: 'select', opciones: ['g', 'kg']}), campo('Base de cálculo (fórmula o ensayo aprobado) *', 'base_calculo'), campo('Responsable', 'responsable'), campo('Instrucciones', 'instrucciones', {tipo: 'textarea'}));
+    const th2 = h('div', {class: 'v7-campos v9-decision-campos',hidden:true}, campo('Producto', 'producto', {value: 'Ácido tartárico (TH2)'}), campo('Dosis aprobada', 'dosis', {num: 1}), campo('Unidad de dosis', 'unidad_dosis', {tipo: 'select', opciones: ['g/L', 'g/hL', 'kg/m³']}), campo('Cantidad total', 'cantidad', {num: 1}), campo('Unidad', 'unidad', {tipo: 'select', opciones: ['g', 'kg']}), campo('Base de cálculo (fórmula o ensayo aprobado) *', 'base_calculo'), campo('Responsable', 'responsable'), campo('Instrucciones', 'instrucciones', {tipo: 'textarea'}));
     const no = h('div', {hidden: true}, campo('Motivo *', 'motivo', {tipo: 'textarea'}));
-    f.append(h('h3', {}, 'Revisión técnica'), h('p', {class: 'muted'}, 'La cantidad de ácido sale de la fórmula o el ensayo aprobado: la app no la calcula desde el pH.'),
+    const guardar=h('button',{class:'ci-btn primario grande',disabled:true},'Registrar decisión');
+    f.append(h('h3', {}, 'Decisión técnica'), h('p', {class: 'muted'}, 'La cantidad de ácido sale de la fórmula o el ensayo aprobado: la app no la calcula desde el pH.'),
       h('label', {class: 'v7-check'}, h('input', {type: 'checkbox', name: 'revisado', required: true}), ' Revisé kilos, mermas y análisis'),
-      h('div', {class: 'v7-seg'}, h('button', {type: 'button', 'aria-pressed': 'true', onclick: e => { modo = 'th2'; th2.hidden = false; no.hidden = true; e.target.setAttribute('aria-pressed', 'true'); e.target.nextSibling.setAttribute('aria-pressed', 'false'); }}, 'Aprobar OT de TH2'),
-        h('button', {type: 'button', 'aria-pressed': 'false', onclick: e => { modo = 'no'; th2.hidden = true; no.hidden = false; e.target.setAttribute('aria-pressed', 'true'); e.target.previousSibling.setAttribute('aria-pressed', 'false'); }}, 'No requiere corrección')),
-      th2, no, h('button', {class: 'ci-btn primario grande'}, 'Registrar decisión'));
+      h('div', {class: 'v7-seg'}, h('button', {type: 'button', 'aria-pressed': 'false', onclick: e => { modo = 'th2'; th2.hidden = false; no.hidden = true; guardar.disabled=false; e.target.setAttribute('aria-pressed', 'true'); e.target.nextSibling.setAttribute('aria-pressed', 'false'); }}, 'Aprobar OT de TH2'),
+        h('button', {type: 'button', 'aria-pressed': 'false', onclick: e => { modo = 'no'; th2.hidden = true; no.hidden = false; guardar.disabled=false; e.target.setAttribute('aria-pressed', 'true'); e.target.previousSibling.setAttribute('aria-pressed', 'false'); }}, 'No requiere corrección')),
+      th2, no, guardar);
     return f;
   }
   function formPost() {
@@ -250,7 +301,7 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
       h('h3', {}, 'Agregados'), h('div', {class: 'v7-dos'},
         h('div', {}, h('h4', {}, 'Ejecutados'), h('ul', {}, ...ag.filter(o => o.estado === 'ejecutada').map(o => h('li', {}, `${fechaHora(o.ejecucion?.fecha_real)} · ${o.ejecucion?.producto} ${o.ejecucion?.cantidad ?? ''} ${o.ejecucion?.unidad || ''} · OT ${o.numero}`)))),
         h('div', {}, h('h4', {}, 'Solo planificados'), h('ul', {}, ...ag.filter(o => o.estado !== 'ejecutada' && o.estado !== 'cancelada').map(o => h('li', {}, `${o.datos.producto || TIPO_OT[o.tipo]} ${o.datos.cantidad || ''} ${o.datos.unidad || ''} · OT ${o.numero} · ${ESTADO_OT[o.estado]}`))))),
-      P.tecnico ? formOT('agregado', 'Planificar agregado (OT)') : null];
+      h('article',{class:'v7-card'},h('h3',{},'Resumen de movimientos'),h('p',{},`${L.movs.length} movimiento(s) del lote · ${L.movs.filter(m=>m.estado==='ejecutado').length} ejecutado(s)`),ir('movimientos','Ver movimientos')),P.tecnico ? formOT('agregado', 'Planificar agregado (OT)') : null];
   }
 
   // ---------- movimientos ----------
@@ -273,7 +324,7 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
   function vistaMovs() {
     const fila = m => h('tr', {}, h('td', {}, fechaHora(m.fecha)), h('td', {}, m.tipo), h('td', {}, m.origen), h('td', {}, m.destino), h('td', {}, `${m.cantidad_real ?? m.cantidad ?? ''} ${m.unidad}`), h('td', {}, m.estado === 'ejecutado' ? `Ejecutado ${fechaHora(m.ejecutado_en)} · ${m.ejecutado_por}` : m.estado), h('td', {}, L.ots.find(o => o.id === m.ot_id)?.numero || ''));
     return [P.tecnico ? formOT('movimiento', 'Solicitar movimiento') : h('p', {class: 'muted'}, 'Los movimientos los solicita el técnico; el operario los ejecuta desde la OT.'),
-      h('h3', {}, 'Movimientos del lote'), h('p', {class: 'muted'}, 'La ubicación del lote cambia solo cuando el movimiento se confirma como ejecutado.'),
+      h('h3', {}, 'Movimientos del lote'), h('a',{class:'ci-btn',href:'/vendimia/trazabilidad'},'Ver movimientos generales'), h('p', {class: 'muted'}, 'La ubicación del lote cambia solo cuando el movimiento se confirma como ejecutado.'),
       h('div', {class: 'v6-tabla-w'}, h('table', {class: 'v6-tabla'}, h('tr', {}, ...['Fecha', 'Tipo', 'Origen', 'Destino', 'Cantidad', 'Estado', 'OT'].map(c => h('th', {}, c))), ...L.movs.map(fila)))];
   }
 
@@ -289,7 +340,12 @@ export function crearPanel({api, ciw, abrirDocumentos, ocultarDocumentos, avisar
       h('p', {class: 'muted'}, `Regla: ${ev.parametro} < ${ev.limite} ${ev.unidad} (estricto: ${ev.limite} no cumple) · ${ev.regla === 'provisoria' ? 'REGLA PROVISORIA: falta confirmar denominación y unidad antes de usarla en producción' : ''} · criterio ${ev.criterio_version || '—'}`),
       confirmado ? h('p', {class: 'v7-ok'}, 'Fin de FA confirmado por el técnico.') : P.tecnico && regs.length ? h('form', {onsubmit: accion(() => api('/tecnico/fin-fa', {op: uuid(), periodo_id: L.ing.periodo_id, vasija, registro_id: sel.value}), 'Fin de FA confirmado.')}, h('label', {class: 'v7-campo'}, 'Análisis a evaluar', sel), h('button', {class: 'ci-btn primario'}, 'Confirmar fin de FA')) : null,
       ev.estado === 'rojo' ? h('p', {class: 'v7-bloq'}, 'No cumple: seguir con el seguimiento de fermentación.') : null);
-    return [tarjeta, carga, ...deV(L.ots).filter(o=>['descube','desvinado'].includes(o.tipo)&&!['borrador','programada','cancelada'].includes(o.estado)).map(o=>h('article',{class:'v7-card'},h('h3',{},'Documento oficial · OT '+o.numero),h('p',{class:'muted'},'Elegí el formato correspondiente. No crea ni ejecuta otra orden.'),h('div',{class:'v7-acc'},h('button',{class:'ci-btn',type:'button',onclick:()=>abrirOficial('flujo-desvin-v1',{...L,ot:o},'finfa')},'Desvine / descube'),h('button',{class:'ci-btn',type:'button',onclick:()=>abrirOficial('flujo-desvin-roll-v1',{...L,ot:o},'finfa')},'Desvine ROLL')))), confirmado && P.tecnico ? formOT('descube', 'OT de descube o desvinado') : null, confirmado ? h('p', {}, 'FML y crianza: seguí el lote en el módulo ', h('a', {href: '/lotes/'}, 'Lotes'), ' (Tablero FML).') : null];
+    return [cabPaso('10','Evaluación fin FA','Check de azúcares reductores y confirmación técnica.'),tarjeta, carga, confirmado?ir('descube','Ir a desvine / descube →'):null].filter(Boolean);
+  }
+  function vistaDescube(){
+    const confirmado=deV(L.decisiones).some(d=>d.tipo==='fin_fa');
+    if(!confirmado)return [cabPaso('11','Desvine / descube','Órdenes oficiales según vinificación.'),h('p',{class:'v7-bloq'},'Falta la confirmación técnica de fin FA.'),ir('finfa','Ir a evaluación fin FA')];
+    return [cabPaso('11','Desvine / descube','Elegí el documento oficial de la orden.'),...deV(L.ots).filter(o=>['descube','desvinado'].includes(o.tipo)&&!['borrador','programada','cancelada'].includes(o.estado)).map(o=>h('article',{class:'v7-card'},h('h3',{},'Documento oficial · OT '+o.numero),h('p',{class:'muted'},'Elegí el formato correspondiente. No crea ni ejecuta otra orden.'),h('div',{class:'v7-acc'},h('button',{class:'ci-btn',type:'button',onclick:()=>abrirOficial('flujo-desvin-v1',{...L,ot:o},'descube')},'Desvine / descube'),h('button',{class:'ci-btn',type:'button',onclick:()=>abrirOficial('flujo-desvin-roll-v1',{...L,ot:o},'descube')},'Desvine ROLL')))), confirmado && P.tecnico ? formOT('descube', 'OT de descube o desvinado') : null, confirmado ? h('p', {}, 'FML y crianza: seguí el lote en el módulo ', h('a', {href: '/lotes/'}, 'Lotes'), ' (Tablero FML).') : null];
   }
 
   return {abrir, cerrar() { L = null; raiz.hidden = true; raiz.replaceChildren(); }, abrirOT, irA(tab) { pestana = tab; render(); }};

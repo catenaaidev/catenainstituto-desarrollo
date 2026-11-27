@@ -35,6 +35,7 @@ import { construirReporte as construirReporteLotes } from './lotes/reporte';
 const MODULOS: Modulo[] = ['prensas', 'barriles', 'lotes', 'vendimia'];
 const ICONO = '<link rel="icon" type="image/svg+xml" href="/favicon.svg">\n';
 const esPantallaOrdenes = (ruta: string) => ruta === '/ordenes' || ruta === '/ordenes/' || ruta === '/ordenes/index.html';
+const esPantallaInventario = (ruta: string) => ruta === '/inventario' || ruta === '/inventario/' || ruta === '/inventario/index.html';
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -95,7 +96,7 @@ export default {
       ruta.startsWith('/api/') ||
       MODULOS.some((m) => ruta.startsWith(`/${m}/api`) || ruta.startsWith(`/${m}/reporte`)) ||
       MODULOS.some((m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`) ||
-      ruta.startsWith('/ordenes/api') || esPantallaOrdenes(ruta);
+      ruta.startsWith('/ordenes/api') || esPantallaOrdenes(ruta) || esPantallaInventario(ruta);
 
     if (tocaLaBase && !(await baseInicializada(env))) {
       return json(503, {
@@ -115,7 +116,7 @@ export default {
     if (tocaLaBase) {
       const s = await sesion(req, env);
       if (s?.debeCambiar) {
-        const esPantalla = esPantallaOrdenes(ruta) || MODULOS.some((m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`);
+        const esPantalla = esPantallaOrdenes(ruta) || esPantallaInventario(ruta) || MODULOS.some((m) => ruta === `/${m}` || ruta === `/${m}/` || ruta === `/${m}/index.html`);
         if (esPantalla) return Response.redirect(new URL('/cambiar-clave.html', req.url).toString(), 302);
         return json(403, {
           error: 'debe_cambiar_clave',
@@ -173,6 +174,7 @@ export default {
       return r ?? json(404, { error: `no existe ${req.method} ${ruta}` });
     }
     if (esPantallaOrdenes(ruta)) return servirOrdenes(req, env);
+    if (esPantallaInventario(ruta)) return servirOrdenes(req, env, true);
 
     if (ruta === '/vendimia/trazabilidad.html' || ruta === '/vendimia/trazabilidad') {
       if (!(await baseInicializada(env))) return json(503,{error:'base_sin_inicializar'});
@@ -303,24 +305,25 @@ async function servirConIdentidad(
 }
 
 /** /ordenes/: como servirConIdentidad, pero el rol sale de prensas o lotes. */
-async function servirOrdenes(req: Request, env: Env): Promise<Response> {
+async function servirOrdenes(req: Request, env: Env, inventario = false): Promise<Response> {
   const email = await emailDelUsuario(req, env);
   if (!email) return Response.redirect(new URL('/login.html', req.url).toString(), 302);
   const { results } = await env.DB.prepare('SELECT modulo, rol, nombre FROM perfiles WHERE email = ?')
     .bind(email).all<{ modulo: string; rol: string; nombre: string | null }>();
   const modulos = Object.fromEntries((results ?? []).map((r) => [r.modulo, r.rol]));
-  const rol = rolOrdenes(modulos);
+  const rol = inventario ? (modulos.lotes || modulos.barriles) : rolOrdenes(modulos);
   if (!rol) return Response.redirect(new URL('/', req.url).toString(), 302);
 
   const url = new URL(req.url);
-  url.pathname = '/ordenes/';
+  url.pathname = inventario ? '/inventario/' : '/ordenes/';
   const res = await env.ASSETS.fetch(new Request(url, { method: 'GET', headers: req.headers }));
   if (!res.ok || !(res.headers.get('Content-Type') ?? '').includes('text/html')) return res;
 
   const s = await sesion(req, env);
   const nombre = s?.nombre ?? results?.[0]?.nombre ?? email.split('@')[0];
-  const contexto = { email, nombre, rol, modulo: 'ordenes', modulos };
-  const html = (await res.text()).replace('</head>', armarInyeccion(contexto, nombre, 'ordenes'));
+  const modulo = inventario ? 'inventario' : 'ordenes';
+  const contexto = { email, nombre, rol, modulo, modulos };
+  const html = (await res.text()).replace('</head>', armarInyeccion(contexto, nombre, modulo));
   const headers: Record<string, string> = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' };
   const cookie = renovarCookie(req);
   if (cookie) headers['Set-Cookie'] = cookie;

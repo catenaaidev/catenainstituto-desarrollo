@@ -1,0 +1,18 @@
+/* V8.1: pasos de Vendimia. Solo afecta al dashboard por lote. */
+#dashboard [hidden]{display:none!important}
+#dashboard .v7-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:7px;overflow:visible}
+#dashboard .v7-tabs button{white-space:normal;text-align:left;border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px 12px;min-height:48px;font-size:13px}
+#dashboard .v7-tabs button[aria-pressed=true]{background:var(--accent);color:white;border-color:var(--accent)}
+#dashboard .v9-paso{display:flex;align-items:center;gap:14px;padding:16px 18px;background:#fff;border:1px solid var(--line);border-radius:14px}
+#dashboard .v9-paso h2{margin:0;font-size:22px;line-height:1.2}#dashboard .v9-paso p{margin:5px 0 0;color:var(--muted);font-size:14px}
+#dashboard .v9-num{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:12px;background:var(--accent);color:white;font-weight:700;font-size:20px}
+#dashboard .v9-bloque{padding:16px 0;border-top:1px solid var(--line);margin-top:6px}#dashboard .v9-bloque h4{margin:0 0 12px;font-size:15px}
+#dashboard .v9-valores{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(155px,100%),1fr));gap:10px}
+#dashboard .v9-dato{display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid #dce2e8;border-radius:12px;background:#f8fafc;min-width:0;overflow-wrap:anywhere}
+#dashboard .v9-dato>span{font-size:13px;color:#475467;font-weight:600}#dashboard .v9-dato>strong{font-size:23px;font-weight:650;line-height:1.2}#dashboard .v9-dato small{font-size:12px;font-weight:400;color:#475467}
+#dashboard .v9-dato[data-estado=verde]{border-color:#abefc6;background:#ecfdf3}#dashboard .v9-dato[data-estado=rojo]{border-color:#fecdca;background:#fef3f2}
+#dashboard .v9-complementarios{border:1px solid var(--line);background:#fff;border-radius:12px;padding:14px}#dashboard .v9-complementarios summary{cursor:pointer;font-weight:600;padding:6px}
+#dashboard .v7-form{padding:20px;gap:14px}#dashboard .v7-campos{grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:14px}
+#dashboard .v7-seg{border-radius:12px;display:flex;flex-wrap:wrap;gap:6px;background:#fff}#dashboard .v7-seg button{border-radius:9px;border:1px solid var(--line);min-height:48px}#dashboard .v7-seg button[aria-pressed=true]{background:var(--accent);color:white}
+#dashboard .v9-decision-campos{padding-top:14px;border-top:1px solid var(--line)}
+@media(max-width:600px){#dashboard .v7-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}#dashboard .v7-form{padding:14px}#dashboard .v9-paso{padding:12px}#dashboard .v9-paso h2{font-size:18px}#dashboard .v7-campos{grid-template-columns:1fr}}

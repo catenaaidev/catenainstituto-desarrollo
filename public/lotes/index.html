@@ -1897,16 +1897,16 @@ tr.ag-sep .ag-sep-det{font-weight:400;font-size:.92em;color:#444}
 body.modo-ordenes #tabs,body.modo-ordenes #buscarLote,body.modo-ordenes #corrSub{display:none!important}
 /* Mientras arranca en modo órdenes (clase puesta por el script del <head>). */
 html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hidden}
+@media screen{body.ciw-centro #tabs{display:none!important} #ciwCentroNav:not([hidden]){display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 24px;border-bottom:1px solid var(--line);background:var(--panel)} #ciwCentroNav a{min-height:36px;display:inline-flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:var(--ci-r);color:var(--txt);text-decoration:none}  #ciwCentroNav [hidden]{display:none!important} #ciwCentroNav a[aria-current="page"]{background:var(--txt);color:var(--bg)} }
 </style>
 </head>
 <body>
 <header class="app-barra" id="barraLotes">
-  <span class="marca">Lotes</span>
+  <span class="marca" id="ciwMarcaLotes">Lotes</span>
   <nav class="tabs" id="tabs" aria-label="Pantallas">
     <button type="button" data-v="dashboard" class="active">Panel</button>
     <button type="button" data-v="lotes">Lotes</button>
     <button type="button" data-v="analisis">Análisis</button>
-    <button type="button" data-v="movimientos">Movimientos</button>
     <button type="button" data-v="agenda">Agenda</button>
     <div class="mas" id="masWrap">
       <button type="button" class="mas-btn" id="masBtn" aria-haspopup="true" aria-expanded="false" aria-controls="masMenu">Más</button>
@@ -1915,12 +1915,10 @@ html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hid
           <button type="button" data-v="dashboard">Panel</button>
           <button type="button" data-v="lotes">Lotes</button>
           <button type="button" data-v="analisis">Análisis</button>
-          <button type="button" data-v="movimientos">Movimientos</button>
           <button type="button" data-v="agenda">Agenda</button>
         </div>
         <div class="mas-grupo">Registro</div>
         <button type="button" data-v="cargar">Cargar análisis</button>
-        <button type="button" data-v="so2">Correcciones</button>
         <div class="mas-grupo">Seguimiento</div>
         <button type="button" data-v="tablero">Tablero FML</button>
         <button type="button" data-v="cruce">Cruce con barriles</button>
@@ -1949,6 +1947,18 @@ html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hid
   <span class="modo-ordenes-tit" id="modoOrdenesTit"></span>
 </div>
 
+<div id="ciwCentroNav" class="modo-ordenes-banda" hidden aria-label="Secciones centralizadas">
+  <a data-centro="ordenes" href="/ordenes/">← Órdenes de trabajo</a>
+  <a data-centro="ordenes" data-editar="ordenes" href="/ordenes/?v=nueva">Nueva orden</a>
+  <a data-centro="ordenes" href="/ordenes/?v=pendientes">Pendientes</a>
+  <a data-centro="ordenes" href="/ordenes/?v=historial">Historial</a>
+  <a data-centro="ordenes" href="/ordenes/?v=guia">Guía de trabajos</a>
+  <a data-centro="ordenes" data-vista="movimientos" href="/lotes/#movimientos">Movimientos</a>
+  <a data-centro="ordenes" data-vista="so2" href="/lotes/#so2">Correcciones</a>
+  <a data-centro="inventario" href="/inventario/">← Inventario</a>
+  <a data-centro="inventario" data-vista="inventario-tanques" href="/lotes/#inventario-tanques">Tanques y vasijas fijas</a>
+  <a data-centro="inventario" data-vista="inventario-vasijas" href="/lotes/#inventario-vasijas">Padrón y cubicaciones</a>
+</div>
 <div id="avisos"></div>
 
 <main>
@@ -2218,13 +2228,15 @@ html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hid
         <tbody id="tConfigProyBody"></tbody>
       </table>
     </div>
-    <h2 style="margin:22px 0 8px">Vasijas fijas</h2>
+    <div id="cfgAgenda"></div>
+  </section>
+  <section class="view" id="tab-inventario-vasijas">
+    <div class="toolbar"><a class="btn" href="/inventario/">← Inventario</a><strong>Padrón de vasijas fijas · Lotes</strong></div>
     <div class="note" style="margin-bottom:8px">
       Tanques, piletas, huevos y foudres (las barricas están en el Mapa de Barriles). La <b>Cap REAL</b> manda;
       la tabla de cubicación pasa los cm de merma a litros al confirmar una OT. Sin tabla, se cargan los litros a mano.
     </div>
     <div id="cfgVasijas"></div>
-    <div id="cfgAgenda"></div>
   </section>
 </main>
 

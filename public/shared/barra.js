@@ -13,7 +13,7 @@
 (function (g) {
   'use strict';
 
-  var NOMBRES = { prensas: 'Prensas', barriles: 'Barriles', lotes: 'Lotes', vendimia: 'Vendimia', ordenes: 'Órdenes' };
+  var NOMBRES = { prensas: 'Prensas', barriles: 'Barriles', lotes: 'Lotes', vendimia: 'Vendimia', ordenes: 'Órdenes de trabajo' };
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -25,7 +25,7 @@
     ctx = ctx || {};
     // En una orden (/lotes/?orden=…, /prensas/?orden=…) se está en Órdenes,
     // aunque la dibuje el módulo: la barra marca Órdenes y el módulo queda enlazado.
-    var actual = ctx.enOrden ? 'ordenes' : (ctx.modulo || '');
+    var actual = ctx.enOrden ? 'ordenes' : (ctx.centro || ctx.modulo || '');
     var modulos = ctx.modulos || {};
     var p = ['<a class="inicio" href="/" title="Volver al menú">← Menú</a>', '<span class="sep" aria-hidden="true"></span>'];
     ['prensas', 'barriles', 'lotes', 'vendimia'].forEach(function (m) {
@@ -41,6 +41,8 @@
       p.push('<a class="ancho" href="/' + actual + '/reporte" target="_blank" rel="noopener" ' +
         'title="Reporte para gerencia, en vivo">Reporte</a>');
     }
+    if (actual === 'inventario') p.push('<span class="aqui" aria-current="page">Inventario</span>');
+    else if (modulos.barriles || modulos.lotes) p.push('<a href="/inventario/">Inventario</a>');
     var yo = ctx.nombre
       ? esc(ctx.nombre) + (ctx.rol ? ' <span class="rol">' + esc(ctx.rol) + '</span>' : '')
       : '';
@@ -67,22 +69,32 @@
     return p.join('');
   }
 
-  g.CIBarra = { html: html };
+  // Las vistas originales siguen en su módulo por permisos y por sus APIs.
+  // La navegación identifica el centro que contiene la tarea, incluso con un enlace histórico.
+  function centroDeVista(modulo, vista) {
+    if (modulo === 'lotes') {
+      if (['movimientos','correcciones','so2','ordencorr','agregados'].includes(vista)) return 'ordenes';
+      if (['inventario-tanques','inventario-vasijas'].includes(vista)) return 'inventario';
+    }
+    if (modulo === 'barriles' && ['inventario','consulta'].includes(vista)) return 'inventario';
+    return '';
+  }
+  g.CIBarra = { html: html, centroDeVista: centroDeVista };
   if (!g.document) return;   // tests: solo se exporta el armado
   var d = g.document;
 
   var css =
     "@font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-400-normal.woff2') format('woff2');font-weight:400;font-display:swap}" +
     "@font-face{font-family:'IBM Plex Sans';src:url('/prensas/fonts/ibm-plex-sans-latin-500-normal.woff2') format('woff2');font-weight:500;font-display:swap}" +
-    '#ciw-barra{position:sticky;top:0;z-index:1050;display:flex;align-items:center;gap:6px;' +
+    '#ciw-barra{position:sticky;top:0;z-index:1050;display:flex;flex-wrap:wrap;align-items:center;gap:6px;' +
     'padding:6px 16px;background:#1C1B19;color:#ECE8E1;font-size:12.5px;' +
     "font-family:'IBM Plex Sans',system-ui,'Segoe UI',sans-serif;line-height:1.4;min-height:38px;box-sizing:border-box}" +
-    '#ciw-barra a{color:#ECE8E1;text-decoration:none;padding:4px 9px;border-radius:2px;transition:background .15s}' +
+    '#ciw-barra a{white-space:nowrap;color:#ECE8E1;text-decoration:none;padding:4px 9px;border-radius:2px;transition:background .15s}' +
     '#ciw-barra a:hover{background:rgba(236,232,225,.12)}' +
     '#ciw-barra a:focus-visible,#ciw-barra button:focus-visible{outline:2px solid #ECE8E1;outline-offset:1px}' +
     '#ciw-barra .inicio{border:1px solid rgba(236,232,225,.3)}' +
     '#ciw-barra .sep{width:1px;height:16px;background:rgba(236,232,225,.2);margin:0 4px}' +
-    '#ciw-barra .aqui{padding:4px 9px;font-weight:500;box-shadow:inset 0 -2px 0 #ECE8E1}' +
+    '#ciw-barra .aqui{white-space:nowrap;padding:4px 9px;font-weight:500;box-shadow:inset 0 -2px 0 #ECE8E1}' +
     '#ciw-barra .cuenta-ancho{margin-left:auto;display:flex;align-items:center;gap:4px;white-space:nowrap}' +
     '#ciw-barra .yo{opacity:.75}' +
     '#ciw-barra .rol{opacity:.6;text-transform:uppercase;letter-spacing:1.2px;font-size:9.5px;margin-left:4px}' +
@@ -110,17 +122,28 @@
   var barra = d.createElement('nav');
   barra.id = 'ciw-barra';
   barra.setAttribute('aria-label', 'Plataforma');
-  barra.innerHTML = html(ctx);
-
-  var btn = barra.querySelector('.cuenta-btn');
-  var menu = barra.querySelector('.cuenta-menu');
-  function abrirMenu(si) {
-    menu.hidden = !si;
-    btn.setAttribute('aria-expanded', si ? 'true' : 'false');
+  var centro = '';
+  function refrescarCentro(vista) {
+    var nuevo = centroDeVista(ctx.modulo, vista);
+    if (nuevo === centro && barra.innerHTML) return;
+    centro = nuevo;
+    barra.innerHTML = html(Object.assign({}, ctx, { centro: centro }));
+    publicarAlto();
   }
-  btn.addEventListener('click', function (e) { e.stopPropagation(); abrirMenu(menu.hidden); });
-  d.addEventListener('click', function (e) { if (!menu.hidden && !menu.contains(e.target)) abrirMenu(false); });
-  d.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !menu.hidden) { abrirMenu(false); btn.focus(); } });
+  function vistaHash() { return (g.location.hash || '').slice(1); }
+  refrescarCentro(vistaHash());
+  d.addEventListener('ciw:pantalla', function(e) { refrescarCentro(e.detail); });
+  g.addEventListener('popstate', function() { refrescarCentro(vistaHash()); });
+
+  function abrirMenu(si) {
+    barra.querySelector('.cuenta-menu').hidden = !si;
+    barra.querySelector('.cuenta-btn').setAttribute('aria-expanded', si ? 'true' : 'false');
+  }
+  barra.addEventListener('click', function(e) {
+    if (e.target.closest('.cuenta-btn')) { e.stopPropagation(); abrirMenu(barra.querySelector('.cuenta-menu').hidden); }
+  });
+  d.addEventListener('click', function(e) { var menu = barra.querySelector('.cuenta-menu'); if (!menu.hidden && !menu.contains(e.target)) abrirMenu(false); });
+  d.addEventListener('keydown', function(e) { if (e.key === 'Escape' && !barra.querySelector('.cuenta-menu').hidden) { abrirMenu(false); barra.querySelector('.cuenta-btn').focus(); } });
 
   function publicarAlto() {
     d.documentElement.style.setProperty('--ciw-h', barra.offsetHeight + 'px');

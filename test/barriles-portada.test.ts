@@ -1,5 +1,5 @@
 /**
- * La portada del operario: seis botones grandes que se usan de pie, a un metro
+ * La portada del operario: cinco botones grandes que se usan de pie, a un metro
  * de la pantalla. La estética les cambia el recuadro (piedra con filete de
  * tinta, esquina de 2 px), NO el tamaño: ni el alto, ni la letra, ni las tres
  * columnas.
@@ -17,9 +17,12 @@ const regla = (sel: string, media = '') =>
 const tiene = (sel: string, decl: string, media = '') => expect(regla(sel, media), sel + ' ' + decl).toContain(plano(decl));
 
 describe('portada del operario', () => {
-  it('seis botones grandes', () => {
+  it('cinco botones grandes; inventario centralizado', () => {
     const portada = (html.match(/<div class="ini-grandes">[\s\S]*?<\/div>\s*<div class="ini-chicos">/) || [''])[0];
-    expect((portada.match(/class="ini-boton/g) || []).length).toBe(6);
+    expect((portada.match(/class="ini-boton/g) || []).length).toBe(5);
+    expect(portada).not.toContain('data-op="consulta"');
+    expect(html).toContain('id="panel-consulta"');
+    expect(html).toContain('id="panel-inventario"');
   });
 
   it('las medidas de siempre', () => {

@@ -9,6 +9,7 @@ import { filtrar, conEtiquetaModulo, contarPendientes, estadoDeURL, urlDeEstado,
 import { alternarEmbudo, cerrarEmbudo, reanclarEmbudo } from './embudo.js';
 import { montarGuia } from './guia-vista.js';
 import { montarImpresa } from './guia-impresa.js';
+import { accesosOperativos } from './operaciones.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -16,6 +17,7 @@ const CIW = window.CIW || { modulos: {} };
 CIW.modulos = CIW.modulos || {};
 const MODULOS = ['prensas', 'lotes'];
 const modulosConRol = () => MODULOS.filter(m => CIW.modulos[m]);
+const operaciones = () => accesosOperativos(CIW.modulos);
 // Editables = con rol editor/admin Y con tipos en el catálogo.
 const modulosEditables = () => modulosEditablesDe(CIW.modulos);
 const NOMBRE_MOD = { prensas: 'Prensas', lotes: 'Lotes', guia: 'Guía' };
@@ -75,7 +77,7 @@ function pintarNav(){
     `<a href="${esc(location.pathname + urlDeEstado(estadoPara(v)))}" data-ir="${v}"${v === _estado.v ? ' aria-current="page"' : ''}>${esc(nombre)}</a>`);
   nav.innerHTML = `<nav class="ord-nav" aria-label="Secciones de órdenes">` +
     `<a href="${esc(location.pathname)}" data-ir="">← Inicio</a>` +
-    enlaces.join('') +   // los «·» entre enlaces los pone el CSS (.ord-nav a + a::before)
+    enlaces.join('') + operaciones().map(([href,nombre]) => `<a href="${esc(href)}">${esc(nombre)}</a>`).join('') +   // los «·» entre enlaces los pone el CSS (.ord-nav a + a::before)
     `</nav>`;
   cablearIr(nav);
 }
@@ -89,11 +91,12 @@ function pintarPortada(){
   tarjetas.push(['historial', 'Historial', 'Órdenes ejecutadas y anuladas', 'Ver →']);
   tarjetas.push(['guia', 'Guía de trabajos', 'Las tareas del día para la bodega, con lo pendiente', 'Abrir →']);
   $('ordCuerpo').innerHTML =
-    `<ul class="ord-portada" style="--n:${tarjetas.length}">` +
+    `<ul class="ord-portada" style="--n:${Math.min(tarjetas.length + operaciones().length, 3)}">` +
     tarjetas.map(([v, nm, ds, rl]) =>
       `<li><a class="ord-tarj" href="${esc(location.pathname + urlDeEstado({ v }))}" data-ir="${v}">` +
       `<span class="ord-nm">${esc(nm)}</span><span class="ord-ds">${esc(ds)}</span>` +
       `<span class="ord-rl">${esc(rl)}</span></a></li>`).join('') +
+    operaciones().map(([href,nombre,detalle]) => `<li><a class="ord-tarj" href="${esc(href)}"><span class="ord-nm">${esc(nombre)}</span><span class="ord-ds">${esc(detalle)}</span><span class="ord-rl">Abrir →</span></a></li>`).join('') +
     `</ul>` +
     (_error ? `<p class="ord-msg">${esc(MSG_ERROR)}</p>` : '');
   cablearIr($('ordCuerpo'));

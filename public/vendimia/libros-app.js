@@ -1,6 +1,6 @@
 import {aplicarCompartidos} from './compartidos.js?v=8';
 import {VERSION,CAMPOS_ID,ETAPAS,ESTADO_ETAPA,SIGUIENTE_ESTADO,norm,normVasija,integrarMediciones,ponerValor,fijarFechaMolienda,filtrar,enriquecer,graficoSVG} from './v6.js?v=9';
-import {crearPanel,misOrdenes,administrar} from './lote.js?v=9';
+import {crearPanel,misOrdenes,administrar} from './lote.js?v=10';
 import {OFICIALES,inicializar,montarFormulario} from './formularios-flujo.js?v=9';
 import {leerBorrador,guardarBorrador,borrarBorrador} from './borradores.js';
 const $=id=>document.getElementById(id),ciw=window.CIW||{},escribe=['admin','editor'].includes(ciw.rol);
@@ -66,7 +66,7 @@ $('area-impresion').onclick=()=>{if(!actual)return;$('imp-hoja').replaceChildren
 $('form-impresion').onsubmit=e=>{e.preventDefault();try{const c=actual;if(!c||c.readOnly)return;const areas=$('imp-areas').value.split(';').map(x=>x.trim()).filter(Boolean);if(areas.some(a=>!motor.parseRange(a)))throw Error('Usá rangos válidos, por ejemplo A1:M29.');const id=$('imp-hoja').value;const next=structuredClone(c.snapshot);next.print[id]={...next.print[id],areas,setup:{...next.print[id]?.setup,orientation:$('imp-orientacion').value}};c.snapshot=next;c.signature=motor.firma(next);c.seq++;c.dirty=true;durable(c);schedule(c);$('dialog-impresion').close();status(c,'Cambios de impresión pendientes…','pendiente');}catch(e){aviso(e.message,true);}};
 for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();
 window.addEventListener('online',()=>{if(actual?.dirty&&!actual.conflict)save(actual);});window.addEventListener('offline',()=>{if(actual?.dirty){durable(actual);status(actual,'Sin conexión · conservando borrador local','offline');}});window.addEventListener('beforeunload',e=>{if(actual?.dirty){e.preventDefault();e.returnValue='';}});
-(async()=>{try{const p=await api('/plantillas');for(const t of p.plantillas)catalogo.set(t.id,t);await cargarPeriodos();await cargarIngresos();document.querySelector('.eyebrow').textContent+=' · '+VERSION;if(location.hash==='#precargar'&&escribe){history.replaceState(null,'',location.pathname);abrirPrecarga();}}catch(e){aviso(e.status===503?'El servicio no está disponible o faltan migraciones (0006 a 0009). Reintentá en unos minutos.':e.status===401?'Tu sesión se cerró. Volvé a iniciar sesión; no se perdió nada.':e.message,true);}})();
+(async()=>{try{const p=await api('/plantillas');for(const t of p.plantillas)catalogo.set(t.id,t);await cargarPeriodos();await cargarIngresos();document.querySelector('.eyebrow').textContent+=' · '+VERSION+' · interfaz 8.1';if(location.hash==='#precargar'&&escribe){history.replaceState(null,'',location.pathname);abrirPrecarga();}}catch(e){aviso(e.status===503?'El servicio no está disponible o faltan migraciones (0006 a 0009). Reintentá en unos minutos.':e.status===401?'Tu sesión se cerró. Volvé a iniciar sesión; no se perdió nada.':e.message,true);}})();
 
 // ===================== V6: inicio, precarga, circuito y seguimiento =====================
 function hoy(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Argentina/Mendoza',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}

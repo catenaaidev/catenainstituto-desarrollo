@@ -53,7 +53,10 @@
       "/lotes/index.html",
       "/ordenes",
       "/ordenes/",
-      "/ordenes/index.html"
+      "/ordenes/index.html",
+      "/inventario",
+      "/inventario/",
+      "/inventario/index.html"
     ]
   },
 
