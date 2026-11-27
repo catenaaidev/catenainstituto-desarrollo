@@ -38,7 +38,7 @@ export function marcarPestana(boton){
   const btn = $('masBtn');
   if (!btn) return;
   const enLaBarra = document.querySelector('.tabs > button[data-v="' + boton + '"]');
-  const enMas = !enLaBarra && document.querySelector('#masMenu > button[data-v="' + boton + '"]');
+  const enMas = boton !== 'config' && !enLaBarra && document.querySelector('#masMenu > button[data-v="' + boton + '"]');
   btn.classList.toggle('active', !!enMas);
   btn.textContent = enMas ? enMas.textContent : 'Más';
 }

@@ -1658,7 +1658,7 @@ function activarVista(v, op={}){
   document.querySelectorAll('.tabs button[data-v]').forEach(x=>x.classList.toggle('active',x.dataset.v===v));
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
   $('v-'+v).classList.add('active');
-  const enMas=!document.querySelector('.tabs > button[data-v="'+v+'"]');
+  const enMas=v!=='config'&&!document.querySelector('.tabs > button[data-v="'+v+'"]');
   masBtn.classList.toggle('active',enMas);
   masBtn.textContent=enMas?(b?b.textContent:v):'Más';
   // Antes de que cargar() traiga los datos no hay qué dibujar: lo dibuja él.

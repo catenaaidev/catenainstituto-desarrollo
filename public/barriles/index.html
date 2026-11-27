@@ -86,6 +86,7 @@ const API='/barriles/api';</script>
   .tabs button[data-grupo]:hover, .mas-btn:hover { color: var(--txt); background: var(--panel2); }
   .tabs > button[data-grupo].activo, .mas-btn.activo { background: var(--txt); color: var(--bg); }
   .mas { position: relative; }
+  @media (min-width:901px){#navProgramador #masWrap{display:none}}
   .mas-btn::after { content: ' ▾'; font-size: 10px; }
   .mas-menu { position: absolute; top: calc(100% + 8px); left: 0; min-width: 210px; background: var(--panel); border: 1px solid var(--line); border-top: 2px solid var(--rule); border-radius: 2px; box-shadow: 0 12px 30px rgba(28,27,25,.16); padding: 6px 0; display: none; z-index: 45; }
   .mas-menu.open { display: block; }
@@ -810,11 +811,11 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
           <button type="button" data-grupo="mapa">Mapa</button>
           <button type="button" data-grupo="imprimir">Imprimir</button>
         </div>
-        <div class="mas-grupo">Administrar</div>
-        <button type="button" data-sub="datos">Importar y modo</button>
-        <button type="button" data-sub="boxes">Boxes y palets</button>
-        <button type="button" data-sub="respaldos">Respaldos</button>
-        <button type="button" data-sub="celular">Celular</button>
+        <div class="mas-grupo" hidden style="display:none!important">Administrar</div>
+        <button type="button" data-sub="datos" hidden style="display:none!important">Importar y modo</button>
+        <button type="button" data-sub="boxes" hidden style="display:none!important">Boxes y palets</button>
+        <button type="button" data-sub="respaldos" hidden style="display:none!important">Respaldos</button>
+        <button type="button" data-sub="celular" hidden style="display:none!important">Celular</button>
       </div>
     </div>
   </nav>

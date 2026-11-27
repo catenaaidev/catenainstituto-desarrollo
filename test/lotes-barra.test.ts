@@ -26,6 +26,7 @@ describe('barra de Lotes', () => {
 
   it('el resto en Más', () => {
     expect(enMas.sort()).toEqual(['config', 'cruce', 'tablero']);
+    expect(menu).toContain('data-v="config" hidden style="display:none!important"');
     expect(menu).toContain('data-v="tablero">Tablero</button>');
     expect(html).toContain('data-analisis-v="cargar"');
     expect(menu).toContain('id="btnHistorial"');

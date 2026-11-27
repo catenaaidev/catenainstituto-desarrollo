@@ -288,7 +288,7 @@ async function servirConIdentidad(
     .all<{ modulo: string; rol: string }>();
   const modulos = Object.fromEntries((results ?? []).map((r) => [r.modulo, r.rol]));
 
-  const contexto = { email: id.email, nombre, rol: id.rol, modulo, modulos };
+  const contexto = { email: id.email, nombre, rol: id.rol, modulo, modulos, es_admin: (await sesion(req, env))?.esAdmin === true };
 
   const inyeccion = armarInyeccion(contexto, nombre, modulo);
 
@@ -322,7 +322,7 @@ async function servirOrdenes(req: Request, env: Env, inventario = false): Promis
   const s = await sesion(req, env);
   const nombre = s?.nombre ?? results?.[0]?.nombre ?? email.split('@')[0];
   const modulo = inventario ? 'inventario' : 'ordenes';
-  const contexto = { email, nombre, rol, modulo, modulos };
+  const contexto = { email, nombre, rol, modulo, modulos, es_admin: s?.esAdmin === true };
   const html = (await res.text()).replace('</head>', armarInyeccion(contexto, nombre, modulo));
   const headers: Record<string, string> = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' };
   const cookie = renovarCookie(req);
@@ -335,7 +335,7 @@ async function servirOrdenes(req: Request, env: Env, inventario = false): Promis
  * Separado para poder testear el orden de los scripts.
  */
 export function armarInyeccion(
-  contexto: { email: string; nombre: string; rol: string; modulo: string; modulos: Record<string, string> },
+  contexto: { email: string; nombre: string; rol: string; modulo: string; modulos: Record<string, string>; es_admin?: boolean },
   nombre: string,
   modulo: string,
 ): string {

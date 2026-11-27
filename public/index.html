@@ -98,10 +98,7 @@
   <span class="marca">Plataforma CIW<small>Catena Institute of Wine</small></span>
   <div class="der">
     <span id="quien"></span>
-    <a id="admin" href="/admin.html" title="Crear, editar y eliminar usuarios" hidden>Usuarios</a>
-    <a id="clave" href="/cambiar-clave.html" title="Cambiar tu contraseña" hidden>Contraseña</a>
-    <!-- Cerrar sesión importa en las PC compartidas de la bodega. -->
-    <a id="salir" href="/api/auth/logout" title="Cerrar sesión y volver al login" hidden>Salir</a>
+    <span id="ciw-ajustes-home"></span>
   </div>
 </div></header>
 
@@ -118,6 +115,7 @@
   <span>Los datos se guardan en la nube y se respaldan solos.</span>
 </div></footer>
 
+<script src="/shared/barra.js"></script>
 <script>
 /* Los módulos de la plataforma, más Órdenes de trabajo (que no tiene rol
    propio). El estado real (si están migrados) lo define el backend; acá está
@@ -687,9 +685,7 @@ try { Constelacion.iniciar(document.getElementById('cv')); } catch (e) { /* sin 
     const yo = await r.json();
 
     document.getElementById('quien').textContent = yo.nombre || yo.email;
-    document.getElementById('salir').hidden = false;
-    document.getElementById('clave').hidden = false;
-    document.getElementById('admin').hidden = !yo.es_admin;
+    document.getElementById('ciw-ajustes-home').innerHTML = window.CIBarra.menuConfiguracion(yo, '');
 
     const nombre = (yo.nombre || yo.email).split(' ')[0];
     document.getElementById('hola').textContent = 'Hola ' + nombre;

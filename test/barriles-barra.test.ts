@@ -27,9 +27,10 @@ describe('barra de Barriles', () => {
     expect(html).toContain('<script src="js/barra-barriles.js"></script>');
   });
 
-  it('cuatro grupos a la vista y Administrar en Más', () => {
+  it('cuatro grupos a la vista y controles antiguos de Administrar ocultos', () => {
     expect(arriba).toEqual([['inicio', 'Inicio'], ['barriles', 'Barriles'], ['mapa', 'Mapa'], ['imprimir', 'Imprimir']]);
     expect(enMas).toEqual(['datos', 'boxes', 'respaldos', 'celular']);
+    for (const sub of enMas) expect(menu).toContain(`data-sub="${sub}" hidden style="display:none!important"`);
   });
 
   it('sub-pestañas, ayuda del operario y operario dentro del header', () => {

@@ -39,7 +39,7 @@ function barraMarcar(grupo, sub) {
   const btn = document.getElementById('masBtn');
   if (!btn) return;
   const enLaBarra = document.querySelector('#navProgramador > button[data-grupo="' + grupo + '"]');
-  const enMas = !enLaBarra && document.querySelector('#masMenu > button[data-sub="' + sub + '"]');
+  const enMas = grupo !== 'admin' && !enLaBarra && document.querySelector('#masMenu > button[data-sub="' + sub + '"]');
   btn.classList.toggle('activo', !!enMas);
   btn.textContent = enMas ? enMas.textContent : 'Más';
 }

@@ -46,27 +46,34 @@
     var yo = ctx.nombre
       ? esc(ctx.nombre) + (ctx.rol ? ' <span class="rol">' + esc(ctx.rol) + '</span>' : '')
       : '';
-    /* Cerrar sesión: /api/auth/logout borra la sesión y la cookie. Hace falta
-       sobre todo en las PC compartidas de la bodega, donde si no queda abierta y
-       el siguiente que se sienta guarda con el nombre del anterior. */
-    p.push('<span class="cuenta-ancho">' +
-      (yo ? '<span class="yo">' + yo + '</span>' : '') +
-      '<span class="sep" aria-hidden="true"></span>' +
-      '<a class="salir" href="/cambiar-clave.html" title="Cambiar tu contraseña">Contraseña</a>' +
-      '<a class="salir" href="/api/auth/logout" title="Cerrar sesión y volver al login">Salir</a>' +
-      '</span>');
-    var menuLinks = (yo ? '<span class="yo">' + yo + '</span>' : '');
-    if (actual === 'prensas' || actual === 'lotes') {
-      menuLinks += '<a href="/' + actual + '/reporte" target="_blank" rel="noopener">Reporte</a>';
-    }
-    menuLinks += '<a href="/cambiar-clave.html">Contraseña</a>' +
-      '<a href="/api/auth/logout">Salir</a>';
-    p.push('<span class="cuenta-cel">' +
-      '<button type="button" class="cuenta-btn" aria-expanded="false" aria-controls="ciw-cuenta">Cuenta</button>' +
-      '<span class="cuenta-menu" id="ciw-cuenta" hidden>' +
-      menuLinks +
-      '</span></span>');
+    p.push('<span class="cuenta-ancho">' + (yo ? '<span class="yo">' + yo + '</span>' : '') + '</span>');
+    p.push(menuConfiguracion(ctx, actual));
     return p.join('');
+  }
+
+  // Solo navegacion: las pantallas, las reglas y los permisos de escritura siguen
+  // perteneciendo a sus modulos. El rol global de usuarios es distinto al rol admin de un modulo.
+  function menuConfiguracion(ctx, actual) {
+    ctx = ctx || {};
+    var roles = ctx.modulos || {};
+    var permitido = function (m) { return ['admin','editor','lector'].includes(roles[m]); };
+    var link = function (url, texto) { return '<a href="' + url + '">' + esc(texto) + '</a>'; };
+    var grupo = function (titulo, links) { return '<div class="ciw-ajustes-grupo"><span class="ciw-ajustes-titulo">' + esc(titulo) + '</span>' + links.join('') + '</div>'; };
+    var cuenta = [];
+    if (ctx.es_admin === true) cuenta.push(link('/admin.html','Usuarios y permisos de acceso'));
+    cuenta.push(link('/cambiar-clave.html','Cambiar contraseña'));
+    var grupos = [grupo('Mi cuenta', cuenta)];
+    if (permitido('prensas')) grupos.push(grupo('Prensas', [link('/prensas/#config','Criterios y alertas' + (roles.prensas === 'lector' ? ' · Consulta' : ''))]));
+    if (permitido('lotes')) grupos.push(grupo('Lotes', [link('/lotes/#config','Criterios, SO₂ y agenda' + (roles.lotes === 'lector' ? ' · Consulta' : ''))]));
+    if (roles.barriles === 'admin') grupos.push(grupo('Barriles', [link('/barriles/#datos','Importar y modo'), link('/barriles/#boxes','Boxes y palets'), link('/barriles/#respaldos','Respaldos'), link('/barriles/#celular','Celular')]));
+    if (roles.vendimia === 'admin') grupos.push(grupo('Vendimia', [link('/vendimia/?config=1','Permisos técnicos e impresión')]));
+    if (permitido('lotes')) grupos.push(grupo('Inventario', [link('/lotes/#inventario-vasijas','Padrón y cubicaciones')]));
+    if (actual === 'prensas' || actual === 'lotes') grupos.push('<div class="ciw-ajustes-reporte">' + '<a href="/'+actual+'/reporte" target="_blank" rel="noopener">Reporte</a>' + '</div>');
+    return '<details class="ciw-ajustes"><summary class="cuenta-btn" aria-label="Configuración y cuenta" title="Configuración y cuenta">'+
+      '<svg aria-hidden="true" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.73v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.73l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg><span class="ciw-ajustes-flecha" aria-hidden="true">▾</span></summary>'+
+      '<div class="cuenta-menu"><strong class="ciw-ajustes-encabezado">Configuración</strong>'+
+      (ctx.nombre ? '<span class="ciw-ajustes-usuario">'+esc(ctx.nombre)+'</span>' : '')+grupos.join('')+
+      '<div class="ciw-ajustes-grupo"><a class="ciw-ajustes-salir" href="/api/auth/logout">Cerrar sesión · Salir</a></div></div></details>';
   }
 
   // Las vistas originales siguen en su módulo por permisos y por sus APIs.
@@ -79,7 +86,7 @@
     if (modulo === 'barriles' && ['inventario','consulta'].includes(vista)) return 'inventario';
     return '';
   }
-  g.CIBarra = { html: html, centroDeVista: centroDeVista };
+  g.CIBarra = { html: html, centroDeVista: centroDeVista, menuConfiguracion: menuConfiguracion };
   if (!g.document) return;   // tests: solo se exporta el armado
   var d = g.document;
 
@@ -99,16 +106,22 @@
     '#ciw-barra .yo{opacity:.75}' +
     '#ciw-barra .rol{opacity:.6;text-transform:uppercase;letter-spacing:1.2px;font-size:9.5px;margin-left:4px}' +
     '#ciw-barra .salir{opacity:.8}' +
-    '#ciw-barra .cuenta-cel{display:none;margin-left:auto;position:relative}' +
-    '#ciw-barra .cuenta-btn{background:none;border:1px solid rgba(236,232,225,.3);color:#ECE8E1;font:inherit;padding:0 12px;min-height:44px;box-sizing:border-box;border-radius:2px;cursor:pointer}' +
-    '#ciw-barra .cuenta-menu{position:absolute;right:0;top:calc(100% + 6px);min-width:200px;background:#1C1B19;border:1px solid rgba(236,232,225,.25);display:flex;flex-direction:column;padding:6px 0}' +
-    '#ciw-barra .cuenta-menu[hidden]{display:none}' +
-    '#ciw-barra .cuenta-menu .yo{padding:8px 14px;border-bottom:1px solid rgba(236,232,225,.15);margin-bottom:4px}' +
-    '#ciw-barra .cuenta-menu a{display:flex;align-items:center;min-height:44px;padding:0 14px;box-sizing:border-box}' +
-    '@media (max-width:760px){#ciw-barra{padding:4px 10px;gap:2px}' +
-    '#ciw-barra a{display:inline-flex;align-items:center;min-height:44px;padding:0 10px;box-sizing:border-box}' +
-    '#ciw-barra .ancho,#ciw-barra .cuenta-ancho{display:none}' +
-    '#ciw-barra .cuenta-cel{display:block}}' +
+    '.ciw-ajustes{position:relative;flex-shrink:0;margin-left:4px;color:#344054}' +
+    '.ciw-ajustes>.cuenta-btn{display:flex;align-items:center;justify-content:center;gap:5px;min-width:38px;min-height:36px;box-sizing:border-box;padding:5px 8px;background:#fff;border:1px solid #dce1e8;border-radius:9px;cursor:pointer;list-style:none}' +
+    '.ciw-ajustes>.cuenta-btn::-webkit-details-marker{display:none}' +
+    '.ciw-ajustes[open]>.cuenta-btn,.ciw-ajustes>.cuenta-btn:hover{background:#f0f2f5}' +
+    '.ciw-ajustes>.cuenta-btn:focus-visible{outline:2px solid #8D1C43;outline-offset:2px}' +
+    '.ciw-ajustes>.cuenta-menu{position:absolute;z-index:1200;right:0;top:calc(100% + 8px);width:min(310px,calc(100vw - 24px));max-height:min(70vh,560px);overflow:auto;background:#fff;border:1px solid #dce1e8;border-radius:12px;box-shadow:0 12px 30px #10182826;padding:8px;color:#344054;font:13px/1.45 system-ui,sans-serif;box-sizing:border-box}' +
+    '.ciw-ajustes:not([open])>.cuenta-menu{display:none}' +
+    '.ciw-ajustes-encabezado,.ciw-ajustes-usuario,.ciw-ajustes-titulo{display:block;padding:5px 10px}' +
+    '.ciw-ajustes-encabezado{font-size:16px;color:#101828}.ciw-ajustes-usuario{color:#667085;font-size:12px;overflow-wrap:anywhere}' +
+    '.ciw-ajustes-grupo{border-top:1px solid #eaecf0;padding:4px 0}.ciw-ajustes-titulo{font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:600;color:#667085}' +
+    'html body .ciw-ajustes .cuenta-menu a{display:flex;align-items:center;box-sizing:border-box;white-space:normal;min-height:36px;color:#344054!important;text-decoration:none;padding:7px 10px;border-radius:7px!important}' +
+    'html body .ciw-ajustes .cuenta-menu a:hover{background:#f2f4f7!important}html body .ciw-ajustes .cuenta-menu a:focus-visible{outline:2px solid #8D1C43;outline-offset:-2px}' +
+    'html body .ciw-ajustes .cuenta-menu .ciw-ajustes-salir{color:#8D1C43!important;font-weight:600}' +
+    '.ciw-ajustes-reporte{display:none}' +
+    '@media (max-width:760px){#ciw-barra{padding:4px 10px;gap:2px}#ciw-barra a{display:inline-flex;align-items:center;min-height:44px;padding:0 10px;box-sizing:border-box}#ciw-barra .ancho,#ciw-barra .cuenta-ancho{display:none}.ciw-ajustes{margin-left:auto}.ciw-ajustes>.cuenta-btn{min-height:44px;min-width:44px}.ciw-ajustes .cuenta-menu a{min-height:44px}.ciw-ajustes-reporte{display:block}.ciw-ajustes>.cuenta-menu{max-height:60vh}}' +
+    '@media print{.ciw-ajustes{display:none!important}}' +
     '@media (max-width:760px){#ciw-barra{flex-wrap:wrap}#ciw-barra .aqui{min-height:44px;display:inline-flex;align-items:center;box-sizing:border-box}#ciw-barra .sep{flex-shrink:0}}' +
     '@media (prefers-reduced-motion:reduce){#ciw-barra a{transition:none}}' +
     '@media print{#ciw-barra{display:none}}';
@@ -117,6 +130,17 @@
   est.textContent = css;
   d.head.appendChild(est);
 
+  // El portal monta el mismo menú después de /api/auth/me; no se agrega otra barra.
+  d.addEventListener('click', function(e) {
+    d.querySelectorAll('.ciw-ajustes[open]').forEach(function(menu) {
+      if (!menu.contains(e.target) || e.target.closest('.ciw-ajustes a')) menu.open = false;
+    });
+  });
+  d.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    d.querySelectorAll('.ciw-ajustes[open]').forEach(function(menu) { menu.open = false; menu.querySelector('summary').focus(); });
+  });
+  if (!g.CIW) return;
   var ctx = g.CIW || {};
   if (/[?&]orden=/.test(g.location.search || '')) ctx = Object.assign({}, ctx, { enOrden: true });
   var barra = d.createElement('nav');
@@ -134,16 +158,6 @@
   refrescarCentro(vistaHash());
   d.addEventListener('ciw:pantalla', function(e) { refrescarCentro(e.detail); });
   g.addEventListener('popstate', function() { refrescarCentro(vistaHash()); });
-
-  function abrirMenu(si) {
-    barra.querySelector('.cuenta-menu').hidden = !si;
-    barra.querySelector('.cuenta-btn').setAttribute('aria-expanded', si ? 'true' : 'false');
-  }
-  barra.addEventListener('click', function(e) {
-    if (e.target.closest('.cuenta-btn')) { e.stopPropagation(); abrirMenu(barra.querySelector('.cuenta-menu').hidden); }
-  });
-  d.addEventListener('click', function(e) { var menu = barra.querySelector('.cuenta-menu'); if (!menu.hidden && !menu.contains(e.target)) abrirMenu(false); });
-  d.addEventListener('keydown', function(e) { if (e.key === 'Escape' && !barra.querySelector('.cuenta-menu').hidden) { abrirMenu(false); barra.querySelector('.cuenta-btn').focus(); } });
 
   function publicarAlto() {
     d.documentElement.style.setProperty('--ciw-h', barra.offsetHeight + 'px');

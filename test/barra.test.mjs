@@ -27,11 +27,11 @@ describe('barra común', () => {
     expect(html(ctx)).toContain('/lotes/reporte');
     expect(html({ ...ctx, modulo: 'barriles' })).not.toContain('reporte');
   });
-  it('trae el menú de cuenta para el celular, con Contraseña y Salir', () => {
+  it('trae un único engranaje para escritorio y celular, con Contraseña y Salir', () => {
     const h = html(ctx);
     expect(h).toContain('class="cuenta-btn"');
-    expect(h).toContain('aria-expanded="false"');
-    expect((h.match(/href="\/api\/auth\/logout"/g) || []).length).toBe(2);   // ancho y celular
+    expect(h).toContain('<details class="ciw-ajustes">');
+    expect((h.match(/href="\/api\/auth\/logout"/g) || []).length).toBe(1);   // una sola salida
   });
   it('Reporte en la barra y en el menú móvil para lotes', () => {
     const h = html(ctx);
