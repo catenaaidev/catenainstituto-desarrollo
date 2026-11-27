@@ -118,20 +118,21 @@ const numeroDe = (v: unknown, serie: Serie) => {
  * Lotes y Prensas comparten la serie de la carpeta de OneDrive y no se pueden
  * pisar el número.
  */
+// CIW-02: excluir borradores explicitos
 export function numerosDeDocumento(modulo: 'prensas' | 'lotes', datos: Fila, serie: Serie): number[] {
   const crudos: unknown[] = [];
   if (modulo === 'prensas') {
-    for (const o of filas(datos.ordenes_hojas)) if (SERIE_PRENSAS[txt(o.tipo)] === serie) crudos.push(o.ot);
+    for (const o of filas(datos.ordenes_hojas).filter(o => String(Reflect.get(o, "estado") ?? "").trim().toLowerCase() !== "borrador")) if (SERIE_PRENSAS[txt(o.tipo)] === serie) crudos.push(o.ot);
   } else if (serie === 'B') {
     for (const a of filas(datos.analisis)) {
       crudos.push((a.correccion as Fila | undefined)?.ot_n);
       for (const ag of filas(a.agregados)) crudos.push(ag.ot_n);
     }
-    for (const o of filas(datos.ordenes_correccion)) crudos.push(o.numero);
-    for (const o of filas(datos.ordenes_hojas)) if (txt(o.tipo) === 'agregados') crudos.push(o.ot);
+    for (const o of filas(datos.ordenes_correccion).filter(o => String(Reflect.get(o, "estado") ?? "").trim().toLowerCase() !== "borrador")) crudos.push(o.numero);
+    for (const o of filas(datos.ordenes_hojas).filter(o => String(Reflect.get(o, "estado") ?? "").trim().toLowerCase() !== "borrador")) if (txt(o.tipo) === 'agregados') crudos.push(o.ot);
   } else {
-    for (const m of [...filas(datos.movimientos), ...filas(datos.ordenes_trabajo)]) crudos.push(m.ot);
-    for (const o of filas(datos.ordenes_hojas)) if (txt(o.tipo) !== 'agregados') crudos.push(o.ot);
+    for (const m of [...filas(datos.movimientos).filter(o => String(Reflect.get(o, "estado") ?? "").trim().toLowerCase() !== "borrador"), ...filas(datos.ordenes_trabajo).filter(o => String(Reflect.get(o, "estado") ?? "").trim().toLowerCase() !== "borrador")]) crudos.push(m.ot);
+    for (const o of filas(datos.ordenes_hojas).filter(o => String(Reflect.get(o, "estado") ?? "").trim().toLowerCase() !== "borrador")) if (txt(o.tipo) !== 'agregados') crudos.push(o.ot);
   }
   const ns = crudos.map((v) => numeroDe(v, serie)).filter((n): n is number => n != null);
   return [...new Set(ns)].sort((a, b) => a - b);

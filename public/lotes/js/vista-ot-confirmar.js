@@ -32,6 +32,7 @@ import { refrescarMapaMermas } from './mermas-mapa.js';
 import { estaPendiente, codigoLote } from './mermas.js';
 import { esEjecutado } from './ot-movimientos.js';
 import { hoyLocalISO } from './fechas.js';
+import { accesosConfirmacionOT } from './ciw-accesos-ot.js';
 
 const hoyISO = () => hoyLocalISO();
 const fmtL = v => v == null ? '—' : Number(v).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' L';
@@ -300,6 +301,7 @@ function _paso1(st){
     : st.tipo === 'tanque'
     ? 'Elegí el tanque y cargá los <b>cm de merma</b> medidos; si el tanque no tiene tabla, cargá los litros.'
     : 'Cargá cuántas barricas quedaron llenas y agregá las que quedaron mermas con sus litros.'}</p>
+${accesosConfirmacionOT(window.CIW)}
 ${_dlVasijas()}${corte}
 <div class="otc-scroll"><table class="otc-tabla"><thead><tr><th>Lote</th><th>Previstos</th><th>Destino</th></tr></thead>
 <tbody>${filas}</tbody></table></div>
@@ -857,6 +859,7 @@ function _paso2(st){
     ? 'El <b>después</b> sale de lo que el escáner registró con esta OT en el Mapa de Barriles; donde el Mapa no tiene nada, de lo que dice la OT.'
     : 'El Mapa de Barriles no tiene escaneos de esta OT: el <b>después</b> sale de lo que dice la OT.'}
 Revisá cada lote: si algo no se trasegó, corregí <b>Se trasegaron</b> o <b>Quedan</b> en su tipo de vasija. Todos los lotes se aplican, salvo los que marques <b>No tocar</b>.</p>
+${accesosConfirmacionOT(window.CIW)}
 ${avisoCorte}
 <div class="otc-scroll"><table class="otc-tabla"><thead><tr><th>Lote</th><th>Antes</th><th>Después</th><th>Litros</th><th>Merma</th><th></th></tr></thead>
 <tbody>${filas}</tbody></table></div>

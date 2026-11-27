@@ -29,6 +29,13 @@ export function esEjecutado(mov){
   return !NO_EJECUTADOS.has(estado);
 }
 
+/** CIW-03: una OT ejecutada no se elimina desde acciones normales. */
+export function puedeEliminarMovimientoOT(mov, ot){
+  if (!mov) return false;
+  if (ot) return !esEjecutado(ot) && !esEjecutado(mov);
+  return !String(mov.ot ?? "").trim() || !esEjecutado(mov);
+}
+
 /* Siguiente numero de OT libre. Desde 2026-10 la numeracion es la de la
  * carpeta de OneDrive (0939, ver numero-ot.js) y la propone guardar-ot.js
  * leyendo la carpeta. Esto queda como respaldo sin carpeta: si la web ya

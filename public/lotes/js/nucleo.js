@@ -1,7 +1,8 @@
 /* ===== Lotes CIW — nucleo: estado compartido, guardado y navegacion ===== */
 'use strict';
 
-import { queryAnios } from './selector-anios.js';
+import { queryAnios, montarSelectorAnios } from './selector-anios.js';
+import { pedirDocumento, mostrarErrorCarga, quitarErrorCarga } from '../../shared/carga-servidor.js';
 import { crearAutoguardado } from './autoguardado.js';
 import { tomarFoto, diferencia, aplicar, crearHistorial, describirPaso, describirCambio } from './deshacer.js';
 import { CADA_MS, decidirActualizacion, ocupadoSegun } from './en-vivo.js';
@@ -311,6 +312,7 @@ async function _adoptarDelServidor(info){
   _base = FUSION ? FUSION.clonar(DATOS()) : null;
   _despuesDeCambioAjeno();
   document.dispatchEvent(new CustomEvent('lotes:datos-recargados'));
+  montarSelectorAnios(DATOS().lotes);
   invalidarVistas();
   cargarDashboard();
   try { renderActivo(); } catch (e) { console.error('renderActivo tras actualizar en vivo:', e); }
@@ -553,16 +555,17 @@ export function registrarInit(fn){ _inits.push(fn); }
 /* ---------- cargar datos ---------- */
 export async function cargarDatos(){
   try {
-    const r = await fetch(API+'/datos');
+    const {respuesta:r, datos} = await pedirDocumento(API+'/datos');
     if (!r.ok){
       if (r.status === 401){ location.replace('/login.html'); return; }
       const j = await r.json().catch(() => ({}));
       if (j.error === 'debe_cambiar_clave'){ location.replace('/cambiar-clave.html'); return; }
       { const txt = 'Error al cargar ('+r.status+')' + (j.detalles && j.detalles[0] ? ': ' + j.detalles[0] : '');
-        const s = $('statusBar'); s.textContent = txt; s.title = txt; }
-      return;
+        _estado(txt, 'dirty'); mostrarErrorCarga(txt); }
+      return false;
     }
-    setDatos(await r.json());
+    quitarErrorCarga();
+    setDatos(datos);
     completarSecciones();
     _base = FUSION ? FUSION.clonar(DATOS()) : null;
     // Cambios que quedaron sin guardar en este equipo (recarga, corte, sesión vencida).
@@ -579,8 +582,12 @@ export async function cargarDatos(){
     if (recuperado) _marcarCambiado();
     _inits.forEach(fn => fn());
     renderActivo();
+    return true;
   } catch(e) {
-    const s = $('statusBar'); s.textContent = 'Sin conexión con el servidor'; s.title = s.textContent;
+    console.error('cargarDatos:', e);
+    _estado('No se pudo completar la carga', 'dirty');
+    mostrarErrorCarga('No se pudo completar la carga de Lotes.');
+    return false;
   }
 }
 
@@ -650,6 +657,10 @@ async function _guardar(forzar, intento = 0){
   if (r.status === 401) return 'sesion';   // shared/fusion.js ya mostró el aviso
   if (r.status === 400){
     const j = await r.json().catch(() => ({}));
+    if (j.error === 'techo_so2'){
+      await informar({ titulo: 'Corrección SO₂ bloqueada', texto: (j.detalles || []).join('\n') });
+      return 'error';
+    }
     if (j.error === 'validacion'){
       const det = (j.detalles || []).join('\n• ');
       if (forzar){ await informar({ titulo: 'No se pudo guardar', texto: '• ' + det }); return 'error'; }
@@ -709,7 +720,17 @@ async function _guardar(forzar, intento = 0){
   DATOS().meta.actualizado = j.actualizado;
   // La base pasa a ser lo que efectivamente llegó al servidor, no la pantalla
   // actual (que puede tener ediciones posteriores, todavía sin enviar).
-  if (FUSION){ _base = JSON.parse(enviado); _base.meta.version = j.version; _base.meta.actualizado = j.actualizado; }
+  // El autor de la excepción lo determina el servidor; no el navegador.
+  const aplicarSellosSo2 = d => {
+    for (const sello of j.excepciones_so2 || []) {
+      const o = (d.ordenes_correccion || []).find(o=>String(o.id)===sello.orden_id);
+      const l = o?.lotes?.find(l=>String(l.lote)===sello.lote);
+      const e = l?.excepcion_so2, autorizado = sello.excepcion;
+      if (e && autorizado && e.objetivo===autorizado.objetivo && String(e.motivo).trim()===autorizado.motivo) l.excepcion_so2 = {...autorizado};
+    }
+  };
+  aplicarSellosSo2(DATOS());
+  if (FUSION){ _base = JSON.parse(enviado); aplicarSellosSo2(_base); _base.meta.version = j.version; _base.meta.actualizado = j.actualizado; }
   if (_ediciones !== edicionesAlEnviar){
     // Se editó durante el viaje: queda pendiente (y en el borrador del equipo).
     // Lo guardado llega hasta el paso que estaba arriba al enviar.
@@ -889,6 +910,7 @@ const _PU = () => window.CIWPantalla;
 /** La pantalla anotada en la URL, o null si no hay (o no es una conocida). */
 export function pantallaDeUrl(){
   const pu = _PU();
+  if (location.hash === '#movimientos' && new URLSearchParams(location.search).get('inventario') === 'tanques') return 'inventario-tanques';
   if (location.hash === '#correcciones') return 'correcciones';
   return pu ? pu.pantallaDeHash(location.hash, Object.keys(_vistas).filter(n => n !== 'ficha')) : null;
 }

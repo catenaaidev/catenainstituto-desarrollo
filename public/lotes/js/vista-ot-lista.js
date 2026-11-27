@@ -195,7 +195,7 @@ function _pintarCab(ot){
   const id = ot.id;
   // Se borra cualquier OT pendiente que todavía no cambió litros ni envases;
   // una ya aplicada se deshace desde Movimientos → Historial.
-  const borrable = mu || (edit && !planDeshacer(DATOS(), ot).aplicada);
+  const borrable = !esEjecutado(ot) && (mu || (edit && !planDeshacer(DATOS(), ot).aplicada));
   const textoEdit = mu
     ? 'Escribí sobre la hoja: la tabla de muestras y los pasos se guardan solos.'
     : 'Escribí sobre la hoja para cambiar pasos, casilleros y título (solo cambia el papel).';
@@ -232,7 +232,11 @@ function _pintarCab(ot){
     if (!await confirmar({ titulo: 'Borrar la ' + ot.ot, texto,
       si: 'Borrar', no: 'Cancelar', peligro: true })) return;
     const o = _otViva(id);
-    if (!o) return;
+    if (!o || esEjecutado(o) || (!esSinMovimientos(o) && planDeshacer(DATOS(), o).aplicada)) {
+      avisar('La OT ya no se puede eliminar: verificá su estado actual.', { tipo: 'mal' });
+      _cb.onCambio();
+      return;
+    }
     eliminarOT(DATOS(), o);
     markDirty();
     _elegida = null;

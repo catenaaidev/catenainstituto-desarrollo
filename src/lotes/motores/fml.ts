@@ -52,6 +52,7 @@ export interface Criterios {
   fml_malico_2ultimas: number;
   so2_molecular_objetivo: number;
   so2_libre_piso: number;
+  so2_libre_techo?: number;
   ph_max: number;
   av_max: number;
   av_delta_max: number;
@@ -79,6 +80,7 @@ export const CRITERIOS_DEFAULT: Criterios = {
   // objetivo molecular caia en pH 3,61 y dejaba fuera de criterio a media
   // bodega por reserva antioxidante, no por riesgo microbiologico.
   so2_libre_piso: 20.0,
+  so2_libre_techo: 40,
   ph_max: 3.75,
   av_max: 0.8,
   av_delta_max: 0.3,
@@ -180,6 +182,7 @@ function aplicarOverride(
 }
 
 /** Claves cuyo valor de fabrica es un numero: lo que llegue se convierte con num(). */
+// CIW-01: techo de SO2 libre
 const CLAVES_NUMERICAS = new Set(
   Object.keys(CRITERIOS_DEFAULT).filter((k) => typeof CRITERIOS_DEFAULT[k] === 'number'),
 );
@@ -727,4 +730,13 @@ export function evaluar(datos: Record<string, unknown>, hoy: number): ResultadoE
       requieren_accion: cuenta((r) => r.alarmas.length > 0),
     },
   };
+}
+
+// CIW-01b: limitar exclusivamente el objetivo operativo de la OT.
+export function objetivoSo2LibreOT(...args: Parameters<typeof objetivoSo2Libre>): ReturnType<typeof objetivoSo2Libre> {
+  const objetivo = objetivoSo2Libre(...args);
+  if (objetivo === null) return null;
+  const techoRaw = num(Reflect.get(args[1], "so2_libre_techo"));
+  const techo = techoRaw !== null && Number.isFinite(techoRaw) && techoRaw > 0 ? techoRaw : 40;
+  return Math.min(40, techo, objetivo);
 }

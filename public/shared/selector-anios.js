@@ -6,13 +6,15 @@
  * 'lotes:anios-cambiados'; Prensas: 'prensas_anios' / 'prensas:anios-cambiados'). */
 'use strict';
 import { aniosDisponibles, seleccionInicial, alternarAnio, loteVisible,
-         otVisible, claveAnios, claveParaPrefetch } from './anios.js';
+         otVisible, claveAnios, claveParaPrefetch, anioBodega } from './anios.js';
 
 export function crearSelectorAnios({ claveLS, idContenedor, evento }){
   // La explícita (claveLS) manda; la _ultima es respaldo para adelantar pedidos.
   const claveUltima = claveLS + '_ultima';
   let _sel = null;          // null = todavía no se montó: no se filtra nada
   let _disponibles = [];
+  let _lotes = [];
+  let _explicita = null;
 
   const leer = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch(e) { return null; } };
   const escribir = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch(e) {} };
@@ -22,37 +24,47 @@ export function crearSelectorAnios({ claveLS, idContenedor, evento }){
   function otVisibleAhora(ot){ return otVisible(ot, _sel); }
   function queryAnios(){
     if (_sel !== null) return claveAnios(_sel);
-    return claveParaPrefetch(leer(claveLS), leer(claveUltima));
+    const guardada = leer(claveLS), ultima = leer(claveUltima);
+    return claveParaPrefetch(guardada, Array.isArray(ultima) ? ultima.filter(a => a <= anioBodega()) : null);
   }
   function pintar(){
     const cont = document.getElementById(idContenedor);
     if (!cont) return;
     cont.hidden = _disponibles.length < 2;   // con un solo año no hay nada que elegir
-    cont.innerHTML = _disponibles.map(a =>
-      `<button type="button" data-anio="${a}" aria-pressed="${_sel.includes(a)}"`
-      + ` title="Mostrar u ocultar los lotes ${a}">${a}</button>`).join('');
+    const visibles = _lotes.filter(l => visible(l?.lote)).length;
+    const todos = _disponibles.every(a => _sel.includes(a));
+    cont.innerHTML = `<button type="button" data-anios-actual title="Volver a la vendimia actual">Actual</button>`
+      + `<button type="button" data-anios-todos aria-pressed="${todos}" title="Mostrar todas las vendimias">Todos</button>`
+      + _disponibles.map(a =>
+        `<button type="button" data-anio="${a}" aria-pressed="${_sel.includes(a)}"`
+        + ` title="Mostrar u ocultar los lotes ${a}">${a}</button>`).join('')
+      + `<span style="padding:4px 8px;font-size:11px;white-space:nowrap;align-self:center" title="Conteo por año, antes de otros filtros">${visibles}/${_lotes.length} lotes</span>`;
   }
   const avisar = () => document.dispatchEvent(new CustomEvent(evento));
 
   /* Se llama después de cargar los datos (y otra vez si se recargan). */
   function montar(lotes){
     const antes = queryAnios();
-    _disponibles = aniosDisponibles(lotes);
-    _sel = seleccionInicial(_sel || leer(claveLS), _disponibles);
+    _lotes = Array.isArray(lotes) ? lotes : [];
+    _disponibles = aniosDisponibles(_lotes);
+    if (_sel === null) _explicita = leer(claveLS);
+    _sel = seleccionInicial(_explicita, _disponibles);
     escribir(claveUltima, _sel);
     pintar();
     const cont = document.getElementById(idContenedor);
     if (cont && !cont._escuchando){
       cont._escuchando = true;
       cont.addEventListener('click', e => {
-        const b = e.target.closest('button[data-anio]');
+        const b = e.target.closest('button[data-anio],button[data-anios-todos],button[data-anios-actual]');
         if (!b) return;
-        const nueva = alternarAnio(_sel, Number(b.dataset.anio));
-        if (claveAnios(nueva) === claveAnios(_sel)) return;   // era el último prendido
-        _sel = nueva;
-        escribir(claveLS, _sel); escribir(claveUltima, _sel);
+        const actual = b.hasAttribute('data-anios-actual');
+        const nueva = actual ? seleccionInicial(null, _disponibles)
+          : b.hasAttribute('data-anios-todos') ? [..._disponibles] : alternarAnio(_sel, Number(b.dataset.anio));
+        const cambio = claveAnios(nueva) !== claveAnios(_sel);
+        _sel = nueva; _explicita = actual ? null : [..._sel];
+        escribir(claveLS, _explicita); escribir(claveUltima, _sel);
         pintar();
-        avisar();
+        if (cambio) avisar();
       });
     }
     if (claveAnios(_sel) !== antes) avisar();

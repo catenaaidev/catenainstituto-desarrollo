@@ -14,6 +14,7 @@ export const CRITERIOS_DEFAULT = {
   fml_malico_2ultimas:    0.5,
   so2_molecular_objetivo: 0.38,
   so2_libre_piso:         20.0,
+  so2_libre_techo:        40,
   ph_max:                 3.75,
   av_max:                 0.8,
   av_delta_max:           0.3,
@@ -51,4 +52,46 @@ export function criteriosEfectivosJS(config, variedad, proyecto){
   _aplicarOverride(base, cf.por_variedad, variedad);
   _aplicarOverride(base, cf.por_proyecto, proyecto);
   return base;
+}
+
+/** Techo operativo de las OT; no altera el objetivo molecular de laboratorio. */
+export function techoSo2OT(config, variedad, proyecto){
+  const cfg = config?.criterios_fml || {};
+  let techo = 40;
+  const aplicar = obj => {
+    const raw = obj?.so2_libre_techo;
+    if (raw == null || typeof raw === 'boolean' || String(raw).trim() === '') return;
+    const n = Number(String(raw).trim().replace(',', '.'));
+    if (Number.isFinite(n)) techo = n;
+  };
+  aplicar(cfg.default);
+  for (const [tabla, clave] of [[cfg.por_variedad, variedad], [cfg.por_proyecto, proyecto]]){
+    const match = Object.entries(tabla || {}).find(([nombre]) => _normVar(nombre) === _normVar(clave));
+    if (match) aplicar(match[1]);
+  }
+  return techo > 0 ? Math.min(techo, 40) : 40;
+}
+
+/** Validación de dosis según la fórmula que ya usa CIW, no una predicción química.
+ * Sin SO2 medido o volumen conocido no se autoriza una dosis positiva. */
+export function problemaDosisSo2(actual, litros, dosis, techo){
+  const { mbk_g: g, ml_solucion: ml } = dosis || {};
+  if (g == null && ml == null) return '';
+  if (![g,ml].every(n=>n == null || (Number.isFinite(n) && n >= 0))) return 'Dosis inválida.';
+  if (!(g > 0 || ml > 0)) return '';
+  if (!Number.isFinite(actual) || actual < 0 || !Number.isFinite(litros) || litros <= 0) return 'Falta SO₂ medido o volumen válido para verificar la dosis.';
+  const dif = Math.max(0, techo - actual);
+  const maxG = dif * litros * 1.5 / 1000 * 2;
+  const maxMl = dif * litros * 1.5 / 55;
+  if ((g ?? 0) > maxG + 1e-8 || (ml ?? 0) > maxMl + 1e-8) return `La dosis supera el techo operativo de ${techo} ppm.`;
+  return '';
+}
+
+export function problemaObjetivoSo2(actual, deseado, techo){
+  if (deseado == null) return '';
+  if (!Number.isFinite(deseado) || deseado < 0) return 'Ingresá un objetivo de SO₂ válido.';
+  if (deseado > techo) return `El objetivo supera el techo de SO₂ libre de ${techo} ppm.`;
+  if (actual != null && (!Number.isFinite(actual) || actual < 0)) return 'Ingresá un SO₂ actual válido.';
+  if (actual != null && deseado < actual) return 'El SO₂ medido supera el objetivo: no corresponde agregar SO₂.';
+  return '';
 }

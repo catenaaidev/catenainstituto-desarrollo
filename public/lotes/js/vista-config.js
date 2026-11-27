@@ -2,7 +2,7 @@
 'use strict';
 
 import { $, esc, escA, DATOS, markDirty, registrarVista } from './nucleo.js';
-import { CRITERIOS_DEFAULT } from './criterios.js';
+import { CRITERIOS_DEFAULT, techoSo2OT } from './criterios.js';
 import { activarGrilla } from './grilla.js';
 import { renderVasijas } from './vista-vasijas.js';
 import { renderConfigAgenda } from './vista-config-agenda.js';
@@ -17,6 +17,7 @@ const COLS_CONFIG = [
   { k:'fml_malico_2ultimas',    label:'FML málico 2 últimas',   num:true },
   { k:'so2_molecular_objetivo',  label:'SO₂ molecular objetivo', num:true },
   { k:'so2_libre_piso',          label:'SO₂ libre piso',         num:true },
+  { k:'so2_libre_techo',         label:'SO₂ libre techo (ppm)', num:true },
   { k:'so2_caida_max',          label:'SO₂ caída máx (ppm)',    num:true },
   { k:'so2_aplica',             label:'Aplica SO₂',             sel:['si','no'] },
   { k:'ph_max_inclusive',       label:'pH máx inclusivo',       sel:['si','no'] },
@@ -58,7 +59,8 @@ function _cfgInput(val, dataAttrs, placeholder){
   const attrs = Object.entries(dataAttrs).map(([k,v])=>`data-${k}="${escA(v)}"`).join(' ');
   const valAttr = val != null ? `value="${escA(String(val))}"` : '';
   const ph = placeholder ? `placeholder="${escA(placeholder)}"` : '';
-  return `<input type="number" step="any" class="cell num" ${attrs} ${valAttr} ${ph}>`;
+  const limite = dataAttrs['cfg-k'] === 'so2_libre_techo' ? ' min="0.01" max="40" title="Techo operativo de las OT; máximo 40 ppm"' : '';
+  return `<input type="number" step="any" class="cell num" ${attrs} ${valAttr} ${ph}${limite}>`;
 }
 
 /** Renderiza la tabla de criterios por proyecto.
@@ -124,6 +126,16 @@ function _cfgOnInput(e){
   const tipo = el.dataset.cfgType;
   const k    = el.dataset.cfgK;
   const col  = COLS_CONFIG.find(c => c.k === k); if (!col) return;
+  if (window.CIW?.rol === 'lector') return;
+  if (k === 'so2_libre_techo') {
+    const n = Number(el.value);
+    if (el.validity?.badInput || (el.value !== '' && (!Number.isFinite(n) || n <= 0 || n > 40))) {
+      el.setCustomValidity('Ingresá un techo de SO₂ mayor que cero y de hasta 40 ppm.');
+      el.reportValidity();
+      return;
+    }
+    el.setCustomValidity('');
+  }
   _configEnsure();
   const cfg2 = DATOS().config.criterios_fml;
 
@@ -234,7 +246,7 @@ export function renderConfig(){
   /* ---- fila default ---- */
   let tb = '<tr data-row-type="default"><td><b>General (default)</b></td>';
   for (const c of COLS_CONFIG){
-    const val = def[c.k] != null ? def[c.k] : CRITERIOS_DEFAULT[c.k];
+    const val = c.k === 'so2_libre_techo' ? techoSo2OT(DATOS().config) : (def[c.k] != null ? def[c.k] : CRITERIOS_DEFAULT[c.k]);
     if (c.sel){
       tb += `<td>${_cfgSelect(val, {'cfg-type':'default','cfg-k':c.k})}</td>`;
     } else {
@@ -249,7 +261,7 @@ export function renderConfig(){
     tb += `<td style="font-weight:500">${esc(variedad)}</td>`;
     for (const c of COLS_CONFIG){
       const val = override[c.k] != null ? override[c.k] : null;
-      const defVal = def[c.k] != null ? def[c.k] : CRITERIOS_DEFAULT[c.k];
+      const defVal = c.k === 'so2_libre_techo' ? techoSo2OT(DATOS().config) : (def[c.k] != null ? def[c.k] : CRITERIOS_DEFAULT[c.k]);
       if (c.sel){
         // Para variedad: un select vacío no aplica; usamos un select con opción vacía primero
         const attrs = {'cfg-type':'variedad','cfg-k':c.k,'cfg-var':variedad};
@@ -291,6 +303,7 @@ export function renderConfig(){
     t.addEventListener('change', _cfgOnChange);
     t.addEventListener('click',  _cfgOnClick);
   }
+
 
   renderConfigAgenda();
 }
@@ -359,4 +372,5 @@ export async function restaurarDefaultsConfig(){
 }
 
 registrarVista('config', () => renderConfig());
+
 registrarVista('inventario-vasijas', () => renderVasijas($('cfgVasijas')));

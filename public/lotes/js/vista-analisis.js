@@ -3,7 +3,7 @@
 
 import { $, esc, escA, DATOS, markDirty, registrarVista, registrarInit, irALote,
          vistaActiva, invalidarVista, hayCambiosSinGuardar, usuarioActual,
-         renderActivoConservandoCelda } from './nucleo.js';
+         renderActivoConservandoCelda, mostrarTab } from './nucleo.js';
 import { toggleSort, escribirCelda, pasaMulti, opcionesValores, matchValor,
          crearFiltroMulti, limpiarFiltrosMulti, setF, ordenValido } from './tabla.js';
 import { activarGrilla, repintarGrilla } from './grilla.js';
@@ -729,6 +729,7 @@ export function renderAnalisis(opciones){
   /* -------- HTML: barra de controles -------- */
   const html = `
 <div class="toolbar" id="analisisToolbar">
+  ${window.CIW?.rol === 'lector' ? '' : '<button type="button" class="btn primary" id="btnAltaAnalisisIndividual">+ Cargar análisis individual</button>'}
   <input class="txt" id="buscaAnalisis" placeholder="🔎 Buscar por lote…" style="min-width:160px" value="${escA(_filtAnalisisBusca)}">
   <select id="fltAnMes"><option value="">Todos los meses</option>${meses.map(m=>`<option value="${escA(m)}"${m===_filtAnalisisMes?' selected':''}>${esc(fmtMes(m))}</option>`).join('')}</select>
   <select id="fltAnTipo">
@@ -780,6 +781,7 @@ export function renderAnalisis(opciones){
     ? contPrevio.scrollTop : 0;
 
   sec.innerHTML = html;
+  $('btnAltaAnalisisIndividual')?.addEventListener('click', () => mostrarTab('cargar'));
 
   /* -------- tabla -------- */
   const t = $('tAnalisis');

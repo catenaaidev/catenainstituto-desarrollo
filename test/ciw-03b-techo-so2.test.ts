@@ -1,0 +1,21 @@
+import { describe, it, expect } from 'vitest';
+import { validarTechoSo2, problemaTechoSo2 } from '../src/lotes/motores/techo-so2';
+import { objetivoSo2LibreOT, criteriosEfectivos, CRITERIOS_DEFAULT, objetivoSo2Libre } from '../src/lotes/motores/fml';
+const doc = (analisis: unknown[] = [], techo = 40) => ({lotes:[{lote:'26329',variedad:'Cabernet Sauvignon'}], analisis, config:{criterios_fml:{default:{so2_libre_techo:techo}}}});
+const registro = (d: number, extra = {}) => ({lote:'26329',fecha_analisis:'2026-11-27',correccion:{so2_libre_actual:30,so2_deseado:d,mbk_a_agregar:3,ml_exactos:1500/55,litros:100,ot_n:'B243',...extra}});
+describe('CIW 03b techo operativo en guardado',()=>{
+  it('preserva objetivo químico y limita la OT aun si config pide 60',()=>{expect(objetivoSo2Libre(4,CRITERIOS_DEFAULT)).toBeGreaterThan(40);expect(objetivoSo2LibreOT(4,criteriosEfectivos({default:{so2_libre_techo:60}},'Malbec'))).toBe(40);});
+  it('acepta 40',()=>expect(validarTechoSo2(doc([registro(40)]),doc())).toEqual([]));
+  it('bloquea 45 aun con techo configurado en 60',()=>expect(validarTechoSo2(doc([registro(45)],60),doc())).not.toEqual([]));
+  it('respeta configuración inferior',()=>expect(validarTechoSo2(doc([registro(40)],35),doc())).not.toEqual([]));
+  it('no revalida una corrección histórica sin cambios',()=>expect(validarTechoSo2(doc([registro(45)]),doc([registro(45)]))).toEqual([]));
+  it('bloquea duplicado histórico como nueva corrección',()=>expect(validarTechoSo2(doc([registro(45),registro(45)]),doc([registro(45)]))).not.toEqual([]));
+  it('permite anular una corrección histórica',()=>expect(validarTechoSo2(doc([registro(45,{anulada:{por:'admin'}})]),doc([registro(45)]))).toEqual([]));
+  it('bloquea dosis superior aun con objetivo de 40',()=>expect(problemaTechoSo2(30,40,100,4,null,40)).not.toBe(''));
+  it('bloquea dosis positiva sin volumen',()=>expect(problemaTechoSo2(30,40,null,3,null,40)).not.toBe(''));
+  it('permite vasija sin dosis',()=>expect(problemaTechoSo2(null,null,null,null,null,40)).toBe(''));
+  it('bloquea objetivo excesivo en vasija individual',()=>expect(validarTechoSo2(doc([registro(40,{vasijas:[{num:'1',so2_libre:30,objetivo:45,litros:100,mbk_g:3,ml:25}]})]),doc())).not.toEqual([]));
+  it('bloquea nueva OT con objetivo excesivo',()=>expect(validarTechoSo2({...doc(),ordenes_correccion:[{id:'1',numero:'B243',estado:'pendiente',lotes:[{lote:'26329',objetivo:45,vasijas:[]}]}]},doc())).not.toEqual([]));
+  it('valida al promover un borrador a pendiente',()=>{const o={id:'1',numero:'B243',lotes:[{lote:'26329',objetivo:45,vasijas:[]}]};expect(validarTechoSo2({...doc(),ordenes_correccion:[{...o,estado:'pendiente'}]},{...doc(),ordenes_correccion:[{...o,estado:'borrador'}]})).not.toEqual([]);});
+  it('no altera análisis medidos mayores de 40',()=>expect(validarTechoSo2(doc([{lote:'26329',so2_libre:55}]),doc())).toEqual([]));
+});

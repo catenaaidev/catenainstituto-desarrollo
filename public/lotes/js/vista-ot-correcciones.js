@@ -21,6 +21,7 @@ import { $, esc, escA, num, DATOS, markDirty, usuarioActual } from './nucleo.js'
 import { aplicarCorreccion } from './so2-bitacora.js';
 import { UNIDADES, cantidadTexto } from './agregados.js';
 import { calcCorreccionSO2, ultimoSo2Ph } from './so2-calculo.js';
+import { techoSo2OT, problemaObjetivoSo2 } from './criterios.js';
 import { panelDeOT, registradasDeOT, registrarTH2, litrosDeTanque, tanquePropuesto,
          correccionDeOT } from './ot-correcciones.js';
 import { PADRON_INICIAL } from './vasijas-padron.js';
@@ -29,6 +30,7 @@ import { fmtFecha, hoyLocalISO } from './fechas.js';
 // Hasta que se cargue el padron en Configuracion, el inicial (78 vasijas).
 const _padron = () => (DATOS().vasijas && DATOS().vasijas.length) ? DATOS().vasijas : PADRON_INICIAL;
 
+const techoLote = lote => { const l = (DATOS().lotes || []).find(x => String(x.lote ?? '') === String(lote)); return techoSo2OT(DATOS().config, l?.variedad, l?.proyecto); };
 const DESEADO = 35;   // el mismo valor por defecto que la calculadora
 const _n1 = v => (v == null || !Number.isFinite(v)) ? '—' : v.toLocaleString('es-AR', { maximumFractionDigits: 1 });
 
@@ -63,7 +65,7 @@ export function renderCorreccionesOT(cont, ot, otViva){
   <div class="otx-fila otx-so2">
     <span class="otx-prod">SO₂</span>
     <label>Actual<input class="txt" data-k="actual" inputmode="decimal" value="${escA(so2 ?? '')}"></label>
-    <label>Deseado<input class="txt" data-k="deseado" inputmode="decimal" value="${DESEADO}"></label>
+    <label>Deseado<input class="txt" data-k="deseado" inputmode="decimal" value="${Math.min(DESEADO, techoLote(l.lote))}" title="Máximo ${techoLote(l.lote)} ppm"></label>
     <button class="btn primary" data-reg="so2" title="Registrar en el Registro de corrección de SO₂ con la OT ${escA(ot.ot)}">✔ Registrar</button>
     <div class="otx-res" data-res></div>
   </div>
@@ -124,7 +126,9 @@ const _val = (sec, k) => sec.querySelector(`[data-k="${k}"]`).value;
 const _msg = (sec, html) => { sec.querySelector('[data-msg]').innerHTML = html; };
 
 function _calculo(sec){
-  return calcCorreccionSO2(num(_val(sec, 'actual')), num(_val(sec, 'deseado')), num(_val(sec, 'litros')), null);
+  const litros = num(_val(sec, 'litros'));
+  if (!Number.isFinite(litros) || litros <= 0) return null;
+  return calcCorreccionSO2(num(_val(sec, 'actual')), num(_val(sec, 'deseado')), litros, null);
 }
 
 /* El texto al lado de la vasija y, si `poner`, los litros calculados. */
@@ -139,6 +143,11 @@ function _pintarTanque(sec, poner){
 function _pintarResultado(sec){
   const r = _calculo(sec);
   const el = sec.querySelector('[data-res]');
+  const techo = techoLote(sec.dataset.lote);
+  const problema = problemaObjetivoSo2(num(_val(sec, 'actual')), num(_val(sec, 'deseado')), techo);
+  const btn = sec.querySelector('[data-reg="so2"]');
+  if (btn) btn.disabled = !!problema || window.CIW?.rol === 'lector';
+  if (problema){ el.textContent = problema; el.className = 'otx-res'; return; }
   if (!r){ el.textContent = 'Completá actual, deseado y los litros de la vasija.'; el.className = 'otx-res'; return; }
   if (r.diferencia <= 0){ el.textContent = 'El SO₂ actual ya llega al deseado.'; el.className = 'otx-res'; return; }
   el.className = 'otx-res on';
@@ -175,6 +184,9 @@ function _fecha(sec){
 function _registrarSO2(sec, ot){
   const fecha = _fecha(sec); if (!fecha) return;
   const actual = num(_val(sec, 'actual')), deseado = num(_val(sec, 'deseado')), litros = num(_val(sec, 'litros'));
+  if (window.CIW?.rol === 'lector') return;
+  const problema = problemaObjetivoSo2(actual, deseado, techoLote(sec.dataset.lote));
+  if (problema) return _msg(sec, '<div class="msg err">' + esc(problema) + '</div>');
   const r = _calculo(sec);
   if (!r) return _msg(sec, '<div class="msg err">Completá SO₂ actual, deseado y los litros de la vasija.</div>');
   if (r.diferencia <= 0) return _msg(sec, '<div class="msg err">El SO₂ actual ya llega al deseado: no hay nada que agregar.</div>');

@@ -30,7 +30,7 @@ export function modoPorDefecto(barricas, porVasija){
 /** La copia que se guarda al imprimir. `filas` son las de _ocBuildRows (las
  *  mismas que pintan el papel), `modos` el Map lote -> modo elegido a mano. */
 export function armarOrdenGuardada({ id, numero, fecha, emitio = '', recibio = '', unidad,
-                                     quien = '', ahora = '', filas, modos, titulo, instrucciones }){
+                                     quien = '', ahora = '', filas, modos, titulo, instrucciones, excepciones }){
   const lotes = [];
   let actual = null;
   for (const f of filas || []){
@@ -45,6 +45,8 @@ export function armarOrdenGuardada({ id, numero, fecha, emitio = '', recibio = '
        * asi que hay que guardarlos para que la ejecucion y "Ver la orden" los
        * conserven. */
       if (f.lote.por_vasija) actual.por_vasija = true;
+      const ex = excepciones?.get(actual.lote) ?? excepciones?.get(f.lote.lote);
+      if (ex && ex.objetivo === actual.objetivo) actual.excepcion_so2 = { objetivo: ex.objetivo, motivo: ex.motivo };
       lotes.push(actual);
       continue;
     }
@@ -189,12 +191,19 @@ export function entradasDeEjecucion(orden, tildes, fecha){
     const ml  = idx.reduce((s, i) => s + Number(l.vasijas[i].ml), 0);
     const correccion = armarCorreccion({
       so2Actual: l.so2_libre, so2Deseado: l.objetivo, mbk, ml, ot: orden.numero, fecha });
+    if (idx.every(i => _esFinito(l.vasijas[i].litros) && Number(l.vasijas[i].litros) > 0)) {
+      correccion.litros = idx.reduce((s,i) => s + Number(l.vasijas[i].litros), 0);
+    }
     /* Barril por barril: ademas del total, queda el detalle de cada vasija
      * tildada (su SO2, su objetivo y su dosis) para no perderlo al ejecutar. */
     if (l.por_vasija){
       correccion.vasijas = idx.map(i => ({ num: l.vasijas[i].num,
         so2_libre: l.vasijas[i].so2_libre ?? null, objetivo: l.vasijas[i].objetivo ?? null,
-        mbk_g: Number(l.vasijas[i].mbk_g), ml: Number(l.vasijas[i].ml) }));
+        mbk_g: Number(l.vasijas[i].mbk_g), ml: Number(l.vasijas[i].ml),
+        ...(_esFinito(l.vasijas[i].litros) ? { litros: Number(l.vasijas[i].litros) } : {}) }));
+    }
+    if (l.excepcion_so2) {
+      correccion.excepcion_so2 = { ...l.excepcion_so2, orden_id: orden.id, indices: idx };
     }
     entradas.push({ lote: l.lote, correccion });
     hechos.push({ lote: l.lote, vasijas: idx.map(i => l.vasijas[i].num || l.vasijas[i].vasija),

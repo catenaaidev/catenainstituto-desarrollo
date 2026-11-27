@@ -201,7 +201,7 @@ document.addEventListener('DOMContentLoaded', async () => {
      ya avisa el suyo en statusBar); solo garantiza que esto corra siempre. */
   try {
     const dash = cargarDashboard();
-    await cargarDatos();
+    if (!await cargarDatos()) { document.documentElement.classList.remove('modo-ordenes-cargando'); return; }
     refrescarAvisos();
     refrescarInfo();
     await dash;

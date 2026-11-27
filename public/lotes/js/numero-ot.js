@@ -44,6 +44,7 @@ export function formatearNumero(n, serie){
 export function numerosWeb(datos, serie){
   const d = datos || {};
   const out = [];
+  const definitiva = o => o && String(o.estado ?? '').trim().toLowerCase() !== 'borrador';
   const ver = v => { const n = numeroDeNombre(v, serie); if (n != null) out.push(n); };
   if (serie === 'B'){
     for (const a of d.analisis || []){
@@ -53,13 +54,13 @@ export function numerosWeb(datos, serie){
     }
     /* La orden guardada al imprimir ya usa su numero aunque todavia no se haya
      * ejecutado (o se haya anulada): el PDF esta en la carpeta con ese numero. */
-    for (const o of d.ordenes_correccion || []) ver(o && o.numero);
+    for (const o of d.ordenes_correccion || []) if (definitiva(o)) ver(o.numero);
     /* Las ordenes de papel guardadas tambien reservan su numero (agregados -> B). */
-    for (const o of d.ordenes_hojas || []) if (o && o.tipo === 'agregados') ver(o.ot);
+    for (const o of d.ordenes_hojas || []) if (definitiva(o) && o.tipo === 'agregados') ver(o.ot);
   } else {
-    for (const m of [...(d.movimientos || []), ...(d.ordenes_trabajo || [])]) ver(m && m.ot);
+    for (const m of [...(d.movimientos || []), ...(d.ordenes_trabajo || [])]) if (definitiva(m)) ver(m.ot);
     /* Las ordenes de papel guardadas tambien reservan su numero (agregados -> B). */
-    for (const o of d.ordenes_hojas || []) if (o && o.tipo !== 'agregados') ver(o.ot);
+    for (const o of d.ordenes_hojas || []) if (definitiva(o) && o.tipo !== 'agregados') ver(o.ot);
   }
   return out;
 }

@@ -1899,6 +1899,7 @@ body.modo-ordenes #tabs,body.modo-ordenes #buscarLote,body.modo-ordenes #corrSub
 html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hidden}
 @media screen{body.ciw-centro #tabs{display:none!important} #ciwCentroNav:not([hidden]){display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 24px;border-bottom:1px solid var(--line);background:var(--panel)} #ciwCentroNav a{min-height:36px;display:inline-flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:var(--ci-r);color:var(--txt);text-decoration:none}  #ciwCentroNav [hidden]{display:none!important} #ciwCentroNav a[aria-current="page"]{background:var(--txt);color:var(--bg)} }
 </style>
+<link rel="stylesheet" href="/shared/ciw-responsive-02.css?v=sync1">
 </head>
 <body>
 <header class="app-barra" id="barraLotes">
@@ -2141,6 +2142,13 @@ html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hid
       </p>
 
       <!-- orden de columnas -->
+      <!-- qué hacer con las filas: agregar análisis nuevos o corregir los ya cargados -->
+      <div class="controls cargar-modo" style="margin-bottom:6px">
+        <label style="font-size:13px;color:var(--muted);white-space:nowrap">Qué hacer con las filas:</label>
+        <label style="font-size:13px;white-space:nowrap;cursor:pointer;text-transform:none;letter-spacing:normal;color:var(--txt,inherit)"><input type="radio" name="cargarModo" value="agregar" checked> Agregar análisis nuevos</label>
+        <label style="font-size:13px;white-space:nowrap;cursor:pointer;text-transform:none;letter-spacing:normal;color:var(--txt,inherit)"><input type="radio" name="cargarModo" value="actualizar"> Actualizar análisis ya cargados</label>
+      </div>
+      <p id="cargarModoAyuda" style="color:var(--muted);font-size:12.5px;margin:0 0 12px"></p>
       <div class="controls" style="margin-bottom:10px">
         <label style="font-size:13px;color:var(--muted);white-space:nowrap">Orden de columnas:</label>
         <input class="txt" id="cargarCols" style="flex:1;min-width:320px;font-size:12px;font-family:monospace"
@@ -2228,6 +2236,7 @@ html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hid
         <tbody id="tConfigProyBody"></tbody>
       </table>
     </div>
+    <div class="note" id="ciwTechoSo2Nota" style="margin-bottom:12px"><b>SO₂ libre techo (ppm):</b> columna junto a SO₂ libre piso. Valor inicial 40; se puede reducir por variedad o proyecto. El máximo operativo es 40 ppm. Se aplica a las nuevas correcciones de Lotes, no a los análisis históricos.</div>
     <div id="cfgAgenda"></div>
   </section>
   <section class="view" id="tab-inventario-vasijas">

@@ -92,6 +92,12 @@
       b.addEventListener('click', function () { cerrar(); op.deshacer(); });
       a.appendChild(b);
     }
+    if (typeof op.accion === 'function' && op.etiquetaAccion) {
+      var accion = el('button', '', String(op.etiquetaAccion));
+      accion.type = 'button';
+      accion.addEventListener('click', function () { cerrar(); op.accion(); });
+      a.appendChild(accion);
+    }
     contenedor().appendChild(a);
     t = setTimeout(cerrar, M.duracionAviso(op));
     return { cerrar: cerrar };

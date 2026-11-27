@@ -138,7 +138,11 @@ function cerrarOverlay(){ $('overlay').classList.remove('show'); }
 
 /* ---------- API ---------- */
 async function cargar(){
-  const r = await fetch(API+'/datos');
+  const {pedirDocumento,mostrarErrorCarga,quitarErrorCarga}=await import('/shared/carga-servidor.js');
+  let r, datos;
+  try { ({respuesta:r,datos}=await pedirDocumento(API+'/datos')); } catch(e){
+    console.error('cargar Prensas:',e); $('status').textContent='No se pudo completar la carga'; mostrarErrorCarga('No se pudo completar la carga de Prensas.'); return;
+  }
   if(!r.ok){
     // Sin esto, un 401/403/500 quedaba como DATOS={error…} y la pantalla se
     // rompía a medio cargar sin decir nada.
@@ -146,9 +150,11 @@ async function cargar(){
     const j=await r.json().catch(()=>({}));
     if(j.error==='debe_cambiar_clave'){ location.replace('/cambiar-clave.html'); return; }
     $('status').textContent='No se pudieron cargar los datos ('+r.status+'): '+((j.detalles&&j.detalles[0])||'probá recargar.');
+    mostrarErrorCarga($('status').textContent);
     return;
   }
-  DATOS = await r.json();
+  quitarErrorCarga();
+  DATOS = datos;
   DATOS.meta = DATOS.meta || {version:0};
   DATOS.degustaciones = DATOS.degustaciones || [];
   DATOS.agregados = DATOS.agregados || [];

@@ -9,7 +9,7 @@ import { toggleSort, sortRows, opcionesValores, matchValor,
 import { activarGrilla, adaptadorCols, repintarGrilla } from './grilla.js';
 import { montarVirtual, soltarVirtual } from './tabla-virtual.js';
 import { anchoDeTexto } from './anchos-cols.js';
-import { esEjecutado, PENDIENTE, EJECUTADO, proximoNumeroOT } from './ot-movimientos.js';
+import { esEjecutado, PENDIENTE, EJECUTADO, proximoNumeroOT, puedeEliminarMovimientoOT } from './ot-movimientos.js';
 import { fmtFecha } from './fechas.js';
 import { abrirEmitirOT, numeroOcupadoEnCarpeta, esNumeroDeCarpeta, imprimirSoloPapel, precargarLotesOT } from './vista-ot-emitir.js';
 import { proponerNumero, chipCarpeta, cablearChipsCarpeta, imprimirYGuardar } from './guardar-ot.js';
@@ -472,7 +472,8 @@ export function renderMovimientos(opciones){
     const btnImprimir  = String(o.ot || '').trim()
       ? `<button class="rowbtn" data-imprimirot="${ri}" title="Ver e imprimir la hoja de esta OT">🖨️</button>`
       : '';
-    const btnBorrar    = `<button class="rowbtn" data-del="${ri}" title="Eliminar movimiento">✕</button>`;
+    const otAsociada = otDeMovimiento(DATOS().ordenes_trabajo, o);
+    const btnBorrar = puedeEliminarMovimientoOT(o, otAsociada) ? `<button class="rowbtn" data-del="${ri}" title="Eliminar movimiento">✕</button>` : '';
     return btnConfirmar + btnImprimir + btnBorrar;
   }
 
@@ -623,10 +624,11 @@ export function renderMovimientos(opciones){
         // Una fila de una OT se lleva la OT entera con todas sus filas: si no,
         // la OT queda en «Órdenes de trabajo» sin movimientos detrás.
         const ot = otDeMovimiento(DATOS().ordenes_trabajo, o);
+        if (!puedeEliminarMovimientoOT(o, ot)) return;
         if (ot){
           // Una OT ya aplicada cambio envases y litros: ofrecer volverlos atras.
           const plan = planDeshacer(DATOS(), ot);
-          if (plan.aplicada){ _abrirBorrarOTAplicada(ot, plan); return; }
+          if (plan.aplicada){ avisar('Esta OT ya modificó los lotes. No se puede borrar desde el historial.', { tipo: 'mal' }); return; }
           const n = (ot.lotes || []).length;
           const creados = lotesCreadosPorOT(ot);
           const corte = creados.length
@@ -636,7 +638,12 @@ export function renderMovimientos(opciones){
             texto: 'Esta fila es de la ' + ot.ot + ' (' + n + (n === 1 ? ' lote' : ' lotes') + '). Se elimina la OT completa con ' +
               (n === 1 ? 'su movimiento' : 'sus ' + n + ' movimientos') + '.' + corte,
             si: 'Eliminar OT', no: 'Cancelar', peligro: true })){
-            eliminarOT(DATOS(), ot);
+            const viva = (DATOS().ordenes_trabajo || []).find(x => x.id === ot.id);
+            const movVivo = (DATOS().movimientos || []).find(x => x.id === o.id);
+            if (!viva || !movVivo || !puedeEliminarMovimientoOT(movVivo, viva) || planDeshacer(DATOS(), viva).aplicada){
+              avisar('La OT cambió y no puede eliminarse.', { tipo: 'mal' }); return;
+            }
+            eliminarOT(DATOS(), viva);
             markDirty();
             renderMovimientos({ conservarScroll: true });
           }
@@ -652,6 +659,8 @@ export function renderMovimientos(opciones){
             renderMovimientos();
             return;
           }
+          const vivo = DATOS().movimientos[idx];
+          if (!puedeEliminarMovimientoOT(vivo, otDeMovimiento(DATOS().ordenes_trabajo, vivo))) return;
           DATOS().movimientos.splice(idx, 1);
           markDirty();
           renderMovimientos({ conservarScroll: true });

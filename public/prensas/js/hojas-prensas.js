@@ -43,6 +43,7 @@ export function numerosWebPrensas(datos, serie) {
   const hojas = (datos && datos.ordenes_hojas) || [];
   const out = [];
   for (const o of hojas) {
+    if (!o || String(o.estado ?? '').trim().toLowerCase() === 'borrador') continue;
     const t = TIPOS_HOJA_PRENSAS[o && o.tipo];
     if (!t || t.serie !== serie) continue;
     const n = numeroDeNombre(o.ot, serie);

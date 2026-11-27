@@ -12,6 +12,7 @@ import { $, esc, escA, DATOS, markDirty, guardar, mostrarOverlay, cerrarOverlay,
          usuarioActual } from './nucleo.js';
 import { avisar, confirmar } from './dialogos.js';
 import { fmtFecha } from './fechas.js';
+import { techoSo2OT, problemaObjetivoSo2, problemaDosisSo2 } from './criterios.js';
 import { ETIQUETA_FUERA } from './orden-correccion-activables.js';
 import { escribirEjecucion, revertirEjecucion, anularOrden, revertirAnulacionOrden,
          analisisPosterior, unidadDe, filasDeGuardada, modoDeGuardada,
@@ -155,7 +156,7 @@ export function _papel(o){
     banda: ['CORRECCIÓN SO₂', '', 'Bodega'],
     emitio: o.emitio, recibio: o.recibio,
     antesBanda: instrucciones ? campoHoja('instr', instrucciones, { tipo: 'area', cls: 'oh-instr' }) : '',
-    nota: u.nota.replace('cada barrica', 'cada vasija'),
+    nota: [u.nota.replace('cada barrica', 'cada vasija'), ...(o.lotes || []).filter(l => l.excepcion_so2).map(l => esc(`EXCEPCIÓN SO₂ · Lote ${l.lote} · ${l.excepcion_so2.objetivo} ppm · ${l.excepcion_so2.motivo} · ${l.excepcion_so2.autorizada_por || 'Pendiente de guardar'}`))].join(' | '),
     claseTabla: 'oh-tabla-justa',
     colgroup: COLGROUP_PAPEL_LOTE,
     thead: theadPapelLote(u),
@@ -204,7 +205,7 @@ function _abrirEjecucion(id){
             '<input type="checkbox" data-ocg-vas="' + i + ':' + j + '" disabled> ' +
             esc(v.num || v.vasija || '—') + ' · sin dosis</label>').join('') + '</div>'
       : '';
-    return '<div style="padding:6px 0;border-bottom:1px solid var(--line)">' + cab + vas + avisoPost + '</div>';
+    return '<div style="padding:6px 0;border-bottom:1px solid var(--line)">' + cab + vas + avisoPost + (l.excepcion_so2 ? '<div class="msg info">Excepción SO₂: ' + esc(l.excepcion_so2.objetivo) + ' ppm · ' + esc(l.excepcion_so2.motivo) + ' · ' + esc(l.excepcion_so2.autorizada_por || 'Pendiente de guardar') + '</div>' : '') + '</div>';
   }).join('');
 
   mostrarOverlay(
@@ -323,6 +324,31 @@ async function _confirmar(){
     }
   } catch (_) { /* sin conexion: seguir, el guardado de abajo ya lo maneja */ }
 
+  const orden = _ordenPorId(id);
+  for (const l of orden?.lotes || []) {
+    const t = tildes.get(l.lote);
+    if (!t?.size) continue;
+    const lote = (DATOS().lotes || []).find(x => String(x.lote ?? '') === String(l.lote));
+    const ex = l.excepcion_so2;
+    if (ex && (window.CIW?.rol !== 'admin' || !ex.autorizada_por)) {
+      _enVuelo = false; if (btn) btn.disabled = false;
+      if (msg) msg.textContent = 'La excepción requiere autorización guardada y ejecución por un administrador. Recargá la orden.';
+      return;
+    }
+    const techo = ex ? ex.objetivo : techoSo2OT(DATOS().config, lote?.variedad, lote?.proyecto);
+    const indices = l.modo === 'generica' ? (l.vasijas || []).map((_, i) => i) : [...t];
+    for (const i of indices) {
+      const v = l.vasijas[i]; if (!v) continue;
+      if (l.por_vasija && (v.mbk_g == null || v.ml == null)) continue;
+      const actual = v.so2_libre ?? l.so2_libre, objetivo = v.objetivo ?? l.objetivo;
+      const problema = problemaObjetivoSo2((v.mbk_g > 0 || v.ml > 0) ? actual : null, objetivo, techo) || problemaDosisSo2(actual, v.litros, { mbk_g: v.mbk_g, ml_solucion: v.ml }, techo);
+      if (problema) {
+        _enVuelo = false; if (btn) btn.disabled = false;
+        if (msg) msg.textContent = 'Lote ' + l.lote + ': ' + problema + ' Revisá la OT antes de ejecutarla.';
+        return;
+      }
+    }
+  }
   const res = escribirEjecucion(DATOS(), id, { tildes, fecha, quien: usuarioActual(), ahora: new Date().toISOString() });
   if (!res.ok){
     _enVuelo = false;

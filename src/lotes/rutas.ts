@@ -14,6 +14,7 @@ import { datosDashboard, datosFicha, analisisConFlags, veredictosSueltos } from 
 import { normalizarMapa, MapaNoDisponible } from './motores/mapa';
 import { cruzar } from './motores/cruce';
 import { armarOrden } from './motores/correccion';
+import { validarTechoSo2, sellosExcepcionesSo2 } from './motores/techo-so2';
 import { ETAPAS, etapasSugeridas } from './motores/etapas';
 import { barrilesDeLotes, barrilesPorNum, escaneosDeOT } from './motores/barriles-lote';
 import { leerAnios, enAnios, recortarPorAnios, anioDeLote } from './motores/anios';
@@ -154,6 +155,8 @@ export async function rutasLotes(
 
     const errores = validarDatos(nuevo, actual, forzar, SECCIONES_LOTES);
     if (errores.length) return json(400, { error: 'validacion', detalles: errores });
+    const erroresSo2 = validarTechoSo2(nuevo, actual, { rol: id!.rol, email: id!.email, ahora: new Date().toISOString() });
+    if (erroresSo2.length) return json(400, { error: 'techo_so2', detalles: erroresSo2 });
 
     const meta = (nuevo.meta ??= {}) as Record<string, unknown>;
     meta.version = va + 1;
@@ -200,6 +203,7 @@ export async function rutasLotes(
       actualizado: meta.actualizado,
       respaldo: null,
       reporte: null,
+      excepciones_so2: sellosExcepcionesSo2(nuevo),
     });
   }
 

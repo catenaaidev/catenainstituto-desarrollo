@@ -21,7 +21,7 @@
 import {
   calcularCorreccionSo2,
   criteriosEfectivos,
-  objetivoSo2Libre,
+  objetivoSo2LibreOT,
   so2Molecular,
   analisisPorLote,
   ordenarPorFecha,
@@ -353,7 +353,7 @@ export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado
     if (!pv.porVasija) {
       // Código de hoy, sin tocar: una sola medición para todo el lote.
       [so2, ph] = ultimaMedicion(analisisPorL.get(L) ?? []);
-      objetivo = objetivoSo2Libre(ph, eff);
+      objetivo = objetivoSo2LibreOT(ph, eff);
       const dosificar = so2 !== null && objetivo !== null ? Math.max(0, objetivo - so2) : 0;
       barricas = unidades.map((u) => filaBarrica(u, dosificar));
 
@@ -375,7 +375,7 @@ export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado
       // El mismo "último del lote" que decidió el modo (so2-por-vasija.ts).
       const so2Lote = pv.so2Lote;
       const phLote = pv.phLote;
-      const objLote = objetivoSo2Libre(phLote, eff);
+      const objLote = objetivoSo2LibreOT(phLote, eff);
 
       let peorSo2: number | null = null;
       let peorPh: number | null = null;
@@ -383,7 +383,7 @@ export function armarOrden(datos: Record<string, unknown>, mapa: MapaNormalizado
       let peorDeficit = -Infinity;
       barricas = unidades.map((u) => {
         const m = pv.vasijas.get(u.num) ?? null;
-        const obj = m && m.ph !== null ? objetivoSo2Libre(m.ph, eff) : objLote;
+        const obj = m && m.ph !== null ? objetivoSo2LibreOT(m.ph, eff) : objLote;
         if (!m || m.so2 === null || obj === null) {
           return filaBarricaSinDosis(u, (m && m.aviso) ?? 'sin objetivo (sin pH)', m);
         }

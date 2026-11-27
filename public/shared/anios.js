@@ -27,12 +27,19 @@ export function aniosDisponibles(lotes){
 
 /* Lo guardado en el navegador, si sigue teniendo sentido; si no, el año mas
  * nuevo solo, que es el que se trabaja todos los dias. */
-export function seleccionInicial(guardada, disponibles){
+export function anioBodega(fecha = new Date()){
+  return Number(new Intl.DateTimeFormat('en', {timeZone:'America/Argentina/Mendoza', year:'numeric'}).format(fecha));
+}
+
+export function seleccionInicial(guardada, disponibles, actual = anioBodega()){
   if (!disponibles.length) return [];
   const ok = Array.isArray(guardada)
     ? disponibles.filter(a => guardada.includes(a))
     : [];
-  return ok.length ? ok : [disponibles[disponibles.length - 1]];
+  // Un lote precargado para una vendimia futura no oculta los lotes actuales.
+  // Una selección explícita de un año futuro sigue siendo válida.
+  const vigentes = disponibles.filter(a => a <= actual);
+  return ok.length ? ok : [vigentes.length ? Math.max(...vigentes) : Math.min(...disponibles)];
 }
 
 /* Nunca deja la seleccion vacia: una web sin ningun lote parece rota. */

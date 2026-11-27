@@ -10,6 +10,7 @@ import { pasaMulti, opcionesValores,
          initFiltrosMulti, limpiarFiltrosMulti, setF } from './tabla.js';
 import { fmtFecha } from './fechas.js';
 import { calcCorreccionSO2 } from './so2-calculo.js';
+import { techoSo2OT, problemaObjetivoSo2 } from './criterios.js';
 import { visible } from './selector-anios.js';
 import { confirmar } from './dialogos.js';
 import { pintarOrdenesCorreccion } from './vista-ordenes-correccion.js';
@@ -86,6 +87,7 @@ export function renderCorrecciones(){
     <div>
       <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:5px">SO₂ libre deseado (mg/L)</label>
       <input class="txt" id="so2Deseado" type="number" step="0.1" value="35" style="width:100%">
+      <small id="so2TechoAyuda" style="color:var(--muted)"></small>
     </div>
     <div>
       <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:5px">Litros</label>
@@ -150,7 +152,7 @@ export function renderCorrecciones(){
   /* ---- autocompletar al cambiar lote ---- */
   $('so2SelLote').addEventListener('change', () => {
     const loteStr = $('so2SelLote').value;
-    if (!loteStr) return;
+    if (!loteStr){ _actualizarResultados(); return; }
     const loteObj = loteMap.get(loteStr);
     if (loteObj){
       $('so2Litros').value = loteObj.litros_actuales != null ? loteObj.litros_actuales : '';
@@ -178,6 +180,7 @@ export function renderCorrecciones(){
 
   /* ---- registrar corrección ---- */
   $('btnSo2Registrar').addEventListener('click', _registrarCorreccionSO2);
+  _actualizarResultados();
 
   /* ---- filtros bitácora ---- */
   $('so2BuscaBit').addEventListener('input', () => {
@@ -221,6 +224,11 @@ export function renderCorrecciones(){
   });
 }
 
+function techoLote(lote){
+  const l = (DATOS().lotes || []).find(x => String(x.lote ?? '') === String(lote ?? ''));
+  return techoSo2OT(DATOS().config, l?.variedad, l?.proyecto);
+}
+
 /** Actualiza los cuadros de resultado en vivo */
 function _actualizarResultados(){
   const actual  = num($('so2Actual')  ? $('so2Actual').value  : '');
@@ -228,7 +236,11 @@ function _actualizarResultados(){
   const litros  = num($('so2Litros')  ? $('so2Litros').value  : '');
   const ph      = num($('so2Ph')      ? $('so2Ph').value      : '');
 
-  const r = calcCorreccionSO2(actual, deseado, litros, ph);
+  const techo = techoLote($('so2SelLote')?.value);
+  const problema = problemaObjetivoSo2(actual, deseado, techo);
+  if ($('so2TechoAyuda')) $('so2TechoAyuda').textContent = problema || `Techo operativo: ${techo} ppm`;
+  if ($('btnSo2Registrar')) $('btnSo2Registrar').disabled = !!problema || window.CIW?.rol === 'lector';
+  const r = problema || litros == null || litros <= 0 ? null : calcCorreccionSO2(actual, deseado, litros, ph);
 
   const fmt = (v, dec) => (v != null && isFinite(v)) ? v.toFixed(dec) : '—';
 
@@ -240,7 +252,7 @@ function _actualizarResultados(){
 
 /** Registra la corrección en DATOS.analisis */
 async function _registrarCorreccionSO2(){
-  const msgEl = $('so2Msg'); if (!msgEl) return;
+  const msgEl = $('so2Msg'); if (!msgEl || window.CIW?.rol === 'lector') return;
 
   const loteStr = $('so2SelLote') ? $('so2SelLote').value : '';
   if (!loteStr){
@@ -254,10 +266,12 @@ async function _registrarCorreccionSO2(){
   const ot_n    = ($('so2OT').value || '').trim();
   const fecha   = ($('so2Fecha').value || '').trim();
 
-  if (actual == null || deseado == null || litros == null){
+  if (actual == null || deseado == null || litros == null || litros <= 0){
     msgEl.innerHTML = '<div class="msg err">Completá SO₂ actual, deseado y litros para registrar.</div>';
     return;
   }
+  const problema = problemaObjetivoSo2(actual, deseado, techoLote(loteStr));
+  if (problema){ msgEl.textContent = problema; return; }
   if (!fecha){
     msgEl.innerHTML = '<div class="msg err">Ingresá una fecha.</div>';
     return;
@@ -274,6 +288,7 @@ async function _registrarCorreccionSO2(){
     mbk: r.mbk_a_agregar, ml: r.ml_exactos,
     ot: ot_n, fecha: fecha,
   });
+  correccion.litros = litros;
 
   /* Si ese lote ya tiene ese dia una correccion de OTRA OT, aplicarCorreccion
    * no la pisa: crea una entrada aparte (ver _pisable en so2-bitacora.js). Se
@@ -290,6 +305,8 @@ async function _registrarCorreccionSO2(){
         String(otraOt.correccion.ot_n).trim() + '.\n\nSi registrás esta también, quedan las dos en la bitácora (no se pisa la anterior).',
       si: 'Registrar también', no: 'Revisar OT o fecha' })) return;
 
+  const problemaActual = problemaObjetivoSo2(actual, deseado, techoLote(loteStr));
+  if (problemaActual){ msgEl.textContent = problemaActual; return; }
   const { que, convive } = aplicarCorreccion(DATOS().analisis, loteStr, fecha, correccion);
 
   msgEl.innerHTML = (que === 'actualizado')

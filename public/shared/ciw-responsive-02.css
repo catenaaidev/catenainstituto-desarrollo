@@ -1,0 +1,56 @@
+/* CIW iteration 02: screen-only layout; keep print and table data intact. */
+@media screen {
+  html { max-inline-size: 100%; }
+  body { min-inline-size: 0; }
+  :where(main, [role="main"], #app, #main, .main-content, .workspace, .page-content) {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    box-sizing: border-box;
+  }
+  :where(.ciw02-flow, .ciw02-table-host) { min-inline-size: 0; max-inline-size: 100%; box-sizing: border-box; }
+  .ciw02-table-host { overflow-x: auto; overscroll-behavior-x: contain; }
+  .ciw02-table-host:focus-visible { outline: 2px solid #7e3448; outline-offset: -2px; }
+  .ciw02-nav {
+    display: flex; align-items: center; flex-wrap: wrap; gap: .4rem .6rem;
+    box-sizing: border-box; max-inline-size: 100%; min-inline-size: 0;
+    margin: .4rem .75rem; padding: .35rem .55rem;
+    border: 1px solid #d6d0c5; border-radius: 4px;
+    background: #f5f2ec; color: #35312d; font: 13px/1.45 system-ui, sans-serif;
+  }
+  .ciw02-nav > span { font-weight: 600; margin-inline-end: .2rem; }
+  .ciw02-nav > a { display: inline-flex; align-items: center; gap: .2rem; white-space: nowrap; color: #6b1934; text-decoration: none; border: 1px solid #d6c5c9; border-radius: 3px; padding: .28rem .55rem; background: #fff; }
+  .ciw02-nav > a:hover { background: #f2e6e9; }
+  .ciw02-nav > a:focus-visible { outline: 2px solid #7e3448; outline-offset: 2px; }
+  .ciw02-nav > small { font-size: 11px; color: #625c54; }
+  .ciw02-nav--dialog { margin: .35rem 0; }
+  /* A real table remains a table. No forced column shrinking or hidden cells. */
+  :where(dialog[open], [role="dialog"][aria-modal="true"]) {
+    max-inline-size: calc(100vw - 24px); max-block-size: calc(100dvh - 24px);
+    box-sizing: border-box;
+  }
+  @media (max-width: 1440px) {
+    .ciw02-flow { flex-wrap: wrap !important; row-gap: .35rem; }
+    .ciw02-flow > * { min-inline-size: 0; max-inline-size: 100%; }
+  }
+  @media (max-width: 1024px) {
+    .ciw02-nav { margin-inline: .35rem; }
+    .ciw02-flow :where(input:not([type="checkbox"]):not([type="radio"]), select) { max-inline-size: 100%; box-sizing: border-box; }
+    :where(dialog[open], [role="dialog"][aria-modal="true"]) { overflow-y: auto; }
+  }
+  @media (max-width: 600px) {
+    .ciw02-nav { gap: .3rem; padding: .35rem; }
+    .ciw02-nav > a { min-block-size: 32px; }
+    .ciw02-nav > small { flex-basis: 100%; }
+  }
+}
+@media print { .ciw02-nav { display: none !important; } }
+
+/* CIW-03: formulario individual y accesos al inventario. */
+[hidden].ciw03-tanques { display: none !important; }
+a.ciw03-tanques { text-decoration: none; }
+@media screen {
+  .ciw03-alta { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%, 180px),1fr)); gap: 12px; }
+  .ciw03-campo { display:flex; flex-direction:column; gap:5px; min-width:0; font-size:13px; }
+  .ciw03-campo input { width:100%; min-width:0; box-sizing:border-box; }
+  .ciw03-campo:has([data-manual="comentario"]) { grid-column: 1 / -1; }
+}

@@ -30,13 +30,14 @@ import { pasaMulti, opcionesValores, matchValor, crearFiltroMulti,
 import { ordenarLotesOc, OC_ORDEN_INICIAL, ciclarOrdenOc } from './orden-correccion-orden.js';
 import { queryAnios } from './selector-anios.js';
 import { proponerNumero, chipCarpeta, cablearChipsCarpeta, imprimirYGuardar } from './guardar-ot.js';
-import { avisar, confirmar } from './dialogos.js';
+import { avisar, confirmar, pedir } from './dialogos.js';
 import { modoPorDefecto, armarOrdenGuardada, lotesPendientes } from './orden-correccion-guardada.js';
 import { claveVasija, dosisDesdeUnidad, aplicarManuales } from './orden-correccion-manual.js';
 import { ETIQUETA_FUERA, activablesDe, ordenConActivables, diferenciaDosificable } from './orden-correccion-activables.js';
 import { urlVolver } from './modo-ordenes.js';
 import { pintarPlanilla, COLS_PLANILLA, valorVasija, filtrarVasijas, ordenarVasijas, cartelPorVasija } from './orden-correccion-planilla.js';
 import { esOrganico } from './envases.js';
+import { techoSo2OT, problemaDosisSo2 } from './criterios.js';
 import { fijarOrdenUnica } from './vista-so2.js';
 
 /* Formateador local: usa toFixed y muestra '—' para null/Infinity.
@@ -56,6 +57,8 @@ let _ocActivos = false;
  * que los primeros; los ya vistos conservan lo que eligio el usuario. */
 let _ocActVistos = new Set();
 let _ocExcluidos = new Set();    // lotes destildados por el usuario
+let _ocSolicitudesEx = new Map(); // invalida avisos de una edición anterior
+let _ocExcepciones = new Map(); // autorizacion temporal por lote y objetivo
 let _ocObjetivos = new Map();    // lote -> objetivo pisado a mano
 /* lote -> Map claveVasija -> {mbk_g, ml_solucion}: la dosis escrita sobre la
  * hoja (orden-correccion-manual.js). Se borra la del lote al cambiar su
@@ -216,7 +219,7 @@ function _ocPonerActivables(on){
   if (!on){
     for (const lote of _ocActVistos){
       _ocExcluidos.delete(lote);
-      _ocObjetivos.delete(lote);
+      _ocObjetivos.delete(lote); _ocExcepciones.delete(lote); _ocSolicitudesEx.delete(lote);
       _ocManuales.delete(lote);
       _ocModos.delete(lote);
     }
@@ -276,6 +279,34 @@ export function _dosis(diferencia, litros){
   };
 }
 
+function _ocTecho(lote){
+  const l = (DATOS().lotes || []).find(x => String(x.lote ?? '') === String(lote ?? ''));
+  return techoSo2OT(DATOS().config, l?.variedad, l?.proyecto);
+}
+function _ocAdmin(){ return window.CIW?.rol === 'admin'; }
+function _ocLimiteOrden(lote){
+  const e = _ocExcepciones.get(lote);
+  return _ocAdmin() && e && _ocObjetivos.get(lote) === e.objetivo ? e.objetivo : _ocTecho(lote);
+}
+function _ocNotasExcepcion(filas){
+  return filas.filter(f => f.tipo === 'lote' && _ocExcepciones.has(f.lote.lote)).map(f => {
+    const e = _ocExcepciones.get(f.lote.lote);
+    return `EXCEPCIÓN SO₂ · Lote ${f.lote.lote} · ${e.objetivo} ppm · ${e.motivo} · verificar OT guardada antes de ejecutar`;
+  }).join(' | ');
+}
+function _ocProblemaTecho(filas){
+  for (const f of filas){
+    const techo = _ocLimiteOrden(f.lote.lote);
+    if (f.tipo === 'lote' && f.objetivo > techo) return `Lote ${f.lote.lote}: el objetivo supera ${techo} ppm. Recargá la propuesta o corregí el objetivo.`;
+    if (f.tipo !== 'barrica') continue;
+    if ((_ocObjetivos.get(f.lote.lote) ?? f.barrica.objetivo) != null && (_ocObjetivos.get(f.lote.lote) ?? f.barrica.objetivo) > techo) return `Lote ${f.lote.lote}: una vasija supera el techo de ${techo} ppm.`;
+    const actual = f.lote.por_vasija ? f.barrica.so2_libre : f.lote.so2_libre;
+    const problema = problemaDosisSo2(actual, f.barrica.litros_usados, f.dosis, techo);
+    if (problema) return `Lote ${f.lote.lote}, vasija ${f.barrica.num || f.barrica.vasija || 'sin identificar'}: ${problema}`;
+  }
+  return '';
+}
+
 /** Objetivo vigente de un lote: el pisado a mano si hay, si no el del servidor. */
 function _objetivoDe(l){
   const pisado = _ocObjetivos.get(l.lote);
@@ -331,7 +362,7 @@ export function _ocBuildRows(orden, excluidos, objetivos, filtros, sort){
       } else d = _dosis(difDosis, b.litros_usados);
       if (d.mbk_g != null) mbk_total += d.mbk_g;
       if (d.ml_solucion != null) ml_total += d.ml_solucion;
-      return { barrica: b, dosis: d };
+      return { barrica: l.por_vasija && hayPisado && b.so2_libre != null ? { ...b, objetivo: pisado } : b, dosis: d };
     });
     /* pisado: el objetivo lo escribio el usuario (la planilla no lo adivina
      * comparando numeros). */
@@ -647,7 +678,7 @@ function _ocAvisosDe(l){
   const manual = l.fuera === 'en_objetivo'
     ? '✋ ya estaba en objetivo: subile el objetivo o escribí la dosis en el renglón'
     : l.fuera === 'corregido' ? '✋ sumado a mano: la orden no lo proponía por la corrección reciente' : '';
-  return [cartelPorVasija(l), manual, enOrden ? '⏳ en ' + enOrden + ' sin ejecutar' : '', _ocCartelCorregido(l), _ocAviso(l),
+  return [_ocExcepciones.has(l.lote) ? `⚠ Excepción solicitada: ${_ocExcepciones.get(l.lote).objetivo} ppm · ${_ocExcepciones.get(l.lote).motivo}` : "", cartelPorVasija(l), manual, enOrden ? '⏳ en ' + enOrden + ' sin ejecutar' : '', _ocCartelCorregido(l), _ocAviso(l),
           ...(l.avisos_vasija || [])].filter(Boolean);
 }
 
@@ -686,7 +717,7 @@ function _ocPintarPaginas(){
     /* Las instrucciones se escriben encima (data-campo="instr"); vacias no
      * imprimen nada (el placeholder es transparente al imprimir). */
     antesBanda: campoHoja('instr', _ocInstr[_ocUnidad], { tipo: 'area', cls: 'oh-instr', ph: 'Instrucciones (opcional)' }),
-    nota: _ocUni().nota.replace('cada barrica', 'cada vasija'),
+    nota: [_ocUni().nota.replace('cada barrica', 'cada vasija'), esc(_ocNotasExcepcion(filas))].filter(Boolean).join(" | "),
     claseTabla: 'oh-tabla-justa',
     colgroup: COLGROUP_PAPEL_LOTE,
     thead: theadPapelLote(_ocUni()),
@@ -845,7 +876,7 @@ function _ocCablearControles(raiz){
     const cb = e.target.closest('input[type="checkbox"][data-oc-lote]');
     if (cb){
       const lote = cb.dataset.ocLote;
-      if (cb.checked) _ocExcluidos.delete(lote); else _ocExcluidos.add(lote);
+      if (cb.checked) _ocExcluidos.delete(lote); else { _ocExcluidos.add(lote); _ocSolicitudesEx.delete(lote); if (_ocExcepciones.delete(lote)) { _ocObjetivos.delete(lote); _ocManuales.delete(lote); } }
       if (cb.checked){
         const en = lotesPendientes(DATOS().ordenes_correccion).get(lote);
         if (en) avisar('El lote ' + lote + ' ya está en la ' + en + ', que todavía no se ejecutó. Si lo incluís, va a quedar en las dos órdenes.');
@@ -879,10 +910,29 @@ function _ocCablearControles(raiz){
     const so2Actual = loteData ? (loteData.so2_libre || 0) : 0;
     /* Otro objetivo = otras dosis: las escritas a mano para este lote ya no valen. */
     _ocManuales.delete(lote);
-    if (!Number.isNaN(val) && val > so2Actual) _ocObjetivos.set(lote, val);
+    _ocExcepciones.delete(lote); _ocSolicitudesEx.delete(lote);
+    if (Number.isFinite(val) && val > so2Actual && val <= _ocTecho(lote)) _ocObjetivos.set(lote, val);
     else {
-      _ocObjetivos.delete(lote);
-      if (!Number.isNaN(val))
+      _ocObjetivos.delete(lote); _ocExcepciones.delete(lote); _ocSolicitudesEx.delete(lote);
+      if (Number.isFinite(val) && val > _ocTecho(lote)) {
+        const texto = 'El objetivo no puede superar el techo de ' + _ocTecho(lote) + ' ppm.';
+        const ordenActual = _ocOrden;
+        const solicitudId = {}; _ocSolicitudesEx.set(lote, solicitudId);
+        const solicitud = async () => {
+          if (!_ocAdmin() || _ocSolicitudesEx.get(lote) !== solicitudId || _ocOrden !== ordenActual || _ocExcluidos.has(lote) || val <= so2Actual) return;
+          const motivo = await pedir({ titulo: 'Motivo de excepción SO₂', texto: `Lote ${lote}: objetivo excepcional ${val} ppm. Afecta únicamente este lote en esta OT y sus vasijas incluidas. Confirmá el criterio enológico antes de continuar.`, si: 'Autorizar excepción', campo: { requerido: true, placeholder: 'Motivo técnico obligatorio' } });
+          if (!_ocAdmin() || _ocSolicitudesEx.get(lote) !== solicitudId || _ocOrden !== ordenActual || _ocExcluidos.has(lote) || !motivo) return;
+          const limpio = motivo.trim();
+          if (limpio.length < 5 || limpio.length > 500) { avisar('Ingresá un motivo técnico de 5 a 500 caracteres.', {tipo:'mal'}); return; }
+          _ocManuales.delete(lote);
+          _ocObjetivos.set(lote, val);
+          _ocSolicitudesEx.delete(lote);
+          _ocExcepciones.set(lote, { objetivo: val, motivo: limpio });
+          _ocRepintarConFoco();
+        };
+        avisar(texto, _ocAdmin() && val > so2Actual ? { tipo: 'mal', ms: 15000, etiquetaAccion: 'Excepción', accion: solicitud } : { tipo: 'mal' });
+      }
+      else if (!Number.isNaN(val))
         avisar('El objetivo (' + val.toFixed(1) + ') debe ser mayor que el SO₂ actual (' + so2Actual.toFixed(1) + '). Se restauró el valor del servidor.');
     }
     _ocRepintarConFoco();
@@ -1251,7 +1301,7 @@ export async function renderOrdenCorreccion(){
     _ocPonerActivables(false);
     _ocOrdenSrv = _ocOrden = null;
     _ocExcluidos.clear();
-    _ocObjetivos.clear();
+    _ocObjetivos.clear(); _ocExcepciones.clear(); _ocSolicitudesEx.clear();
     _ocManuales.clear();
     _ocPendAuto.clear();
     await _ocCargar();
@@ -1286,6 +1336,8 @@ export async function renderOrdenCorreccion(){
 
   /* Imprimir */
   $('btnOcImprimir').addEventListener('click', async () => {
+    const problema = _ocProblemaTecho(_ocBuildRowsLocal());
+    if (problema){ avisar(problema, { tipo: 'mal' }); return; }
     const r = await imprimirYGuardar({
       claseBody: 'printing-ordencorr', contenedor: $('ocPaginas'), serie: 'B',
       numero: _ocNum, titulo: 'Correccion SO2',
@@ -1472,7 +1524,7 @@ async function _ocGuardarOrden(numero){
     emitio: _ocEmitio.trim(), recibio: _ocRecibio.trim(),
     unidad: _ocUnidad, quien: usuarioActual(), ahora: new Date().toISOString(),
     filas: _ocBuildRowsLocal(), modos: _ocModos,
-    titulo: _ocTitulo, instrucciones: _ocInstr[_ocUnidad] });
+    titulo: _ocTitulo, instrucciones: _ocInstr[_ocUnidad], excepciones: _ocExcepciones });
   if (!orden.lotes.length){
     avisar('No se guardó ninguna orden: no había lotes incluidos.');
     return;
@@ -1484,7 +1536,11 @@ async function _ocGuardarOrden(numero){
   if (i >= 0) d.ordenes_correccion[i] = orden; else d.ordenes_correccion.push(orden);
   markDirty();
   /* Las dosis a mano ya quedaron en la orden: no se arrastran a la siguiente. */
-  for (const l of orden.lotes) _ocManuales.delete(l.lote);
+  for (const l of orden.lotes) {
+    _ocManuales.delete(l.lote);
+    if (_ocExcepciones.has(l.lote)) _ocObjetivos.delete(l.lote);
+    _ocExcepciones.delete(l.lote); _ocSolicitudesEx.delete(l.lote);
+  }
 
   let ok;
   try { ok = await guardar(); } catch (_) { ok = false; }
