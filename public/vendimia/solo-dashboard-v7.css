@@ -1,0 +1,8 @@
+/* CIW: el dashboard V7 es la vista operativa. No borrar nodos usados por libros-app. */
+#contenido-periodo.workspace-grid[hidden] { display:none !important; }
+#contenido-periodo.workspace-grid > aside.books { display:none !important; }
+#contenido-periodo.workspace-grid > .work-area > #sin-libro { display:none !important; }
+/* Quitar el panel entero cuando no hay un libro expresamente abierto. */
+#contenido-periodo.workspace-grid:has(> .work-area > #libro-abierto[hidden]):not(:has(> :not(aside.books,.work-area))):not(:has(> .work-area > :not(#sin-libro,#libro-abierto))) { display:none !important; }
+/* Si se abre un documento desde el dashboard, conservar solo su contenido. */
+#contenido-periodo.workspace-grid:not([hidden]) { grid-template-columns:minmax(0,1fr) !important; }
