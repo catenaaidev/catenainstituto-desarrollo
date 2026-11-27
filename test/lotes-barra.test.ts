@@ -1,5 +1,5 @@
 /**
- * La barra de Lotes tiene que ser como la de Prensas: cuatro pantallas a la
+ * La barra de Lotes tiene que ser como la de Prensas: tres pantallas a la
  * vista, el resto en Más, sin emojis, y pegada debajo de la barra de la
  * plataforma (--ciw-h) al hacer scroll.
  */
@@ -17,15 +17,17 @@ const enMas = [...menu.matchAll(/data-v="([^"]+)"/g)].map((m) => m[1]);
 const EMOJI = /\p{Extended_Pictographic}/u;
 
 describe('barra de Lotes', () => {
-  it('cuatro pantallas a la vista, en este orden', () => {
+  it('tres pantallas a la vista, en este orden', () => {
     expect(principales).toEqual([
-      ['dashboard', 'Panel'], ['lotes', 'Lotes'], ['analisis', 'Análisis'],
+      ['lotes', 'Lotes'], ['analisis', 'Análisis'],
       ['agenda', 'Agenda'],
     ]);
   });
 
   it('el resto en Más', () => {
-    expect(enMas.sort()).toEqual(['cargar', 'config', 'cruce', 'tablero']);
+    expect(enMas.sort()).toEqual(['config', 'cruce', 'tablero']);
+    expect(menu).toContain('data-v="tablero">Tablero</button>');
+    expect(html).toContain('data-analisis-v="cargar"');
     expect(menu).toContain('id="btnHistorial"');
     expect(menu).toContain('id="btnCuadricula"');
     expect(menu).toContain('id="btnExportarCompleto"');

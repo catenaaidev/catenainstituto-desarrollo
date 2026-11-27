@@ -1904,23 +1904,19 @@ html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hid
 <header class="app-barra" id="barraLotes">
   <span class="marca" id="ciwMarcaLotes">Lotes</span>
   <nav class="tabs" id="tabs" aria-label="Pantallas">
-    <button type="button" data-v="dashboard" class="active">Panel</button>
-    <button type="button" data-v="lotes">Lotes</button>
+    <button type="button" data-v="lotes" class="active">Lotes</button>
     <button type="button" data-v="analisis">Análisis</button>
     <button type="button" data-v="agenda">Agenda</button>
     <div class="mas" id="masWrap">
       <button type="button" class="mas-btn" id="masBtn" aria-haspopup="true" aria-expanded="false" aria-controls="masMenu">Más</button>
       <div class="mas-menu" id="masMenu">
         <div class="mas-angosto">
-          <button type="button" data-v="dashboard">Panel</button>
           <button type="button" data-v="lotes">Lotes</button>
           <button type="button" data-v="analisis">Análisis</button>
           <button type="button" data-v="agenda">Agenda</button>
         </div>
-        <div class="mas-grupo">Registro</div>
-        <button type="button" data-v="cargar">Cargar análisis</button>
         <div class="mas-grupo">Seguimiento</div>
-        <button type="button" data-v="tablero">Tablero FML</button>
+        <button type="button" data-v="tablero">Tablero</button>
         <button type="button" data-v="cruce">Cruce con barriles</button>
         <div class="mas-grupo">Herramientas</div>
         <button type="button" data-v="config">Configuración</button>
@@ -1967,8 +1963,12 @@ html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hid
     <button type="button" data-sub="so2" role="radio" aria-checked="false">Registro de corrección de SO₂</button>
     <button type="button" data-sub="agregados" role="radio" aria-checked="false">Otros agregados</button>
   </div>
-  <!-- DASHBOARD -->
-  <section class="view active" id="tab-dashboard">
+  <div class="corr-sub" id="analisisSub" role="group" aria-label="Opciones de Análisis" hidden>
+    <button type="button" data-analisis-v="analisis" aria-pressed="false">Consultar análisis</button>
+    <button type="button" data-analisis-v="cargar" aria-pressed="false">Cargar análisis</button>
+  </div>
+  <!-- DASHBOARD (interno: conservar las conexiones y exportaciones existentes) -->
+  <section class="view" id="tab-dashboard">
     <div class="controls" style="justify-content:flex-end;margin-bottom:12px">
       <button class="btn" data-descargar-html data-seccion="tab-dashboard" data-titulo="Lotes CIW — Dashboard" data-archivo="dashboard-lotes" title="Baja una copia del dashboard tal como se ve ahora, en un .html que se abre sin internet">⬇️ Descargar HTML</button>
     </div>
@@ -2084,7 +2084,7 @@ html.modo-ordenes-cargando #tabs,html.modo-ordenes-cargando .view{visibility:hid
   </section>
 
   <!-- LOTES -->
-  <section class="view" id="tab-lotes">
+  <section class="view active" id="tab-lotes">
     <div class="toolbar">
       <input class="txt" id="buscaLotes" inputmode="numeric" placeholder="Buscar por lote…" style="min-width:180px">
       <!-- Los filtros de casillas NO están acá: cada uno vive en el embudo ▾ de

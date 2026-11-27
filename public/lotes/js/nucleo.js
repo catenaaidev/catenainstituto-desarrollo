@@ -30,7 +30,7 @@ export function setLoteActivo(v){ _loteActivo = String(v ?? ''); }
 
 /* La ficha queda en la URL (#ficha/<lote>): se comparte, sobrevive al F5 y
  * el botón Atrás del celular vuelve a donde se estaba (app.js, popstate). */
-let _antesDeFicha = 'dashboard';
+let _antesDeFicha = 'lotes';
 /** La pantalla desde la que se abrió la ficha (a donde vuelven Volver y Atrás). */
 export function vistaAntesDeFicha(){ return _antesDeFicha; }
 export function irALote(loteStr, op = {}){
@@ -523,7 +523,7 @@ export function invalidarVista(nombre){ delete _genDibujada[nombre]; }
 /* La vista que se esta mostrando. No se lee del boton activo: las tres
  * sub-pestañas de Correcciones comparten UN boton (data-v="so2"), y leer el
  * boton haria que renderActivo redibuje la bitacora estando en la orden. */
-let _vistaMostrada = 'dashboard';
+let _vistaMostrada = 'lotes';
 export function vistaActiva(){ return _vistaMostrada; }
 function _dibujar(nombre, forzar){
   const fn = _vistas[nombre];
@@ -898,6 +898,8 @@ export function pantallaDeUrl(){
  * tiene que volver a Órdenes de trabajo, y la orden ya se reabre por ?orden=. */
 export const enModoOrdenes = () => !!new URLSearchParams(location.search).get('orden');
 export function mostrarTab(nombre, op = {}){
+  // Los enlaces antiguos al Panel apuntan ahora al Tablero.
+  if (nombre === 'dashboard') nombre = 'tablero';
   if (nombre === 'correcciones') nombre = _ultimaCorreccion;
   if (nombre !== 'ficha' && !op.sinHistorial && _PU()){
     // En modo órdenes, salir de la ficha saca el #ficha/<lote> (sin entrada nueva).
@@ -906,7 +908,7 @@ export function mostrarTab(nombre, op = {}){
   }
   const enGrupo = GRUPO_CORRECCIONES.includes(nombre);
   if (enGrupo) _ultimaCorreccion = nombre;
-  const boton = enGrupo ? 'so2' : nombre;
+  const boton = enGrupo ? 'so2' : nombre === 'cargar' ? 'analisis' : nombre;
   // Inventario de tanques reutiliza el contenedor y la hoja de impresión originales.
   if (nombre === 'inventario-tanques' || _vistaMostrada === 'inventario-tanques') {
     invalidarVista('movimientos'); invalidarVista('inventario-tanques');
@@ -914,6 +916,15 @@ export function mostrarTab(nombre, op = {}){
   _vistaMostrada = nombre;
   actualizarCentro(nombre);
   marcarPestana(boton);
+  const analisisSub = $('analisisSub');
+  if (analisisSub) {
+    analisisSub.hidden = nombre !== 'analisis' && nombre !== 'cargar';
+    analisisSub.querySelectorAll('[data-analisis-v]').forEach(b => {
+      const on = b.dataset.analisisV === nombre;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  }
   const sub = $('corrSub');
   if (sub){
     sub.hidden = !enGrupo;

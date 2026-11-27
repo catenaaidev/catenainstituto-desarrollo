@@ -60,14 +60,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       .map(l => '<option value="' + l.replace(/"/g, '&quot;') + '">').join('');
   });
   /* Atrás / Adelante del navegador: la URL dice a qué pantalla (o ficha) volver.
-     Sin hash es la de entrada: el Panel. */
+     Sin hash es la de entrada: Lotes. */
   window.addEventListener('popstate', () => {
     const l = loteDeHash(location.hash);
     if (l) irALote(l, { sinHistorial: true });
     // Modo órdenes: no hay pantallas en el hash, solo la ficha: Atrás desde
     // la ficha vuelve a la vista de la orden.
     else if (enModoOrdenes()) { if (vistaActiva() === 'ficha') mostrarTab(vistaAntesDeFicha(), { sinHistorial: true }); }
-    else mostrarTab(pantallaDeUrl() || 'dashboard', { sinHistorial: true });
+    else mostrarTab(pantallaDeUrl() || 'lotes', { sinHistorial: true });
   });
 
   /* tabs */
@@ -75,6 +75,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     /* El boton de Correcciones es data-v="so2", pero lleva a la ultima
        sub-pestaña usada del grupo (mostrarTab('correcciones')). */
     b.addEventListener('click', () => mostrarTab(b.dataset.v === 'so2' ? 'correcciones' : b.dataset.v));
+  });
+  document.querySelectorAll('#analisisSub [data-analisis-v]').forEach(b => {
+    b.addEventListener('click', () => mostrarTab(b.dataset.analisisV));
   });
   document.querySelectorAll('#corrSub [data-sub]').forEach(b => {
     b.addEventListener('click', () => mostrarTab(b.dataset.sub));
