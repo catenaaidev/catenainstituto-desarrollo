@@ -52,6 +52,15 @@ export async function rutasVendimia(req: Request, env: Env, ctx: ExecutionContex
       if(f.type==='number'){if(typeof v!=='number'||!Number.isFinite(v))return json(400,{error:`Número inválido: ${f.label}`});vals.push(v);}
       else {if(typeof v!=='string'||v.length>4000|| (f.type==='unit'&&!['kg','L'].includes(v)) || (f.type==='status'&&!['Pendiente','Realizado'].includes(v)))return json(400,{error:`Dato inválido: ${f.label}`});vals.push(v.trim());}
     }
+    // Rechazo funcional antes de escribir; el trigger SQL sigue siendo la
+    // garantía atómica si cambia el saldo entre la consulta y el INSERT.
+    if (k === 'movimientos') {
+      const m = Object.fromEntries(fields.map((f,i) => [f.key,vals[i]]));
+      if (Number(m.cantidad) <= 0) return json(409,{error:'Indicá una cantidad positiva para el movimiento.'});
+      if (!m.origen || !m.destino || m.origen === m.destino) return json(409,{error:'Elegí vasijas de origen y destino distintas.'});
+      const saldo = await env.DB.prepare('SELECT cantidad FROM vend_existencias WHERE lote_id=? AND vasija=? AND unidad=?').bind(lote,m.origen,m.unidad).first<{cantidad:number}>();
+      if (Number(m.cantidad) > (saldo?.cantidad ?? 0)) return json(409,{error:'La vasija de origen no tiene saldo suficiente para realizar este movimiento.'});
+    }
     const obs=typeof b.observaciones==='string'?b.observaciones.slice(0,4000):'';
     const columns=['id','lote_id','fecha','autor','observaciones',...fields.map(f=>f.key)];
     const stmt=env.DB.prepare(`INSERT INTO vend_${k}(${columns.join(',')}) VALUES(${columns.map(()=>'?').join(',')})`).bind(uid,lote,fecha,id!.email,obs,...vals);
@@ -59,6 +68,10 @@ export async function rutasVendimia(req: Request, env: Env, ctx: ExecutionContex
     if(estado[k]) await env.DB.batch([stmt,env.DB.prepare('UPDATE vend_lotes SET estado=? WHERE id=?').bind(estado[k],lote)]); else await stmt.run();
     return json(201,{id:uid});
   } catch(e) {
+    const detalle = e instanceof Error ? e.message : String(e);
+    if (detalle.includes('movimiento sin saldo suficiente')) {
+      return json(409,{error:'No se guardó el movimiento: verificá que la cantidad sea positiva, que origen y destino sean distintos y que haya saldo suficiente en la vasija de origen.'});
+    }
     console.error('vendimia',e);
     return json(409,{error:'No se guardó: verificá duplicados, referencias y saldo disponible.'});
   }

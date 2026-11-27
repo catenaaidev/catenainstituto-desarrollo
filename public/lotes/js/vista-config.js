@@ -292,8 +292,6 @@ export function renderConfig(){
     t.addEventListener('click',  _cfgOnClick);
   }
 
-  renderVasijas($('cfgVasijas'));
-
   renderConfigAgenda();
 }
 
@@ -361,3 +359,4 @@ export async function restaurarDefaultsConfig(){
 }
 
 registrarVista('config', () => renderConfig());
+registrarVista('inventario-vasijas', () => renderVasijas($('cfgVasijas')));

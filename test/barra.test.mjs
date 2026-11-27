@@ -48,14 +48,14 @@ describe('barra común', () => {
   });
   it('en /ordenes/ marca Órdenes como actual y no muestra Reporte', () => {
     const h = html({ ...ctx, modulo: 'ordenes' });
-    expect(h).toContain('<span class="aqui" aria-current="page">Órdenes</span>');
+    expect(h).toContain('<span class="aqui" aria-current="page">Órdenes de trabajo</span>');
     expect(h).not.toContain('/reporte');
   });
   /* /lotes/?orden=… o /prensas/?orden=…: se está trabajando en una orden, la
    * barra marca Órdenes (no el módulo que la dibuja). */
   it('en una orden marca Órdenes y deja el módulo como enlace', () => {
     const h = html({ ...ctx, enOrden: true });
-    expect(h).toContain('<span class="aqui" aria-current="page">Órdenes</span>');
+    expect(h).toContain('<span class="aqui" aria-current="page">Órdenes de trabajo</span>');
     expect(h).toContain('href="/lotes/"');
     expect(h).not.toContain('<span class="aqui" aria-current="page">Lotes</span>');
     expect(h).not.toContain('href="/ordenes/"');

@@ -107,7 +107,6 @@
 
 <main class="in">
   <div class="tit"><p id="fecha"></p><h1><span id="hola">Hola</span>, ¿qué hacemos <em>hoy</em>?</h1><p class="sub">Tocá una tarjeta para entrar. Lo que cargás se guarda solo.</p></div>
-  <nav id="rapidas" class="rapidas" aria-label="Accesos rápidos" hidden></nav>
   <ul id="lista" class="lista">
     <li class="cargando">Cargando tus módulos…</li>
   </ul>
@@ -115,7 +114,7 @@
 </main>
 
 <footer><div class="in">
-  <span>Control de Prensas · Mapa de Barriles · Lotes · Órdenes de trabajo</span>
+  <span>Control de Prensas · Mapa de Barriles · Lotes · Vendimia · Órdenes de trabajo · Inventario</span>
   <span>Los datos se guardan en la nube y se respaldan solos.</span>
 </div></footer>
 
@@ -142,7 +141,7 @@ const MODULOS = [
   {
     id: 'lotes',
     nombre: 'Lotes',
-    desc: 'Trazabilidad, etapas, linaje, FML y movimientos. Cruce con el mapa de barriles.',
+    desc: 'Trazabilidad, etapas, linaje y FML. Cruce con el mapa de barriles.',
     forma: 'barrica',
     listo: true,
   },
@@ -152,10 +151,11 @@ const MODULOS = [
   {
     id: 'ordenes',
     nombre: 'Órdenes de trabajo',
-    desc: 'Todas las órdenes de Prensas y Lotes en un lugar: nuevas, pendientes e historial.',
+    desc: 'Órdenes nuevas, pendientes, historial, movimientos y correcciones.',
     forma: 'orden',
     listo: true,
   },
+  { id: 'inventario', nombre: 'Inventario', desc: 'Barriles, tanques y padrón de vasijas con sus cubicaciones.', forma: 'barrica', listo: true },
 ];
 
 const ROLES = {
@@ -168,8 +168,8 @@ const ROLES = {
    lotes (espejo de rolOrdenes en src/ordenes/rutas.ts). */
 const PESO_ROL = { lector: 1, editor: 2, admin: 3 };
 function rolDe(m, modulos) {
-  if (m.id !== 'ordenes') return modulos[m.id];
-  return ['prensas', 'lotes'].map(k => modulos[k]).filter(r => PESO_ROL[r])
+  if (m.id !== 'ordenes' && m.id !== 'inventario') return modulos[m.id];
+  return (m.id === 'inventario' ? ['barriles', 'lotes'] : ['prensas', 'lotes']).map(k => modulos[k]).filter(r => PESO_ROL[r])
     .sort((a, b) => PESO_ROL[b] - PESO_ROL[a])[0];
 }
 
@@ -693,18 +693,6 @@ try { Constelacion.iniciar(document.getElementById('cv')); } catch (e) { /* sin 
 
     const nombre = (yo.nombre || yo.email).split(' ')[0];
     document.getElementById('hola').textContent = 'Hola ' + nombre;
-    // Accesos rápidos a lo que más se hace, según los permisos de cada uno.
-    const R = yo.modulos, puede = m => R[m] === 'admin' || R[m] === 'editor';
-    const rapidas = [
-      puede('vendimia') && ['/vendimia/#precargar', 'Precargar un lote', 'Vendimia'],
-      R.lotes && ['/lotes/', 'Buscar un lote', 'Lotes'],
-      R.barriles && ['/barriles/', 'Ver el mapa de barriles', 'Barriles'],
-      (R.prensas || R.lotes) && ['/ordenes/', 'Órdenes de trabajo', 'Órdenes'],
-      R.prensas && ['/prensas/', 'Cargar un análisis', 'Prensas'],
-    ].filter(Boolean);
-    const nav = document.getElementById('rapidas');
-    nav.innerHTML = rapidas.map(([h, t, m]) => '<a href="' + h + '">' + esc(t) + ' <b>→</b><span class="sr-only"> (' + esc(m) + ')</span></a>').join('');
-    nav.hidden = !rapidas.length;
     const conAcceso = MODULOS.filter(m => rolDe(m, yo.modulos)).length;
     lista.innerHTML = MODULOS.map(m => tarjeta(m, rolDe(m, yo.modulos))).join('');
     engancharOpciones(lista);

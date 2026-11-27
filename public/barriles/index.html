@@ -856,7 +856,6 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
     <div class="ini-grandes tab-accesos">
       <button class="ini-boton" data-sub="escaner"><span class="ini-ico">🛢️</span><b>Llenado / vaciado</b><span>Escanear una orden</span></button>
       <button class="ini-boton" data-sub="registro"><span class="ini-ico">📒</span><b>Registro</b><span>Las órdenes cargadas, por mes</span></button>
-      <button class="ini-boton" data-sub="inventario"><span class="ini-ico">📋</span><b>Inventario</b><span>La lista de vasijas, editable</span></button>
       <button class="ini-boton" data-sub="mapa"><span class="ini-ico">🗺️</span><b>Mapa</b><span>Buscar y cargar en los boxes</span></button>
       <button class="ini-boton" data-sub="rotulos"><span class="ini-ico">🏷️</span><b>Rótulos</b><span>Imprimir los rótulos de un lote</span></button>
       <button class="ini-boton" data-sub="pedidos"><span class="ini-ico">📨</span><b>Pedidos de rótulos</b><span>Rótulos pedidos para reimprimir</span></button>
@@ -873,7 +872,6 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
       <button class="ini-boton" data-op="cargar"><span class="ini-ico">📦</span><b>Cargar box</b><span>Ubicar barriles en el mapa</span></button>
       <button class="ini-boton" data-op="escaner"><span class="ini-ico">🛢️</span><b>Llenado / vaciado</b><span>Escanear una orden</span></button>
       <button class="ini-boton ini-destacado" data-op="registro"><span class="ini-ico">📒</span><b>Registro</b><span>Ver lo que se cargó</span></button>
-      <button class="ini-boton" data-op="consulta"><span class="ini-ico">📋</span><b>Inventario</b><span>Barriles llenos, vacíos y lotes</span></button>
       <button class="ini-boton" data-op="buscar"><span class="ini-ico">🔍</span><b>Dónde está</b><span>Buscar un barril en el mapa</span></button>
       <button class="ini-boton" data-op="rotulos"><span class="ini-ico">🏷️</span><b>Rótulos</b><span>Imprimir los rótulos de un lote</span></button>
     </div>
@@ -900,6 +898,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
 
   <!-- ============ INVENTARIO DEL OPERARIO (solo consulta) ============ -->
   <section class="panel" id="panel-consulta">
+    <div class="toolbar"><a class="btn sec" href="/inventario/">← Inventario</a></div>
     <div class="reg-barra">
       <label class="reg-buscador">
         <span aria-hidden="true">🔍</span>
@@ -934,6 +933,7 @@ document.body.classList.add((window.CIW && window.CIW.rol) === 'admin' ? 'rol-pr
 
   <!-- ============ INVENTARIO (una sola lista: barricas, vasijas y tanques) ============ -->
   <section class="panel" id="panel-inventario">
+    <div class="toolbar"><a class="btn sec" href="/inventario/">← Inventario</a></div>
     <details class="ayuda">
       <summary>¿Para qué sirve esta pantalla?</summary>
       <div class="cuerpo">
@@ -2361,7 +2361,7 @@ function activarPanel(nombre) {
 // del body dice cuál está abierta.
 const PROG_GRUPOS = {
   inicio:   [['tablero', 'Inicio']],
-  barriles: [['inventario', 'Inventario'], ['escaner', 'Llenado / vaciado'], ['registro', 'Registro']],
+  barriles: [['escaner', 'Llenado / vaciado'], ['registro', 'Registro'], ['inventario', 'Inventario']],
   mapa:     [['mapa', 'Mapa'], ['mapa3d', 'Vista 3D']],   // Reportes se sacó a pedido (2026-10-06)
   imprimir: [['rotulos', 'Rótulos'], ['pedidos', 'Pedidos de rótulos']],
   admin:    [['datos', 'Importar y modo'], ['boxes', 'Boxes y palets'], ['respaldos', 'Respaldos'], ['celular', 'Celular']],
@@ -2385,9 +2385,9 @@ function progIr(sub, op = {}) {
   if (!grupo) return;
   if (sesion && sesion.modo === 'libre' && sub !== progSubActual) salirModoLibre();
   if (!op.sinHistorial && PU) PU.anotarPantalla(sub);
-  progSubActual = sub; progUltima[grupo] = sub;
+  progSubActual = sub; if (sub !== 'inventario') progUltima[grupo] = sub;
   barraMarcar(grupo, sub);
-  const subs = PROG_GRUPOS[grupo];
+  const subs = PROG_GRUPOS[grupo].filter(([s]) => s !== 'inventario');
   $('navSubProg').innerHTML = (subs.length < 2 || grupo === 'admin') ? '' : subs.map(([s, t]) =>
     `<button type="button" data-sub="${s}" class="${s === sub ? 'activo' : ''}">${t}${s === 'pedidos' ? '<span class="prog-cuenta" id="progSubCuentaPedidos"></span>' : ''}</button>`).join('');
   for (const ss of Object.values(PROG_GRUPOS).flat().map(x => x[0])) document.body.classList.toggle('prog-sub-' + ss, ss === sub);

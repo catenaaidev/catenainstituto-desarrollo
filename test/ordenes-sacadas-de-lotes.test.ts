@@ -3,10 +3,10 @@ import { describe, it, expect } from 'vitest';
 
 describe('Lotes ya no tiene órdenes fuera del modo órdenes', () => {
   const mov = env.LOTES_JS['js/vista-movimientos.js'];
-  it('Movimientos: sin sub-pestaña Órdenes de trabajo, con Inventario de tanques', () => {
+  it('Movimientos: sin sub-pestaña Órdenes de trabajo ni Inventario de tanques (centralizado)', () => {
     const sel = mov.slice(mov.indexOf('function _selectorSub'), mov.indexOf('function _cablearSelector'));
     expect(sel).not.toContain("b('ordenes'");
-    expect(sel).toContain("b('tanques', 'Inventario de tanques')");
+    expect(sel).not.toContain("b('tanques', 'Inventario de tanques')");
     expect(sel).toContain("b('mermas', 'Mermas')");
   });
   it('el 🖨 del Historial lleva a la OT en modo órdenes', () => {

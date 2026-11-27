@@ -861,6 +861,25 @@ export async function guardar(forzar){
  * ve en el grupo. Tocar el boton vuelve a la ultima sub-pestaña que se uso
  * (en memoria). */
 const GRUPO_CORRECCIONES = ['ordencorr', 'so2', 'agregados'];
+// Reubicar la navegación, no los datos ni los renderizadores.
+function actualizarCentro(nombre) {
+  const centro = enModoOrdenes() ? '' : (window.CIBarra?.centroDeVista('lotes', nombre) || '');
+  document.body.classList.toggle('ciw-centro', !!centro);
+  const nav = $('ciwCentroNav');
+  if (nav) {
+    nav.hidden = !centro;
+    nav.querySelectorAll('[data-centro]').forEach(a => {
+      const roles = window.CIW?.modulos || {};
+      const editar = ['admin','editor'].includes(roles.lotes) || ['admin','editor'].includes(roles.prensas);
+      a.hidden = a.dataset.centro !== centro || (a.dataset.editar === 'ordenes' && !editar);
+      const activa = a.dataset.vista === (GRUPO_CORRECCIONES.includes(nombre) ? 'so2' : nombre);
+      if (activa) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current');
+    });
+  }
+  const marca = $('ciwMarcaLotes');
+  if (marca) marca.textContent = centro === 'ordenes' ? 'Órdenes de trabajo' : centro === 'inventario' ? 'Inventario' : 'Lotes';
+  if (!enModoOrdenes()) document.dispatchEvent(new CustomEvent('ciw:pantalla',{ detail:nombre }));
+}
 let _ultimaCorreccion = 'so2';
 
 /* La pantalla queda en la URL (#analisis, #ordencorr…; shared/pantalla-url.js):
@@ -870,6 +889,7 @@ const _PU = () => window.CIWPantalla;
 /** La pantalla anotada en la URL, o null si no hay (o no es una conocida). */
 export function pantallaDeUrl(){
   const pu = _PU();
+  if (location.hash === '#correcciones') return 'correcciones';
   return pu ? pu.pantallaDeHash(location.hash, Object.keys(_vistas).filter(n => n !== 'ficha')) : null;
 }
 
@@ -887,7 +907,12 @@ export function mostrarTab(nombre, op = {}){
   const enGrupo = GRUPO_CORRECCIONES.includes(nombre);
   if (enGrupo) _ultimaCorreccion = nombre;
   const boton = enGrupo ? 'so2' : nombre;
+  // Inventario de tanques reutiliza el contenedor y la hoja de impresión originales.
+  if (nombre === 'inventario-tanques' || _vistaMostrada === 'inventario-tanques') {
+    invalidarVista('movimientos'); invalidarVista('inventario-tanques');
+  }
   _vistaMostrada = nombre;
+  actualizarCentro(nombre);
   marcarPestana(boton);
   const sub = $('corrSub');
   if (sub){
@@ -899,7 +924,7 @@ export function mostrarTab(nombre, op = {}){
     });
   }
   document.querySelectorAll('.view').forEach(s => s.classList.remove('active'));
-  const sec = $('tab-' + nombre);
+  const sec = $('tab-' + (nombre === 'inventario-tanques' ? 'movimientos' : nombre));
   if (sec) sec.classList.add('active');
   _dibujar(nombre, false);
 }

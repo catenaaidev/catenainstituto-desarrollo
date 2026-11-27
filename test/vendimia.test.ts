@@ -17,7 +17,9 @@ describe('Vendimia',()=>{
   const molienda=await pedir(path+'/moliendas',cookie,{ot:'OT1'});expect(molienda.status).toBe(201);const m=await molienda.json<{id:string}>();
   expect((await pedir(path+'/distribuciones',cookie,{molienda_id:m.id,vasija:'A',cantidad:90,unidad:'kg'})).status).toBe(201);
   expect((await pedir(path+'/movimientos',cookie,{origen:'A',destino:'B',cantidad:30,unidad:'kg',tipo:'traslado'})).status).toBe(201);
-  expect((await pedir(path+'/movimientos',cookie,{origen:'A',destino:'B',cantidad:70,unidad:'kg',tipo:'traslado'})).status).toBe(409);
+  const sinSaldo=await pedir(path+'/movimientos',cookie,{origen:'A',destino:'B',cantidad:70,unidad:'kg',tipo:'traslado'});
+  expect(sinSaldo.status).toBe(409);
+  expect(await sinSaldo.json()).toMatchObject({error:expect.stringContaining('saldo suficiente')});
   expect((await pedir(path+'/mediciones',cookie,{vasija:'B',brix:22,temperatura:25})).status).toBe(201);
   const ficha=await pedir(path,cookie);expect(ficha.status).toBe(200);expect(await ficha.json()).toMatchObject({lote:{codigo:'26001'},existencias:expect.arrayContaining([expect.objectContaining({vasija:'A',cantidad:60}),expect.objectContaining({vasija:'B',cantidad:30})])});
  });

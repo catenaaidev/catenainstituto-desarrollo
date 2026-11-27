@@ -28,8 +28,8 @@
    *  que Atrás vuelva a la anterior). No hace nada si ya está anotada. */
   function anotarPantalla(nombre) {
     const h = hashDePantalla(nombre);
-    if (root.location.hash === h) return;
-    root.history.pushState(null, '', h);
+    if (root.location.hash !== h) root.history.pushState(null, '', h);
+    if (root.document && root.CustomEvent) root.document.dispatchEvent(new root.CustomEvent('ciw:pantalla', { detail: nombre }));
   }
 
   /* Sin salto al tablero: el HTML trae el Panel/Inicio marcado activo y el
